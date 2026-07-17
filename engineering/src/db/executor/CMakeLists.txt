@@ -23,7 +23,7 @@ if(EXECUTOR_SOURCE_FILES)
         ${ENGINEERING_SOURCE_DIR}/include/db/executor/yang
         ${ENGINEERING_SOURCE_DIR}/include/db/executor/stream
     )
-    target_link_libraries(db_executor PRIVATE db_parser db_optimizer db_storage db_validator)
+    target_link_libraries(db_executor PRIVATE db_parser db_optimizer db_storage db_validator sql_engine)
     target_compile_options(db_executor PRIVATE -Wno-unused-parameter)
 endif()
 
