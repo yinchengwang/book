@@ -47,7 +47,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 提交推送纪律
 
-**每次 commit 完成后，必须立即执行 `git push` 到当前分支的远程仓库，不得累积多个 commit 后批量推送。**
+1. **目标分支**：所有代码统一推送到 GitHub 远程仓库（`origin`）的 `main` 分支。
+2. **即时推送**：每次 commit 完成后，必须立即执行 `git push`，不得累积多个 commit 后批量推送。
+3. **远程仓库**：仅使用 `origin`（GitHub: `https://github.com/yinchengwang/book.git`），不再使用 Gitee。
 
 ## 项目概述
 
