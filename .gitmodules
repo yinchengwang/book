@@ -7,12 +7,12 @@
 [submodule "reference/open-source/redis"]
 	path = reference/open-source/redis
 	url = https://gitee.com/yinchengwang_admin/redis.git
-[submodule "reference/open-source/pgvector"]
-	path = reference/open-source/pgvector
-	url = https://gitee.com/yinchengwang_admin/pgvector.git
 [submodule "reference/open-source/postgres"]
 	path = reference/open-source/postgres
 	url = https://gitee.com/yinchengwang_admin/postgres.git
+[submodule "reference/open-source/pgvector"]
+	path = reference/open-source/pgvector
+	url = https://gitee.com/yinchengwang_admin/pgvector.git
 [submodule "reference/open-source/sqlite3"]
 	path = reference/open-source/sqlite3
 	url = https://gitee.com/yinchengwang_admin/sqlite.git
