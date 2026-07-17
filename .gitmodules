@@ -1,0 +1,39 @@
+[submodule "third_part/googletest"]
+	path = third_part/googletest
+	url = https://gitee.com/yinchengwang_admin/googletest.git
+[submodule "reference/open-source/faiss"]
+	path = reference/open-source/faiss
+	url = https://gitee.com/yinchengwang_admin/faiss.git
+[submodule "reference/open-source/redis"]
+	path = reference/open-source/redis
+	url = https://gitee.com/yinchengwang_admin/redis.git
+[submodule "reference/open-source/pgvector"]
+	path = reference/open-source/pgvector
+	url = https://gitee.com/yinchengwang_admin/pgvector.git
+[submodule "reference/open-source/postgres"]
+	path = reference/open-source/postgres
+	url = https://gitee.com/yinchengwang_admin/postgres.git
+[submodule "reference/open-source/sqlite3"]
+	path = reference/open-source/sqlite3
+	url = https://gitee.com/yinchengwang_admin/sqlite.git
+[submodule "reference/open-source/elasticsearch"]
+	path = reference/open-source/elasticsearch
+	url = https://gitee.com/yinchengwang_admin/elasticsearch.git
+[submodule "reference/open-source/chroma"]
+	path = reference/open-source/chroma
+	url = https://gitee.com/yinchengwang_admin/chroma.git
+[submodule "reference/open-source/milvus"]
+	path = reference/open-source/milvus
+	url = https://gitee.com/yinchengwang_admin/milvus.git
+[submodule "reference/open-source/ann-benchmarks"]
+	path = reference/open-source/ann-benchmarks
+	url = https://gitee.com/yinchengwang_admin/ann-benchmarks.git
+[submodule "reference/open-source/neo4j"]
+	path = reference/open-source/neo4j
+	url = https://gitee.com/yinchengwang_admin/neo4j.git
+[submodule "reference/open-source/openGauss"]
+	path = reference/open-source/openGauss
+	url = https://gitee.com/opengauss/openGauss-server.git
+[submodule "reference/open-source/mysql"]
+	path = reference/open-source/mysql
+	url = https://gitee.com/yinchengwang_admin/mysql-server.git
