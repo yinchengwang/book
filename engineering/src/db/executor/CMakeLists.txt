@@ -13,6 +13,15 @@ if(EXECUTOR_SOURCE_FILES)
         ${ENGINEERING_SOURCE_DIR}/include/db/storage
         ${ENGINEERING_SOURCE_DIR}/include/db/validator
         ${ENGINEERING_SOURCE_DIR}/include/db/core
+        ${ENGINEERING_SOURCE_DIR}/include/db/executor/vector
+        ${ENGINEERING_SOURCE_DIR}/include/db/executor/graph
+        ${ENGINEERING_SOURCE_DIR}/include/db/executor/kv
+        ${ENGINEERING_SOURCE_DIR}/include/db/executor/ts
+        ${ENGINEERING_SOURCE_DIR}/include/db/executor/doc
+        ${ENGINEERING_SOURCE_DIR}/include/db/executor/spatial
+        ${ENGINEERING_SOURCE_DIR}/include/db/executor/datalog
+        ${ENGINEERING_SOURCE_DIR}/include/db/executor/yang
+        ${ENGINEERING_SOURCE_DIR}/include/db/executor/stream
     )
     target_link_libraries(db_executor PRIVATE db_parser db_optimizer db_storage db_validator)
     target_compile_options(db_executor PRIVATE -Wno-unused-parameter)
