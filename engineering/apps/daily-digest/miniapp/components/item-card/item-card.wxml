@@ -1,0 +1,14 @@
+<view class="item-card" data-id="{{item.id}}" bindtap="onTap">
+  <view class="card-header">
+    <text class="card-source source-{{item.source}}">{{sourceLabel}}</text>
+    <text class="card-score" wx:if="{{item.score > 0}}">{{(item.score * 100).toFixed(0)}}</text>
+  </view>
+  <text class="card-title">{{item.title}}</text>
+  <text class="card-summary" wx:if="{{item.summary}}">{{truncate(item.summary, 120)}}</text>
+  <view class="card-footer">
+    <view class="card-tags" wx:if="{{item.tags && item.tags.length}}">
+      <text class="tag" wx:for="{{item.tags.slice(0, 4)}}" wx:key="*this">{{item}}</text>
+    </view>
+    <text class="card-time" wx:if="{{item.published}}">{{formatTime(item.published)}}</text>
+  </view>
+</view>

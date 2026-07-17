@@ -1,0 +1,21 @@
+<view class="collections-page">
+  <text class="page-title">收藏夹</text>
+
+  <view wx:if="{{collections.length}}" class="collection-list">
+    <view class="collection-card" wx:for="{{collections}}" wx:key="id">
+      <view class="collection-info">
+        <text class="collection-name">{{item.name}}</text>
+        <text class="collection-count">{{item.item_count}} 项</text>
+      </view>
+    </view>
+  </view>
+
+  <view wx:else class="empty-state">
+    <text>暂无收藏夹</text>
+  </view>
+
+  <view class="create-section">
+    <input class="create-input" placeholder="新建收藏夹" bindinput="onNameInput" />
+    <button class="create-btn" bindtap="handleCreate">新建</button>
+  </view>
+</view>

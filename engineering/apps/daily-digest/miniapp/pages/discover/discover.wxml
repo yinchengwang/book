@@ -1,0 +1,22 @@
+<view class="discover-page">
+  <view class="search-bar">
+    <input class="search-input" placeholder="搜索技术内容..." bindinput="onQueryInput" bindconfirm="doSearch" />
+    <button class="search-btn" bindtap="doSearch">搜索</button>
+  </view>
+
+  <category-tabs
+    tabs="{{categoryTabs}}"
+    active-category="{{activeCategory}}"
+    bind:change="onCategoryChange"
+  />
+
+  <view wx:if="{{loading}}" class="loading-state"><text>搜索中...</text></view>
+
+  <view wx:elif="{{items.length}}" class="item-list">
+    <item-card wx:for="{{items}}" wx:key="id" item="{{item}}" />
+  </view>
+
+  <view wx:elif="{{searched}}" class="empty-state">
+    <text>未找到相关内容</text>
+  </view>
+</view>

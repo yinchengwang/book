@@ -1,0 +1,47 @@
+{
+  "pages": [
+    "pages/daily/daily",
+    "pages/discover/discover",
+    "pages/collections/collections",
+    "pages/mine/mine"
+  ],
+  "window": {
+    "navigationBarTitleText": "DailyDigest",
+    "navigationBarTextStyle": "black",
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "backgroundColor": "#F8F9FA"
+  },
+  "tabBar": {
+    "color": "#9CA3AF",
+    "selectedColor": "#2D7FF9",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/daily/daily",
+        "text": "每日",
+        "iconPath": "images/daily.png",
+        "selectedIconPath": "images/daily-active.png"
+      },
+      {
+        "pagePath": "pages/discover/discover",
+        "text": "发现",
+        "iconPath": "images/discover.png",
+        "selectedIconPath": "images/discover-active.png"
+      },
+      {
+        "pagePath": "pages/collections/collections",
+        "text": "收藏",
+        "iconPath": "images/collections.png",
+        "selectedIconPath": "images/collections-active.png"
+      },
+      {
+        "pagePath": "pages/mine/mine",
+        "text": "我的",
+        "iconPath": "images/mine.png",
+        "selectedIconPath": "images/mine-active.png"
+      }
+    ]
+  },
+  "sitemapLocation": "sitemap.json"
+}

@@ -1,0 +1,8 @@
+/* 全局样式 */
+page {
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'PingFang SC', sans-serif;
+  font-size: 15px;
+  color: #1A1A2E;
+  background-color: #F8F9FA;
+  box-sizing: border-box;
+}

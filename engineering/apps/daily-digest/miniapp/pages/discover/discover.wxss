@@ -1,0 +1,28 @@
+.discover-page { padding: 16px; }
+.search-bar { display: flex; gap: 12px; margin-bottom: 8px; }
+.search-input {
+  flex: 1;
+  height: 40px;
+  padding: 0 16px;
+  font-size: 15px;
+  background: #FFFFFF;
+  border: 1px solid #E2E5EC;
+  border-radius: 8px;
+}
+.search-btn {
+  height: 40px;
+  padding: 0 20px;
+  font-size: 14px;
+  color: #FFFFFF;
+  background: #2D7FF9;
+  border: none;
+  border-radius: 8px;
+  line-height: 40px;
+}
+.item-list { margin-top: 8px; }
+.loading-state, .empty-state {
+  display: flex;
+  justify-content: center;
+  padding: 48px 16px;
+  color: #5A6178;
+}
