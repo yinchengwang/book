@@ -1,0 +1,389 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "mermaid2excalidraw",
+  "elements": [
+    {
+      "id": "m2e_1",
+      "type": "rectangle",
+      "x": 390.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_2",
+      "type": "text",
+      "x": 450.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "构建 Vamana 图<br/>优化磁盘 I/O",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_3",
+      "type": "rectangle",
+      "x": 560.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_4",
+      "type": "text",
+      "x": 620.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "Beam Search<br/>并行探测",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_5",
+      "type": "rectangle",
+      "x": 730.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_6",
+      "type": "text",
+      "x": 790.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "PQ 编码<br/>向量压缩",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_7",
+      "type": "rectangle",
+      "x": -120.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_8",
+      "type": "text",
+      "x": -60.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "end",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_9",
+      "type": "rectangle",
+      "x": 900.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_10",
+      "type": "text",
+      "x": 960.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "SSD 存储<br/>顺序读优化",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_11",
+      "type": "rectangle",
+      "x": -290.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_12",
+      "type": "text",
+      "x": -230.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "顶点排序<br/>按度数排序",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_13",
+      "type": "rectangle",
+      "x": -460.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_14",
+      "type": "text",
+      "x": -400.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "固定页大小<br/>内存页映射",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_15",
+      "type": "rectangle",
+      "x": 50.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_16",
+      "type": "text",
+      "x": 110.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "路由定位<br/>起始点选择",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_17",
+      "type": "rectangle",
+      "x": 1070.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_18",
+      "type": "text",
+      "x": 1130.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "Beam Search<br/>k 近邻搜索",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_19",
+      "type": "rectangle",
+      "x": 1240.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_20",
+      "type": "text",
+      "x": 1300.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "PQ 距离计算<br/>加速比较",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_21",
+      "type": "rectangle",
+      "x": 220.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_22",
+      "type": "text",
+      "x": 280.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "结果排序<br/>返回 Top-k",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_23",
+      "type": "arrow",
+      "x": 790.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          170.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_24",
+      "type": "arrow",
+      "x": 450.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          510.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_25",
+      "type": "arrow",
+      "x": 960.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -340.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_26",
+      "type": "arrow",
+      "x": 620.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          510.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_27",
+      "type": "arrow",
+      "x": 1130.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          170.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_28",
+      "type": "arrow",
+      "x": 1300.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -1020.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    }
+  ],
+  "appState": {
+    "gridSize": null,
+    "viewBackgroundColor": "#ffffff"
+  }
+}

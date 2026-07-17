@@ -1,0 +1,147 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - heading "🏆 项目验收工作台" [level=1] [ref=e674] [cursor=pointer]
+    - generic [ref=e5]:
+      - button "🏠 首页" [ref=e6] [cursor=pointer]
+      - button "📊 仪表盘" [ref=e7] [cursor=pointer]
+      - button "🏆 项目验收" [ref=e8] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]: 💡
+    - generic [ref=e12]: 💡 设计模式：单例模式的懒汉式(Double-Checked Locking)在C++11之前因为内存重排序问题是不安全的。
+    - generic "关闭" [ref=e13] [cursor=pointer]: ✕
+  - generic [ref=e14]:
+    - generic [ref=e767]:
+      - button "← 返回项目列表" [ref=e768] [cursor=pointer]
+      - generic [ref=e769]: 贪吃蛇 (snake)
+      - button "📤 上传文件夹" [ref=e770] [cursor=pointer]
+      - button "✏️ 在线编辑" [ref=e771] [cursor=pointer]
+      - button "🗑 清除代码" [ref=e772] [cursor=pointer]
+    - generic [ref=e773]:
+      - generic [ref=e775]:
+        - generic [ref=e776]:
+          - text: 📁 项目文件
+          - generic [ref=e777]: (1个文件)
+        - generic "构建配置" [ref=e778] [cursor=pointer]:
+          - generic [ref=e779]: 🔴
+          - generic [ref=e780]: CMakeLists.txt
+          - generic [ref=e781]: ✗ 构建配置
+        - generic "主入口" [ref=e782] [cursor=pointer]:
+          - generic [ref=e783]: 🔴
+          - generic [ref=e784]: main.c
+          - generic [ref=e785]: ✓ 主入口
+        - generic "核心逻辑" [ref=e786] [cursor=pointer]:
+          - generic [ref=e787]: 🔴
+          - generic [ref=e788]: snake.c
+          - generic [ref=e789]: ✗ 核心逻辑
+        - generic "头文件" [ref=e790] [cursor=pointer]:
+          - generic [ref=e791]: 🔴
+          - generic [ref=e792]: snake.h
+          - generic [ref=e793]: ✗ 头文件
+        - generic "点击查看代码" [ref=e794] [cursor=pointer]:
+          - generic [ref=e795]: 📄
+          - generic [ref=e796]: main.c
+        - generic [ref=e797]:
+          - generic [ref=e798]: 📏 14行
+          - generic [ref=e799]: 📝 12代码
+          - generic [ref=e800]: 💬 1注释
+          - generic [ref=e801]: ⚙️ 1函数
+          - generic [ref=e802]: 📊 7%注释率
+      - generic [ref=e804]:
+        - generic [ref=e805]:
+          - text: 📋 验收清单
+          - generic [ref=e806]: "自动检查: 6 | 人工: 0"
+        - generic [ref=e807]:
+          - generic [ref=e808] [cursor=pointer]:
+            - generic [ref=e809]: ▶
+            - generic [ref=e810]: 游戏核心逻辑
+            - generic [ref=e811]: 0/4
+          - generic [ref=e868]:
+            - generic [ref=e869]:
+              - generic "点击切换状态" [ref=e870] [cursor=pointer]: ✓
+              - generic [ref=e871]: 游戏初始化(蛇/食物/方向)
+              - generic "main.c:7" [ref=e872]: ✅ init_game
+              - generic [ref=e873]: 自动
+            - generic [ref=e874]:
+              - generic "点击切换状态" [ref=e875] [cursor=pointer]: ✓
+              - generic [ref=e876]: 游戏状态更新(移动/碰撞)
+              - generic "main.c:9" [ref=e877]: ✅ update(
+              - generic [ref=e878]: 自动
+            - generic [ref=e879]:
+              - generic "点击切换状态" [ref=e880] [cursor=pointer]: ✓
+              - generic [ref=e881]: 游戏渲染(棋盘绘制)
+              - generic "main.c:10" [ref=e882]: ✅ render(
+              - generic [ref=e883]: 自动
+            - generic [ref=e884]:
+              - generic "点击切换状态" [ref=e885] [cursor=pointer]: ✓
+              - generic [ref=e886]: 游戏主循环(while !game_over)
+              - generic "main.c:8" [ref=e887]: ✅ while (!game_over
+              - generic [ref=e888]: 自动
+        - generic [ref=e813] [cursor=pointer]:
+          - generic [ref=e814]: ▶
+          - generic [ref=e815]: 输入控制
+          - generic [ref=e816]: 0/3
+        - generic [ref=e818] [cursor=pointer]:
+          - generic [ref=e819]: ▶
+          - generic [ref=e820]: 难度系统
+          - generic [ref=e821]: 0/3
+        - generic [ref=e823] [cursor=pointer]:
+          - generic [ref=e824]: ▶
+          - generic [ref=e825]: 碰撞检测
+          - generic [ref=e826]: 0/3
+        - generic [ref=e828] [cursor=pointer]:
+          - generic [ref=e829]: ▶
+          - generic [ref=e830]: 代码质量
+          - generic [ref=e831]: 0/3
+        - generic [ref=e833] [cursor=pointer]:
+          - generic [ref=e834]: ▶
+          - generic [ref=e835]: 🔍 代码质量
+          - generic [ref=e836]: 0/2
+    - generic [ref=e837]:
+      - generic [ref=e838]:
+        - generic [ref=e839]:
+          - generic [ref=e840]: 0/25
+          - generic [ref=e841]: 综合评分
+        - generic [ref=e842]:
+          - generic [ref=e843]:
+            - generic [ref=e844]: 游戏核心逻辑
+            - generic [ref=e845]: ☆☆☆☆☆
+            - generic [ref=e846] [cursor=pointer]: ✏️
+          - generic [ref=e847]:
+            - generic [ref=e848]: 输入控制
+            - generic [ref=e849]: ☆☆☆☆☆
+            - generic [ref=e850] [cursor=pointer]: ✏️
+          - generic [ref=e851]:
+            - generic [ref=e852]: 难度系统
+            - generic [ref=e853]: ☆☆☆☆☆
+            - generic [ref=e854] [cursor=pointer]: ✏️
+          - generic [ref=e855]:
+            - generic [ref=e856]: 碰撞检测
+            - generic [ref=e857]: ☆☆☆☆☆
+            - generic [ref=e858] [cursor=pointer]: ✏️
+          - generic [ref=e859]:
+            - generic [ref=e860]: 代码质量
+            - generic [ref=e861]: ☆☆☆☆☆
+            - generic [ref=e862] [cursor=pointer]: ✏️
+        - textbox "📝 项目备注/审查意见..." [ref=e864]
+      - generic [ref=e865]:
+        - button "💾 保存评价" [ref=e866] [cursor=pointer]
+        - button "🏆 返回项目列表" [ref=e867] [cursor=pointer]
+  - generic [ref=e890]:
+    - generic [ref=e891]:
+      - generic [ref=e892]: 📄 main.c
+      - button "✕" [ref=e893] [cursor=pointer]
+    - generic [ref=e895]:
+      - generic [ref=e896]: "#include \"snake.h\""
+      - generic [ref=e898]: "int main(void) {"
+      - generic [ref=e899]: set_utf8();
+      - generic [ref=e900]: srand((unsigned)time(NULL));
+      - generic [ref=e901]: printf(class="c-str">"贪吃蛇游戏\n"
+      - text: );
+      - generic [ref=e902]: init_game();
+      - generic [ref=e903]: "while (!game_over) {"
+      - generic [ref=e904]: update();
+      - generic [ref=e905]: render();
+      - generic [ref=e906]: sleep_ms(100);
+      - generic [ref=e907]: "}"
+      - generic [ref=e908]: return 0;
+      - generic [ref=e909]: "}"

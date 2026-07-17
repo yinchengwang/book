@@ -1,0 +1,23 @@
+# 网络流 (Network Flow)
+
+## 测试网络
+
+```
+       16        12
+   s ────► v1 ────► t
+   │╲  13 ╱│╲ 14╱  │
+  10│  ╲  │ ╲╱ │   20
+   │   ╲ │╱  ╲│   │
+   v2──►v3───►v4──►t
+    4   9    7  4
+```
+
+- 源点: s=0
+- 汇点: t=5
+- 预期最大流: 23
+
+## 运行
+
+```bash
+gcc -std=c11 -Wall -Wextra -O2 -o network_flow_demo main.c && ./network_flow_demo
+```

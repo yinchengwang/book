@@ -1,0 +1,318 @@
+# PostgreSQL 风格配置文件示例
+# 这是一个参考配置文件，实际使用时根据需求调整
+
+# =============================================================================
+# 连接配置
+# =============================================================================
+
+# 最大并发连接数
+max_connections = 100
+
+# 服务器监听端口
+port = 5432
+
+# 监听地址，'*' 表示所有地址
+listen_addresses = 'localhost'
+
+# Unix Socket 路径（Unix 系统）
+# unix_socket_directories = '/tmp'
+
+# 连接超时时间（秒）
+# connect_timeout = 60
+
+# =============================================================================
+# 内存配置
+# =============================================================================
+
+# 共享缓冲区大小（推荐为系统内存的 1/4）
+shared_buffers = 128MB
+
+# 单个查询的工作内存
+work_mem = 4MB
+
+# 维护操作（如 VACUUM、CREATE INDEX）的内存
+maintenance_work_mem = 64MB
+
+# 临时缓冲区和临时表的内存
+temp_buffers = 8MB
+
+# 最大栈深度（KB）
+# max_stack_depth = 2MB
+
+# =============================================================================
+# WAL 配置
+# =============================================================================
+
+# WAL 级别：minimal, replica, logical
+wal_level = replica
+
+# WAL 日志段文件大小
+# wal_segment_size = 16MB
+
+# 是否启用 fsync（保证持久性）
+fsync = on
+
+# 同步方式：open_datasync, fdatasync, fsync, fsync_writethrough, open_sync
+# synchronous_io = fsync
+
+# 检查点相关
+# checkpoint_timeout = 5min
+# checkpoint_completion_target = 0.9
+# max_wal_size = 1GB
+# min_wal_size = 80MB
+
+# WAL 缓冲区大小
+# wal_buffers = -1  # 自动选择
+
+# 是否启用压缩 WAL
+# wal_compression = off
+
+# =============================================================================
+# 复制配置
+# =============================================================================
+
+# 最大复制连接数
+# max_wal_senders = 10
+
+# WAL 保留的最少文件数
+# wal_keep_size = 0
+
+# 是否允许复制连接
+# allow_connections = on
+
+# =============================================================================
+# 查询规划器配置
+# =============================================================================
+
+# 启用/禁用查询规划器
+# enable_async = on
+# enable_bitmapscan = on
+# enable_gathermerge = on
+# enable_hashagg = on
+# enable_hashjoin = on
+# enable_incremental_sort = on
+# enable_indexscan = on
+# enable_indexonlyscan = on
+# enable_material = on
+# enable_memoize = on
+# enable_mergejoin = on
+# enable_nestloop = on
+# enable_parallel_append = on
+# enable_parallel_hash = on
+# enable_partition_pruning = on
+# enable_partitionwise_join = off
+# enable_partitionwise_aggregate = off
+# enable_seqscan = on
+# enable_sort = on
+# enable_tidscan = on
+
+# 随机页面成本
+# random_page_cost = 4.0
+
+# 并行查询
+# max_parallel_workers_per_gather = 2
+# max_parallel_workers = 8
+# parallel_leader_participation = on
+
+# =============================================================================
+# 日志配置
+# =============================================================================
+
+# 日志目标：stderr, csvlog, jsonlog
+log_destination = 'stderr'
+
+# 是否启用日志收集器
+logging_collector = off
+
+# 日志目录（当 logging_collector = on 时）
+# log_directory = 'log'
+
+# 日志文件名
+# log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+
+# 日志级别：debug5, debug4, debug3, debug2, debug1, info, notice, warning, error, log, fatal, panic
+log_level = 'info'
+
+# 日志时区
+# log_timezone = 'Asia/Shanghai'
+
+# 日志持久化
+# log_truncate_on_rotation = off
+# log_rotation_age = 1d
+# log_rotation_size = 10MB
+
+# 需要记录哪些语句
+# log_statement = 'none'      # 不记录
+# log_statement = 'ddl'       # 只记录 DDL
+# log_statement = 'mod'       # 记录 DDL 和数据修改
+# log_statement = 'all'       # 记录所有语句
+
+# 记录执行时间
+# log_duration = off
+# log_line_prefix = '%m [%p] %q%u@%d '
+# log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+
+# 记录锁等待
+# log_lock_waits = off
+
+# 记录检查点信息
+# log_checkpoints = off
+
+# 记录连接信息
+# log_connections = off
+# log_disconnections = off
+
+# =============================================================================
+# 进程标题配置
+# =============================================================================
+
+# 进程标题格式
+# cluster_name = ''
+# update_process_title = on
+
+# =============================================================================
+# 统计信息配置
+# =============================================================================
+
+# 启用统计信息收集
+# track_activities = on
+# track_counts = on
+# track_io_timing = off
+# track_wal_io_timing = off
+# track_functions = none
+
+# 统计信息采样间隔（毫秒）
+# stats_fetch_consistency = cache
+
+# =============================================================================
+# 自动清理配置
+# =============================================================================
+
+# 自动 VACUUM
+autovacuum = on
+
+# 自动 VACUUM 进程数
+# autovacuum_max_workers = 3
+
+# 自动分析
+autovacuum_analyze_threshold = 50
+
+# 自动 VACUUM 的阈值
+autovacuum_vacuum_threshold = 50
+
+# 触发自动 VACUUM 的表膨胀阈值
+# autovacuum_vacuum_insert_threshold = 1000
+# autovacuum_analyze_scale_factor = 0.2
+# autovacuum_vacuum_scale_factor = 0.2
+
+# 自动 VACUUM 最大扩展延迟
+# autovacuum_vacuum_cost_delay = 2ms
+# autovacuum_vacuum_cost_limit = -1
+
+# =============================================================================
+# 客户端连接默认配置
+# =============================================================================
+
+# 客户端空闲超时（秒）
+# idle_session_timeout = 0
+
+# 空闲事务超时（秒）
+# idle_in_transaction_session_timeout = 0
+
+# 锁超时（毫秒）
+# lock_timeout = 0
+
+# 语句超时（毫秒）
+# statement_timeout = 0
+
+# =============================================================================
+# 错误处理
+# =============================================================================
+
+# 恢复期间允许写入
+# recovery_target_action = 'pause'
+
+# 错误退出码
+# exit_on_error = off
+
+# 是否致命错误后终止会话
+# session_exit_on_error = on
+
+# =============================================================================
+# 预加载配置
+# =============================================================================
+
+# 预加载共享库
+# shared_preload_libraries = ''
+
+# =============================================================================
+# 异步 I/O 配置
+# =============================================================================
+
+# 异步 I/O 模式
+# effective_io_concurrency = 1
+
+# =============================================================================
+# 并行查询
+# =============================================================================
+
+# 备用机器上的并行查询
+# max_parallel_maintenance_workers = 2
+
+# =============================================================================
+# 后台写入器配置
+# =============================================================================
+
+# 后台写入器刷新频率
+# bgwriter_delay = 200ms
+
+# 后台写入器最大工作
+# bgwriter_lru_maxpages = 100
+
+# 后台写入器在每个周期最多刷新的脏页数
+# bgwriter_lru_multiplier = 2.0
+
+# bgwriter 触发刷新的平均缓冲区需求阈值
+# bgwriter_flush_after = 512kB
+
+# =============================================================================
+# 有效缓存大小
+# =============================================================================
+
+# 估计的共享缓冲区之外的可用内存
+effective_cache_size = 4GB
+
+# =============================================================================
+# 归档配置
+# =============================================================================
+
+# 是否启用归档
+# archive_mode = off
+
+# 归档命令
+# archive_command = ''
+
+# 归档超时
+# archive_timeout = 0
+
+# =============================================================================
+# 连接压缩
+# =============================================================================
+
+# 是否启用连接压缩
+# compression = 'auto'
+
+# =============================================================================
+# GUC 配置示例
+# =============================================================================
+
+# 可以在运行时修改的示例
+# 注意：某些参数需要重启服务器才能生效
+
+# SET 命令示例（在 psql 中）
+# SET work_mem = '64MB';
+# SET log_level = 'debug';
+
+# SHOW 命令示例
+# SHOW all;
+# SHOW max_connections;

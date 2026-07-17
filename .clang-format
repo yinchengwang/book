@@ -1,0 +1,14 @@
+# 基于哪种编程风格
+BasedOnStyle: LLVM
+
+# 列限制，超过此限制的行将被换行
+ColumnLimit: 120
+
+# 允许重新排版注释
+ReflowComments: true
+
+# 保护某些注释不被换行（例如分隔线）
+CommentPragmas: '^\\('
+
+# 其他你可能需要的设置，例如缩进
+IndentWidth: 4

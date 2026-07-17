@@ -1,0 +1,36 @@
+# VectorBench 算法配置
+
+algorithms:
+  # 项目内部实现
+  project_hnsw:
+    adapter: HNSWAdapter
+    enabled: true
+    parameters:
+      M: [8, 16, 24, 32]
+      ef_construction: [100, 200]
+      ef_search: [50, 100]
+
+  project_ivf_pq:
+    adapter: IVFPQAdapter
+    enabled: true
+    parameters:
+      nlist: [128, 256]
+      nprobe: [16, 32]
+      pq_m: [8]
+      pq_bits: [8]
+
+  project_lsh:
+    adapter: LSHAdapter
+    enabled: true
+    parameters:
+      num_hash: [8, 16]
+      table_size: [1000, 5000]
+
+  project_diskann:
+    adapter: DiskANNAdapter
+    enabled: true
+    parameters:
+      R: [32, 48]
+      L: [100, 150]
+      pq_m: [8, 16]
+      pq_bits: [8]

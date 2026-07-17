@@ -1,0 +1,120 @@
+/* 全局样式 - Reading Radar 2.0 */
+
+/* === Dark Theme (默认) === */
+:root,
+:root[data-theme="dark"] {
+  --bg-0: #0a0a1a;
+  --bg-1: #0f0f23;
+  --bg-2: #1a1a3e;
+  --primary: #6366f1;
+  --primary-2: #8b5cf6;
+  --accent: #10b981;
+  --text: #fff;
+  --text-2: #cbd5e1;
+  --text-3: #94a3b8;
+  --text-4: #64748b;
+  --border: rgba(255, 255, 255, 0.1);
+  --glass: rgba(255, 255, 255, 0.05);
+  --glass-strong: rgba(255, 255, 255, 0.08);
+
+  --body-bg: radial-gradient(ellipse at top left, var(--bg-2) 0%, var(--bg-1) 40%, var(--bg-0) 100%);
+  --card-bg: rgba(255, 255, 255, 0.05);
+  --card-bg-hover: rgba(99, 102, 241, 0.08);
+  --header-gradient: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.15) 100%);
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.1);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.2);
+  --selection-bg: rgba(99, 102, 241, 0.4);
+}
+
+/* === Light Theme === */
+:root[data-theme="light"] {
+  --bg-0: #f1f5f9;
+  --bg-1: #ffffff;
+  --bg-2: #e0e7ff;
+  --primary: #6366f1;
+  --primary-2: #8b5cf6;
+  --accent: #10b981;
+  --text: #0f172a;
+  --text-2: #334155;
+  --text-3: #64748b;
+  --text-4: #94a3b8;
+  --border: rgba(15, 23, 42, 0.1);
+  --glass: rgba(255, 255, 255, 0.7);
+  --glass-strong: rgba(255, 255, 255, 0.9);
+
+  --body-bg: linear-gradient(135deg, #f8fafc 0%, #e0e7ff 50%, #f1f5f9 100%);
+  --card-bg: rgba(255, 255, 255, 0.85);
+  --card-bg-hover: rgba(99, 102, 241, 0.08);
+  --header-gradient: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.1) 100%);
+  --shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
+  --scrollbar-thumb: rgba(15, 23, 42, 0.15);
+  --scrollbar-thumb-hover: rgba(15, 23, 42, 0.25);
+  --selection-bg: rgba(99, 102, 241, 0.25);
+}
+
+* { box-sizing: border-box; }
+*::before, *::after { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--body-bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+#root {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+
+/* 文本选中 */
+::selection { background: var(--selection-bg); color: var(--text); }
+
+/* 链接 */
+a { color: inherit; text-decoration: none; }
+a:hover { color: var(--primary); }
+
+/* 按钮重置 */
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: inherit;
+}
+button:disabled { cursor: not-allowed; opacity: 0.5; }
+
+/* 输入框重置 */
+input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+input:focus, textarea:focus, select:focus { outline: none; }
+
+/* 文字工具类 */
+.text-gradient {
+  background: linear-gradient(135deg, #818cf8, #c084fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 通用动画 */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fadeIn 0.3s ease-out; }

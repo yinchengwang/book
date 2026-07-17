@@ -1,0 +1,40 @@
+# RAG 测试子模块
+add_executable(rag_test
+    test_main.cpp
+    test_types.cpp
+    test_config.cpp
+    test_error.cpp
+    test_chunker.cpp
+    test_parser.cpp
+    test_retriever.cpp
+    test_kg.cpp
+    test_graph_retriever.cpp
+    test_graph_integration.cpp
+    test_reranker.cpp
+    test_ollama.cpp
+    test_evaluator.cpp
+    test_hnsw_persist.cpp
+    test_integration.cpp
+)
+target_include_directories(rag_test PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include/rag
+    ${CMAKE_CURRENT_SOURCE_DIR}/..
+)
+target_link_libraries(rag_test PRIVATE
+    rag_error
+    rag_config
+    rag_data
+    rag_chunker
+    rag_parser
+    rag_index
+    rag_retrieval
+    rag_embedding
+    rag_reranker
+    rag_llm
+    rag_metrics
+    rag_logger
+    rag_knowledge_graph
+    rag_entity_extraction
+    rag_graph_retrieval
+    GTest::gtest_main
+)

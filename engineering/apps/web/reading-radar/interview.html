@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>面试题库 — Reading Radar</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css">
+<style>
+:root {
+  --bg: #f0f2f5;
+  --card: #ffffff;
+  --text: #2c3e50;
+  --text2: #7f8c8d;
+  --border: #e1e4e8;
+  --shadow: 0 2px 10px rgba(0,0,0,0.07);
+  --shadow-lg: 0 8px 30px rgba(0,0,0,0.12);
+  --radius: 12px;
+  --primary: #409eff;
+  --primary-bg: #ecf5ff;
+  --easy: #67c23a;
+  --medium: #e6a23c;
+  --hard: #e74c3c;
+  --high: #e74c3c;
+  --mid: #e6a23c;
+  --low: #95a5a6;
+  --sidebar-w: 190px;
+  --list-w: 300px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  color: #fff;
+  background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+}
+
+.header-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.header h1 {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+
+.header-sub {
+  font-size: 13px;
+  color: rgba(255,255,255,0.7);
+}
+
+
+
+.app-wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px 20px;
+  display: flex;
+  gap: 16px;
+  min-height: calc(100vh - 64px);
+}
+
+.sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: width 0.2s ease, opacity 0.2s ease, margin 0.2s ease;
+  overflow: hidden;
+}
+
+.sidebar.collapsed {
+  width: 0;
+  min-width: 0;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 展开按钮区域 — 侧栏/列表折叠后出现 */
+.expand-btns {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  flex-shrink: 0;
+  z-index: 5;
+  width: var(--sidebar-w);
+}
+
+.expand-btns.visible {
+  display: flex;
+}
+
+.expand-btn {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text2);
+  transition: all 0.15s ease;
+}
+
+.expand-btn:hover {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.cat-nav {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  position: relative;
+}
+
+.cat-toggle {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--text2);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  line-height: 1;
+}
+
+.cat-toggle:hover {
+  background: #f0f2f5;
+}
+
+.cat-btn {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text2);
+  transition: all 0.15s;
+}
+
+.cat-btn:hover { background: #f5f6f8; }
+
+.cat-btn.active {
+  background: var(--primary-bg);
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.stack-nav {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+  max-height: calc(100vh - 180px);
+}
+
+.stack-nav::-webkit-scrollbar { width: 3px; }
+.stack-nav::-webkit-scrollbar-thumb { background: #ddd; border-radius: 2px; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text2);
+  transition: all 0.12s;
+  border-left: 3px solid transparent;
+}
+
+.nav-item:hover { background: #f5f6f8; color: var(--text); }
+
+.nav-item.active {
+  background: var(--primary-bg);
+  color: var(--primary);
+  font-weight: 700;
+  border-left-color: var(--primary);
+}
+
+.nav-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text2);
+  font-weight: 400;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  gap: 16px;
+  min-width: 0;
+}
+
+.list-panel {
+  width: var(--list-w);
+  flex-shrink: 0;
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.2s ease, opacity 0.2s ease, min-width 0.2s ease;
+}
+
+.list-panel.collapsed {
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.list-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.collapse-btn {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text2);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.collapse-btn:hover {
+  background: var(--primary-bg);
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.list-count { font-size: 13px; color: var(--text2); }
+
+.sort-select {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--card);
+  color: var(--text2);
+  cursor: pointer;
+  outline: none;
+}
+
+.sort-select:focus { border-color: var(--primary); }
+
+.question-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.question-list::-webkit-scrollbar { width: 3px; }
+.question-list::-webkit-scrollbar-thumb { background: #ddd; border-radius: 2px; }
+
+.q-item {
+  padding: 11px 14px;
+  cursor: pointer;
+  transition: all 0.12s;
+  border-bottom: 1px solid #f0f2f5;
+}
+
+.q-item:last-child { border-bottom: none; }
+.q-item:hover { background: #f5f6f8; }
+.q-item.active { background: var(--primary-bg); }
+
+.q-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.q-num {
+  color: var(--primary);
+  font-weight: 700;
+  margin-right: 4px;
+  white-space: nowrap;
+}
+
+.q-item-meta { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+
+.q-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.q-badge.easy { background: #e8f5e9; color: var(--easy); }
+.q-badge.medium { background: #fff3e0; color: var(--medium); }
+.q-badge.hard { background: #fce4ec; color: var(--hard); }
+.q-badge.high { background: #fce4ec; color: var(--high); }
+.q-badge.mid { background: #fff3e0; color: var(--mid); }
+.q-badge.low { background: #f0f2f5; color: var(--low); }
+
+.q-visits { font-size: 10px; color: var(--text2); margin-left: auto; }
+
+.detail-panel {
+  flex: 1;
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.detail-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text2);
+  font-size: 14px;
+  gap: 8px;
+}
+
+.placeholder-icon { font-size: 40px; }
+
+.detail-scroll { flex: 1; overflow-y: auto; padding: 20px 24px; }
+.detail-scroll::-webkit-scrollbar { width: 4px; }
+.detail-scroll::-webkit-scrollbar-thumb { background: #ddd; border-radius: 2px; }
+
+.detail-header {
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+.detail-tags { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.detail-section { margin-bottom: 20px; }
+
+.detail-section h2 {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--border);
+}
+
+.detail-section h2.answer-think { border-bottom-color: var(--primary); }
+.detail-section h2.answer-ref { border-bottom-color: var(--easy); }
+.detail-section h2.example { border-bottom-color: var(--medium); }
+.detail-section h2.followup { border-bottom-color: var(--hard); }
+.detail-section h2.extra-section { border-bottom-color: var(--text3); font-size: 13px; color: var(--text2); }
+
+.detail-body { line-height: 1.8; font-size: 14px; color: var(--text); }
+.detail-body p { margin-bottom: 10px; }
+.detail-body ul, .detail-body ol { margin: 8px 0; padding-left: 24px; }
+.detail-body li { margin-bottom: 4px; }
+.detail-body table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+.detail-body th, .detail-body td { padding: 8px 12px; border: 1px solid var(--border); text-align: left; }
+.detail-body th { background: #fafafa; font-weight: 600; color: var(--text2); }
+.detail-body code { background: #f0f2f5; padding: 2px 6px; border-radius: 3px; font-size: 13px; font-family: "SF Mono", "Cascadia Code", "Consolas", monospace; }
+.detail-body pre { background: #f6f8fa; border-radius: 6px; padding: 14px 16px; overflow-x: auto; margin: 12px 0; }
+.detail-body pre code { background: none; padding: 0; font-size: 13px; line-height: 1.6; }
+.detail-body blockquote { border-left: 4px solid var(--primary); padding: 8px 14px; margin: 10px 0; background: var(--primary-bg); border-radius: 0 6px 6px 0; color: #555; }
+.detail-body hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+.obsidian-img-wrap { margin: 12px 0; text-align: center; }
+.obsidian-img { max-width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--border); }
+
+.followup-item { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+.followup-item:hover { border-color: var(--primary); }
+.followup-header { display: flex; align-items: center; gap: 8px; padding: 8px 14px; cursor: pointer; font-size: 13px; font-weight: 600; user-select: none; color: var(--text2); }
+.followup-header:hover { background: #f5f6f8; }
+.followup-arrow { font-size: 10px; transition: transform 0.2s; color: var(--text2); }
+.followup-arrow.expanded { transform: rotate(90deg); }
+.followup-body { display: none; padding: 0 14px 10px 30px; font-size: 13px; line-height: 1.7; color: #666; }
+.followup-body.expanded { display: block; }
+
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; color: var(--text2); gap: 8px; padding: 40px; }
+.empty-icon { font-size: 36px; }
+.empty-text { font-size: 13px; }
+
+@media (max-width: 768px) {
+  .header-inner { padding: 12px 16px; }
+  .header h1 { font-size: 17px; }
+  .app-wrap { flex-direction: column; padding: 12px 16px; gap: 12px; }
+  .sidebar { width: 100%; flex-direction: row; gap: 8px; }
+  .cat-nav { flex: 1; }
+  .stack-nav { max-height: none; display: flex; overflow-x: auto; padding: 4px 0; }
+  .stack-nav::-webkit-scrollbar { display: none; }
+  .nav-item { border-left: none; border-bottom: 2px solid transparent; padding: 6px 10px; font-size: 12px; flex-shrink: 0; }
+  .nav-item.active { border-left-color: transparent; border-bottom-color: var(--primary); }
+  .nav-count { display: none; }
+  .main-content { flex-direction: column; }
+  .list-panel { width: 100%; max-height: 260px; }
+  .question-list { max-height: 210px; }
+  .detail-panel { min-height: 350px; }
+  .detail-scroll { padding: 16px; }
+}
+
+@media (max-width: 480px) {
+  .list-panel { display: none; }
+  .list-panel.mobile-show { display: flex; }
+  .detail-panel.mobile-hide { display: none; }
+}
+</style>
+</head>
+<body>
+
+<nav id="global-nav"></nav>
+
+<header class="header">
+  <div class="header-inner">
+    <div>
+      <h1>面试题库</h1>
+      <div class="header-sub">精选技术面试题 · 按分类和重要度浏览</div>
+    </div>
+  </div>
+</header>
+
+<div class="expand-btns" id="expandBtns">
+    <button class="expand-btn" id="expandSidebar" title="展开侧栏">◀</button>
+    <button class="expand-btn" id="expandList" title="展开列表">▶</button>
+  </div>
+  <div class="app-wrap">
+    <aside class="sidebar" id="sidebar">
+      <div class="cat-nav" id="catNav">
+        <button class="cat-toggle" id="catToggle" title="收起侧栏">◀</button>
+      </div>
+      <div class="stack-nav" id="stackNav"></div>
+    </aside>
+
+    <div class="main-content">
+      <div class="list-panel" id="listPanel">
+        <div class="list-header">
+          <span class="list-header-left">
+            <button class="collapse-btn" id="listCollapseBtn" title="收起列表">◀</button>
+            <span class="list-count" id="questionCount">0 道题</span>
+          </span>
+        <select class="sort-select" id="sortSelect">
+          <option value="default">默认</option>
+          <option value="priority">重要度</option>
+          <option value="visits">访问</option>
+        </select>
+      </div>
+      <div class="question-list" id="questionList"></div>
+      <div class="empty-state" id="emptyState" style="display:none;">
+        <div class="empty-icon">📭</div>
+        <div class="empty-text">暂无题目</div>
+      </div>
+    </div>
+
+    <div class="detail-panel" id="detailPanel">
+      <div class="detail-placeholder" id="detailPlaceholder">
+        <div class="placeholder-icon">📖</div>
+        <div style="font-size:13px;color:var(--text2)">选择分类和题目开始练习</div>
+      </div>
+      <div class="detail-scroll" id="detailScroll" style="display:none;">
+        <div class="detail-header" id="detailHeader"></div>
+        <div class="detail-body" id="detailBody"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="data/app/items-registry.js"></script>
+<script src="data/app/nav-component.js"></script>
+<script src="data/interview/interview-questions.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+<script>
+"use strict";
+
+initGlobalNav("interview");
+
+// 面试页面使用 INTERVIEW_CATEGORIES 作为全局 CATEGORIES
+var CATEGORIES = (typeof INTERVIEW_CATEGORIES !== 'undefined' ? INTERVIEW_CATEGORIES : []);
+
+var currentCategory = "all";
+var currentStack = INTERVIEW_STACKS[0] ? INTERVIEW_STACKS[0].id : null;
+var currentSort = "default";
+var currentQuestionId = null;
+
+function visitKey(qId) { return "interview_click_" + qId; }
+
+function getVisits(qId) {
+  try { return parseInt(localStorage.getItem(visitKey(qId)) || "0", 10); } catch(e) { return 0; }
+}
+
+function recordVisit(qId) {
+  var v = getVisits(qId) + 1;
+  try { localStorage.setItem(visitKey(qId), String(v)); } catch(e) {}
+}
+
+function escapeHtml(text) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+marked.setOptions({
+  highlight: function(code, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      try { return hljs.highlight(code, { language: lang }).value; } catch(e) {}
+    }
+    return escapeHtml(code);
+  }
+});
+
+// 预处理 body：将 Obsidian 图片语法 ![[xxx.png]] 转换为带 data-img 的 div 占位
+function preprocessObsidianImages(body) {
+  // 匹配 ![[xxx.png]]
+  return body.replace(/!\[\[(.*?)\]\]/g, function(match, filename) {
+    var ext = filename.includes('.') ? '' : '.png';
+    var imgName = filename + ext;
+    // 图片路径：data/interview-questions/{stack}/image/{filename}
+    // 但 body 中只有文件名，我们需要在渲染时动态设置
+    return '<div class="obsidian-img-wrap" data-img="' + escapeHtml(imgName) + '"><img class="obsidian-img" alt="' + escapeHtml(filename) + '" /></div>';
+  });
+}
+
+// 旧文档 section 名 → 新标准名（兼容历史数据）
+var SECTION_MAP = {
+  "精炼回答": "参考回答",
+  "扩展分析": "参考回答",
+  "示例辅助理解": "示例辅助理解",
+  "总结": "参考回答",
+  "回答思路": "回答思路",
+  "参考回答": "参考回答",
+  "追问方向": "追问方向",
+  "代码示例": "示例辅助理解",
+  "代码示例：": "示例辅助理解",
+};
+
+function parseSections(body) {
+  // 统一替换 \r\n → \n，防止 Windows 行尾 \r 导致正则 $ 不匹配
+  body = body.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  var lines = body.split("\n");
+  var sections = {};
+  var key = null;
+  var buf = [];
+  for (var i = 0; i < lines.length; i++) {
+    // 同时支持 ## （二级标题）和 # （一级标题）
+    var m = lines[i].match(/^(#{1,2})\s+(.+?)\s*$/);
+    if (m) {
+      if (key) {
+        var content = buf.join("\n").trim();
+        if (sections[key]) {
+          // 同名 section 出现多次（如多个 # 扩展分析），追加而非覆盖
+          sections[key] += "\n\n" + content;
+        } else {
+          sections[key] = content;
+        }
+      }
+      var raw = m[2].trim();
+      // 尝试映射旧 section 名
+      key = SECTION_MAP[raw] || raw;
+      buf = [];
+    } else if (key) {
+      buf.push(lines[i]);
+    }
+  }
+  if (key) {
+    var content = buf.join("\n").trim();
+    if (sections[key]) {
+      sections[key] += "\n\n" + content;
+    } else {
+      sections[key] = content;
+    }
+  }
+  return sections;
+}
+
+function parseFollowups(text) {
+  var items = [];
+  var lines = text.split("\n");
+  for (var i = 0; i < lines.length; i++) {
+    var m = lines[i].match(/^\d+\.\s+(.+?)$/);
+    if (m) items.push(m[1].trim());
+  }
+  return items;
+}
+
+var SEC = [
+  { key: "回答思路", icon: "📝", cls: "answer-think" },
+  { key: "参考回答", icon: "💡", cls: "answer-ref" },
+  { key: "示例辅助理解", icon: "🔧", cls: "example" },
+  { key: "追问方向", icon: "❓", cls: "followup" },
+];
+
+function getQs(sid) {
+  var r = [];
+  for (var i = 0; i < INTERVIEW_QUESTIONS.length; i++) {
+    if (INTERVIEW_QUESTIONS[i].stack === sid) r.push(INTERVIEW_QUESTIONS[i]);
+  }
+  return r;
+}
+
+function getSorted(sid) {
+  var qs = getQs(sid);
+  if (currentSort === "priority") {
+    var w = { high: 3, medium: 2, low: 1 };
+    qs.sort(function(a, b) { return (w[b.priority]||0) - (w[a.priority]||0); });
+  } else if (currentSort === "visits") {
+    qs.sort(function(a, b) { return getVisits(b.id) - getVisits(a.id); });
+  }
+  return qs;
+}
+
+function getStacksByCat(cid) {
+  if (cid === "all") return INTERVIEW_STACKS;
+  var r = [];
+  for (var i = 0; i < INTERVIEW_STACKS.length; i++) {
+    if (INTERVIEW_STACKS[i].category === cid) r.push(INTERVIEW_STACKS[i]);
+  }
+  return r;
+}
+
+function pl(p) {
+  return { high: "🔥 高频", medium: "📊 中频", low: "📌 低频" }[p] || p;
+}
+
+function renderCats() {
+  var catNav = document.getElementById("catNav");
+  // 保留 toggle 按钮
+  var toggleBtn = catNav.querySelector(".cat-toggle");
+  var h = "";
+  for (var i = 0; i < CATEGORIES.length; i++) {
+    var c = CATEGORIES[i];
+    h += '<span class="cat-btn' + (c.id === currentCategory ? " active" : "") + '" data-cat="' + c.id + '">' + c.label + "</span>";
+  }
+  catNav.innerHTML = h;
+  if (toggleBtn) catNav.appendChild(toggleBtn);
+}
+
+function renderNav() {
+  var stacks = getStacksByCat(currentCategory);
+  var h = "";
+  for (var i = 0; i < stacks.length; i++) {
+    var s = stacks[i];
+    var qs = getQs(s.id);
+    h += '<div class="nav-item' + (s.id === currentStack ? " active" : "") + '" data-stack="' + s.id + '">';
+    h += '<span>' + s.icon + '</span><span>' + s.label + '</span>';
+    h += '<span class="nav-count">' + qs.length + '</span></div>';
+  }
+  document.getElementById("stackNav").innerHTML = h;
+}
+
+function renderList() {
+  var c = document.getElementById("questionList");
+  var e = document.getElementById("emptyState");
+  var qs = getSorted(currentStack);
+
+  if (qs.length === 0) {
+    c.innerHTML = "";
+    e.style.display = "flex";
+    document.getElementById("questionCount").textContent = "0 道题";
+    return;
+  }
+  e.style.display = "none";
+  document.getElementById("questionCount").textContent = qs.length + " 道题";
+
+  var h = "";
+  for (var i = 0; i < qs.length; i++) {
+    var q = qs[i];
+    var dl = { easy: "入门", medium: "进阶", hard: "挑战" }[q.difficulty] || q.difficulty;
+    var v = getVisits(q.id);
+    // 提取序号（如 "01_atomic" → "01"）
+    var num = (q.id.match(/^(\d+)/) || [])[1] || (i + 1);
+    h += '<div class="q-item' + (q.id === currentQuestionId ? " active" : "") + '" data-id="' + q.id + '">';
+    h += '  <div class="q-item-title"><span class="q-num">[' + num + ']</span> ' + q.title + "</div>";
+    h += '  <div class="q-item-meta">';
+    h += '    <span class="q-badge ' + q.difficulty + '">' + dl + "</span>";
+    h += '    <span class="q-badge ' + q.priority + '">' + pl(q.priority) + "</span>";
+    h += (v > 0 ? '<span class="q-visits">' + v + '</span>' : "");
+    h += "  </div></div>";
+  }
+  c.innerHTML = h;
+}
+
+function renderDetail(qid) {
+  var ph = document.getElementById("detailPlaceholder");
+  var sc = document.getElementById("detailScroll");
+
+  if (!qid) { ph.style.display = "flex"; sc.style.display = "none"; return; }
+
+  var q = null;
+  for (var i = 0; i < INTERVIEW_QUESTIONS.length; i++) {
+    if (INTERVIEW_QUESTIONS[i].id === qid) { q = INTERVIEW_QUESTIONS[i]; break; }
+  }
+  if (!q) { renderDetail(null); return; }
+
+  ph.style.display = "none"; sc.style.display = "block";
+  recordVisit(q.id);
+
+  var dl = { easy: "入门", medium: "进阶", hard: "挑战" }[q.difficulty] || q.difficulty;
+  var num = (q.id.match(/^(\d+)/) || [])[1] || "";
+  document.getElementById("detailHeader").innerHTML =
+    '<div class="detail-title">' + (num ? "[" + num + "] " : "") + q.title + "</div>" +
+    '<div class="detail-tags"><span class="q-badge ' + q.difficulty + '">' + dl + "</span>" +
+    '<span class="q-badge ' + q.priority + '">' + pl(q.priority) + "</span></div>";
+
+  var secs = parseSections(preprocessObsidianImages(q.body));
+  var h = "";
+
+  for (var si = 0; si < SEC.length; si++) {
+    var cfg = SEC[si];
+    var c = secs[cfg.key];
+    if (!c) continue;
+
+    if (cfg.key === "追问方向") {
+      var items = parseFollowups(c);
+      if (items.length === 0) continue;
+      h += '<div class="detail-section"><h2 class="' + cfg.cls + '">' + cfg.icon + " " + cfg.key + "</h2>";
+      for (var fi = 0; fi < items.length; fi++) {
+        h += '<div class="followup-item"><div class="followup-header">';
+        h += '  <span class="followup-arrow">▶</span><span>追问 ' + (fi + 1) + "</span>";
+        h += '</div><div class="followup-body">' + marked.parse(items[fi]) + "</div></div>";
+      }
+      h += "</div>";
+    } else {
+      h += '<div class="detail-section"><h2 class="' + cfg.cls + '">' + cfg.icon + " " + cfg.key + "</h2>";
+      h += marked.parse(c) + "</div>";
+    }
+  }
+
+  // 兜底：渲染 SEC 中未定义的额外 section（如 MySQL 文档中的自定义 section）
+  var knownKeys = {};
+  for (var ki = 0; ki < SEC.length; ki++) knownKeys[SEC[ki].key] = true;
+  for (var k in secs) {
+    if (knownKeys[k]) continue;
+    h += '<div class="detail-section"><h2 class="extra-section">' + k + "</h2>";
+    h += marked.parse(secs[k]) + "</div>";
+  }
+
+  document.getElementById("detailBody").innerHTML = h;
+
+  // 解析 Obsidian 图片：data-img → 真实路径
+  var stack = q.stack;
+  var imgWraps = document.querySelectorAll(".obsidian-img-wrap");
+  for (var ii = 0; ii < imgWraps.length; ii++) {
+    var imgName = imgWraps[ii].getAttribute("data-img");
+    var img = imgWraps[ii].querySelector("img");
+    if (img && imgName) {
+      img.src = "data/interview-questions/" + stack + "/image/" + imgName;
+    }
+  }
+
+  var fu = document.querySelectorAll(".followup-header");
+  for (var fi = 0; fi < fu.length; fi++) {
+    fu[fi].addEventListener("click", function() {
+      var b = this.parentNode.querySelector(".followup-body");
+      var a = this.querySelector(".followup-arrow");
+      var e = b.classList.contains("expanded");
+      b.classList.toggle("expanded", !e);
+      a.classList.toggle("expanded", !e);
+    });
+  }
+
+  sc.scrollTop = 0;
+}
+
+function bindEvents() {
+  document.getElementById("catNav").addEventListener("click", function(e) {
+    var b = e.target.closest(".cat-btn");
+    if (!b || b.dataset.cat === currentCategory) return;
+    currentCategory = b.dataset.cat;
+    document.querySelectorAll(".cat-btn").forEach(function(el) { el.classList.toggle("active", el.dataset.cat === currentCategory); });
+
+    var stacks = getStacksByCat(currentCategory);
+    var s = stacks.length > 0 ? stacks[0].id : null;
+    if (s !== currentStack) { currentStack = s; currentQuestionId = null; }
+
+    renderNav();
+    renderList();
+    renderDetail(null);
+    showMobileList();
+  });
+
+  document.getElementById("stackNav").addEventListener("click", function(e) {
+    var item = e.target.closest(".nav-item");
+    if (!item || item.dataset.stack === currentStack) return;
+    currentStack = item.dataset.stack;
+    currentQuestionId = null;
+    document.querySelectorAll(".nav-item").forEach(function(n) { n.classList.remove("active"); });
+    item.classList.add("active");
+    renderList();
+    renderDetail(null);
+    showMobileList();
+  });
+
+  document.getElementById("questionList").addEventListener("click", function(e) {
+    var item = e.target.closest(".q-item");
+    if (!item || item.dataset.id === currentQuestionId) return;
+    currentQuestionId = item.dataset.id;
+    document.querySelectorAll(".q-item").forEach(function(el) { el.classList.remove("active"); });
+    item.classList.add("active");
+    renderDetail(currentQuestionId);
+    renderList();
+    hideMobileList();
+  });
+
+  document.getElementById("sortSelect").addEventListener("change", function(e) {
+    currentSort = e.target.value;
+    renderList();
+  });
+
+  // 侧栏折叠/展开
+  var sidebarCollapsed = false;
+  var catToggle = document.getElementById("catToggle");
+  var sidebar = document.getElementById("sidebar");
+  var expandBtns = document.getElementById("expandBtns");
+  var expandSidebar = document.getElementById("expandSidebar");
+  catToggle.addEventListener("click", function() {
+    sidebarCollapsed = !sidebarCollapsed;
+    sidebar.classList.toggle("collapsed", sidebarCollapsed);
+    catToggle.textContent = sidebarCollapsed ? "▶" : "◀";
+    catToggle.title = sidebarCollapsed ? "展开侧栏" : "收起侧栏";
+    updateExpandButtons();
+  });
+  expandSidebar.addEventListener("click", function() {
+    sidebarCollapsed = false;
+    sidebar.classList.remove("collapsed");
+    catToggle.textContent = "◀";
+    catToggle.title = "收起侧栏";
+    updateExpandButtons();
+  });
+
+  // 列表折叠/展开
+  var listCollapsed = false;
+  var listCollapseBtn = document.getElementById("listCollapseBtn");
+  var listPanel = document.getElementById("listPanel");
+  var expandList = document.getElementById("expandList");
+  listCollapseBtn.addEventListener("click", function() {
+    listCollapsed = !listCollapsed;
+    listPanel.classList.toggle("collapsed", listCollapsed);
+    listCollapseBtn.textContent = listCollapsed ? "▶" : "◀";
+    listCollapseBtn.title = listCollapsed ? "展开列表" : "收起列表";
+    updateExpandButtons();
+  });
+  expandList.addEventListener("click", function() {
+    listCollapsed = false;
+    listPanel.classList.remove("collapsed");
+    listCollapseBtn.textContent = "◀";
+    listCollapseBtn.title = "收起列表";
+    updateExpandButtons();
+  });
+
+  function updateExpandButtons() {
+    if (sidebarCollapsed || listCollapsed) {
+      expandBtns.classList.add("visible");
+    } else {
+      expandBtns.classList.remove("visible");
+    }
+  }
+}
+
+function showMobileList() {
+  if (window.innerWidth <= 480) {
+    document.getElementById("listPanel").classList.add("mobile-show");
+    document.getElementById("detailPanel").classList.remove("mobile-hide");
+  }
+}
+
+function hideMobileList() {
+  if (window.innerWidth <= 480) {
+    document.getElementById("listPanel").classList.remove("mobile-show");
+    document.getElementById("detailPanel").classList.remove("mobile-hide");
+  }
+}
+
+renderCats();
+renderNav();
+renderList();
+renderDetail(null);
+bindEvents();
+</script>
+</body>
+</html>

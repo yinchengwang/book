@@ -1,0 +1,563 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e3]:
+      - link "🎯 Reading Radar" [ref=e4] [cursor=pointer]:
+        - /url: index.html
+        - generic [ref=e5]: 🎯
+        - generic [ref=e6]: Reading Radar
+      - list [ref=e7]:
+        - listitem [ref=e8]:
+          - link "📡 雷达图" [ref=e9] [cursor=pointer]:
+            - /url: index.html
+            - generic [ref=e10]: 📡
+            - generic [ref=e11]: 雷达图
+        - listitem [ref=e12]:
+          - link "📋 看板" [ref=e13] [cursor=pointer]:
+            - /url: learning-kanban.html
+            - generic [ref=e14]: 📋
+            - generic [ref=e15]: 看板
+        - listitem [ref=e16]:
+          - link "📝 测验" [ref=e17] [cursor=pointer]:
+            - /url: quiz-system.html
+            - generic [ref=e18]: 📝
+            - generic [ref=e19]: 测验
+        - listitem [ref=e20]:
+          - link "📖 学习" [ref=e21] [cursor=pointer]:
+            - /url: learn.html
+            - generic [ref=e22]: 📖
+            - generic [ref=e23]: 学习
+        - listitem [ref=e24]:
+          - link "📊 仪表盘" [ref=e25] [cursor=pointer]:
+            - /url: dashboard.html
+            - generic [ref=e26]: 📊
+            - generic [ref=e27]: 仪表盘
+        - listitem [ref=e28]:
+          - link "🗓️ 五年计划" [ref=e29] [cursor=pointer]:
+            - /url: five-year-plan.html
+            - generic [ref=e30]: 🗓️
+            - generic [ref=e31]: 五年计划
+  - banner [ref=e32]:
+    - generic [ref=e33]:
+      - generic [ref=e34]:
+        - generic [ref=e35]: Learning Route
+        - heading "🔧 C 技术栈 · 学习内容页" [level=1] [ref=e36]
+        - generic [ref=e37]: 当前知识点：数据类型与运算符。页面路由格式固定为 learn.html#<catId>/<itemId>。
+      - navigation [ref=e38]:
+        - link "← 返回看板" [ref=e39] [cursor=pointer]:
+          - /url: learning-kanban.html
+        - link "📊 仪表盘" [ref=e40] [cursor=pointer]:
+          - /url: dashboard.html
+        - link "🎯 去测验" [ref=e41] [cursor=pointer]:
+          - /url: quiz-system.html#c/c-syntax
+    - generic [ref=e42]:
+      - button "🔧 C 技术栈" [ref=e43] [cursor=pointer]
+      - button "⚙️ C++ 技术栈" [ref=e44] [cursor=pointer]
+      - button "🌳 数据结构技术栈" [ref=e45] [cursor=pointer]
+      - button "🗄️ 数据库内核技术栈" [ref=e46] [cursor=pointer]
+      - button "🐍 Python 技术栈" [ref=e47] [cursor=pointer]
+      - button "🐧 Linux 技术栈" [ref=e48] [cursor=pointer]
+      - button "🔮 向量数据库技术栈" [ref=e49] [cursor=pointer]
+  - main [ref=e50]:
+    - complementary [ref=e51]:
+      - generic [ref=e52]:
+        - generic [ref=e53]: 🔧 C 技术栈 · 知识点目录
+        - generic [ref=e54]: 共 44 个知识点，当前已筛出 44 个。
+        - textbox "搜索知识点..." [ref=e56]
+        - combobox [ref=e58]:
+          - option "全部象限" [selected]
+          - option "语言/线性结构"
+          - option "系统/树形结构"
+          - option "算法/图结构"
+          - option "工程/算法设计"
+      - generic [ref=e59]:
+        - generic [ref=e60]:
+          - generic [ref=e61]:
+            - generic [ref=e62]: 语言核心
+            - generic [ref=e63]: "12"
+          - link "数据类型与运算符 基础 待学习 未测" [ref=e64] [cursor=pointer]:
+            - /url: "#c/c-syntax"
+            - generic [ref=e65]: 数据类型与运算符
+            - generic [ref=e66]:
+              - generic [ref=e67]: 基础
+              - generic [ref=e68]: 待学习
+              - generic [ref=e69]: 未测
+          - link "控制流 基础 待学习 未测" [ref=e70] [cursor=pointer]:
+            - /url: "#c/c-control-flow"
+            - generic [ref=e71]: 控制流
+            - generic [ref=e72]:
+              - generic [ref=e73]: 基础
+              - generic [ref=e74]: 待学习
+              - generic [ref=e75]: 未测
+          - link "数组与字符串 基础 待学习 未测" [ref=e76] [cursor=pointer]:
+            - /url: "#c/c-array-string"
+            - generic [ref=e77]: 数组与字符串
+            - generic [ref=e78]:
+              - generic [ref=e79]: 基础
+              - generic [ref=e80]: 待学习
+              - generic [ref=e81]: 未测
+          - link "函数与作用域 基础 待学习 未测" [ref=e82] [cursor=pointer]:
+            - /url: "#c/c-function-scope"
+            - generic [ref=e83]: 函数与作用域
+            - generic [ref=e84]:
+              - generic [ref=e85]: 基础
+              - generic [ref=e86]: 待学习
+              - generic [ref=e87]: 未测
+          - link "结构体与联合体 进阶 待学习 未测" [ref=e88] [cursor=pointer]:
+            - /url: "#c/c-struct-union"
+            - generic [ref=e89]: 结构体与联合体
+            - generic [ref=e90]:
+              - generic [ref=e91]: 进阶
+              - generic [ref=e92]: 待学习
+              - generic [ref=e93]: 未测
+          - link "指针深度解析 进阶 待学习 未测" [ref=e94] [cursor=pointer]:
+            - /url: "#c/c-pointer"
+            - generic [ref=e95]: 指针深度解析
+            - generic [ref=e96]:
+              - generic [ref=e97]: 进阶
+              - generic [ref=e98]: 待学习
+              - generic [ref=e99]: 未测
+          - link "动态内存管理 进阶 待学习 未测" [ref=e100] [cursor=pointer]:
+            - /url: "#c/c-dynamic-memory"
+            - generic [ref=e101]: 动态内存管理
+            - generic [ref=e102]:
+              - generic [ref=e103]: 进阶
+              - generic [ref=e104]: 待学习
+              - generic [ref=e105]: 未测
+          - link "函数指针与回调 进阶 待学习 未测" [ref=e106] [cursor=pointer]:
+            - /url: "#c/c-func-pointer"
+            - generic [ref=e107]: 函数指针与回调
+            - generic [ref=e108]:
+              - generic [ref=e109]: 进阶
+              - generic [ref=e110]: 待学习
+              - generic [ref=e111]: 未测
+          - link "C预处理器与宏 高级 待学习 未测" [ref=e112] [cursor=pointer]:
+            - /url: "#c/c-preprocessor"
+            - generic [ref=e113]: C预处理器与宏
+            - generic [ref=e114]:
+              - generic [ref=e115]: 高级
+              - generic [ref=e116]: 待学习
+              - generic [ref=e117]: 未测
+          - link "C11/C17 新特性 高级 待学习 未测" [ref=e118] [cursor=pointer]:
+            - /url: "#c/c-c11-features"
+            - generic [ref=e119]: C11/C17 新特性
+            - generic [ref=e120]:
+              - generic [ref=e121]: 高级
+              - generic [ref=e122]: 待学习
+              - generic [ref=e123]: 未测
+          - link "未定义行为(UB)规避 高级 待学习 未测" [ref=e124] [cursor=pointer]:
+            - /url: "#c/c-undefined-behavior"
+            - generic [ref=e125]: 未定义行为(UB)规避
+            - generic [ref=e126]:
+              - generic [ref=e127]: 高级
+              - generic [ref=e128]: 待学习
+              - generic [ref=e129]: 未测
+          - link "内联汇编 高级 待学习 未测" [ref=e130] [cursor=pointer]:
+            - /url: "#c/c-inline-asm"
+            - generic [ref=e131]: 内联汇编
+            - generic [ref=e132]:
+              - generic [ref=e133]: 高级
+              - generic [ref=e134]: 待学习
+              - generic [ref=e135]: 未测
+        - generic [ref=e136]:
+          - generic [ref=e137]:
+            - generic [ref=e138]: 系统编程
+            - generic [ref=e139]: "11"
+          - link "文件I/O与标准IO 基础 待学习 未测" [ref=e140] [cursor=pointer]:
+            - /url: "#c/c-file-io"
+            - generic [ref=e141]: 文件I/O与标准IO
+            - generic [ref=e142]:
+              - generic [ref=e143]: 基础
+              - generic [ref=e144]: 待学习
+              - generic [ref=e145]: 未测
+          - link "C标准库 基础 待学习 未测" [ref=e146] [cursor=pointer]:
+            - /url: "#c/c-stdlib"
+            - generic [ref=e147]: C标准库
+            - generic [ref=e148]:
+              - generic [ref=e149]: 基础
+              - generic [ref=e150]: 待学习
+              - generic [ref=e151]: 未测
+          - link "错误处理与errno 基础 待学习 未测" [ref=e152] [cursor=pointer]:
+            - /url: "#c/c-error-handling"
+            - generic [ref=e153]: 错误处理与errno
+            - generic [ref=e154]:
+              - generic [ref=e155]: 基础
+              - generic [ref=e156]: 待学习
+              - generic [ref=e157]: 未测
+          - link "进程管理 进阶 待学习 未测" [ref=e158] [cursor=pointer]:
+            - /url: "#c/c-process"
+            - generic [ref=e159]: 进程管理
+            - generic [ref=e160]:
+              - generic [ref=e161]: 进阶
+              - generic [ref=e162]: 待学习
+              - generic [ref=e163]: 未测
+          - link "信号处理 进阶 待学习 未测" [ref=e164] [cursor=pointer]:
+            - /url: "#c/c-signal"
+            - generic [ref=e165]: 信号处理
+            - generic [ref=e166]:
+              - generic [ref=e167]: 进阶
+              - generic [ref=e168]: 待学习
+              - generic [ref=e169]: 未测
+          - link "POSIX线程(pthread) 进阶 待学习 未测" [ref=e170] [cursor=pointer]:
+            - /url: "#c/c-pthread"
+            - generic [ref=e171]: POSIX线程(pthread)
+            - generic [ref=e172]:
+              - generic [ref=e173]: 进阶
+              - generic [ref=e174]: 待学习
+              - generic [ref=e175]: 未测
+          - link "进程间通信(IPC) 进阶 待学习 未测" [ref=e176] [cursor=pointer]:
+            - /url: "#c/c-ipc"
+            - generic [ref=e177]: 进程间通信(IPC)
+            - generic [ref=e178]:
+              - generic [ref=e179]: 进阶
+              - generic [ref=e180]: 待学习
+              - generic [ref=e181]: 未测
+          - link "I/O多路复用 高级 待学习 未测" [ref=e182] [cursor=pointer]:
+            - /url: "#c/c-io-multiplex"
+            - generic [ref=e183]: I/O多路复用
+            - generic [ref=e184]:
+              - generic [ref=e185]: 高级
+              - generic [ref=e186]: 待学习
+              - generic [ref=e187]: 未测
+          - link "内存映射(mmap) 高级 待学习 未测" [ref=e188] [cursor=pointer]:
+            - /url: "#c/c-mmap"
+            - generic [ref=e189]: 内存映射(mmap)
+            - generic [ref=e190]:
+              - generic [ref=e191]: 高级
+              - generic [ref=e192]: 待学习
+              - generic [ref=e193]: 未测
+          - link "守护进程与系统服务 高级 待学习 未测" [ref=e194] [cursor=pointer]:
+            - /url: "#c/c-daemon"
+            - generic [ref=e195]: 守护进程与系统服务
+            - generic [ref=e196]:
+              - generic [ref=e197]: 高级
+              - generic [ref=e198]: 待学习
+              - generic [ref=e199]: 未测
+          - link "Linux内核模块基础 高级 待学习 未测" [ref=e200] [cursor=pointer]:
+            - /url: "#c/c-lkm"
+            - generic [ref=e201]: Linux内核模块基础
+            - generic [ref=e202]:
+              - generic [ref=e203]: 高级
+              - generic [ref=e204]: 待学习
+              - generic [ref=e205]: 未测
+        - generic [ref=e206]:
+          - generic [ref=e207]:
+            - generic [ref=e208]: 数据结构与算法
+            - generic [ref=e209]: "10"
+          - link "链表与基本数据结构 基础 待学习 未测" [ref=e210] [cursor=pointer]:
+            - /url: "#c/c-ds-basic"
+            - generic [ref=e211]: 链表与基本数据结构
+            - generic [ref=e212]:
+              - generic [ref=e213]: 基础
+              - generic [ref=e214]: 待学习
+              - generic [ref=e215]: 未测
+          - link "栈与队列 基础 待学习 未测" [ref=e216] [cursor=pointer]:
+            - /url: "#c/c-stack-queue"
+            - generic [ref=e217]: 栈与队列
+            - generic [ref=e218]:
+              - generic [ref=e219]: 基础
+              - generic [ref=e220]: 待学习
+              - generic [ref=e221]: 未测
+          - link "基础排序算法 基础 待学习 未测" [ref=e222] [cursor=pointer]:
+            - /url: "#c/c-sort-basic"
+            - generic [ref=e223]: 基础排序算法
+            - generic [ref=e224]:
+              - generic [ref=e225]: 基础
+              - generic [ref=e226]: 待学习
+              - generic [ref=e227]: 未测
+          - link "树与二叉树 进阶 待学习 未测" [ref=e228] [cursor=pointer]:
+            - /url: "#c/c-tree"
+            - generic [ref=e229]: 树与二叉树
+            - generic [ref=e230]:
+              - generic [ref=e231]: 进阶
+              - generic [ref=e232]: 待学习
+              - generic [ref=e233]: 未测
+          - link "哈希表实现 进阶 待学习 未测" [ref=e234] [cursor=pointer]:
+            - /url: "#c/c-hash-table"
+            - generic [ref=e235]: 哈希表实现
+            - generic [ref=e236]:
+              - generic [ref=e237]: 进阶
+              - generic [ref=e238]: 待学习
+              - generic [ref=e239]: 未测
+          - link "高级排序算法 进阶 待学习 未测" [ref=e240] [cursor=pointer]:
+            - /url: "#c/c-sort-advanced"
+            - generic [ref=e241]: 高级排序算法
+            - generic [ref=e242]:
+              - generic [ref=e243]: 进阶
+              - generic [ref=e244]: 待学习
+              - generic [ref=e245]: 未测
+          - link "图算法基础 进阶 待学习 未测" [ref=e246] [cursor=pointer]:
+            - /url: "#c/c-graph"
+            - generic [ref=e247]: 图算法基础
+            - generic [ref=e248]:
+              - generic [ref=e249]: 进阶
+              - generic [ref=e250]: 待学习
+              - generic [ref=e251]: 未测
+          - link "字符串匹配算法 高级 待学习 未测" [ref=e252] [cursor=pointer]:
+            - /url: "#c/c-string-match"
+            - generic [ref=e253]: 字符串匹配算法
+            - generic [ref=e254]:
+              - generic [ref=e255]: 高级
+              - generic [ref=e256]: 待学习
+              - generic [ref=e257]: 未测
+          - link "动态规划 高级 待学习 未测" [ref=e258] [cursor=pointer]:
+            - /url: "#c/c-dp"
+            - generic [ref=e259]: 动态规划
+            - generic [ref=e260]:
+              - generic [ref=e261]: 高级
+              - generic [ref=e262]: 待学习
+              - generic [ref=e263]: 未测
+          - link "位运算技巧 高级 待学习 未测" [ref=e264] [cursor=pointer]:
+            - /url: "#c/c-bitwise"
+            - generic [ref=e265]: 位运算技巧
+            - generic [ref=e266]:
+              - generic [ref=e267]: 高级
+              - generic [ref=e268]: 待学习
+              - generic [ref=e269]: 未测
+        - generic [ref=e270]:
+          - generic [ref=e271]:
+            - generic [ref=e272]: 工程实践
+            - generic [ref=e273]: "11"
+          - link "GDB调试技术 基础 待学习 未测" [ref=e274] [cursor=pointer]:
+            - /url: "#c/c-gdb"
+            - generic [ref=e275]: GDB调试技术
+            - generic [ref=e276]:
+              - generic [ref=e277]: 基础
+              - generic [ref=e278]: 待学习
+              - generic [ref=e279]: 未测
+          - link "Makefile构建 基础 待学习 未测" [ref=e280] [cursor=pointer]:
+            - /url: "#c/c-makefile"
+            - generic [ref=e281]: Makefile构建
+            - generic [ref=e282]:
+              - generic [ref=e283]: 基础
+              - generic [ref=e284]: 待学习
+              - generic [ref=e285]: 未测
+          - link "Git版本控制 基础 待学习 未测" [ref=e286] [cursor=pointer]:
+            - /url: "#c/c-git"
+            - generic [ref=e287]: Git版本控制
+            - generic [ref=e288]:
+              - generic [ref=e289]: 基础
+              - generic [ref=e290]: 待学习
+              - generic [ref=e291]: 未测
+          - link "Valgrind内存检测 进阶 待学习 未测" [ref=e292] [cursor=pointer]:
+            - /url: "#c/c-valgrind"
+            - generic [ref=e293]: Valgrind内存检测
+            - generic [ref=e294]:
+              - generic [ref=e295]: 进阶
+              - generic [ref=e296]: 待学习
+              - generic [ref=e297]: 未测
+          - link "静态分析工具 进阶 待学习 未测" [ref=e298] [cursor=pointer]:
+            - /url: "#c/c-static-analysis"
+            - generic [ref=e299]: 静态分析工具
+            - generic [ref=e300]:
+              - generic [ref=e301]: 进阶
+              - generic [ref=e302]: 待学习
+              - generic [ref=e303]: 未测
+          - link "单元测试(CUnit/Check) 进阶 待学习 未测" [ref=e304] [cursor=pointer]:
+            - /url: "#c/c-unit-test"
+            - generic [ref=e305]: 单元测试(CUnit/Check)
+            - generic [ref=e306]:
+              - generic [ref=e307]: 进阶
+              - generic [ref=e308]: 待学习
+              - generic [ref=e309]: 未测
+          - link "C编码规范 进阶 待学习 未测" [ref=e310] [cursor=pointer]:
+            - /url: "#c/c-code-style"
+            - generic [ref=e311]: C编码规范
+            - generic [ref=e312]:
+              - generic [ref=e313]: 进阶
+              - generic [ref=e314]: 待学习
+              - generic [ref=e315]: 未测
+          - link "性能剖析与优化 高级 待学习 未测" [ref=e316] [cursor=pointer]:
+            - /url: "#c/c-profiling"
+            - generic [ref=e317]: 性能剖析与优化
+            - generic [ref=e318]:
+              - generic [ref=e319]: 高级
+              - generic [ref=e320]: 待学习
+              - generic [ref=e321]: 未测
+          - link "安全编程实践 高级 待学习 未测" [ref=e322] [cursor=pointer]:
+            - /url: "#c/c-secure-coding"
+            - generic [ref=e323]: 安全编程实践
+            - generic [ref=e324]:
+              - generic [ref=e325]: 高级
+              - generic [ref=e326]: 待学习
+              - generic [ref=e327]: 未测
+          - link "跨平台C编程 高级 待学习 未测" [ref=e328] [cursor=pointer]:
+            - /url: "#c/c-cross-platform"
+            - generic [ref=e329]: 跨平台C编程
+            - generic [ref=e330]:
+              - generic [ref=e331]: 高级
+              - generic [ref=e332]: 待学习
+              - generic [ref=e333]: 未测
+          - link "持续集成与自动化 高级 待学习 未测" [ref=e334] [cursor=pointer]:
+            - /url: "#c/c-ci"
+            - generic [ref=e335]: 持续集成与自动化
+            - generic [ref=e336]:
+              - generic [ref=e337]: 高级
+              - generic [ref=e338]: 待学习
+              - generic [ref=e339]: 未测
+    - generic [ref=e340]:
+      - generic [ref=e341]:
+        - generic [ref=e342]:
+          - generic [ref=e343]: 🔧 C 技术栈
+          - generic [ref=e344]: 语言核心
+          - generic [ref=e345]: 基础
+          - generic [ref=e346]: 待学习
+          - generic [ref=e347]: 未测验
+        - heading "数据类型与运算符" [level=2] [ref=e348]
+        - generic [ref=e349]: 掌握C语言基本数据类型(int/float/char)及其存储大小、各类运算符优先级与结合性。 学习时重点盯住 基础类型、运算符优先级和隐式类型转换，把语法、内存、运行时和工作场景串起来。
+        - generic [ref=e350]:
+          - link "🎯 去做 10 题测验" [ref=e351] [cursor=pointer]:
+            - /url: quiz-system.html#c/c-syntax
+          - link "📋 返回学习看板" [ref=e352] [cursor=pointer]:
+            - /url: learning-kanban.html
+        - generic [ref=e353]:
+          - generic [ref=e354]:
+            - button "← 上一个" [disabled] [ref=e355]
+            - button "下一个 →" [ref=e356] [cursor=pointer]
+          - generic [ref=e357]: 路由：learn.html#c/c-syntax
+      - generic [ref=e358]:
+        - generic [ref=e359]:
+          - generic [ref=e360]: 当前状态
+          - generic [ref=e361]: 待学习
+          - generic [ref=e362]: 来自学习看板的本地状态
+        - generic [ref=e363]:
+          - generic [ref=e364]: 最近均分
+          - generic [ref=e365]: "--"
+          - generic [ref=e366]: 还没有测验记录
+        - generic [ref=e367]:
+          - generic [ref=e368]: 测验次数
+          - generic [ref=e369]: "0"
+          - generic [ref=e370]: 先学内容再去测验
+        - generic [ref=e371]:
+          - generic [ref=e372]: 同象限知识点
+          - generic [ref=e373]: "12"
+          - generic [ref=e374]: 语言核心 方向的连续学习范围
+      - generic [ref=e375]:
+        - generic [ref=e376]:
+          - generic [ref=e377]:
+            - generic [ref=e378]:
+              - generic [ref=e379]: 入门路径
+              - generic [ref=e380]: "01"
+            - generic [ref=e381]: 先把语法和最小可运行代码跑通，再进入底层细节。
+            - generic [ref=e382]:
+              - generic [ref=e383]:
+                - generic [ref=e384]: "1"
+                - paragraph [ref=e385]: 围绕 基础类型、运算符优先级和隐式类型转换 写一个尽量短的小程序，确认编译、运行和输出都在自己可解释的范围内。
+              - generic [ref=e386]:
+                - generic [ref=e387]: "2"
+                - paragraph [ref=e388]: 把 数据类型与运算符 的常用接口、关键字或套路抄写一遍，避免只停留在看懂别人的代码。
+              - generic [ref=e389]:
+                - generic [ref=e390]: "3"
+                - paragraph [ref=e391]: 入门阶段先把边界条件列出来，例如空指针、长度为 0、初始化顺序或错误返回。
+          - generic [ref=e392]:
+            - generic [ref=e393]:
+              - generic [ref=e394]: 核心原理
+              - generic [ref=e395]: "02"
+            - generic [ref=e396]: 把表面用法拆回到内存、编译器和运行时机制。
+            - generic [ref=e397]:
+              - generic [ref=e398]:
+                - generic [ref=e399]: "1"
+                - paragraph [ref=e400]: 掌握C语言基本数据类型(int/float/char)及其存储大小、各类运算符优先级与结合性。
+              - generic [ref=e401]:
+                - generic [ref=e402]: "2"
+                - paragraph [ref=e403]: 原理层要重点解释 基础类型、运算符优先级和隐式类型转换 为什么这样设计，它影响的是正确性、性能还是可维护性。
+              - generic [ref=e404]:
+                - generic [ref=e405]: "3"
+                - paragraph [ref=e406]: 理解这个知识点时不要只记规则，要知道违反规则后会出现什么后果。
+          - generic [ref=e407]:
+            - generic [ref=e408]:
+              - generic [ref=e409]: 实战与工作
+              - generic [ref=e410]: "03"
+            - generic [ref=e411]: 把知识点放回真实项目中，关注接口边界和故障处理。
+            - generic [ref=e412]:
+              - generic [ref=e413]:
+                - generic [ref=e414]: "1"
+                - paragraph [ref=e415]: 把该知识点放进一个小型 C 模块中，通过编译、运行和单步调试确认内存与语义都符合预期。
+              - generic [ref=e416]:
+                - generic [ref=e417]: "2"
+                - paragraph [ref=e418]: 工作中真正要落地的是 基础类型、运算符优先级和隐式类型转换，不要把它学成只会做面试题的孤立知识。
+              - generic [ref=e419]:
+                - generic [ref=e420]: "3"
+                - paragraph [ref=e421]: 建议补一个带日志或测试的小案例，把成功路径和失败路径都跑一遍。
+          - generic [ref=e422]:
+            - generic [ref=e423]:
+              - generic [ref=e424]: 调优与面试
+              - generic [ref=e425]: "04"
+            - generic [ref=e426]: 整理性能、稳定性和高频问答，形成可复用回答框架。
+            - generic [ref=e427]:
+              - generic [ref=e428]:
+                - generic [ref=e429]: "1"
+                - paragraph [ref=e430]: 面试里通常会追问语义边界、未定义行为和为什么这种写法更安全。
+              - generic [ref=e431]:
+                - generic [ref=e432]: "2"
+                - paragraph [ref=e433]: 调优时先测量再动手，明确问题是否真的出在 基础类型、运算符优先级和隐式类型转换 相关路径上。
+              - generic [ref=e434]:
+                - generic [ref=e435]: "3"
+                - paragraph [ref=e436]: 回答面试题时带上一个自己踩过的坑或实际修复案例，会比纯概念复述更有说服力。
+          - generic [ref=e437]:
+            - generic [ref=e438]:
+              - generic [ref=e439]: 📖 深度阅读
+              - generic [ref=e440]: "05"
+            - generic [ref=e441]: 内容待补充。
+            - generic [ref=e443]:
+              - text: 📝 深度文章尚未撰写。
+              - text: 期待后续补充：c-syntax.md
+        - complementary [ref=e444]:
+          - generic [ref=e445]:
+            - generic [ref=e447]: 学习锚点
+            - generic [ref=e448]:
+              - generic [ref=e449]:
+                - generic [ref=e450]: 学习焦点
+                - generic [ref=e451]: 基础类型、运算符优先级和隐式类型转换
+              - generic [ref=e452]:
+                - generic [ref=e453]: 所属方向
+                - generic [ref=e454]: 语言核心 / 基础
+              - generic [ref=e455]:
+                - generic [ref=e456]: 建议动作
+                - generic [ref=e457]: 先写最小样例，再用调试器或测试验证边界
+              - link "入门路径 跳转" [ref=e458] [cursor=pointer]:
+                - /url: "#sec-starter"
+                - generic [ref=e459]: 入门路径
+                - generic [ref=e460]: 跳转
+              - link "核心原理 跳转" [ref=e461] [cursor=pointer]:
+                - /url: "#sec-principle"
+                - generic [ref=e462]: 核心原理
+                - generic [ref=e463]: 跳转
+              - link "实战与工作 跳转" [ref=e464] [cursor=pointer]:
+                - /url: "#sec-practice"
+                - generic [ref=e465]: 实战与工作
+                - generic [ref=e466]: 跳转
+              - link "调优与面试 跳转" [ref=e467] [cursor=pointer]:
+                - /url: "#sec-tuning"
+                - generic [ref=e468]: 调优与面试
+                - generic [ref=e469]: 跳转
+              - link "📖 深度阅读 跳转" [ref=e470] [cursor=pointer]:
+                - /url: "#sec-deepdive"
+                - generic [ref=e471]: 📖 深度阅读
+                - generic [ref=e472]: 跳转
+          - generic [ref=e473]:
+            - generic [ref=e475]: 相关知识点
+            - generic [ref=e476]:
+              - link "控制流 基础" [ref=e477] [cursor=pointer]:
+                - /url: "#c/c-control-flow"
+                - generic [ref=e478]: 控制流
+                - generic [ref=e479]: 基础
+              - link "数组与字符串 基础" [ref=e480] [cursor=pointer]:
+                - /url: "#c/c-array-string"
+                - generic [ref=e481]: 数组与字符串
+                - generic [ref=e482]: 基础
+              - link "函数与作用域 基础" [ref=e483] [cursor=pointer]:
+                - /url: "#c/c-function-scope"
+                - generic [ref=e484]: 函数与作用域
+                - generic [ref=e485]: 基础
+              - link "结构体与联合体 进阶" [ref=e486] [cursor=pointer]:
+                - /url: "#c/c-struct-union"
+                - generic [ref=e487]: 结构体与联合体
+                - generic [ref=e488]: 进阶
+              - link "指针深度解析 进阶" [ref=e489] [cursor=pointer]:
+                - /url: "#c/c-pointer"
+                - generic [ref=e490]: 指针深度解析
+                - generic [ref=e491]: 进阶
+              - link "动态内存管理 进阶" [ref=e492] [cursor=pointer]:
+                - /url: "#c/c-dynamic-memory"
+                - generic [ref=e493]: 动态内存管理
+                - generic [ref=e494]: 进阶

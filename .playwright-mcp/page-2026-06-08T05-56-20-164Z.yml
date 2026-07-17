@@ -1,0 +1,104 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - heading "🏗️ 五年建设计划" [level=1] [ref=e3]
+    - paragraph [ref=e4]: 稳根基 · 长续航 · 向高处 — 像建设国家一样建设自己
+  - generic [ref=e5]:
+    - button "2026 筑基年" [ref=e1076] [cursor=pointer]: 2026 筑基年
+    - button "2027 能力年" [ref=e1078] [cursor=pointer]: 2027 能力年
+    - button "2028 提质年" [ref=e1080] [cursor=pointer]: 2028 提质年
+    - button "2029 抗风险年" [ref=e1082] [cursor=pointer]: 2029 抗风险年
+    - button "2030 丰收年" [ref=e1084] [cursor=pointer]: 2030 丰收年
+  - generic [ref=e16]:
+    - generic [ref=e17]:
+      - heading "提升硬实力 2027 · 能力年" [level=2] [ref=e1086]:
+        - generic [ref=e1087]: 提升硬实力
+        - text: 2027 · 能力年
+      - list [ref=e1088]:
+        - listitem [ref=e1089]: 深耕一项不可替代的核心技能
+        - listitem [ref=e1090]: 建立稳定输出（作品、经验、人脉）
+        - listitem [ref=e1091]: 学会情绪管理
+        - listitem [ref=e1092]: 实现收入稳步提升
+    - generic [ref=e25]:
+      - generic [ref=e1093]:
+        - generic [ref=e1094]: 53%
+        - generic [ref=e1095]: 今日完成率
+      - generic [ref=e1096]:
+        - generic [ref=e1097]: 0%
+        - generic [ref=e1098]: 本月完成率
+      - generic [ref=e1099]:
+        - generic [ref=e1100]: "1"
+        - generic [ref=e1101]: 连续打卡 (天)
+      - generic [ref=e1102]:
+        - generic [ref=e1103]: "1"
+        - generic [ref=e1104]: 累计打卡 (天)
+    - generic [ref=e38]:
+      - text: 今天
+      - heading "📅 今日打卡 · 2026年6月8日" [level=3] [ref=e1105]
+      - generic [ref=e1106]:
+        - generic "睡眠 7h+" [ref=e1107] [cursor=pointer]: ✅ 睡眠 7h+
+        - generic "运动 30min+" [ref=e1108] [cursor=pointer]: ✅ 运动 30min+
+        - generic "饮食规律" [ref=e1109] [cursor=pointer]: ✅ 饮食规律
+        - generic "颈椎/视力保护" [ref=e1110] [cursor=pointer]: ⬜ 颈椎/视力保护
+        - generic "深度学习 2h+" [ref=e1111] [cursor=pointer]: ✅ 深度学习 2h+
+        - generic "输出笔记/代码" [ref=e1112] [cursor=pointer]: ✅ 输出笔记/代码
+        - generic "英语/专业阅读" [ref=e1113] [cursor=pointer]: ⬜ 英语/专业阅读
+        - generic "记账" [ref=e1114] [cursor=pointer]: ✅ 记账
+        - generic "理性消费/储蓄" [ref=e1115] [cursor=pointer]: ⬜ 理性消费/储蓄
+        - generic "家人沟通" [ref=e1116] [cursor=pointer]: ✅ 家人沟通
+        - generic "有效社交" [ref=e1117] [cursor=pointer]: ⬜ 有效社交
+        - generic "感恩记录" [ref=e1118] [cursor=pointer]: ⬜ 感恩记录
+        - generic "阅读 30min+" [ref=e1119] [cursor=pointer]: ✅ 阅读 30min+
+        - generic "每日复盘" [ref=e1120] [cursor=pointer]: ✅ 每日复盘
+        - generic "新知/见识" [ref=e1121] [cursor=pointer]: ⬜ 新知/见识
+        - generic "📁 作品输出" [ref=e1122] [cursor=pointer]: ⬜ 📁 作品输出
+        - generic "🧘 情绪管理" [ref=e1123] [cursor=pointer]: ⬜ 🧘 情绪管理
+      - button "📝 详细编辑" [ref=e1124] [cursor=pointer]
+    - generic [ref=e59]:
+      - button "◀ 上月" [ref=e60] [cursor=pointer]
+      - generic [ref=e61]: 2027年 1月
+      - button "下月 ▶" [ref=e62] [cursor=pointer]
+      - button "📍 今天" [ref=e63] [cursor=pointer]
+    - generic [ref=e64]:
+      - generic [ref=e65]: 日
+      - generic [ref=e66]: 一
+      - generic [ref=e67]: 二
+      - generic [ref=e68]: 三
+      - generic [ref=e69]: 四
+      - generic [ref=e70]: 五
+      - generic [ref=e71]: 六
+    - generic [ref=e72]:
+      - generic [ref=e1131] [cursor=pointer]: "1"
+      - generic [ref=e1140] [cursor=pointer]: "2"
+      - generic [ref=e1149] [cursor=pointer]: "3"
+      - generic [ref=e1158] [cursor=pointer]: "4"
+      - generic [ref=e1167] [cursor=pointer]: "5"
+      - generic [ref=e1176] [cursor=pointer]: "6"
+      - generic [ref=e1185] [cursor=pointer]: "7"
+      - generic [ref=e1194] [cursor=pointer]: "8"
+      - generic [ref=e1203] [cursor=pointer]: "9"
+      - generic [ref=e1212] [cursor=pointer]: "10"
+      - generic [ref=e1221] [cursor=pointer]: "11"
+      - generic [ref=e1230] [cursor=pointer]: "12"
+      - generic [ref=e1239] [cursor=pointer]: "13"
+      - generic [ref=e1248] [cursor=pointer]: "14"
+      - generic [ref=e1257] [cursor=pointer]: "15"
+      - generic [ref=e1266] [cursor=pointer]: "16"
+      - generic [ref=e1275] [cursor=pointer]: "17"
+      - generic [ref=e1284] [cursor=pointer]: "18"
+      - generic [ref=e1293] [cursor=pointer]: "19"
+      - generic [ref=e1302] [cursor=pointer]: "20"
+      - generic [ref=e1311] [cursor=pointer]: "21"
+      - generic [ref=e1320] [cursor=pointer]: "22"
+      - generic [ref=e1329] [cursor=pointer]: "23"
+      - generic [ref=e1338] [cursor=pointer]: "24"
+      - generic [ref=e1347] [cursor=pointer]: "25"
+      - generic [ref=e1356] [cursor=pointer]: "26"
+      - generic [ref=e1365] [cursor=pointer]: "27"
+      - generic [ref=e1374] [cursor=pointer]: "28"
+      - generic [ref=e1383] [cursor=pointer]: "29"
+      - generic [ref=e1392] [cursor=pointer]: "30"
+      - generic [ref=e1401] [cursor=pointer]: "31"
+    - generic [ref=e344]:
+      - generic [ref=e345]: 全部完成
+      - generic [ref=e347]: 部分完成
+      - generic [ref=e349]: 未打卡

@@ -1,0 +1,12 @@
+[   11811ms] Identifier 'API_BASE' has already been declared
+[   11815ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[   11855ms] ReferenceError: EXCERPT_API is not defined
+    at loadExcerptBooks (http://localhost:8080/data/app/excerpt-view.js:86:16)
+    at HTMLDocument.<anonymous> (<anonymous>:29:49)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:200:14)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[   11856ms] ReferenceError: EXCERPT_API is not defined
+    at loadExcerptPage (http://localhost:8080/data/app/excerpt-view.js:232:16)
+    at HTMLDocument.<anonymous> (<anonymous>:30:48)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:200:14)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)

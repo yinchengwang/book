@@ -1,0 +1,337 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - heading "⚙️ C++ 技术栈" [level=1] [ref=e53] [cursor=pointer]
+    - generic [ref=e5]:
+      - button "🏠 首页" [ref=e6] [cursor=pointer]
+      - button "📊 仪表盘" [ref=e7] [cursor=pointer]
+      - button "🏆 项目验收" [ref=e8] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]: 💡
+    - generic [ref=e12]: 💡 设计模式：单例模式的懒汉式(Double-Checked Locking)在C++11之前因为内存重排序问题是不安全的。
+    - generic "关闭" [ref=e13] [cursor=pointer]: ✕
+  - generic [ref=e14]:
+    - button "← 返回首页" [ref=e54] [cursor=pointer]
+    - generic [ref=e55]:
+      - textbox "搜索知识点..." [ref=e56]
+      - combobox [ref=e57] [cursor=pointer]:
+        - option "全部难度" [selected]
+        - option "基础"
+        - option "进阶"
+        - option "高级"
+      - combobox [ref=e58] [cursor=pointer]:
+        - option "全部分类" [selected]
+        - option "📗 语言核心"
+        - option "📘 内存与并发"
+        - option "📙 设计模式"
+        - option "📕 工程工具"
+    - generic [ref=e59]:
+      - generic [ref=e60]:
+        - text: 📗 语言核心
+        - generic [ref=e61]: (12项)
+      - generic [ref=e62]:
+        - generic [ref=e63] [cursor=pointer]:
+          - generic [ref=e64]:
+            - generic [ref=e65]: 类与对象
+            - generic [ref=e66]: 构造函数/析构函数、初始化列表、const成员函数、static成员、this指针、friend友元。
+          - generic [ref=e67]:
+            - generic [ref=e68]: "--"
+            - generic [ref=e69]: 未测试
+        - generic [ref=e70] [cursor=pointer]:
+          - generic [ref=e71]:
+            - generic [ref=e72]: 继承与多态
+            - generic [ref=e73]: public/protected/private继承、虚函数与vtable、纯虚函数与抽象类、override/final。
+          - generic [ref=e74]:
+            - generic [ref=e75]: "--"
+            - generic [ref=e76]: 未测试
+        - generic [ref=e77] [cursor=pointer]:
+          - generic [ref=e78]:
+            - generic [ref=e79]: 运算符重载
+            - generic [ref=e80]: 成员vs非成员运算符重载、赋值/比较/算术运算符、<<与>>流运算符、类型转换运算符。
+          - generic [ref=e81]:
+            - generic [ref=e82]: "--"
+            - generic [ref=e83]: 未测试
+        - generic [ref=e84] [cursor=pointer]:
+          - generic [ref=e85]:
+            - generic [ref=e86]: 异常处理
+            - generic [ref=e87]: try/catch/throw机制、异常安全三个级别、RAII与异常、noexcept说明符。
+          - generic [ref=e88]:
+            - generic [ref=e89]: "--"
+            - generic [ref=e90]: 未测试
+        - generic [ref=e91] [cursor=pointer]:
+          - generic [ref=e92]:
+            - generic [ref=e93]: 移动语义与右值引用
+            - generic [ref=e94]: 左值/右值/将亡值、std::move与std::forward、移动构造/移动赋值、完美转发、三五法则。
+          - generic [ref=e95]:
+            - generic [ref=e96]: "--"
+            - generic [ref=e97]: 未测试
+        - generic [ref=e98] [cursor=pointer]:
+          - generic [ref=e99]:
+            - generic [ref=e100]: 模板基础
+            - generic [ref=e101]: 函数模板与类模板、模板参数推导、特化与偏特化、非类型模板参数、编译模型。
+          - generic [ref=e102]:
+            - generic [ref=e103]: "--"
+            - generic [ref=e104]: 未测试
+        - generic [ref=e105] [cursor=pointer]:
+          - generic [ref=e106]:
+            - generic [ref=e107]: Lambda表达式
+            - generic [ref=e108]: 捕获列表([=]/[&]/[this])、mutable限定、泛型lambda、std::function、闭包与回调。
+          - generic [ref=e109]:
+            - generic [ref=e110]: "--"
+            - generic [ref=e111]: 未测试
+        - generic [ref=e112] [cursor=pointer]:
+          - generic [ref=e113]:
+            - generic [ref=e114]: STL容器与算法
+            - generic [ref=e115]: vector/list/map/unordered_map的内部实现与复杂度、迭代器失效规则、常用算法。
+          - generic [ref=e116]:
+            - generic [ref=e117]: "--"
+            - generic [ref=e118]: 未测试
+        - generic [ref=e119] [cursor=pointer]:
+          - generic [ref=e120]:
+            - generic [ref=e121]: 模板元编程
+            - generic [ref=e122]: 编译期计算、类型萃取(type_traits)、变参模板、std::integer_sequence、折叠表达式。
+          - generic [ref=e123]:
+            - generic [ref=e124]: "--"
+            - generic [ref=e125]: 未测试
+        - generic [ref=e126] [cursor=pointer]:
+          - generic [ref=e127]:
+            - generic [ref=e128]: SFINAE与Concepts
+            - generic [ref=e129]: 替换失败非错误(SFINAE)、std::enable_if、void_t技巧、C++20 Concepts与requires。
+          - generic [ref=e130]:
+            - generic [ref=e131]: "--"
+            - generic [ref=e132]: 未测试
+        - generic [ref=e133] [cursor=pointer]:
+          - generic [ref=e134]:
+            - generic [ref=e135]: C++20协程
+            - generic [ref=e136]: co_await/co_yield/co_return、promise_type与awaiter、generator模式。
+          - generic [ref=e137]:
+            - generic [ref=e138]: "--"
+            - generic [ref=e139]: 未测试
+        - generic [ref=e140] [cursor=pointer]:
+          - generic [ref=e141]:
+            - generic [ref=e142]: C++20 Modules
+            - generic [ref=e143]: import/export module声明、模块分区、与传统头文件互操作、编译速度提升。
+          - generic [ref=e144]:
+            - generic [ref=e145]: "--"
+            - generic [ref=e146]: 未测试
+      - generic [ref=e147]:
+        - text: 📘 内存与并发
+        - generic [ref=e148]: (10项)
+      - generic [ref=e149]:
+        - generic [ref=e150] [cursor=pointer]:
+          - generic [ref=e151]:
+            - generic [ref=e152]: RAII与资源管理
+            - generic [ref=e153]: 资源获取即初始化、构造函数获取资源+析构函数释放、scope guard模式、lock_guard。
+          - generic [ref=e154]:
+            - generic [ref=e155]: "--"
+            - generic [ref=e156]: 未测试
+        - generic [ref=e157] [cursor=pointer]:
+          - generic [ref=e158]:
+            - generic [ref=e159]: 智能指针
+            - generic [ref=e160]: unique_ptr独占所有权、shared_ptr引用计数与weak_ptr打破循环引用、enable_shared_from_this。
+          - generic [ref=e161]:
+            - generic [ref=e162]: "--"
+            - generic [ref=e163]: 未测试
+        - generic [ref=e164] [cursor=pointer]:
+          - generic [ref=e165]:
+            - generic [ref=e166]: new/delete与分配器
+            - generic [ref=e167]: operator new/delete重载、placement new、std::allocator接口、内存对齐。
+          - generic [ref=e168]:
+            - generic [ref=e169]: "--"
+            - generic [ref=e170]: 未测试
+        - generic [ref=e171] [cursor=pointer]:
+          - generic [ref=e172]:
+            - generic [ref=e173]: C++内存模型
+            - generic [ref=e174]: happens-before关系、memory_order(relaxed/acquire/release/seq_cst)、原子操作排序。
+          - generic [ref=e175]:
+            - generic [ref=e176]: "--"
+            - generic [ref=e177]: 未测试
+        - generic [ref=e178] [cursor=pointer]:
+          - generic [ref=e179]:
+            - generic [ref=e180]: std::thread与std::mutex
+            - generic [ref=e181]: std::thread生命周期、join/detach、mutex/recursive_mutex、死锁避免(std::lock)。
+          - generic [ref=e182]:
+            - generic [ref=e183]: "--"
+            - generic [ref=e184]: 未测试
+        - generic [ref=e185] [cursor=pointer]:
+          - generic [ref=e186]:
+            - generic [ref=e187]: std::atomic原子操作
+            - generic [ref=e188]: atomic特化、CAS(compare_exchange_strong/weak)、ABA问题、自旋锁实现。
+          - generic [ref=e189]:
+            - generic [ref=e190]: "--"
+            - generic [ref=e191]: 未测试
+        - generic [ref=e192] [cursor=pointer]:
+          - generic [ref=e193]:
+            - generic [ref=e194]: 条件变量与future
+            - generic [ref=e195]: condition_variable的wait/notify、虚假唤醒、std::promise/future/async。
+          - generic [ref=e196]:
+            - generic [ref=e197]: "--"
+            - generic [ref=e198]: 未测试
+        - generic [ref=e199] [cursor=pointer]:
+          - generic [ref=e200]:
+            - generic [ref=e201]: 无锁数据结构
+            - generic [ref=e202]: 无锁队列(SPSC/MPMC)、无锁栈(Treiber Stack)、Hazard Pointer与RCU。
+          - generic [ref=e203]:
+            - generic [ref=e204]: "--"
+            - generic [ref=e205]: 未测试
+        - generic [ref=e206] [cursor=pointer]:
+          - generic [ref=e207]:
+            - generic [ref=e208]: 内存池与对象池
+            - generic [ref=e209]: 固定大小内存池、Slab分配器、Thread-Cache(如tcmalloc)、对象池设计。
+          - generic [ref=e210]:
+            - generic [ref=e211]: "--"
+            - generic [ref=e212]: 未测试
+        - generic [ref=e213] [cursor=pointer]:
+          - generic [ref=e214]:
+            - generic [ref=e215]: 并行STL与并发设计
+            - generic [ref=e216]: C++17并行算法(execution policy)、线程安全容器、读写锁shared_mutex。
+          - generic [ref=e217]:
+            - generic [ref=e218]: "--"
+            - generic [ref=e219]: 未测试
+      - generic [ref=e220]:
+        - text: 📙 设计模式
+        - generic [ref=e221]: (9项)
+      - generic [ref=e222]:
+        - generic [ref=e223] [cursor=pointer]:
+          - generic [ref=e224]:
+            - generic [ref=e225]: 创建型模式
+            - generic [ref=e226]: 单例(Singleton)的线程安全实现、工厂方法、抽象工厂、Builder模式、原型模式。
+          - generic [ref=e227]:
+            - generic [ref=e228]: "--"
+            - generic [ref=e229]: 未测试
+        - generic [ref=e230] [cursor=pointer]:
+          - generic [ref=e231]:
+            - generic [ref=e232]: 结构型模式
+            - generic [ref=e233]: Adapter/Decorator/Facade/Proxy/Bridge模式。组合优于继承的设计实践。
+          - generic [ref=e234]:
+            - generic [ref=e235]: "--"
+            - generic [ref=e236]: 未测试
+        - generic [ref=e237] [cursor=pointer]:
+          - generic [ref=e238]:
+            - generic [ref=e239]: 行为型模式
+            - generic [ref=e240]: Observer/Strategy/Command/State/Visitor模式。封装算法与行为变化。
+          - generic [ref=e241]:
+            - generic [ref=e242]: "--"
+            - generic [ref=e243]: 未测试
+        - generic [ref=e244] [cursor=pointer]:
+          - generic [ref=e245]:
+            - generic [ref=e246]: SOLID设计原则
+            - generic [ref=e247]: 单一职责、开闭原则、里氏替换、接口隔离、依赖反转。面向对象设计的理论基础。
+          - generic [ref=e248]:
+            - generic [ref=e249]: "--"
+            - generic [ref=e250]: 未测试
+        - generic [ref=e251] [cursor=pointer]:
+          - generic [ref=e252]:
+            - generic [ref=e253]: CRTP模式
+            - generic [ref=e254]: 奇异递归模板模式——编译期多态的利器。enable_shared_from_this的核心手法。
+          - generic [ref=e255]:
+            - generic [ref=e256]: "--"
+            - generic [ref=e257]: 未测试
+        - generic [ref=e258] [cursor=pointer]:
+          - generic [ref=e259]:
+            - generic [ref=e260]: Policy-Based Design
+            - generic [ref=e261]: 将策略作为模板参数，编译期组合行为。STL的Allocator/Comparator即是此思想的体现。
+          - generic [ref=e262]:
+            - generic [ref=e263]: "--"
+            - generic [ref=e264]: 未测试
+        - generic [ref=e265] [cursor=pointer]:
+          - generic [ref=e266]:
+            - generic [ref=e267]: Type Erasure类型擦除
+            - generic [ref=e268]: std::function、std::any的内部实现原理。通过外部多态实现运行时多态。
+          - generic [ref=e269]:
+            - generic [ref=e270]: "--"
+            - generic [ref=e271]: 未测试
+        - generic [ref=e272] [cursor=pointer]:
+          - generic [ref=e273]:
+            - generic [ref=e274]: PIMPL惯用法
+            - generic [ref=e275]: Pointer to Implementation——隐藏实现细节、减少编译依赖、保证ABI兼容。
+          - generic [ref=e276]:
+            - generic [ref=e277]: "--"
+            - generic [ref=e278]: 未测试
+        - generic [ref=e279] [cursor=pointer]:
+          - generic [ref=e280]:
+            - generic [ref=e281]: Expression Templates
+            - generic [ref=e282]: 通过模板构建表达式树延迟计算，消除临时变量。Eigen库的核心技术。
+          - generic [ref=e283]:
+            - generic [ref=e284]: "--"
+            - generic [ref=e285]: 未测试
+      - generic [ref=e286]:
+        - text: 📕 工程工具
+        - generic [ref=e287]: (11项)
+      - generic [ref=e288]:
+        - generic [ref=e289] [cursor=pointer]:
+          - generic [ref=e290]:
+            - generic [ref=e291]: CMake构建系统
+            - generic [ref=e292]: CMakeLists.txt编写、target-based现代CMake、add_library/add_executable、find_package。
+          - generic [ref=e293]:
+            - generic [ref=e294]: "--"
+            - generic [ref=e295]: 未测试
+        - generic [ref=e296] [cursor=pointer]:
+          - generic [ref=e297]:
+            - generic [ref=e298]: GDB调试C++
+            - generic [ref=e299]: 断点/观察点/条件断点、打印STL容器(pretty-print)、core dump分析。
+          - generic [ref=e300]:
+            - generic [ref=e301]: "--"
+            - generic [ref=e302]: 未测试
+        - generic [ref=e303] [cursor=pointer]:
+          - generic [ref=e304]:
+            - generic [ref=e305]: Git版本控制
+            - generic [ref=e306]: 分支管理策略(git-flow/trunk-based)、rebase vs merge、交互式rebase整理提交。
+          - generic [ref=e307]:
+            - generic [ref=e308]: "--"
+            - generic [ref=e309]: 未测试
+        - generic [ref=e310] [cursor=pointer]:
+          - generic [ref=e311]:
+            - generic [ref=e312]: Clang-Tidy静态分析
+            - generic [ref=e313]: clang-tidy检查项配置、modernize/readability/bugprone系列规则、集成CI。
+          - generic [ref=e314]:
+            - generic [ref=e315]: "--"
+            - generic [ref=e316]: 未测试
+        - generic [ref=e317] [cursor=pointer]:
+          - generic [ref=e318]:
+            - generic [ref=e319]: GoogleTest单元测试
+            - generic [ref=e320]: TEST/Fixture/Mock宏、EXPECT vs ASSERT、参数化测试、gmock模拟依赖。
+          - generic [ref=e321]:
+            - generic [ref=e322]: "--"
+            - generic [ref=e323]: 未测试
+        - generic [ref=e324] [cursor=pointer]:
+          - generic [ref=e325]:
+            - generic [ref=e326]: Sanitizers(ASAN/TSAN/UBSAN)
+            - generic [ref=e327]: AddressSanitizer/ThreadSanitizer/UndefinedBehaviorSanitizer的使用与原理。
+          - generic [ref=e328]:
+            - generic [ref=e329]: "--"
+            - generic [ref=e330]: 未测试
+        - generic [ref=e331] [cursor=pointer]:
+          - generic [ref=e332]:
+            - generic [ref=e333]: 性能分析与优化
+            - generic [ref=e334]: perf/VTune热点分析、火焰图、cache miss优化、编译优化选项、PGO/LTO。
+          - generic [ref=e335]:
+            - generic [ref=e336]: "--"
+            - generic [ref=e337]: 未测试
+        - generic [ref=e338] [cursor=pointer]:
+          - generic [ref=e339]:
+            - generic [ref=e340]: 包管理与依赖
+            - generic [ref=e341]: vcpkg/Conan的使用、find_package集成、版本约束与依赖解析。
+          - generic [ref=e342]:
+            - generic [ref=e343]: "--"
+            - generic [ref=e344]: 未测试
+        - generic [ref=e345] [cursor=pointer]:
+          - generic [ref=e346]:
+            - generic [ref=e347]: Docker容器化部署
+            - generic [ref=e348]: Dockerfile编写(多阶段构建)、docker-compose编排、编译缓存优化。
+          - generic [ref=e349]:
+            - generic [ref=e350]: "--"
+            - generic [ref=e351]: 未测试
+        - generic [ref=e352] [cursor=pointer]:
+          - generic [ref=e353]:
+            - generic [ref=e354]: CI/CD流水线
+            - generic [ref=e355]: GitHub Actions/GitLab CI配置、自动化编译+测试+静态分析、覆盖率门禁。
+          - generic [ref=e356]:
+            - generic [ref=e357]: "--"
+            - generic [ref=e358]: 未测试
+        - generic [ref=e359] [cursor=pointer]:
+          - generic [ref=e360]:
+            - generic [ref=e361]: 代码审查最佳实践
+            - generic [ref=e362]: 审查清单(逻辑/安全/性能/可读)、PR粒度控制、自动化审查、结对编程。
+          - generic [ref=e363]:
+            - generic [ref=e364]: "--"
+            - generic [ref=e365]: 未测试

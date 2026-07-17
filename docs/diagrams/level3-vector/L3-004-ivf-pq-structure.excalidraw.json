@@ -1,0 +1,656 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "mermaid2excalidraw",
+  "elements": [
+    {
+      "id": "m2e_1",
+      "type": "rectangle",
+      "x": 50.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_2",
+      "type": "text",
+      "x": 110.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "聚类中心点<br/>K 个 centroid",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_3",
+      "type": "rectangle",
+      "x": -460.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_4",
+      "type": "text",
+      "x": -400.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "InvList-1<br/>向量: v1, v5, v9",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_5",
+      "type": "rectangle",
+      "x": -290.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_6",
+      "type": "text",
+      "x": -230.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "InvList-2<br/>向量: v2, v6",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_7",
+      "type": "rectangle",
+      "x": -800.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_8",
+      "type": "text",
+      "x": -740.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "InvList-K<br/>向量: v3, v7, v10",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_9",
+      "type": "rectangle",
+      "x": -630.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_10",
+      "type": "text",
+      "x": -570.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "end",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_11",
+      "type": "rectangle",
+      "x": 220.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_12",
+      "type": "text",
+      "x": 280.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "原始向量 D=128维",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_13",
+      "type": "rectangle",
+      "x": 390.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_14",
+      "type": "text",
+      "x": 450.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "Block-1<br/>32维",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_15",
+      "type": "rectangle",
+      "x": 560.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_16",
+      "type": "text",
+      "x": 620.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "Block-2<br/>32维",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_17",
+      "type": "rectangle",
+      "x": 730.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_18",
+      "type": "text",
+      "x": 790.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "Block-3<br/>32维",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_19",
+      "type": "rectangle",
+      "x": 900.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_20",
+      "type": "text",
+      "x": 960.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "Block-4<br/>32维",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_21",
+      "type": "rectangle",
+      "x": 1070.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_22",
+      "type": "text",
+      "x": 1130.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "码本1<br/>256个码字",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_23",
+      "type": "rectangle",
+      "x": 1240.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_24",
+      "type": "text",
+      "x": 1300.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "码本2<br/>256个码字",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_25",
+      "type": "rectangle",
+      "x": 1410.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_26",
+      "type": "text",
+      "x": 1470.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "码本3<br/>256个码字",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_27",
+      "type": "rectangle",
+      "x": 1580.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_28",
+      "type": "text",
+      "x": 1640.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "码本4<br/>256个码字",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_29",
+      "type": "rectangle",
+      "x": -120.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_30",
+      "type": "text",
+      "x": -60.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "编码: q1, q2, q3, q4<br/>4 字节",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_31",
+      "type": "arrow",
+      "x": 110.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -510.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_32",
+      "type": "arrow",
+      "x": 110.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -340.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_33",
+      "type": "arrow",
+      "x": 110.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -850.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_34",
+      "type": "arrow",
+      "x": 280.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          170.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_35",
+      "type": "arrow",
+      "x": 280.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          340.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_36",
+      "type": "arrow",
+      "x": 280.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          510.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_37",
+      "type": "arrow",
+      "x": 280.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          680.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_38",
+      "type": "arrow",
+      "x": 450.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          680.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_39",
+      "type": "arrow",
+      "x": 620.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          680.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_40",
+      "type": "arrow",
+      "x": 790.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          680.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_41",
+      "type": "arrow",
+      "x": 960.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          680.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_42",
+      "type": "arrow",
+      "x": 1130.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -1190.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_43",
+      "type": "arrow",
+      "x": 1300.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -1360.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_44",
+      "type": "arrow",
+      "x": 1470.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -1530.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_45",
+      "type": "arrow",
+      "x": 1640.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -1700.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    }
+  ],
+  "appState": {
+    "gridSize": null,
+    "viewBackgroundColor": "#ffffff"
+  }
+}

@@ -1,0 +1,22 @@
+flowchart TB
+    subgraph 前端层
+        A[用户界面] --> B[API 网关]
+    end
+
+    subgraph 服务层
+        B --> C[认证服务]
+        B --> D[业务服务]
+        B --> E[数据服务]
+    end
+
+    subgraph 数据层
+        C --> F[(用户库)]
+        D --> G[(业务库)]
+        E --> H[(缓存)]
+        E --> I[搜索服务]
+    end
+
+    subgraph 外部服务
+        I --> J[向量数据库]
+        I --> K[搜索引擎]
+    end

@@ -1,0 +1,58 @@
+# clang-tidy 配置：性能 + 安全 + 风格检查
+# ============================================================
+# 此配置启用多类检查，用于发现代码中的常见问题
+
+Checks: '
+  -*,
+  readability-*,
+  performance-*,
+  modernize-*,
+  cppcoreguidelines-*,
+  bugprone-*,
+  clang-analyzer-*,
+  cert-*,
+  misc-*
+'
+
+# 检查选项配置
+CheckOptions:
+  # 命名规范：类名使用 CamelCase
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+
+  # 命名规范：变量名使用 lower_case
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+
+  # 命名规范：常量使用 CONSTANT_CASE
+  - key: readability-identifier-naming.ConstantCase
+    value: CONSTANT_CASE
+
+  # 移动语义：对常量实参的优化惩罚阈值（值越大越不积极建议移动）
+  - key: performance-move-const-arg.PerfStretchPenalty
+    value: 100
+
+  # 避免不必要的拷贝：启用检查
+  - key: performance-unnecessary-value-param.Enabled
+    value: 'true'
+
+  # 智能指针：推荐使用 make_unique/make_shared
+  - key: modernize-use-emplace.AutoContainers
+    value: 'true'
+
+  # 范围 for 循环：推荐使用 auto
+  - key: modernize-loop-convert.UseAuto
+    value: 'true'
+
+  # C++ 核心规范：不使用裸 new/delete
+  - key: cppcoreguidelines-owning-memory.MissingDeleteMessage
+    value: 'true'
+
+  # CERT 规范：整数运算溢出检查
+  - key: cert-err33-c.CheckedFunctions
+    value: '.*'
+
+#WarningsAsErrors: ''
+#HeaderFilterRegex: '.*\\.(h|hpp|cpp)$'
+#FormatStyle: file
+#AssumeUnknownAttributesAreThreadSafe: 'true'

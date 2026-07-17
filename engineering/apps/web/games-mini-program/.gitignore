@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+*.swp
+*.swo
+.idea/
+.vscode/
+*.iml
+
+# Taro 构建产物
+*.wxss
+*.wxml
+*.wxs
+*.js
+
+# 微信小程序
+/game/
+/game/

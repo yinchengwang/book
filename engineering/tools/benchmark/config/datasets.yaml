@@ -1,0 +1,30 @@
+# VectorBench 数据集配置
+# ANN Benchmarks 标准数据集
+
+datasets:
+  # 小规模数据集（快速验证）
+  fashion-mnist-784-euclidean:
+    dimension: 784
+    distance: euclidean
+    size: 60000
+    test_size: 10000
+    url: "http://ann-benchmarks.com/fashion-mnist-784-euclidean.hdf5"
+    description: "Fashion-MNIST 图像特征"
+
+  # 中等规模数据集
+  glove-100-angular:
+    dimension: 100
+    distance: angular
+    size: 1183514
+    test_size: 10000
+    url: "http://ann-benchmarks.com/glove-100-angular.hdf5"
+    description: "GloVe 词向量"
+
+  # 大规模数据集
+  deep-image-96-euclidean:
+    dimension: 96
+    distance: euclidean
+    size: 9900000
+    test_size: 10000
+    url: "http://ann-benchmarks.com/deep-image-96-euclidean.hdf5"
+    description: "Deep Image 图像特征"

@@ -1,0 +1,225 @@
+# GitHub Actions CI/CD 工作流
+# 双轨独立 CI (S12)：工程层 + 学习层 各自独立 build & test
+
+name: CI
+
+on:
+  push:
+    branches: [main, project]
+  pull_request:
+    branches: [main, project]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  # ============ 工程层（PG 风格数据库 + MiniVecDB）============
+
+  build-engineering-ubuntu:
+    name: Build Engineering (Ubuntu/GCC)
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies (Ubuntu)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential
+
+    - name: Configure CMake (Engineering)
+      run: |
+        cmake -B engineering/build -S engineering \
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+          -DBUILD_TESTING=ON
+
+    - name: Build (Engineering)
+      run: |
+        cmake --build engineering/build --parallel 4
+
+  test-engineering-ubuntu:
+    name: Test Engineering (Ubuntu/GCC)
+    runs-on: ubuntu-22.04
+    needs: build-engineering-ubuntu
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies (Ubuntu)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential
+
+    - name: Configure & Build (Engineering)
+      run: |
+        cmake -B engineering/build -S engineering \
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+          -DBUILD_TESTING=ON
+        cmake --build engineering/build --parallel 4
+
+    - name: Run ctest (Engineering)
+      working-directory: ./engineering/build
+      run: |
+        ctest --output-on-failure -j4
+
+  build-engineering-windows:
+    name: Build Engineering (Windows/MinGW)
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Set up MinGW
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        install: >-
+          git
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-make
+
+    - name: Configure CMake (Engineering/Windows)
+      shell: msys2 {0}
+      run: |
+        cmake -B engineering/build -S engineering \
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+          -DBUILD_TESTING=ON \
+          -G "MinGW Makefiles"
+
+    - name: Build (Engineering/Windows)
+      shell: msys2 {0}
+      run: |
+        cmake --build engineering/build --parallel 4
+
+  # ============ 学习层（ds/algo/quiz）============
+
+  build-learning-ubuntu:
+    name: Build Learning (Ubuntu/GCC)
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies (Ubuntu)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential
+
+    - name: Configure CMake (Learning)
+      run: |
+        cmake -B build-learning -S learning \
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+          -DBUILD_TESTING=ON \
+          -DENGINEERING_BUILD=OFF
+
+    - name: Build (Learning)
+      run: |
+        cmake --build build-learning --parallel 4
+
+  test-learning-ubuntu:
+    name: Test Learning (Ubuntu/GCC)
+    runs-on: ubuntu-22.04
+    needs: build-learning-ubuntu
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies (Ubuntu)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential
+
+    - name: Configure & Build (Learning)
+      run: |
+        cmake -B build-learning -S learning \
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+          -DBUILD_TESTING=ON \
+          -DENGINEERING_BUILD=OFF
+        cmake --build build-learning --parallel 4
+
+    - name: Run ctest (Learning)
+      working-directory: ./build-learning
+      run: |
+        ctest --output-on-failure
+
+  # ============ Coverage（工程层）============
+
+  coverage-ubuntu:
+    name: Coverage (Ubuntu/GCC+lcov)
+    runs-on: ubuntu-22.04
+    needs: build-engineering-ubuntu
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install lcov + PyYAML
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential lcov
+        python3 -m pip install --break-system-packages pyyaml || pip install pyyaml
+
+    - name: Configure Engineering with Coverage
+      working-directory: ./engineering
+      run: |
+        rm -rf build-cov
+        cmake -B build-cov -S . \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DENABLE_COVERAGE=ON \
+          -DBUILD_TESTING=ON
+
+    - name: Build (coverage flags)
+      working-directory: ./engineering
+      run: cmake --build build-cov --parallel 4
+
+    - name: Run ctest (收集 .gcda)
+      working-directory: ./engineering/build-cov
+      run: ctest --output-on-failure -j4 || true
+
+    - name: Run coverage scripts
+      working-directory: ./engineering
+      run: |
+        bash scripts/coverage/run.sh || true
+        if [ -f coverage.info.filtered ]; then
+          python3 scripts/coverage/aggregate.py coverage.info.filtered > coverage-current.json || true
+          python3 scripts/coverage/compare.py coverage-current.json docs/coverage-baseline.json > coverage-diff.md || true
+          python3 scripts/coverage/badge.py coverage-current.json coverage-badge.svg || true
+        fi
+
+    - name: Show coverage diff
+      working-directory: ./engineering
+      run: |
+        if [ -f coverage-diff.md ]; then
+          cat coverage-diff.md
+        fi
+
+    - name: Upload coverage artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: |
+          engineering/coverage-html/
+          engineering/coverage.info
+          engineering/coverage.info.filtered
+          engineering/coverage-current.json
+          engineering/coverage-diff.md
+          engineering/coverage-badge.svg

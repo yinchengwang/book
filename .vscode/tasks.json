@@ -1,0 +1,109 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558 
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "C/C++: gcc.exe 生成活动文件",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "${workspaceFolder}\\build",
+                "--parallel"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "兼容旧入口，实际执行整工程 CMake 构建。"
+        },
+        {
+            "label": "CMake: 构建整个工程",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "${workspaceFolder}\\build",
+                "--parallel"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "构建整个 CMake 工程。"
+        },
+        // {
+        //     "type": "cppbuild",
+        //     "label": "C/C++: gcc.exe 生成活动文件",
+        //     "command": "C:\\mingw64\\bin\\gcc.exe",
+        //     "args": [
+        //         // 设置栈空间大小
+        //         "-Wl,--stack=1048576000",
+        //         "-fdiagnostics-color=always",
+        //         "-Wformat",
+        //         "-g",
+        //         "${fileDirname}\\*.c",
+        //         // "${file}",
+        //         "-o",
+        //         "${fileDirname}\\${fileBasenameNoExtension}.exe",
+        //         "-fexec-charset=GBK",
+        //         "-Werror"
+        //     ],
+        //     "options": {
+        //         "cwd": "C:\\mingw64\\bin\\"
+        //     },
+        //     "problemMatcher": [
+        //         "$gcc"
+        //     ],
+        //     "group": {
+		// 		"kind": "build",
+		// 		"isDefault": true
+		// 	},
+        //     "detail": "调试器生成的任务。"
+
+        // },
+        {
+            "type": "cppbuild",
+            "label": "C/C++: 编译当前文件为目标文件",
+            "command": "C:\\mingw64\\bin\\g++.exe",
+            "args": [
+                "-fdiagnostics-color=always",
+                "-Wformat",
+                "-g",
+                "-D__USE_MINGW_ANSI_STDIO",
+                "-fpermissive",
+                "-c",
+                "${file}",
+                "-o",
+                "${fileDirname}\\${fileBasenameNoExtension}.o",
+                "-fexec-charset=GBK",
+                "-I",
+                "${workspaceFolder}\\include",
+                "-I",
+                "${workspaceFolder}\\third_part\\uthash\\src",
+                "-I",
+                "${workspaceFolder}\\third_part\\googletest\\googletest\\include"
+            ],
+            "options": {
+                "cwd": "C:\\mingw64\\bin\\"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "调试器生成的任务。"
+        }
+    ]
+}

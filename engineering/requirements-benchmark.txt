@@ -1,0 +1,9 @@
+# VectorBench 依赖
+# 核心依赖（必需）
+numpy>=1.20.0
+h5py>=3.0.0
+pyyaml>=5.0
+
+# 可选依赖：真实 Embedding 模型
+# pip install -r requirements-benchmark.txt
+sentence-transformers>=2.0.0  # 可选：真实模型推理

@@ -1,0 +1,190 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - heading "🏗️ 五年建设计划" [level=1] [ref=e3]
+    - paragraph [ref=e4]: 稳根基 · 长续航 · 向高处 — 像建设国家一样建设自己
+  - generic [ref=e5]:
+    - button "2026 筑基年" [ref=e6] [cursor=pointer]: 2026 筑基年
+    - button "2027 能力年" [ref=e8] [cursor=pointer]: 2027 能力年
+    - button "2028 提质年" [ref=e10] [cursor=pointer]: 2028 提质年
+    - button "2029 抗风险年" [ref=e12] [cursor=pointer]: 2029 抗风险年
+    - button "2030 丰收年" [ref=e14] [cursor=pointer]: 2030 丰收年
+  - generic [ref=e16]:
+    - generic [ref=e17]:
+      - heading "打好基础 2026 · 筑基年" [level=2] [ref=e18]:
+        - generic [ref=e19]: 打好基础
+        - text: 2026 · 筑基年
+      - list [ref=e20]:
+        - listitem [ref=e21]: 养成规律作息、运动、饮食三大习惯
+        - listitem [ref=e22]: 梳理财务（还清高息负债、建立应急金）
+        - listitem [ref=e23]: 确定 1 个长期深耕方向
+        - listitem [ref=e24]: 减少无效社交
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - generic [ref=e27]: 0%
+        - generic [ref=e28]: 今日完成率
+      - generic [ref=e29]:
+        - generic [ref=e30]: 0%
+        - generic [ref=e31]: 本月完成率
+      - generic [ref=e32]:
+        - generic [ref=e33]: "0"
+        - generic [ref=e34]: 连续打卡 (天)
+      - generic [ref=e35]:
+        - generic [ref=e36]: "0"
+        - generic [ref=e37]: 累计打卡 (天)
+    - generic [ref=e38]:
+      - text: 今天
+      - heading "📅 今日打卡 · 2026年6月8日" [level=3] [ref=e39]
+      - generic [ref=e40]:
+        - generic "睡眠 7h+" [ref=e41] [cursor=pointer]: ⬜ 睡眠 7h+
+        - generic "运动 30min+" [ref=e42] [cursor=pointer]: ⬜ 运动 30min+
+        - generic "饮食规律" [ref=e43] [cursor=pointer]: ⬜ 饮食规律
+        - generic "颈椎/视力保护" [ref=e44] [cursor=pointer]: ⬜ 颈椎/视力保护
+        - generic "深度学习 2h+" [ref=e45] [cursor=pointer]: ⬜ 深度学习 2h+
+        - generic "输出笔记/代码" [ref=e46] [cursor=pointer]: ⬜ 输出笔记/代码
+        - generic "英语/专业阅读" [ref=e47] [cursor=pointer]: ⬜ 英语/专业阅读
+        - generic "记账" [ref=e48] [cursor=pointer]: ⬜ 记账
+        - generic "理性消费/储蓄" [ref=e49] [cursor=pointer]: ⬜ 理性消费/储蓄
+        - generic "家人沟通" [ref=e50] [cursor=pointer]: ⬜ 家人沟通
+        - generic "有效社交" [ref=e51] [cursor=pointer]: ⬜ 有效社交
+        - generic "感恩记录" [ref=e52] [cursor=pointer]: ⬜ 感恩记录
+        - generic "阅读 30min+" [ref=e53] [cursor=pointer]: ⬜ 阅读 30min+
+        - generic "每日复盘" [ref=e54] [cursor=pointer]: ⬜ 每日复盘
+        - generic "新知/见识" [ref=e55] [cursor=pointer]: ⬜ 新知/见识
+        - generic "🎯 深耕方向" [ref=e56] [cursor=pointer]: ⬜ 🎯 深耕方向
+        - generic "🔄 习惯养成" [ref=e57] [cursor=pointer]: ⬜ 🔄 习惯养成
+      - button "📝 详细编辑" [ref=e58] [cursor=pointer]
+    - generic [ref=e59]:
+      - button "◀ 上月" [ref=e60] [cursor=pointer]
+      - generic [ref=e61]: 2026年 6月
+      - button "下月 ▶" [ref=e62] [cursor=pointer]
+      - button "📍 今天" [ref=e63] [cursor=pointer]
+    - generic [ref=e64]:
+      - generic [ref=e65]: 日
+      - generic [ref=e66]: 一
+      - generic [ref=e67]: 二
+      - generic [ref=e68]: 三
+      - generic [ref=e69]: 四
+      - generic [ref=e70]: 五
+      - generic [ref=e71]: 六
+    - generic [ref=e72]:
+      - generic [ref=e75] [cursor=pointer]: "1"
+      - generic [ref=e84] [cursor=pointer]: "2"
+      - generic [ref=e93] [cursor=pointer]: "3"
+      - generic [ref=e102] [cursor=pointer]: "4"
+      - generic [ref=e111] [cursor=pointer]: "5"
+      - generic [ref=e120] [cursor=pointer]: "6"
+      - generic [ref=e129] [cursor=pointer]: "7"
+      - generic [ref=e138] [cursor=pointer]: "8"
+      - generic [ref=e147] [cursor=pointer]: "9"
+      - generic [ref=e156] [cursor=pointer]: "10"
+      - generic [ref=e165] [cursor=pointer]: "11"
+      - generic [ref=e174] [cursor=pointer]: "12"
+      - generic [ref=e183] [cursor=pointer]: "13"
+      - generic [ref=e192] [cursor=pointer]: "14"
+      - generic [ref=e201] [cursor=pointer]: "15"
+      - generic [ref=e210] [cursor=pointer]: "16"
+      - generic [ref=e219] [cursor=pointer]: "17"
+      - generic [ref=e228] [cursor=pointer]: "18"
+      - generic [ref=e237] [cursor=pointer]: "19"
+      - generic [ref=e246] [cursor=pointer]: "20"
+      - generic [ref=e255] [cursor=pointer]: "21"
+      - generic [ref=e264] [cursor=pointer]: "22"
+      - generic [ref=e273] [cursor=pointer]: "23"
+      - generic [ref=e282] [cursor=pointer]: "24"
+      - generic [ref=e291] [cursor=pointer]: "25"
+      - generic [ref=e300] [cursor=pointer]: "26"
+      - generic [ref=e309] [cursor=pointer]: "27"
+      - generic [ref=e318] [cursor=pointer]: "28"
+      - generic [ref=e327] [cursor=pointer]: "29"
+      - generic [ref=e336] [cursor=pointer]: "30"
+    - generic [ref=e344]:
+      - generic [ref=e345]: 全部完成
+      - generic [ref=e347]: 部分完成
+      - generic [ref=e349]: 未打卡
+  - generic [ref=e352]:
+    - heading "📋 2026年6月8日 打卡记录" [level=3] [ref=e353]
+    - generic [ref=e354]:
+      - heading "🏗️ 健康基建" [level=4] [ref=e355]
+      - generic [ref=e356] [cursor=pointer]:
+        - checkbox "睡眠 7h+ 不熬夜，作息规律" [checked] [ref=e357]
+        - text: 睡眠 7h+
+        - generic [ref=e358]: 不熬夜，作息规律
+      - generic [ref=e359] [cursor=pointer]:
+        - checkbox "运动 30min+ 每周至少 3 次" [checked] [active] [ref=e360]
+        - text: 运动 30min+
+        - generic [ref=e361]: 每周至少 3 次
+      - generic [ref=e362] [cursor=pointer]:
+        - checkbox "饮食规律 少油少糖，多蛋白" [ref=e363]
+        - text: 饮食规律
+        - generic [ref=e364]: 少油少糖，多蛋白
+      - generic [ref=e365] [cursor=pointer]:
+        - checkbox "颈椎/视力保护 不久坐，定时远眺" [ref=e366]
+        - text: 颈椎/视力保护
+        - generic [ref=e367]: 不久坐，定时远眺
+    - generic [ref=e368]:
+      - heading "💪 能力精进" [level=4] [ref=e369]
+      - generic [ref=e370] [cursor=pointer]:
+        - checkbox "深度学习 2h+ 不可替代的核心技能" [ref=e371]
+        - text: 深度学习 2h+
+        - generic [ref=e372]: 不可替代的核心技能
+      - generic [ref=e373] [cursor=pointer]:
+        - checkbox "输出笔记/代码 作品积累，日拱一卒" [ref=e374]
+        - text: 输出笔记/代码
+        - generic [ref=e375]: 作品积累，日拱一卒
+      - generic [ref=e376] [cursor=pointer]:
+        - checkbox "英语/专业阅读 技术文档或论文" [ref=e377]
+        - text: 英语/专业阅读
+        - generic [ref=e378]: 技术文档或论文
+    - generic [ref=e379]:
+      - heading "💰 财务管理" [level=4] [ref=e380]
+      - generic [ref=e381] [cursor=pointer]:
+        - checkbox "记账 记录每笔收支" [ref=e382]
+        - text: 记账
+        - generic [ref=e383]: 记录每笔收支
+      - generic [ref=e384] [cursor=pointer]:
+        - checkbox "理性消费/储蓄 非必要不买" [ref=e385]
+        - text: 理性消费/储蓄
+        - generic [ref=e386]: 非必要不买
+    - generic [ref=e387]:
+      - heading "🤝 关系维护" [level=4] [ref=e388]
+      - generic [ref=e389] [cursor=pointer]:
+        - checkbox "家人沟通 电话/视频/陪伴" [ref=e390]
+        - text: 家人沟通
+        - generic [ref=e391]: 电话/视频/陪伴
+      - generic [ref=e392] [cursor=pointer]:
+        - checkbox "有效社交 减少无效社交" [ref=e393]
+        - text: 有效社交
+        - generic [ref=e394]: 减少无效社交
+      - generic [ref=e395] [cursor=pointer]:
+        - checkbox "感恩记录 写下 1 件感恩的事" [ref=e396]
+        - text: 感恩记录
+        - generic [ref=e397]: 写下 1 件感恩的事
+    - generic [ref=e398]:
+      - heading "📚 认知拓展" [level=4] [ref=e399]
+      - generic [ref=e400] [cursor=pointer]:
+        - checkbox "阅读 30min+ 非技术书籍或深度文章" [ref=e401]
+        - text: 阅读 30min+
+        - generic [ref=e402]: 非技术书籍或深度文章
+      - generic [ref=e403] [cursor=pointer]:
+        - checkbox "每日复盘 总结今天，规划明天" [ref=e404]
+        - text: 每日复盘
+        - generic [ref=e405]: 总结今天，规划明天
+      - generic [ref=e406] [cursor=pointer]:
+        - checkbox "新知/见识 学到一个新东西" [ref=e407]
+        - text: 新知/见识
+        - generic [ref=e408]: 学到一个新东西
+    - generic [ref=e409]:
+      - heading "🎯 2026年度专项" [level=4] [ref=e410]
+      - generic [ref=e411] [cursor=pointer]:
+        - checkbox "🎯 深耕方向 花时间探索/确认长期方向" [ref=e412]
+        - text: 🎯 深耕方向
+        - generic [ref=e413]: 花时间探索/确认长期方向
+      - generic [ref=e414] [cursor=pointer]:
+        - checkbox "🔄 习惯养成 坚持早起/冥想/写作等新习惯" [ref=e415]
+        - text: 🔄 习惯养成
+        - generic [ref=e416]: 坚持早起/冥想/写作等新习惯
+    - textbox "✍️ 今日笔记/复盘..." [ref=e417]
+    - generic [ref=e418]:
+      - button "🗑️ 清除" [ref=e419] [cursor=pointer]
+      - button "取消" [ref=e420] [cursor=pointer]
+      - button "💾 保存" [ref=e421] [cursor=pointer]

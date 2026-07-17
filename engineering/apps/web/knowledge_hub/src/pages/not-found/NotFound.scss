@@ -1,0 +1,84 @@
+/* Not Found 页面样式 */
+.not-found-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  box-sizing: border-box;
+}
+
+.not-found-content {
+  text-align: center;
+  z-index: 1;
+}
+
+.error-code {
+  font-size: 120px;
+  font-weight: 800;
+  color: rgba(99, 102, 241, 0.3);
+  display: block;
+  line-height: 1;
+  margin-bottom: -20px;
+}
+
+.error-title {
+  font-size: 36px;
+  font-weight: 700;
+  color: #fff;
+  display: block;
+  margin-bottom: 16px;
+}
+
+.error-desc {
+  font-size: 16px;
+  color: #94a3b8;
+  display: block;
+  margin-bottom: 40px;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+}
+
+.btn-primary,
+.btn-secondary {
+  padding: 14px 32px;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+}
+
+.btn-primary:active {
+  transform: scale(0.95);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.btn-secondary:active {
+  transform: scale(0.95);
+}
+
+.illustration {
+  margin-top: 60px;
+}
+
+.illustration-icon {
+  font-size: 80px;
+  opacity: 0.5;
+}

@@ -1,0 +1,392 @@
+/**
+ * 小程序端样式适配
+ * 包含屏幕适配、字体调整、组件尺寸优化等
+ */
+
+/* ==================== 基础变量覆盖 ==================== */
+page {
+  --safe-area-bottom: env(safe-area-inset-bottom, 20px);
+  --status-bar-height: 20px;
+  font-size: 28rpx;
+}
+
+/* ==================== 页面布局适配 ==================== */
+
+/* 首页仪表盘小程序适配 */
+.dashboard {
+  padding: 20px 16px;
+  padding-bottom: calc(100px + env(safe-area-inset-bottom, 20px));
+}
+
+.dashboard-header {
+  margin-bottom: 20px;
+}
+
+.greeting {
+  font-size: 22px;
+  line-height: 1.3;
+}
+
+.subtitle {
+  font-size: 13px;
+}
+
+/* 统计卡片 */
+.stats-section {
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  padding: 16px;
+  border-radius: 12px;
+}
+
+.stat-icon {
+  font-size: 26px;
+}
+
+.stat-value {
+  font-size: 24px;
+}
+
+.stat-label {
+  font-size: 11px;
+}
+
+/* 领域进度 */
+.domains-section {
+  padding: 16px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+
+.section-title {
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.domain-item {
+  gap: 10px;
+}
+
+.domain-info {
+  width: 70px;
+}
+
+.domain-name {
+  font-size: 12px;
+}
+
+.domain-count {
+  font-size: 10px;
+}
+
+.progress-bar {
+  height: 5px;
+}
+
+.domain-percent {
+  font-size: 11px;
+  width: 35px;
+}
+
+/* 快捷入口 */
+.shortcuts-section {
+  margin-bottom: 20px;
+}
+
+.shortcuts-grid {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.shortcut-card {
+  padding: 12px 8px;
+  border-radius: 10px;
+}
+
+.shortcut-icon {
+  font-size: 24px;
+  margin-bottom: 6px;
+}
+
+.shortcut-title {
+  font-size: 11px;
+}
+
+/* ==================== 面试追踪小程序适配 ==================== */
+.tracker-page {
+  padding: 16px;
+  padding-bottom: calc(120px + env(safe-area-inset-bottom, 20px));
+}
+
+.tracker-title {
+  font-size: 22px;
+}
+
+.tracker-stats {
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.stat-item {
+  padding: 12px 16px;
+  border-radius: 10px;
+}
+
+.stat-value {
+  font-size: 22px;
+}
+
+.company-card {
+  padding: 16px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.card-actions {
+  gap: 6px;
+}
+
+.action-btn {
+  padding: 5px 10px;
+  font-size: 11px;
+  border-radius: 4px;
+}
+
+/* ==================== 测验系统小程序适配 ==================== */
+.quiz-page {
+  padding: 0 12px;
+  padding-bottom: calc(100px + env(safe-area-inset-bottom, 20px));
+}
+
+.quiz-header {
+  padding: 12px 4px;
+}
+
+.page-title {
+  font-size: 20px;
+}
+
+.filter-bar {
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+
+.filter-group {
+  margin-bottom: 10px;
+}
+
+.filter-label {
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+
+.filter-options {
+  gap: 6px;
+}
+
+.filter-chip {
+  padding: 5px 10px;
+  font-size: 11px;
+  border-radius: 16px;
+}
+
+.question-card {
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+
+.question-title {
+  font-size: 14px;
+}
+
+.badge {
+  padding: 3px 6px;
+  font-size: 9px;
+}
+
+.nav-buttons {
+  gap: 10px;
+}
+
+.nav-btn {
+  padding: 12px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+/* ==================== 模拟面试小程序适配 ==================== */
+.mock-page {
+  padding: 12px;
+  padding-bottom: calc(100px + env(safe-area-inset-bottom, 20px));
+}
+
+.page-title {
+  font-size: 20px;
+}
+
+.ai-badge {
+  padding: 4px 10px;
+}
+
+.config-card {
+  padding: 16px;
+  border-radius: 12px;
+}
+
+.card-title {
+  font-size: 16px;
+  margin-bottom: 16px;
+}
+
+.config-item {
+  margin-bottom: 16px;
+}
+
+.config-label {
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.role-chip {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.question-card {
+  padding: 16px;
+}
+
+.question-text {
+  font-size: 16px;
+}
+
+.answer-section {
+  padding: 12px;
+}
+
+.answer-input {
+  min-height: 100px;
+}
+
+/* ==================== TabBar 小程序适配 ==================== */
+.mp-tab-bar {
+  height: calc(100px + env(safe-area-inset-bottom, 20px));
+  padding-bottom: env(safe-area-inset-bottom, 20px);
+}
+
+.tab-item {
+  padding: 8px 0;
+}
+
+.tab-icon {
+  font-size: 36px;
+  margin-bottom: 4px;
+}
+
+.tab-text {
+  font-size: 20px;
+}
+
+/* ==================== 复习系统小程序适配 ==================== */
+.review-page {
+  padding: 12px;
+  padding-bottom: calc(100px + env(safe-area-inset-bottom, 20px));
+}
+
+/* ==================== 设置页面小程序适配 ==================== */
+.settings-page {
+  padding: 12px;
+  padding-bottom: calc(100px + env(safe-area-inset-bottom, 20px));
+}
+
+/* ==================== 通用组件适配 ==================== */
+
+/* 按钮 */
+.at-button {
+  font-size: 28rpx !important;
+  height: 80rpx !important;
+  line-height: 80rpx !important;
+}
+
+/* 输入框 */
+.at-input__input {
+  font-size: 28rpx !important;
+  padding: 0 12px !important;
+}
+
+/* 卡片 */
+.at-card {
+  margin: 12px !important;
+}
+
+/* ==================== 适配小屏幕设备 ==================== */
+@media screen and (max-width: 320px) {
+  .stat-card {
+    padding: 12px;
+  }
+
+  .stat-value {
+    font-size: 20px;
+  }
+
+  .shortcut-card {
+    padding: 10px 6px;
+  }
+
+  .shortcut-icon {
+    font-size: 22px;
+  }
+
+  .progress-bar {
+    height: 4px;
+  }
+}
+
+/* ==================== 修复小程序特有样式问题 ==================== */
+
+/* 防止文字选中 */
+text {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 修复 textarea 在小程序的默认样式 */
+textarea {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 12px;
+  color: #fff;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+/* 修复 button 默认样式 */
+button {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  line-height: inherit;
+}
+
+button::after {
+  border: none;
+}
+
+/* 修复 input 默认样式 */
+input {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+/* 修复 scroll-view 滚动条 */
+::-webkit-scrollbar {
+  display: none;
+}

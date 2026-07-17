@@ -1,0 +1,87 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - heading "🏆 项目验收工作台" [level=1] [ref=e673] [cursor=pointer]
+    - generic [ref=e5]:
+      - button "🏠 首页" [ref=e6] [cursor=pointer]
+      - button "📊 仪表盘" [ref=e7] [cursor=pointer]
+      - button "🏆 项目验收" [ref=e8] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]: 💡
+    - generic [ref=e12]: 💡 数据导向："给我看你的数据结构，我就能知道你的代码逻辑"——Fred Brooks。好的数据结构设计比精巧的算法更重要。
+    - generic "关闭" [ref=e13] [cursor=pointer]: ✕
+  - generic [ref=e14]:
+    - generic [ref=e674]:
+      - button "← 返回项目列表" [ref=e675] [cursor=pointer]
+      - generic [ref=e676]: 简易Shell (msh)
+      - button "📤 上传文件夹" [ref=e677] [cursor=pointer]
+      - button "✏️ 在线编辑" [ref=e678] [cursor=pointer]
+    - generic [ref=e679]:
+      - generic [ref=e680]:
+        - generic [ref=e681]:
+          - generic [ref=e682]:
+            - text: 📁 项目文件
+            - generic [ref=e683]: (0个文件)
+          - generic [ref=e684]:
+            - text: 📂 尚未上传代码
+            - text: 点击上方 📤 上传文件夹 选择项目目录
+            - text: 或 ✏️ 在线编辑 手动编写代码
+        - generic [ref=e685]:
+          - button "📤 上传文件夹 (推荐)" [active] [ref=e686] [cursor=pointer]
+          - button "✏️ 在线编辑" [ref=e687] [cursor=pointer]
+          - generic [ref=e688]: 💡 支持 Chrome/Edge 选择整个文件夹，也支持 Firefox 选择文件
+      - generic [ref=e690]:
+        - generic [ref=e691]: 📋 验收清单
+        - generic [ref=e693] [cursor=pointer]:
+          - generic [ref=e694]: ▶
+          - generic [ref=e695]: 基础命令执行
+          - generic [ref=e696]: 0/5
+        - generic [ref=e698] [cursor=pointer]:
+          - generic [ref=e699]: ▶
+          - generic [ref=e700]: 管道(|)与重定向(>/<)
+          - generic [ref=e701]: 0/5
+        - generic [ref=e703] [cursor=pointer]:
+          - generic [ref=e704]: ▶
+          - generic [ref=e705]: 后台运行(&)
+          - generic [ref=e706]: 0/3
+        - generic [ref=e708] [cursor=pointer]:
+          - generic [ref=e709]: ▶
+          - generic [ref=e710]: 内置命令(cd/exit/history)
+          - generic [ref=e711]: 0/4
+        - generic [ref=e713] [cursor=pointer]:
+          - generic [ref=e714]: ▶
+          - generic [ref=e715]: 代码质量与错误处理
+          - generic [ref=e716]: 0/5
+        - generic [ref=e718] [cursor=pointer]:
+          - generic [ref=e719]: ▶
+          - generic [ref=e720]: 🔍 代码质量
+          - generic [ref=e721]: 0/3
+    - generic [ref=e722]:
+      - generic [ref=e723]:
+        - generic [ref=e724]:
+          - generic [ref=e725]: 0/25
+          - generic [ref=e726]: 综合评分
+        - generic [ref=e727]:
+          - generic [ref=e728]:
+            - generic [ref=e729]: 基础命令执行
+            - generic [ref=e730]: ☆☆☆☆☆
+            - generic [ref=e731] [cursor=pointer]: ✏️
+          - generic [ref=e732]:
+            - generic [ref=e733]: 管道(|)与重定向(>/<)
+            - generic [ref=e734]: ☆☆☆☆☆
+            - generic [ref=e735] [cursor=pointer]: ✏️
+          - generic [ref=e736]:
+            - generic [ref=e737]: 后台运行(&)
+            - generic [ref=e738]: ☆☆☆☆☆
+            - generic [ref=e739] [cursor=pointer]: ✏️
+          - generic [ref=e740]:
+            - generic [ref=e741]: 内置命令(cd/exit/history)
+            - generic [ref=e742]: ☆☆☆☆☆
+            - generic [ref=e743] [cursor=pointer]: ✏️
+          - generic [ref=e744]:
+            - generic [ref=e745]: 代码质量与错误处理
+            - generic [ref=e746]: ☆☆☆☆☆
+            - generic [ref=e747] [cursor=pointer]: ✏️
+        - textbox "📝 项目备注/审查意见..." [ref=e749]
+      - generic [ref=e750]:
+        - button "💾 保存评价" [ref=e751] [cursor=pointer]
+        - button "🏆 返回项目列表" [ref=e752] [cursor=pointer]

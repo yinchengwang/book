@@ -1,0 +1,119 @@
+/**
+ * 小程序端 Markdown 样式
+ */
+
+.md-content {
+  padding: 16px;
+  font-size: 15px;
+  line-height: 1.8;
+  color: #e2e8f0;
+}
+
+// 标题
+.md-h1 { font-size: 24px; font-weight: 600; margin: 16px 0; }
+.md-h2 { font-size: 20px; font-weight: 600; margin: 14px 0; }
+.md-h3 { font-size: 18px; font-weight: 600; margin: 12px 0; }
+.md-h4 { font-size: 16px; font-weight: 600; margin: 10px 0; }
+
+// 段落
+.md-paragraph {
+  margin: 12px 0;
+}
+
+// 行内代码
+.md-inline-code {
+  background: rgba(139, 92, 246, 0.15);
+  color: #c4b5fd;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+// 代码块
+.md-code-block {
+  margin: 16px 0;
+  background: #1e1e1e;
+  border-radius: 8px;
+  padding: 12px;
+  white-space: pre;
+  overflow-x: auto;
+
+  .md-code-lang {
+    display: block;
+    color: #9cdcfe;
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+
+  .md-code-text {
+    color: #d4d4d4;
+    font-size: 13px;
+    font-family: 'Fira Code', monospace;
+  }
+}
+
+// 引用
+.md-blockquote {
+  margin: 16px 0;
+  padding: 12px 16px;
+  background: rgba(99, 102, 241, 0.1);
+  border-left: 4px solid #6366f1;
+  border-radius: 0 8px 8px 0;
+
+  .md-blockquote-text {
+    color: #94a3b8;
+  }
+}
+
+// 列表
+.md-list {
+  margin: 12px 0;
+  padding-left: 20px;
+
+  .md-list-item {
+    display: flex;
+    margin: 6px 0;
+
+    .md-list-bullet {
+      width: 20px;
+      color: #818cf8;
+    }
+
+    .md-list-text {
+      flex: 1;
+    }
+  }
+}
+
+// 图片
+.md-image-figure {
+  margin: 20px auto;
+  text-align: center;
+
+  .md-image {
+    width: 90%;
+    border-radius: 8px;
+  }
+
+  .md-image-caption {
+    display: block;
+    margin-top: 8px;
+    font-size: 13px;
+    color: #94a3b8;
+    text-align: center;
+  }
+}
+
+// 水平线
+.md-hr {
+  height: 1px;
+  background: #334155;
+  margin: 20px 0;
+}
+
+// 空状态
+.md-empty {
+  padding: 40px;
+  text-align: center;
+  color: #64748b;
+}

@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📊 学习全景仪表盘</title>
+<style>
+:root {
+  --bg: #f0f2f5; --card: #fff; --text: #2c3e50; --text2: #7f8c8d;
+  --border: #e1e4e8; --shadow: 0 2px 10px rgba(0,0,0,0.07);
+  --radius: 12px;
+  --c:   #27ae60; --cpp: #2980b9; --ds: #e67e22;
+  --db:  #8e44ad; --py:  #e74c3c;
+  --done: #27ae60; --doing: #409eff; --review: #e6a23c; --todo: #b0b0b0;
+  --gold: #f39c12;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       background:var(--bg); color:var(--text); min-height:100vh; }
+
+/* ── 顶部 ── */
+.header {
+  background: linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);
+  color:#fff; padding:14px 20px;
+  position:sticky; top:0; z-index:100;
+  box-shadow:0 2px 12px rgba(0,0,0,.15);
+}
+.header-inner { max-width:1200px; margin:0 auto;
+  display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.header h1 { font-size:17px; font-weight:700; letter-spacing:1px; }
+/* ── 主体 ── */
+.main { max-width:1200px; margin:0 auto; padding:20px 16px 40px; }
+
+/* ── 总览卡 ── */
+.overview-grid {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
+  gap:12px; margin-bottom:20px;
+}
+.stat-card {
+  background:var(--card); border-radius:var(--radius);
+  padding:16px 12px; text-align:center; box-shadow:var(--shadow);
+}
+.stat-card .num { font-size:28px; font-weight:800; line-height:1; }
+.stat-card .lbl { font-size:12px; color:var(--text2); margin-top:4px; }
+.stat-card .trend { font-size:11px; margin-top:4px; }
+.trend-up { color:#27ae60; } .trend-dn { color:#e74c3c; }
+
+/* ── 技术栈进度条 ── */
+.stacks-grid {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:12px; margin-bottom:20px;
+}
+.stack-card {
+  background:var(--card); border-radius:var(--radius);
+  padding:16px; box-shadow:var(--shadow); cursor:pointer;
+  transition:transform .2s,box-shadow .2s;
+  border-top:3px solid transparent;
+}
+.stack-card:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(0,0,0,.1); }
+.stack-card.c   { border-color:var(--c); }
+.stack-card.cpp { border-color:var(--cpp); }
+.stack-card.ds  { border-color:var(--ds); }
+.stack-card.db  { border-color:var(--db); }
+.stack-card.py  { border-color:var(--py); }
+.stack-card.linux { border-color:var(--db); }
+.stack-header { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+.stack-icon { font-size:22px; }
+.stack-name { font-size:15px; font-weight:700; }
+.stack-sub  { font-size:11px; color:var(--text2); }
+.bar-wrap { height:6px; background:#eef0f4; border-radius:3px; overflow:hidden; margin-bottom:6px; }
+.bar-fill { height:100%; border-radius:3px; transition:width .5s; }
+.bar-fill.c   { background:var(--c); }
+.bar-fill.cpp { background:var(--cpp); }
+.bar-fill.ds  { background:var(--ds); }
+.bar-fill.db  { background:var(--db); }
+.bar-fill.py  { background:var(--py); }
+.stack-meta { display:flex; justify-content:space-between; font-size:11px; color:var(--text2); }
+
+/* ── 双栏布局 ── */
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
+@media(max-width:768px) { .two-col { grid-template-columns:1fr; } }
+
+/* ── 通用 Section ── */
+.section {
+  background:var(--card); border-radius:var(--radius);
+  padding:18px; box-shadow:var(--shadow);
+}
+.section-title {
+  font-size:15px; font-weight:700; margin-bottom:14px;
+  display:flex; align-items:center; gap:6px;
+}
+
+/* ── 盲点列表 ── */
+.blind-item {
+  display:flex; align-items:center; gap:10px;
+  padding:8px 10px; border-radius:8px; margin-bottom:6px;
+  background:#fff5f5; border:1px solid #fdd;
+}
+.blind-badge { font-size:11px; font-weight:700; padding:2px 7px; border-radius:10px; white-space:nowrap; }
+.blind-score { color:#e74c3c; background:#fde8e8; }
+.blind-self  { color:#fff; background:#e74c3c; }
+.blind-name  { flex:1; font-size:13px; font-weight:600; }
+.blind-arrow { font-size:11px; color:var(--text2); white-space:nowrap; }
+
+/* ── 热力图 ── */
+.heatmap-wrap { overflow-x:auto; }
+.heatmap-grid { display:inline-flex; gap:3px; }
+.heatmap-col  { display:flex; flex-direction:column; gap:3px; }
+.heatmap-cell {
+  width:12px; height:12px; border-radius:2px;
+  background:#eef0f4; title-cursor:pointer;
+}
+.heatmap-cell.lv1 { background:#c6efce; }
+.heatmap-cell.lv2 { background:#70c97a; }
+.heatmap-cell.lv3 { background:#27ae60; }
+.heatmap-cell.lv4 { background:#1a7a44; }
+.heatmap-months { display:flex; gap:3px; font-size:10px; color:var(--text2);
+  margin-bottom:3px; padding-left:0; }
+
+/* ── 最近测验 ── */
+.recent-list { display:flex; flex-direction:column; gap:6px; }
+.recent-item {
+  display:flex; align-items:center; gap:10px;
+  padding:8px 10px; border-radius:8px; background:#f8f9fa;
+}
+.recent-score {
+  font-size:15px; font-weight:800; min-width:36px; text-align:center;
+}
+.score-high { color:#27ae60; } .score-mid { color:#e6a23c; } .score-low { color:#e74c3c; }
+.recent-info { flex:1; }
+.recent-name { font-size:13px; font-weight:600; }
+.recent-meta { font-size:11px; color:var(--text2); }
+.recent-time { font-size:11px; color:var(--text2); white-space:nowrap; }
+
+/* ── 趋势图 ── */
+#trendChart { width:100%; height:180px; }
+
+/* ── 五年计划摘要 ── */
+.plan-card {
+  background:linear-gradient(135deg,#2c2416 0%,#4a3724 100%);
+  color:#f5e6c8; border-radius:var(--radius);
+  padding:18px; box-shadow:var(--shadow); margin-bottom:20px;
+}
+.plan-card h3 { font-size:14px; opacity:.75; margin-bottom:10px; }
+.plan-year { font-size:22px; font-weight:800; }
+.plan-theme { font-size:14px; opacity:.85; margin-bottom:12px; }
+.plan-checks { display:flex; flex-wrap:wrap; gap:6px; }
+.plan-chip {
+  padding:5px 12px; border-radius:14px; font-size:12px; font-weight:600;
+  border:1px solid rgba(245,230,200,.3); background:rgba(255,255,255,.08);
+}
+.plan-chip.done { background:rgba(39,174,96,.3); border-color:rgba(39,174,96,.5); color:#90ee90; }
+.plan-today-link {
+  display:inline-block; margin-top:10px; padding:6px 16px;
+  background:#e74c3c; color:#fff; border-radius:14px; font-size:12px;
+  font-weight:700; text-decoration:none; cursor:pointer;
+}
+
+/* ── 五年成长路线 ── */
+.roadmap-section { margin-top:20px; }
+.roadmap-grid {
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:12px; margin-top:14px;
+}
+.roadmap-stage {
+  background:linear-gradient(180deg,#fbfcfe 0%,#f3f6fa 100%);
+  border:1px solid var(--border); border-radius:14px;
+  padding:16px; position:relative; overflow:hidden;
+}
+.roadmap-stage::before {
+  content:''; position:absolute; inset:0 auto 0 0; width:4px; background:#ccd6e2;
+}
+.roadmap-stage.active { border-color:rgba(231,76,60,.25); box-shadow:0 8px 24px rgba(231,76,60,.08); }
+.roadmap-stage.active::before { background:#e74c3c; }
+.stage-years { font-size:11px; color:var(--text2); letter-spacing:.6px; text-transform:uppercase; }
+.stage-title { font-size:16px; font-weight:800; margin-top:6px; }
+.stage-theme { font-size:12px; color:#e74c3c; font-weight:700; margin-top:4px; }
+.stage-points { margin-top:10px; display:flex; flex-direction:column; gap:6px; }
+.stage-points div {
+  font-size:12px; color:#516273; padding:7px 10px;
+  border-radius:10px; background:#fff; border:1px solid #edf1f5;
+}
+.roadmap-link-bar { margin-top:14px; display:flex; justify-content:flex-end; }
+.roadmap-link {
+  display:inline-flex; align-items:center; gap:6px; text-decoration:none;
+  padding:8px 16px; border-radius:16px; background:#2c2416; color:#f5e6c8;
+  font-size:12px; font-weight:700;
+}
+
+/* ── 雷达图 canvas ── */
+#radarMini { max-width:220px; margin:0 auto; display:block; }
+
+/* ── 空状态 ── */
+.empty { text-align:center; color:var(--text2); font-size:13px; padding:20px 0; }
+</style>
+</head>
+<body>
+
+<!-- 统一导航栏 -->
+<nav id="global-nav"></nav>
+
+<div class="header">
+  <div class="header-inner">
+    <h1>📊 学习全景仪表盘</h1>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- 五年计划摘要 -->
+  <div class="plan-card" id="planCard"></div>
+
+  <!-- 总览数字 -->
+  <div class="overview-grid" id="overviewGrid"></div>
+
+  <!-- 各技术栈进度 -->
+  <div class="stacks-grid" id="stacksGrid"></div>
+
+  <div class="two-col">
+    <!-- 高估盲点 -->
+    <div class="section">
+      <div class="section-title">🔴 高估盲点 <span style="font-size:11px;font-weight:400;color:var(--text2);">（自评"掌握"但测分&lt;65）</span></div>
+      <div id="blindSpots"></div>
+    </div>
+
+    <!-- 最近测验 -->
+    <div class="section">
+      <div class="section-title">⏱️ 最近测验记录</div>
+      <div class="recent-list" id="recentList"></div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <!-- 打卡热力图 -->
+    <div class="section">
+      <div class="section-title">🔥 学习热力图 <span style="font-size:11px;font-weight:400;color:var(--text2);">（每次测验计为1次活动）</span></div>
+      <div class="heatmap-wrap" id="heatmap"></div>
+    </div>
+
+    <!-- 得分趋势折线图 -->
+    <div class="section">
+      <div class="section-title">📈 最近30次测验得分趋势</div>
+      <canvas id="trendChart"></canvas>
+    </div>
+  </div>
+
+  <div class="section roadmap-section">
+    <div class="section-title">🛤️ 五年成长路线 <span style="font-size:11px;font-weight:400;color:var(--text2);">至少三阶段连续推进，帮助把学习、项目和生活节律放到同一张图里</span></div>
+    <div class="roadmap-grid" id="roadmapGrid"></div>
+    <div class="roadmap-link-bar">
+      <a class="roadmap-link" href="five-year-plan.html">查看完整计划 →</a>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<script src="data/app/items-registry.js"></script>
+<script src="data/app/nav-component.js"></script>
+<script src="data/quiz/tech.js"></script>
+<script src="data/quiz/static.js"></script>
+<!-- 初始化统一导航栏 -->
+<script>initGlobalNav("dashboard");</script>
+<script>
+"use strict";
+
+// ========== 常量 ==========
+const STACK_META = {
+  c:   { label:'C 技术栈',    icon:'🔧', cls:'c' },
+  cpp: { label:'C++ 技术栈',  icon:'⚙️', cls:'cpp' },
+  ds:  { label:'数据结构',    icon:'🌳', cls:'ds' },
+  db:  { label:'数据库内核',  icon:'🗄️', cls:'db' },
+  py:  { label:'Python',     icon:'🐍', cls:'py' },
+  linux: { label:'Linux 技术栈', icon:'🐧', cls:'linux' },
+  vdb: { label:'向量数据库',  icon:'🔮', cls:'vdb' },
+};
+
+const KANBAN_KEY = id => 'learning-kanban-' + id;
+const QUIZ_HIST_KEY = (cat, item) => `quiz_${cat}_hist_${item}`;
+
+// ========== 数据读取 ==========
+function getKanbanState(catId) {
+  try { return JSON.parse(localStorage.getItem(KANBAN_KEY(catId))) || {}; }
+  catch(e) { return {}; }
+}
+
+function getQuizHistory(catId, itemId) {
+  try { return JSON.parse(localStorage.getItem(QUIZ_HIST_KEY(catId, itemId))) || []; }
+  catch(e) { return []; }
+}
+
+function getRecentScore(catId, itemId) {
+  const h = getQuizHistory(catId, itemId);
+  if (!h.length) return null;
+  const r3 = h.slice(-3);
+  return Math.round(r3.reduce((s, x) => s + x.score, 0) / r3.length);
+}
+
+// 获取所有测验记录（扁平化，带时间戳）
+function getAllQuizRecords() {
+  const recs = [];
+  for (const [catId, meta] of Object.entries(STACK_META)) {
+    const cat = CATEGORIES[catId];
+    if (!cat) continue;
+    cat.items.forEach(item => {
+      const h = getQuizHistory(catId, item.id);
+      h.forEach(rec => {
+        recs.push({ catId, itemId: item.id, itemTitle: item.title, ...rec });
+      });
+    });
+  }
+  recs.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  return recs;
+}
+
+// ========== 统计 ==========
+function calcStackStats(catId) {
+  const cat = CATEGORIES[catId];
+  if (!cat) return null;
+  const kanban = getKanbanState(catId);
+  let tested = 0, totalScore = 0, attempts = 0, done = 0, doing = 0, review = 0;
+  const total = cat.items.length;
+  cat.items.forEach(item => {
+    const h = getQuizHistory(catId, item.id);
+    if (h.length) {
+      tested++;
+      h.forEach(r => { totalScore += r.score; attempts++; });
+    }
+    const st = kanban[item.id] || 'todo';
+    if (st === 'done') done++;
+    else if (st === 'doing') doing++;
+    else if (st === 'review') review++;
+  });
+  return { total, tested, attempts, avgScore: attempts ? Math.round(totalScore / attempts) : 0,
+           done, doing, review, todo: total - done - doing - review };
+}
+
+// ========== 渲染总览 ==========
+function renderOverview() {
+  let totalItems = 0, totalTested = 0, totalAttempts = 0, totalScore = 0, totalDone = 0;
+  for (const catId of Object.keys(STACK_META)) {
+    const s = calcStackStats(catId);
+    if (!s) continue;
+    totalItems += s.total;
+    totalTested += s.tested;
+    totalAttempts += s.attempts;
+    totalScore += s.avgScore * s.attempts;
+    totalDone += s.done;
+  }
+  const avgScore = totalAttempts ? Math.round(totalScore / totalAttempts) : 0;
+  const mastPct = totalItems ? Math.round(totalDone / totalItems * 100) : 0;
+
+  document.getElementById('overviewGrid').innerHTML = `
+    <div class="stat-card">
+      <div class="num">${totalItems}</div>
+      <div class="lbl">知识点总数</div>
+    </div>
+    <div class="stat-card">
+      <div class="num" style="color:#2980b9">${totalTested}</div>
+      <div class="lbl">已测知识点</div>
+      <div class="trend">${Math.round(totalTested/totalItems*100)}% 覆盖率</div>
+    </div>
+    <div class="stat-card">
+      <div class="num" style="color:${avgScore>=80?'#27ae60':avgScore>=60?'#e6a23c':'#e74c3c'}">${avgScore || '--'}</div>
+      <div class="lbl">平均测验分</div>
+    </div>
+    <div class="stat-card">
+      <div class="num" style="color:#27ae60">${totalDone}</div>
+      <div class="lbl">已掌握</div>
+      <div class="trend">${mastPct}% 掌握率</div>
+    </div>
+    <div class="stat-card">
+      <div class="num" style="color:#e67e22">${totalAttempts}</div>
+      <div class="lbl">累计测验次数</div>
+    </div>
+  `;
+}
+
+// ========== 渲染技术栈进度 ==========
+function renderStacks() {
+  let html = '';
+  for (const [catId, meta] of Object.entries(STACK_META)) {
+    const s = calcStackStats(catId);
+    if (!s) continue;
+    const mastPct = Math.round(s.done / s.total * 100);
+    const testPct = Math.round(s.tested / s.total * 100);
+    html += `
+      <div class="stack-card ${meta.cls}" onclick="location.href='quiz-system.html#${catId}'">
+        <div class="stack-header">
+          <span class="stack-icon">${meta.icon}</span>
+          <div>
+            <div class="stack-name">${meta.label}</div>
+            <div class="stack-sub">${s.total} 个知识点</div>
+          </div>
+        </div>
+        <div class="bar-wrap"><div class="bar-fill ${meta.cls}" style="width:${mastPct}%"></div></div>
+        <div class="stack-meta">
+          <span>已掌握 ${s.done}/${s.total} (${mastPct}%)</span>
+          <span>测评覆盖 ${testPct}%</span>
+        </div>
+        <div class="stack-meta" style="margin-top:4px;">
+          <span style="color:#27ae60">✅${s.done}</span>
+          <span style="color:#409eff">📖${s.doing}</span>
+          <span style="color:#e6a23c">🔄${s.review}</span>
+          <span style="color:#aaa">📥${s.todo}</span>
+          <span style="color:#e67e22">🎯均分${s.avgScore || '--'}</span>
+        </div>
+      </div>`;
+  }
+  document.getElementById('stacksGrid').innerHTML = html;
+}
+
+// ========== 渲染盲点 ==========
+function renderBlindSpots() {
+  const spots = [];
+  for (const [catId, meta] of Object.entries(STACK_META)) {
+    const cat = CATEGORIES[catId];
+    if (!cat) continue;
+    const kanban = getKanbanState(catId);
+    cat.items.forEach(item => {
+      const st = kanban[item.id] || 'todo';
+      if (st !== 'done' && st !== 'review') return;
+      const sc = getRecentScore(catId, item.id);
+      if (sc !== null && sc < 65) {
+        spots.push({ catId, itemId: item.id, title: item.title,
+                     selfStatus: st, score: sc, meta });
+      }
+    });
+  }
+  spots.sort((a, b) => a.score - b.score);
+
+  if (!spots.length) {
+    document.getElementById('blindSpots').innerHTML = `<div class="empty">🎉 暂无明显盲点，继续保持！</div>`;
+    return;
+  }
+  document.getElementById('blindSpots').innerHTML = spots.slice(0, 8).map(s => `
+    <div class="blind-item" title="${s.catId}/${s.itemId}">
+      <span class="blind-badge blind-score">🎯${s.score}分</span>
+      <span class="blind-name">${s.meta.icon} ${s.title}</span>
+      <span class="blind-arrow">
+        <a href="quiz-system.html#${s.catId}/${s.itemId}" style="color:#e74c3c;font-size:11px;text-decoration:none;">去测试 →</a>
+      </span>
+    </div>`).join('');
+}
+
+// ========== 渲染最近测验 ==========
+function renderRecentList() {
+  const recs = getAllQuizRecords().slice(0, 10);
+  if (!recs.length) {
+    document.getElementById('recentList').innerHTML = `<div class="empty">尚无测验记录，去 <a href="quiz-system.html">评测系统</a> 开始第一次测试！</div>`;
+    return;
+  }
+  document.getElementById('recentList').innerHTML = recs.map(r => {
+    const cls = r.score >= 80 ? 'score-high' : r.score >= 60 ? 'score-mid' : 'score-low';
+    const meta = STACK_META[r.catId] || {};
+    const ts = r.ts ? new Date(r.ts) : null;
+    const timeStr = ts ? `${ts.getMonth()+1}/${ts.getDate()} ${String(ts.getHours()).padStart(2,'0')}:${String(ts.getMinutes()).padStart(2,'0')}` : '';
+    return `
+      <div class="recent-item">
+        <div class="recent-score ${cls}">${r.score}</div>
+        <div class="recent-info">
+          <div class="recent-name">${meta.icon || ''} ${r.itemTitle}</div>
+          <div class="recent-meta">${meta.label || r.catId}</div>
+        </div>
+        <div class="recent-time">${timeStr}</div>
+      </div>`;
+  }).join('');
+}
+
+// ========== 热力图 ==========
+function renderHeatmap() {
+  const recs = getAllQuizRecords();
+  // 按日期聚合
+  const dayMap = {};
+  recs.forEach(r => {
+    if (!r.ts) return;
+    const d = new Date(r.ts);
+    const key = `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+    dayMap[key] = (dayMap[key] || 0) + 1;
+  });
+
+  // 最近53周（371天）
+  const today = new Date();
+  const cells = [];
+  for (let i = 370; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const key = `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+    cells.push({ date: d, count: dayMap[key] || 0 });
+  }
+
+  // 按周分组
+  const weeks = [];
+  let week = [];
+  // 从第一个周日开始
+  const firstDow = cells[0].date.getDay();
+  for (let i = 0; i < firstDow; i++) week.push(null);
+  cells.forEach(c => {
+    week.push(c);
+    if (week.length === 7) { weeks.push(week); week = []; }
+  });
+  if (week.length) weeks.push(week);
+
+  const lvCls = n => n === 0 ? '' : n === 1 ? 'lv1' : n <= 2 ? 'lv2' : n <= 4 ? 'lv3' : 'lv4';
+
+  const grid = weeks.map(w => `
+    <div class="heatmap-col">
+      ${w.map(c => c === null
+        ? `<div class="heatmap-cell"></div>`
+        : `<div class="heatmap-cell ${lvCls(c.count)}" title="${c.date.getMonth()+1}/${c.date.getDate()} ${c.count}次测验"></div>`
+      ).join('')}
+    </div>`).join('');
+
+  document.getElementById('heatmap').innerHTML = `<div class="heatmap-grid">${grid}</div>
+    <div style="display:flex;gap:4px;margin-top:8px;align-items:center;font-size:10px;color:var(--text2);">
+      少 <div class="heatmap-cell" style="display:inline-block"></div>
+      <div class="heatmap-cell lv1" style="display:inline-block"></div>
+      <div class="heatmap-cell lv2" style="display:inline-block"></div>
+      <div class="heatmap-cell lv3" style="display:inline-block"></div>
+      <div class="heatmap-cell lv4" style="display:inline-block"></div> 多
+    </div>`;
+}
+
+// ========== 趋势折线图 ==========
+function renderTrendChart() {
+  const recs = getAllQuizRecords().slice(0, 30).reverse();
+  const canvas = document.getElementById('trendChart');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.offsetWidth || 400;
+  const H = 180;
+  canvas.width = W * devicePixelRatio;
+  canvas.height = H * devicePixelRatio;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+
+  if (!recs.length) {
+    ctx.fillStyle = '#aaa'; ctx.textAlign = 'center'; ctx.font = '13px sans-serif';
+    ctx.fillText('暂无数据', W/2, H/2);
+    return;
+  }
+
+  const pad = { t:16, r:16, b:30, l:36 };
+  const cW = W - pad.l - pad.r;
+  const cH = H - pad.t - pad.b;
+
+  // 网格线
+  ctx.strokeStyle = '#eef0f4'; ctx.lineWidth = 1;
+  [0, 25, 50, 75, 100].forEach(v => {
+    const y = pad.t + cH - (v / 100) * cH;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + cW, y); ctx.stroke();
+    ctx.fillStyle = '#aaa'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText(v, pad.l - 4, y + 3);
+  });
+
+  const xStep = cW / Math.max(recs.length - 1, 1);
+  const pts = recs.map((r, i) => ({
+    x: pad.l + i * xStep,
+    y: pad.t + cH - (r.score / 100) * cH,
+    score: r.score
+  }));
+
+  // 渐变填充
+  const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + cH);
+  grad.addColorStop(0, 'rgba(64,158,255,.25)');
+  grad.addColorStop(1, 'rgba(64,158,255,.02)');
+  ctx.beginPath();
+  pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.lineTo(pts[pts.length-1].x, pad.t + cH);
+  ctx.lineTo(pts[0].x, pad.t + cH);
+  ctx.fillStyle = grad; ctx.fill();
+
+  // 折线
+  ctx.beginPath(); ctx.strokeStyle = '#409eff'; ctx.lineWidth = 2;
+  pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.stroke();
+
+  // 圆点
+  pts.forEach(p => {
+    ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2);
+    const col = p.score >= 80 ? '#27ae60' : p.score >= 60 ? '#e6a23c' : '#e74c3c';
+    ctx.fillStyle = col; ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+  });
+
+  // x轴标签（仅首尾）
+  ctx.fillStyle = '#aaa'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  if (recs.length > 0) {
+    const first = recs[0]; const last = recs[recs.length-1];
+    const fmt = r => r.ts ? (() => { const d=new Date(r.ts); return `${d.getMonth()+1}/${d.getDate()}`; })() : '';
+    ctx.fillText(fmt(first), pts[0].x, H - 4);
+    if (recs.length > 1) ctx.fillText(fmt(last), pts[pts.length-1].x, H - 4);
+  }
+}
+
+// ========== 五年计划摘要 ==========
+function renderPlanCard() {
+  const year = new Date().getFullYear();
+  const YEAR_CONFIG = {
+    2026: { name:'筑基年', core:'打好基础', cls:'y1' },
+    2027: { name:'能力年', core:'提升硬实力', cls:'y2' },
+    2028: { name:'提质年', core:'优化生活与认知', cls:'y3' },
+    2029: { name:'抗风险年', core:'建立保障与自由', cls:'y4' },
+    2030: { name:'丰收年', core:'全面进入良性循环', cls:'y5' },
+  };
+  const cfg = YEAR_CONFIG[year] || YEAR_CONFIG[2026];
+
+  // 读今日打卡
+  const todayKey = `five-year-checkin-${new Date().toISOString().slice(0,10)}`;
+  let todayData = {};
+  try { todayData = JSON.parse(localStorage.getItem(todayKey)) || {}; } catch(e) {}
+
+  const CORE_IDS = ['sleep','exercise','diet','posture','deepwork','read','reflect','save','network','hobby'];
+  const doneCount = CORE_IDS.filter(id => todayData[id]).length;
+
+  document.getElementById('planCard').innerHTML = `
+    <h3>🏗️ 五年建设计划 · 当前进程</h3>
+    <div class="plan-year">${year} — ${cfg.name}</div>
+    <div class="plan-theme">核心目标：${cfg.core}</div>
+    <div style="font-size:12px;opacity:.75;margin-bottom:10px;">今日打卡：<strong>${doneCount}/${CORE_IDS.length}</strong> 项完成</div>
+    <div class="plan-checks">
+      ${CORE_IDS.map(id => `<span class="plan-chip ${todayData[id]?'done':''}">${todayData[id]?'✅':''} ${id}</span>`).join('')}
+    </div>
+    <a class="plan-today-link" href="five-year-plan.html">查看详细计划 →</a>`;
+}
+
+function renderRoadmapSummary() {
+  const year = new Date().getFullYear();
+  const stages = [
+    {
+      years:'2026',
+      title:'筑基年',
+      theme:'打好基础',
+      points:['补齐 C/C++/DS/DB/Python/Linux 主干知识点','系统学习 Linux 系统编程与内核观测','建立作息、运动、深度工作节律']
+    },
+    {
+      years:'2027',
+      title:'能力年',
+      theme:'提升硬实力',
+      points:['把知识点升级为可讲清楚的项目能力','强化系统设计、数据库与工程实践','形成可复用的调试、测试和交付流程']
+    },
+    {
+      years:'2028',
+      title:'提质年',
+      theme:'优化生活与认知',
+      points:['把学习节奏和生活质量一起拉稳','强化输出、复盘和长期认知积累','减少无效消耗，提升执行稳定性']
+    },
+    {
+      years:'2029',
+      title:'抗风险年',
+      theme:'建立保障与自由',
+      points:['补齐职业、财务和健康三类风险防线','让技能结构具备更强迁移与变现能力','沉淀一套可长期复用的系统方法']
+    },
+    {
+      years:'2030',
+      title:'丰收年',
+      theme:'全面进入良性循环',
+      points:['技术、项目、收入和生活进入正反馈','保持稳定学习同时扩大成果输出','把阶段经验固化为长期成长资产']
+    }
+  ];
+
+  document.getElementById('roadmapGrid').innerHTML = stages.map(stage => `
+    <div class="roadmap-stage ${String(year) === stage.years ? 'active' : ''}">
+      <div class="stage-years">${stage.years}</div>
+      <div class="stage-title">${stage.title}</div>
+      <div class="stage-theme">${stage.theme}</div>
+      <div class="stage-points">
+        ${stage.points.map(point => `<div>${point}</div>`).join('')}
+      </div>
+    </div>`).join('');
+}
+
+// ========== 初始化 ==========
+function init() {
+  renderPlanCard();
+  renderRoadmapSummary();
+  renderOverview();
+  renderStacks();
+  renderBlindSpots();
+  renderRecentList();
+  renderHeatmap();
+  // 延迟等 canvas 布局完成
+  requestAnimationFrame(() => renderTrendChart());
+}
+
+init();
+</script>
+</body>
+</html>

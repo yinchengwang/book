@@ -1,0 +1,103 @@
+- generic [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e390]:
+      - link "🎯 Reading Radar" [ref=e391] [cursor=pointer]:
+        - /url: index.html
+        - generic [ref=e392]: 🎯
+        - generic [ref=e393]: Reading Radar
+      - list [ref=e394]:
+        - listitem [ref=e395]:
+          - link "📡 雷达图" [active] [ref=e396] [cursor=pointer]:
+            - /url: index.html
+            - generic [ref=e397]: 📡
+            - generic [ref=e398]: 雷达图
+        - listitem [ref=e399]:
+          - link "📝 摘抄" [ref=e400] [cursor=pointer]:
+            - /url: excerpt.html
+            - generic [ref=e401]: 📝
+            - generic [ref=e402]: 摘抄
+        - listitem [ref=e403]:
+          - link "📋 看板" [ref=e404] [cursor=pointer]:
+            - /url: learning-kanban.html
+            - generic [ref=e405]: 📋
+            - generic [ref=e406]: 看板
+        - listitem [ref=e407]:
+          - link "📝 测验" [ref=e408] [cursor=pointer]:
+            - /url: quiz-system.html
+            - generic [ref=e409]: 📝
+            - generic [ref=e410]: 测验
+        - listitem [ref=e411]:
+          - link "📚 学习" [ref=e412] [cursor=pointer]:
+            - /url: learn.html
+            - generic [ref=e413]: 📚
+            - generic [ref=e414]: 学习
+        - listitem [ref=e415]:
+          - link "📖 图解" [ref=e416] [cursor=pointer]:
+            - /url: grok.html
+            - generic [ref=e417]: 📖
+            - generic [ref=e418]: 图解
+        - listitem [ref=e419]:
+          - link "📊 仪表盘" [ref=e420] [cursor=pointer]:
+            - /url: dashboard.html
+            - generic [ref=e421]: 📊
+            - generic [ref=e422]: 仪表盘
+        - listitem [ref=e423]:
+          - link "🗓️ 五年计划" [ref=e424] [cursor=pointer]:
+            - /url: five-year-plan.html
+            - generic [ref=e425]: 🗓️
+            - generic [ref=e426]: 五年计划
+        - listitem [ref=e427]:
+          - link "🎤 面试题库" [ref=e428] [cursor=pointer]:
+            - /url: interview.html
+            - generic [ref=e429]: 🎤
+            - generic [ref=e430]: 面试题库
+        - listitem [ref=e431]:
+          - link "📊 面试追踪" [ref=e432] [cursor=pointer]:
+            - /url: interview-tracker.html
+            - generic [ref=e433]: 📊
+            - generic [ref=e434]: 面试追踪
+        - listitem [ref=e435]:
+          - link "📝 刷题计划" [ref=e436] [cursor=pointer]:
+            - /url: practice.html
+            - generic [ref=e437]: 📝
+            - generic [ref=e438]: 刷题计划
+  - banner [ref=e439]:
+    - generic [ref=e440]: C/C++ 程序员读书雷达
+    - generic [ref=e441]:
+      - button "📚 读书雷达" [ref=e442] [cursor=pointer]
+      - button "🔧 C 技术栈" [ref=e443] [cursor=pointer]
+      - button "⚙️ C++ 技术栈" [ref=e444] [cursor=pointer]
+      - button "🌳 数据结构" [ref=e445] [cursor=pointer]
+      - button "🗄️ 数据库内核" [ref=e446] [cursor=pointer]
+      - button "🐍 Python" [ref=e447] [cursor=pointer]
+      - button "🐧 Linux" [ref=e448] [cursor=pointer]
+      - button "🔮 向量数据库" [ref=e449] [cursor=pointer]
+    - button "📡 雷达视图" [ref=e451] [cursor=pointer]
+  - generic [ref=e452]:
+    - generic [ref=e453]:
+      - generic [ref=e454]:
+        - generic [ref=e455]: "0"
+        - generic [ref=e456]: 📚 待阅读
+      - generic [ref=e457]:
+        - generic [ref=e458]: "0"
+        - generic [ref=e459]: 📖 阅读中
+      - generic [ref=e460]:
+        - generic [ref=e461]: "0"
+        - generic [ref=e462]: ✅ 已读完
+      - generic [ref=e463]:
+        - generic [ref=e464]: "0"
+        - generic [ref=e465]: ⭐ 已掌握
+    - textbox "🔍 搜索书名、标签、作者..." [ref=e467]
+    - generic [ref=e468]:
+      - button "📚 全部" [ref=e469] [cursor=pointer]
+      - button "📗 语言与编译" [ref=e470] [cursor=pointer]
+      - button "📘 系统与网络" [ref=e471] [cursor=pointer]
+      - button "📙 数据结构与算法" [ref=e472] [cursor=pointer]
+      - button "📕 工程与架构" [ref=e473] [cursor=pointer]
+    - generic [ref=e474]:
+      - generic [ref=e477]:
+        - generic [ref=e478]: 待阅读
+        - generic [ref=e480]: 阅读中
+        - generic [ref=e482]: 已读完
+        - generic [ref=e484]: 已掌握
+      - generic [ref=e486]: 💡 点击圆点查看详情 | 技术栈模式下内圈颜色=评测掌握度

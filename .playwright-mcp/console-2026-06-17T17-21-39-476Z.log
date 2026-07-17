@@ -1,0 +1,15 @@
+[   12912ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[ 1207831ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[ 1210288ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[ 1212818ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8080/data/content/learn-content-c.js:0
+[ 1212834ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8080/data/content/learn-content-vdb.js:0
+[ 1212834ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8080/data/content/learn-content-cpp.js:0
+[ 1212835ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8080/data/content/learn-content-ds.js:0
+[ 1212836ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8080/data/content/learn-content-db.js:0
+[ 1212837ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8080/data/content/learn-content-py.js:0
+[ 1212837ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8080/data/content/learn-content-linux.js:0
+[ 1212852ms] TypeError: Cannot set properties of null (setting 'href')
+    at renderHero (http://localhost:8080/learn.html:1243:46)
+    at render (http://localhost:8080/learn.html:1764:3)
+[ 1216338ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[ 1260045ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833

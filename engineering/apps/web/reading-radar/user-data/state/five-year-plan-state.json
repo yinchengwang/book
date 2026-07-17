@@ -1,0 +1,28 @@
+{
+  "2026": {
+    "06": {
+      "08": {
+        "checks": {
+          "sleep": true,
+          "exercise": true,
+          "diet": true,
+          "posture": false,
+          "deepwork": true,
+          "output": true,
+          "english": false,
+          "accounting": true,
+          "saving": false,
+          "family": true,
+          "social": false,
+          "gratitude": false,
+          "reading": true,
+          "review": true,
+          "newthing": false,
+          "direction": false,
+          "habit": false
+        },
+        "note": "今天完成了HNSW索引优化的代码review，提交了PR。晚上读了两章《深入理解计算机系统》。继续保持！"
+      }
+    }
+  }
+}

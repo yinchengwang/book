@@ -1,0 +1,299 @@
+{
+    "launch": {
+
+        "configurations": [],
+        "compounds": []
+    },
+    "marketplace.serviceUrl": "https://mirrors.tuna.tsinghua.edu.cn/vscode/",
+    "files.associations": {
+        "locale.h": "c",
+        "snake.h": "c",
+        "vector": "cpp",
+        "stdbool.h": "c",
+        "algorithm": "cpp",
+        "string": "cpp",
+        "stdio.h": "c",
+        "array": "c",
+        "string_view": "c",
+        "stdlib.h": "c",
+        "unordered_map": "cpp",
+        "map": "cpp",
+        "*.tcc": "cpp",
+        "deque": "cpp",
+        "optional": "cpp",
+        "numeric": "cpp",
+        "atomic": "cpp",
+        "cctype": "cpp",
+        "clocale": "cpp",
+        "cmath": "cpp",
+        "cstdarg": "cpp",
+        "cstddef": "cpp",
+        "cstdint": "cpp",
+        "cstdio": "cpp",
+        "cstdlib": "cpp",
+        "cwchar": "cpp",
+        "cwctype": "cpp",
+        "exception": "cpp",
+        "functional": "cpp",
+        "iterator": "cpp",
+        "memory": "cpp",
+        "memory_resource": "cpp",
+        "set": "cpp",
+        "system_error": "cpp",
+        "tuple": "cpp",
+        "type_traits": "cpp",
+        "utility": "cpp",
+        "fstream": "cpp",
+        "initializer_list": "cpp",
+        "iosfwd": "cpp",
+        "iostream": "cpp",
+        "istream": "cpp",
+        "limits": "cpp",
+        "new": "cpp",
+        "ostream": "cpp",
+        "sstream": "cpp",
+        "stdexcept": "cpp",
+        "streambuf": "cpp",
+        "typeinfo": "cpp",
+        "sort_src.h": "c",
+        "ctime": "cpp",
+        "random": "cpp",
+        "string.h": "c",
+        "uthash.h": "c",
+        "unordered_set": "c",
+        "tree.h": "c",
+        "queue.h": "c",
+        "common.h": "c",
+        "list.h": "c",
+        "any": "c",
+        "charconv": "c",
+        "compare": "c",
+        "ratio": "c",
+        "variant": "c",
+        "stdint.h": "c",
+        "span": "c",
+        "format": "c",
+        "*.ic": "cpp",
+        "adlist.h": "c",
+        "redis_adlist.h": "c",
+        "list": "c",
+        "chrono": "c",
+        "util.h": "c",
+        "redis_sds.h": "c",
+        "types.h": "c",
+        "bitset": "c",
+        "regex": "c",
+        "leetcode_1_100": "cpp",
+        "*.def": "c",
+        "forward_list": "cpp",
+        "cstring": "c"
+    },
+
+    // highlight-words插件, 单词高亮
+    // 设置快捷键后使用 Hightlight Toggle Current, Highlight remove all
+    "highlightwords.colors": [
+        { "light": "#b3d9ff", "dark": "cyan" },
+        { "light": "#e6ffb3", "dark": "pink" },
+        { "light": "#b3b3ff", "dark": "lightgreen" },
+        { "light": "#ffd9b3", "dark": "magenta" },
+        { "light": "#ffb3ff", "dark": "cornflowerblue" },
+        { "light": "#b3ffb3", "dark": "orange" },
+        { "light": "#ffff80", "dark": "green" },
+        { "light": "#d1e0e0", "dark": "red" }
+    ],
+    "highlightwords.box": {
+        "light": true,
+        "dark": false
+    },
+    "highlightwords.defaultMode": {
+        "default": 0
+    },
+    "highlightwords.showSidebar": {
+        "default": true
+    },
+
+    // 在一定数量的等宽字符后显示垂直标尺
+    // python每行不超过80, C/C++每行不超过120
+    "editor.rulers": [80, 120],
+    // 启用时根据文件内容进行重写。
+    "editor.tabSize": 4,
+    // 把空格变成点
+    "editor.renderWhitespace": "boundary",
+
+    // cmake配置
+    // "cmake.sourceDirectory": "${workspaceFolder}",
+    // "cmake.ignoreCMakeListsMissing": true,
+
+    // tree 标签配置
+    "todo-tree.regex.regex": "((%|#|//|/\\*|<!--|^\\s*\\*)\\s*($TAGS)|^\\s*- \\[ \\])", //这是注释的正则匹配
+    "todo-tree.general.tags": [
+        "todo", //添加自定义的标签成员,将在下面实现它们的样式
+        "fixme",
+        "bug",
+        "hack",
+        "note",
+        "notice",
+        "test",
+        "question",
+    ],
+    "todo-tree.regex.regexCaseSensitive": false, //设置为false允许匹配不考虑大小写
+    "todo-tree.highlights.defaultHighlight": { //如果相应变量没赋值就会使用这里的默认值
+        "foreground": "#000000", //字体颜色
+        "background": "#ffff00", //背景色
+        "icon": "check", //标签样式 check 是一个对号的样式
+        "rulerColour": "#ffff00", //边框颜色
+        "type": "tag", //填充色类型  可在TODO TREE 细节页面找到允许的值 在编辑器中突出显示多少 
+        "iconColour": "#ffff00" //标签颜色
+    },
+    "todo-tree.highlights.customHighlight": {
+        // 未来需要做的功能代码
+        "todo": {
+            "icon": "alert", //标签样式
+            "background": "#c9c552", //背景色
+            "rulerColour": "#c9c552", //外框颜色
+            "iconColour": "#c9c552", //标签颜色
+        },
+        // 代码存在缺陷需要修复
+        "fixme": {
+            "background": "#07a507",
+            "icon": "beaker",
+            "rulerColour": "#07a507",
+            "iconColour": "#07a507",
+        },
+        // 必须要修复的BUG  
+        "bug": {
+            "background": "#eb5c5c",
+            "icon": "bug",
+            "rulerColour": "#eb5c5c",
+            "iconColour": "#eb5c5c",
+        },
+        // 变通方法 差强人意的解决方案
+        "hack": {
+            "background": "#d65d8e",
+            "icon": "versions",
+            "rulerColour": "#d65d8e",
+            "iconColour": "#d65d8e",
+        },
+        // 说明一下
+        "note": {
+            "background": "#f90",
+            "icon": "note",
+            "rulerColour": "#f90",
+            "iconColour": "#f90",
+        },
+        // 代码需要引起警惕
+        "notice": {
+            "background": "#38b2f4",
+            "icon": "check",
+            "rulerColour": "#38b2f4",
+            "iconColour": "#38b2f4",
+        },
+        // 测试代码
+        "test": {
+            "background": "#df7be6",
+            "icon": "flame",
+            "rulerColour": "#df7be6",
+            "iconColour": "#df7be6",
+        },
+        // 疑问
+        "question": {
+            "background": "#5eec95",
+            "icon": "check",
+            "rulerColour": "#5eec95",
+            "iconColour": "#5eec95",
+        },
+    },
+    "cmake.showOptionsMovedNotification": false,
+    "cmake.pinnedCommands": [
+        "workbench.action.tasks.configureTaskRunner",
+        "workbench.action.tasks.runTask"
+    ],
+
+//     {
+//     "vim.easymotion": true,
+//     "vim.incsearch": true,
+//     "vim.useSystemClipboard": true,
+//     "vim.useCtrlKeys": true,
+//     "vim.hlsearch": true,
+//     "vim.insertModeKeyBindings": [
+//     {
+//         "before": ["j", "j"],
+//         "after": ["<Esc>"]
+//     }
+//     ],
+//     "vim.normalModeKeyBindingsNonRecursive": [
+//     {
+//         "before": ["<leader>", "d"],
+//         "after": ["d", "d"]
+//     },
+//     {
+//         "before": ["<C-n>"],
+//         "commands": [":nohl"]
+//     },
+//     {
+//         "before": ["K"],
+//         "commands": ["lineBreakInsert"],
+//         "silent": true
+//     }
+//     ],
+//     "vim.leader": "<space>",
+//     "vim.handleKeys": {
+//     "<C-a>": false,
+//     "<C-f>": false
+//     },
+
+//     "// To improve performance",
+//     "extensions.experimental.affinity": {
+//     "vscodevim.vim": 1
+//     }
+// }
+
+    // KoroFileHeader插件配置
+    // "fileheader.customMade": {
+    //     "Author": "git config user.name", // 作者名称
+    //     "Date": "Do not edit", // 文件创建时间（不变）
+    //     "LastEditors": "git config user.name", // 文件最后编辑者
+    //     "LastEditTime": "Do not edit", // 文件最后编辑时间
+    //     "Description": "", // 文件描述
+    //     "FilePath": "Do not edit", // 文件路径（自动更新）
+    //     // "Environment": "Your Environment", // 开发环境
+    //     // "Company": "Your Company" // 公司名称（可选）
+    // },
+    // "fileheader.cursorMode": {
+    //     "description": "", // 函数描述
+    //     "param": "", // 参数说明
+    //     "return": "", // 返回值说明
+    //     "author": "git config user.name" // 作者姓名
+    // },
+
+    // indent-rainbow插件配置
+    // the same colors as above but more visible
+    "indentRainbow.colors": [
+        "rgba(255,255,64,0.07)",
+        "rgba(127,255,127,0.07)",
+        "rgba(255,127,255,0.07)",
+        "rgba(79,236,236,0.07)"
+    ],
+    // Using the light mode
+    "indentRainbow.indicatorStyle": "light",
+    // we use a simple 1 pixel wide line
+    "indentRainbow.lightIndicatorStyleLineWidth": 1,
+    "indentRainbow.ignoreErrorLanguages" : [
+        "markdown",
+        "haskell",
+    ],
+    // Example of regular expression in JSON (note double backslash to escape characters)
+    "indentRainbow.ignoreLinePatterns" : [
+        "/[ \t]* [*]/g", // lines begining with <whitespace><space>*
+        "/[ \t]+[/]{2}/g" // lines begininning with <whitespace>//
+    ],
+    "indentRainbow.colorOnWhiteSpaceOnly": true,
+    "python-envs.defaultEnvManager": "ms-python.python:system",
+    "chat.tools.terminal.autoApprove": {
+        "/^node --check \"c:\\\\code\\\\book\\\\project\\\\reading-radar\\\\data\\\\quiz-questions-py\\.js\" 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    } // false is the default
+
+}

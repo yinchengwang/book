@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===========================
+   全局样式
+   =========================== */
+.h5-root {
+  --primary-color: #6366f1;
+  --success-color: #10b981;
+  --warning-color: #f59e0b;
+  --danger-color: #ef4444;
+  --text-color: #ffffff;
+  --text-color-secondary: #94a3b8;
+  --bg-color: #0f172a;
+}
+
+/* 毛玻璃效果 */
+.glass {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* 领域颜色 */
+.domain-c { color: #3b82f6; }
+.domain-algo { color: #8b5cf6; }
+.domain-ds { color: #06b6d4; }
+.domain-db { color: #f59e0b; }
+.domain-cpp { color: #ef4444; }
+.domain-sys { color: #10b981; }
+.domain-eng { color: #6366f1; }

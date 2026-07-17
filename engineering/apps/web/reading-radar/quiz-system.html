@@ -1,0 +1,2890 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>C/C++/数据结构 技术栈智能评测系统</title>
+<style>
+/* ===== 变量与基础 ===== */
+:root {
+  --bg: #f0f2f5; --card: #fff; --text: #2c3e50; --text2: #7f8c8d;
+  --border: #e1e4e8; --shadow: 0 1px 4px rgba(0,0,0,0.06);
+  --radius: 10px; --radius-sm: 6px;
+  --lang: #27ae60; --sys: #2980b9; --algo: #e67e22; --eng: #e74c3c;
+  --basic: #27ae60; --intermediate: #2980b9; --advanced: #e74c3c;
+  --correct: #27ae60; --wrong: #e74c3c;
+  --primary: #409eff; --primary-dark: #337ecc;
+  --gold: #f39c12;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg); color: var(--text); min-height: 100vh;
+  line-height: 1.6;
+}
+
+/* ===== 顶部导航 ===== */
+.header {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  color: #fff; padding: 12px 20px; position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+}
+.header-inner { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
+.header h1 { font-size: 17px; font-weight: 700; cursor: pointer; letter-spacing: 1px; }
+
+
+/* ===== 主容器 ===== */
+.main { max-width: 1100px; margin: 16px auto; padding: 0 16px; }
+
+/* ===== 首页分类卡片 ===== */
+.categories { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin-bottom: 20px; }
+.cat-card {
+  background: var(--card); border-radius: var(--radius); padding: 20px;
+  box-shadow: var(--shadow); cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
+  border: 2px solid transparent;
+}
+.cat-card:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,0.1); border-color: var(--primary); }
+.cat-card .cat-icon { font-size: 36px; margin-bottom: 8px; }
+.cat-card .cat-name { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.cat-card .cat-meta { font-size: 13px; color: var(--text2); }
+.cat-card .cat-progress { margin-top: 10px; }
+.cat-progress-bar {
+  height: 6px; background: #e9ecef; border-radius: 3px; overflow: hidden; margin-top: 4px;
+}
+.cat-progress-fill { height: 100%; background: var(--primary); border-radius: 3px; transition: width 0.5s; }
+
+/* ===== 仪表盘概览 ===== */
+.dash-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px; }
+.dash-stat {
+  background: var(--card); border-radius: var(--radius); padding: 14px 16px;
+  box-shadow: var(--shadow); text-align: center;
+}
+.dash-stat .stat-num { font-size: 28px; font-weight: 700; color: var(--primary); }
+.dash-stat .stat-label { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+/* ===== 知识点列表 ===== */
+.section-header {
+  font-size: 15px; font-weight: 700; margin: 16px 0 8px; padding: 8px 12px;
+  border-radius: var(--radius-sm); display: flex; align-items: center; gap: 8px;
+}
+.section-header.lang { background: #e8f5e9; color: #2e7d32; }
+.section-header.sys  { background: #e3f2fd; color: #1565c0; }
+.section-header.algo { background: #fff3e0; color: #e65100; }
+.section-header.eng  { background: #fce4ec; color: #c62828; }
+.section-header .count { font-size: 12px; font-weight: 400; opacity: 0.7; }
+
+.item-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.item-row {
+  background: var(--card); border-radius: var(--radius-sm); padding: 12px 16px;
+  box-shadow: var(--shadow); display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; transition: all 0.15s; border-left: 4px solid transparent;
+}
+.item-row:hover { transform: translateX(3px); box-shadow: 0 3px 10px rgba(0,0,0,0.1); }
+.item-row.lang { border-left-color: var(--lang); }
+.item-row.sys  { border-left-color: var(--sys); }
+.item-row.algo { border-left-color: var(--algo); }
+.item-row.eng { border-left-color: var(--eng); }
+.item-info { flex: 1; }
+.item-title { font-size: 14px; font-weight: 600; }
+.item-desc { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.item-stats { text-align: right; margin-left: 12px; flex-shrink: 0; }
+.item-score { font-size: 18px; font-weight: 700; }
+.item-score.high { color: var(--correct); }
+.item-score.mid { color: var(--gold); }
+.item-score.low { color: var(--wrong); }
+.item-score.none { color: var(--text2); }
+.item-attempts { font-size: 11px; color: var(--text2); }
+
+/* ===== 搜索/筛选 ===== */
+.filter-bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.filter-bar input {
+  flex: 1; min-width: 200px; padding: 10px 14px; border: 2px solid var(--border);
+  border-radius: 20px; font-size: 14px; outline: none; transition: border 0.2s;
+}
+.filter-bar input:focus { border-color: var(--primary); }
+.filter-bar select {
+  padding: 10px 14px; border: 2px solid var(--border); border-radius: 20px;
+  font-size: 14px; outline: none; background: #fff; cursor: pointer;
+}
+.back-btn {
+  display: inline-flex; align-items: center; gap: 4px; padding: 8px 16px;
+  border: 1px solid var(--border); border-radius: 20px; background: var(--card);
+  font-size: 13px; cursor: pointer; color: var(--text); margin-bottom: 12px; transition: all 0.2s;
+}
+.back-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+/* ===== 测试界面 ===== */
+.test-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;
+  padding: 10px 14px; background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.test-progress { font-size: 13px; color: var(--text2); }
+.test-timer { font-size: 20px; font-weight: 700; color: var(--primary); font-variant-numeric: tabular-nums; }
+.test-timer.warning { color: var(--wrong); animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: 0.5; } }
+
+.question-card {
+  background: var(--card); border-radius: var(--radius); padding: 20px 24px;
+  box-shadow: var(--shadow); margin-bottom: 16px;
+}
+.q-meta { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.q-badge {
+  padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;
+}
+.q-badge.type { background: #e3f2fd; color: #1565c0; }
+.q-badge.diff-basic { background: #e8f5e9; color: #2e7d32; }
+.q-badge.diff-intermediate { background: #e3f2fd; color: #1565c0; }
+.q-badge.diff-advanced { background: #fce4ec; color: #c62828; }
+
+.q-scenario {
+  background: #f0f7ff; border-left: 4px solid var(--primary); padding: 10px 14px;
+  border-radius: 0 8px 8px 0; margin-bottom: 14px; font-size: 13px; color: #506690;
+}
+.q-stem { font-size: 15px; font-weight: 600; margin-bottom: 14px; line-height: 1.8; }
+.q-code {
+  background: #1e1e1e; color: #d4d4d4; padding: 14px 18px; border-radius: var(--radius-sm);
+  font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+  font-size: 13px; overflow-x: auto; margin-bottom: 16px; white-space: pre; line-height: 1.7;
+}
+
+.q-options { display: flex; flex-direction: column; gap: 8px; }
+.q-option {
+  display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+  border: 2px solid var(--border); border-radius: var(--radius-sm); cursor: pointer;
+  transition: all 0.15s; font-size: 14px;
+}
+.q-option:hover { border-color: var(--primary); background: #f0f7ff; }
+.q-option.selected { border-color: var(--primary); background: #e8f0fe; }
+.q-option.correct { border-color: var(--correct); background: #e8f5e9; }
+.q-option.wrong { border-color: var(--wrong); background: #fce4ec; }
+.q-option.disabled { pointer-events: none; opacity: 0.8; }
+
+.q-radio {
+  width: 20px; height: 20px; border-radius: 50%; border: 2px solid #ccc;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.q-radio.checked { border-color: var(--primary); background: var(--primary); }
+.q-radio.checked::after { content: ''; width: 8px; height: 8px; background: #fff; border-radius: 50%; }
+
+.q-checkbox {
+  width: 20px; height: 20px; border-radius: 4px; border: 2px solid #ccc;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.q-checkbox.checked { border-color: var(--primary); background: var(--primary); }
+.q-checkbox.checked::after { content: '✓'; color: #fff; font-size: 14px; }
+
+.q-input {
+  width: 100%; padding: 10px 14px; border: 2px solid var(--border); border-radius: var(--radius-sm);
+  font-family: "Cascadia Code", "Consolas", monospace; font-size: 14px; outline: none; margin-bottom: 16px;
+}
+.q-input:focus { border-color: var(--primary); }
+
+.q-feedback {
+  padding: 12px 16px; border-radius: var(--radius-sm); margin-top: 12px; display: none;
+}
+.q-feedback.correct { display: block; background: #e8f5e9; border: 1px solid #a5d6a7; color: #2e7d32; }
+.q-feedback.wrong { display: block; background: #fce4ec; border: 1px solid #ef9a9a; color: #c62828; }
+
+.btn {
+  padding: 10px 24px; border: none; border-radius: 20px; font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-outline { background: #fff; color: var(--primary); border: 2px solid var(--primary); }
+.btn-outline:hover { background: #e8f0fe; }
+.btn-success { background: var(--correct); color: #fff; }
+.btn-success:hover { background: #219a52; }
+.btn-ghost { background: transparent; color: var(--text2); border: 1px solid var(--border); }
+.btn-ghost:hover { border-color: var(--primary); color: var(--primary); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.progress-bar {
+  height: 8px; background: #e9ecef; border-radius: 4px; overflow: hidden; margin-bottom: 12px;
+}
+.progress-fill { height: 100%; background: var(--primary); border-radius: 4px; transition: width 0.3s; }
+
+/* ===== 结果页 ===== */
+.result-card {
+  background: var(--card); border-radius: var(--radius); padding: 30px;
+  box-shadow: var(--shadow); text-align: center; margin-bottom: 20px;
+}
+.result-score { font-size: 64px; font-weight: 700; color: var(--primary); line-height: 1; }
+.result-label { font-size: 16px; color: var(--text2); margin: 8px 0; }
+.result-details { display: flex; gap: 20px; justify-content: center; margin: 16px 0; flex-wrap: wrap; }
+.result-detail { text-align: center; }
+.result-detail .num { font-size: 22px; font-weight: 700; }
+.result-detail .lbl { font-size: 12px; color: var(--text2); }
+
+.review-list { display: flex; flex-direction: column; gap: 10px; }
+.review-item {
+  background: var(--card); border-radius: var(--radius-sm); padding: 14px 18px;
+  box-shadow: var(--shadow); border-left: 4px solid transparent;
+}
+.review-item.pass { border-left-color: var(--correct); }
+.review-item.fail { border-left-color: var(--wrong); }
+.review-q { font-size: 13px; font-weight: 600; }
+.review-answer { font-size: 12px; margin-top: 4px; }
+.review-explain { font-size: 12px; color: var(--text2); margin-top: 4px; font-style: italic; }
+
+.actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
+
+/* ===== 仪表盘 ===== */
+.mastery-grid { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+.mastery-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  background: var(--card); border-radius: var(--radius-sm); box-shadow: var(--shadow);
+}
+.mastery-name { min-width: 140px; font-size: 13px; font-weight: 600; }
+.mastery-bar-wrap { flex: 1; height: 8px; background: #e9ecef; border-radius: 4px; overflow: hidden; }
+.mastery-bar { height: 100%; border-radius: 4px; transition: width 0.5s; }
+.mastery-pct { min-width: 40px; font-size: 13px; font-weight: 600; text-align: right; }
+
+/* ===== 项目验收 ===== */
+.project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; margin: 12px 0; }
+.project-card {
+  background: var(--card); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow);
+}
+.project-name { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+.project-dims { display: flex; flex-direction: column; gap: 6px; }
+.project-dim { display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
+.project-stars { display: flex; gap: 2px; }
+.project-star { font-size: 16px; cursor: pointer; color: #ddd; transition: color 0.15s; }
+.project-star.active { color: var(--gold); }
+.project-star:hover { color: var(--gold); }
+
+/* ===== 趋势图（简易Canvas） ===== */
+.trend-chart { margin: 16px 0; }
+.trend-chart canvas { width: 100%; height: 200px; background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); }
+
+/* ===== 项目验收增强 ===== */
+/* 工作台布局 */
+.project-workspace { display: flex; gap: 16px; align-items: flex-start; }
+.project-workspace .ws-left { flex: 0 0 280px; }
+.project-workspace .ws-right { flex: 1; min-width: 0; }
+.project-workspace .ws-bottom { margin-top: 16px; }
+
+/* 文件树 */
+.file-tree { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.file-tree-title { padding: 12px 16px; font-size: 14px; font-weight: 700; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px; }
+.file-tree-title .ft-count { font-size: 12px; color: var(--text2); font-weight: 400; }
+.file-tree-item { display: flex; align-items: center; gap: 8px; padding: 8px 16px; font-size: 13px;
+  cursor: pointer; transition: background 0.15s; border-bottom: 1px solid #f5f5f5; }
+.file-tree-item:hover { background: #f0f7ff; }
+.file-tree-item .ft-icon { font-size: 16px; flex-shrink: 0; }
+.file-tree-item .ft-name { flex: 1; font-family: "Cascadia Code", "Fira Code", "Consolas", monospace; font-size: 12px; }
+.file-tree-item .ft-badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; }
+.ft-badge.ok { background: #e8f5e9; color: #2e7d32; }
+.ft-badge.warn { background: #fff3e0; color: #e65100; }
+.ft-badge.miss { background: #fce4ec; color: #c62828; }
+.file-tree-empty { padding: 20px 16px; text-align: center; color: var(--text2); font-size: 13px; }
+.file-tree-metrics { padding: 8px 16px; font-size: 11px; color: var(--text2); border-top: 1px solid var(--border);
+  display: flex; flex-wrap: wrap; gap: 8px; }
+.file-tree-metrics span { background: #f5f6f8; padding: 2px 8px; border-radius: 10px; }
+
+/* 上传按钮区 */
+.upload-area { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+.upload-area .btn { font-size: 12px; padding: 6px 12px; }
+.upload-hint { font-size: 11px; color: var(--text2); margin-top: 6px; }
+
+/* 验收清单 */
+.checklist { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.checklist-header { padding: 12px 16px; font-size: 14px; font-weight: 700; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; }
+.checklist-header .ch-summary { font-size: 12px; color: var(--text2); font-weight: 400; }
+.ch-summary .ch-auto { color: var(--primary); }
+.ch-summary .ch-manual { color: var(--gold); }
+.checklist-dim { border-bottom: 1px solid var(--border); }
+.checklist-dim:last-child { border-bottom: none; }
+.checklist-dim-header { padding: 10px 16px; display: flex; align-items: center; gap: 8px;
+  cursor: pointer; transition: background 0.15s; }
+.checklist-dim-header:hover { background: #fafafa; }
+.dim-arrow { font-size: 10px; transition: transform 0.2s; color: var(--text2); }
+.dim-arrow.expanded { transform: rotate(90deg); }
+.dim-name { font-size: 13px; font-weight: 600; flex: 1; }
+.dim-progress { font-size: 11px; color: var(--text2); }
+.dim-progress .dp-done { color: var(--correct); }
+.checklist-items { display: none; padding: 0 16px 10px 32px; }
+.checklist-items.expanded { display: block; }
+.check-item { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; font-size: 12px;
+  border-bottom: 1px solid #f9f9f9; }
+.check-item:last-child { border-bottom: none; }
+.ci-status { flex-shrink: 0; width: 18px; height: 18px; border-radius: 50%; text-align: center;
+  line-height: 18px; font-size: 11px; cursor: pointer; border: 2px solid #ddd; transition: all 0.15s; }
+.ci-status.ci-pass { background: #e8f5e9; border-color: var(--correct); color: var(--correct); }
+.ci-status.ci-fail { background: #fce4ec; border-color: var(--wrong); color: var(--wrong); }
+.ci-status.ci-pending { background: #fff; border-color: #ddd; color: #ddd; }
+.ci-status:hover { transform: scale(1.15); }
+.ci-desc { flex: 1; line-height: 1.5; }
+.ci-tag { font-size: 10px; padding: 1px 5px; border-radius: 8px; flex-shrink: 0; }
+.ci-tag.auto { background: #e3f2fd; color: #1565c0; }
+.ci-tag.manual { background: #fff3e0; color: #e65100; }
+.ci-match { font-size: 10px; color: var(--text2); background: #f5f6f8; padding: 1px 5px; border-radius: 4px;
+  font-family: "Consolas", monospace; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 代码查看器弹窗 */
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5);
+  z-index: 1000; align-items: center; justify-content: center; }
+.modal-overlay.active { display: flex; }
+.modal-box { background: #1e1e1e; border-radius: var(--radius); max-width: 900px; width: 95%; max-height: 85vh;
+  display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px;
+  color: #ccc; border-bottom: 1px solid #333; }
+.modal-header .mh-title { font-size: 14px; font-weight: 600; }
+.modal-close { cursor: pointer; font-size: 20px; color: #888; background: none; border: none; line-height: 1; }
+.modal-close:hover { color: #fff; }
+.modal-body { flex: 1; overflow: auto; padding: 0; }
+.code-viewer { margin: 0; padding: 12px 0; counter-reset: line; font-family: "Cascadia Code", "Fira Code", "Consolas", "Courier New", monospace;
+  font-size: 13px; line-height: 1.6; white-space: pre; color: #d4d4d4; }
+.code-line { display: block; padding: 0 16px 0 60px; position: relative; min-height: 1.2em; }
+.code-line::before { content: counter(line); counter-increment: line; position: absolute; left: 8px;
+  width: 40px; text-align: right; color: #858585; font-size: 11px; user-select: none; }
+.code-line:hover { background: #2a2d2e; }
+/* 简易C/C++语法高亮 */
+.c-kw { color: #569cd6; }  /* 关键字 */
+.c-pp { color: #c586c0; }  /* 预处理 */
+.c-str { color: #ce9178; } /* 字符串 */
+.c-cmt { color: #6a9955; } /* 注释 */
+.c-num { color: #b5cea8; } /* 数字 */
+.c-type { color: #4ec9b0; } /* 类型 */
+.c-func { color: #dcdcaa; } /* 函数调用 */
+
+/* 在线编辑器 */
+.editor-tabs { display: flex; gap: 0; border-bottom: 1px solid #333; overflow-x: auto; }
+.editor-tab { padding: 8px 14px; font-size: 12px; cursor: pointer; color: #888; border-right: 1px solid #333;
+  white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+.editor-tab.active { color: #fff; background: #1e1e1e; }
+.editor-tab:hover { color: #ccc; }
+.editor-tab .et-close { font-size: 14px; opacity: 0.4; }
+.editor-tab .et-close:hover { opacity: 1; color: #f44747; }
+.editor-tab-add { padding: 8px 12px; font-size: 14px; cursor: pointer; color: #888; border-right: 1px solid #333; }
+.editor-tab-add:hover { color: #fff; background: #1e1e1e; }
+.editor-body { flex: 1; overflow: hidden; display: flex; }
+.editor-textarea { flex: 1; background: #1e1e1e; color: #d4d4d4; border: none; padding: 12px 16px;
+  font-family: "Cascadia Code", "Fira Code", "Consolas", monospace; font-size: 13px; line-height: 1.6;
+  resize: none; outline: none; tab-size: 4; white-space: pre; overflow: auto; }
+.modal-footer { display: flex; gap: 8px; padding: 10px 16px; border-top: 1px solid #333; justify-content: flex-end; }
+
+/* 项目详情工具栏 */
+.ws-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.ws-toolbar .btn { font-size: 13px; }
+
+/* 综合评价区 */
+.project-summary { background: var(--card); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow);
+  display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+.project-summary .ps-score { text-align: center; }
+.ps-score .ps-num { font-size: 36px; font-weight: 700; color: var(--primary); }
+.ps-score .ps-label { font-size: 12px; color: var(--text2); }
+.ps-dims { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.ps-dim-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.ps-dim-row .psd-name { min-width: 80px; }
+.ps-dim-row .psd-stars { color: var(--gold); letter-spacing: 1px; }
+.ps-notes { flex: 1; min-width: 200px; }
+.ps-notes textarea { width: 100%; height: 60px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 8px; font-size: 12px; font-family: inherit; resize: vertical; }
+.ps-notes textarea:focus { border-color: var(--primary); outline: none; }
+
+/* 项目卡片增强 */
+.project-card .pc-status { display: flex; gap: 12px; font-size: 11px; color: var(--text2); margin-bottom: 10px; }
+.pc-status-item { display: flex; align-items: center; gap: 4px; }
+.pc-actions { display: flex; gap: 6px; margin-top: 8px; }
+.pc-actions .btn { font-size: 11px; padding: 5px 10px; }
+
+/* 响应式 */
+@media (max-width: 700px) {
+  .project-workspace { flex-direction: column; }
+  .project-workspace .ws-left { flex: auto; }
+}
+@media (max-width: 600px) {
+  .categories { grid-template-columns: 1fr; }
+  .dash-overview { grid-template-columns: 1fr 1fr; }
+  .project-grid { grid-template-columns: 1fr; }
+  .header h1 { font-size: 15px; }
+  .q-code { font-size: 11px; padding: 10px; }
+  .result-score { font-size: 42px; }
+}
+</style>
+</head>
+<body>
+
+<!-- 统一导航栏 -->
+<nav id="global-nav"></nav>
+
+<!-- ===== 顶部导航 ===== -->
+<div class="header">
+  <div class="header-inner">
+    <h1 id="headerTitle" onclick="navigate('home')">📝 智能评测系统</h1>
+  </div>
+</div>
+
+<!-- ===== 每日Tips ===== -->
+<div class="tip-bar" id="tipBar"></div>
+
+<!-- ===== 主内容区 ===== -->
+<div class="main" id="mainContent"></div>
+
+<!-- 代码查看器弹窗 -->
+<div class="modal-overlay" id="codeModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="mh-title" id="modalTitle">📄 代码查看</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<!-- 在线编辑器弹窗 -->
+<div class="modal-overlay" id="editorModal">
+  <div class="modal-box" style="max-width:1000px;">
+    <div class="modal-header">
+      <span class="mh-title">📝 在线代码编辑器</span>
+      <button class="modal-close" onclick="closeEditor()">✕</button>
+    </div>
+    <div class="editor-tabs" id="editorTabs"></div>
+    <div class="editor-body">
+      <textarea class="editor-textarea" id="editorTextarea" placeholder="在此编写代码..." spellcheck="false"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-sm btn-outline" onclick="closeEditor()" style="color:#ccc; border-color:#555;">取消</button>
+      <button class="btn btn-sm btn-primary" onclick="saveEditorFiles()">💾 保存并运行检查</button>
+    </div>
+  </div>
+</div>
+
+<!-- 外部数据文件 -->
+<script src="data/app/items-registry.js"></script>
+<script src="data/app/nav-component.js"></script>
+<script src="data/app/tip-bar.js"></script>
+<script src="data/app/life-tips.js"></script>
+<script src="data/quiz/tech.js"></script>
+<script src="data/quiz/static.js"></script>
+<script src="data/quiz/core.js"></script>
+<script src="data/quiz/ui.js"></script>
+<script>
+"use strict";
+const QUESTION_BANK = {};
+</script>
+<!-- 初始化统一导航栏 -->
+<script>initGlobalNav("quiz");</script>
+<!-- C 语言象限题库 -->
+<script src="data/quiz/questions/c/quiz-questions-c-language.js"></script>
+<script src="data/quiz/questions/c/quiz-questions-c-systems.js"></script>
+<script src="data/quiz/questions/c/quiz-questions-c-algorithms.js"></script>
+<script src="data/quiz/questions/c/quiz-questions-c-engineering.js"></script>
+<!-- C++ 语言象限题库 -->
+<script src="data/quiz/questions/cpp/quiz-questions-cpp-language.js"></script>
+<script src="data/quiz/questions/cpp/quiz-questions-cpp-systems.js"></script>
+<script src="data/quiz/questions/cpp/quiz-questions-cpp-algorithms.js"></script>
+<script src="data/quiz/questions/cpp/quiz-questions-cpp-engineering.js"></script>
+<!-- 数据结构象限题库 -->
+<script src="data/quiz/questions/ds/quiz-questions-ds-language.js"></script>
+<script src="data/quiz/questions/ds/quiz-questions-ds-systems.js"></script>
+<script src="data/quiz/questions/ds/quiz-questions-ds-algorithms.js"></script>
+<script src="data/quiz/questions/ds/quiz-questions-ds-engineering.js"></script>
+<!-- Python 象限题库 -->
+<script src="data/quiz/questions/py/quiz-questions-py-language.js"></script>
+<script src="data/quiz/questions/py/quiz-questions-py-systems.js"></script>
+<script src="data/quiz/questions/py/quiz-questions-py-algorithms.js"></script>
+<script src="data/quiz/questions/py/quiz-questions-py-engineering.js"></script>
+<!-- 传统 DB 产品题库 -->
+<script src="data/quiz/questions/db/quiz-questions-db-mysql.js"></script>
+<script src="data/quiz/questions/db/quiz-questions-db-postgres.js"></script>
+<script src="data/quiz/questions/db/quiz-questions-db-redis.js"></script>
+<script src="data/quiz/questions/db/quiz-questions-db-rocksdb.js"></script>
+<script src="data/quiz/questions/db/quiz-questions-db-elasticsearch.js"></script>
+<script src="data/quiz/questions/db/quiz-questions-db-sqlite.js"></script>
+<script src="data/quiz/questions/db/quiz-questions-db-general.js"></script>
+<!-- 向量 DB 产品题库 -->
+<script src="data/quiz/questions/vdb/quiz-questions-vdb-faiss.js"></script>
+<script src="data/quiz/questions/vdb/quiz-questions-vdb-milvus.js"></script>
+<script src="data/quiz/questions/vdb/quiz-questions-vdiskann.js"></script>
+<script src="data/quiz/questions/vdb/quiz-questions-vdb-chroma.js"></script>
+<script src="data/quiz/questions/vdb/quiz-questions-vdb-pinecone.js"></script>
+<script src="data/quiz/questions/vdb/quiz-questions-vdb-general.js"></script>
+<!-- Linux 题库 -->
+<script src="data/quiz/questions/linux/quiz-questions-linux-observability.js"></script>
+<script src="data/quiz/questions/linux/quiz-questions-linux-os-internals.js"></script>
+<script src="data/quiz/questions/linux/quiz-questions-linux-storage.js"></script>
+<script src="data/quiz/questions/linux/quiz-questions-linux-networking.js"></script>
+
+<script>
+"use strict";
+
+// ============================================================
+// 五、状态管理
+// ============================================================
+let currentView = 'home';     // home | category | test | result | dashboard | projects
+let currentCategory = null;   // 'c' | 'cpp'
+let currentItemId = null;      // 知识点ID
+let currentQuestions = [];     // 当前测试的题目
+let currentQIndex = 0;         // 当前题目索引
+let testAnswers = [];          // 用户答案 [{qid, answer, correct, time}]
+let testStartTime = 0;         // 测试开始时间戳
+let testTimerId = null;        // 计时器ID
+let elapsedSeconds = 0;        // 已用秒数
+let questionAnswered = false;  // 当前题是否已提交
+
+// ============================================================
+// 存储适配器 — API 模式 / localStorage 回退
+// ============================================================
+const API_BASE = (window.location.protocol === 'http:' || window.location.protocol === 'https:')
+  ? window.location.origin + '/api' : null;
+
+function getStorageKey(catId, suffix) {
+  return `quiz_${catId}_${suffix}`;
+}
+
+// —— 将全部 quiz localStorage 数据同步到服务器 ——
+let _quizServerSyncTimer = null;
+function _scheduleServerSync() {
+  if (!API_BASE) return;
+  clearTimeout(_quizServerSyncTimer);
+  _quizServerSyncTimer = setTimeout(async () => {
+    try {
+      const data = { history: {}, projects: {}, checklist: {}, autocheck: {}, files: {}, dailyTip: null };
+
+      // 扫描所有 quiz_ 开头的 localStorage 键
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key || !key.startsWith('quiz_')) continue;
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        try {
+          const val = JSON.parse(raw);
+          const rest = key.substring(5); // 去掉 "quiz_"
+          // 解析格式: "{catId}_hist_{itemId}" / "{catId}_projects" / "{catId}_checklist_{projId}" / "{catId}_autocheck_{projId}" / "{catId}_files_{projId}"
+          const firstUnder = rest.indexOf('_');
+          const catId = rest.substring(0, firstUnder);
+          const suffix = rest.substring(firstUnder + 1);
+
+          if (suffix === 'projects') {
+            data.projects[catId] = val;
+          } else if (suffix.startsWith('hist_')) {
+            if (!data.history[catId]) data.history[catId] = {};
+            data.history[catId][suffix.substring(5)] = val;
+          } else if (suffix.startsWith('checklist_')) {
+            if (!data.checklist[catId]) data.checklist[catId] = {};
+            data.checklist[catId][suffix.substring(10)] = val;
+          } else if (suffix.startsWith('autocheck_')) {
+            if (!data.autocheck[catId]) data.autocheck[catId] = {};
+            data.autocheck[catId][suffix.substring(10)] = val;
+          } else if (suffix.startsWith('files_')) {
+            if (!data.files[catId]) data.files[catId] = {};
+            data.files[catId][suffix.substring(6)] = val;
+          }
+        } catch(e) {}
+      }
+
+      // dailyTip
+      const tipRaw = localStorage.getItem('quiz_daily_tip');
+      if (tipRaw) {
+        try { data.dailyTip = JSON.parse(tipRaw); } catch(e) {}
+      }
+
+      await fetch(API_BASE + '/state/quiz', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+    } catch(e) {}
+  }, 800);
+}
+
+// —— 从服务器同步到 localStorage（启动时调用）——
+async function syncQuizFromServer() {
+  if (!API_BASE) return;
+  try {
+    const res = await fetch(API_BASE + '/state/quiz');
+    if (!res.ok) return;
+    const data = await res.json();
+
+    if (data.history) {
+      for (const catId of Object.keys(data.history)) {
+        for (const itemId of Object.keys(data.history[catId])) {
+          localStorage.setItem(getStorageKey(catId, `hist_${itemId}`), JSON.stringify(data.history[catId][itemId]));
+        }
+      }
+    }
+    if (data.projects) {
+      for (const catId of Object.keys(data.projects)) {
+        localStorage.setItem(getStorageKey(catId, 'projects'), JSON.stringify(data.projects[catId]));
+      }
+    }
+    if (data.checklist) {
+      for (const catId of Object.keys(data.checklist)) {
+        for (const projId of Object.keys(data.checklist[catId])) {
+          localStorage.setItem(getStorageKey(catId, `checklist_${projId}`), JSON.stringify(data.checklist[catId][projId]));
+        }
+      }
+    }
+    if (data.dailyTip) {
+      localStorage.setItem('quiz_daily_tip', JSON.stringify(data.dailyTip));
+    }
+  } catch(e) {}
+}
+
+// —— 原有存储函数（不变，加服务器同步调度）——
+
+function loadHistory(catId, itemId) {
+  try {
+    const raw = localStorage.getItem(getStorageKey(catId, `hist_${itemId}`));
+    return raw ? JSON.parse(raw) : [];
+  } catch(e) { return []; }
+}
+
+function saveHistory(catId, itemId, history) {
+  try {
+    localStorage.setItem(getStorageKey(catId, `hist_${itemId}`), JSON.stringify(history));
+    _scheduleServerSync();
+  } catch(e) { console.warn('保存历史失败:', e); }
+}
+
+function loadProjectScores(catId) {
+  try {
+    const raw = localStorage.getItem(getStorageKey(catId, 'projects'));
+    return raw ? JSON.parse(raw) : {};
+  } catch(e) { return {}; }
+}
+
+function saveProjectScores(catId, scores) {
+  try {
+    localStorage.setItem(getStorageKey(catId, 'projects'), JSON.stringify(scores));
+    _scheduleServerSync();
+  } catch(e) { console.warn('保存项目评分失败:', e); }
+}
+
+function loadDailyTip() {
+  try {
+    const raw = localStorage.getItem('quiz_daily_tip');
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+function saveDailyTip(tipData) {
+  try {
+    localStorage.setItem('quiz_daily_tip', JSON.stringify(tipData));
+    _scheduleServerSync();
+  } catch(e) {}
+}
+
+function getMastery(catId, itemId) {
+  const history = loadHistory(catId, itemId);
+  if (history.length === 0) return null;
+
+  const recent3 = history.slice(-3);
+  const recentAvg = recent3.reduce((s, h) => s + h.score, 0) / recent3.length;
+  const allAvg = history.reduce((s, h) => s + h.score, 0) / history.length;
+
+  // 速度分
+  let speedSum = 0;
+  history.forEach(h => {
+    const perQTime = h.time / 5; // 每题平均时间
+    speedSum += Math.min(60 / Math.max(perQTime, 10), 1.0); // 60秒为标准
+  });
+  const speedScore = history.length > 0 ? speedSum / history.length * 100 : 50;
+
+  return Math.round(recentAvg * 0.6 + allAvg * 0.3 + speedScore * 0.1);
+}
+
+function getGlobalStats(catId) {
+  const cat = CATEGORIES[catId];
+  let totalTested = 0, totalPassed = 0, totalScore = 0, totalTime = 0, totalAttempts = 0;
+
+  cat.items.forEach(item => {
+    const history = loadHistory(catId, item.id);
+    if (history.length > 0) {
+      totalTested++;
+      totalAttempts += history.length;
+      history.forEach(h => {
+        totalScore += h.score;
+        totalTime += h.time;
+        if (h.score >= 60) totalPassed++;
+      });
+    }
+  });
+
+  return {
+    totalTested,
+    totalItems: cat.items.length,
+    passRate: totalAttempts > 0 ? Math.round(totalPassed / totalAttempts * 100) : 0,
+    avgScore: totalAttempts > 0 ? Math.round(totalScore / totalAttempts) : 0,
+    totalTime: totalTime,
+    totalAttempts,
+  };
+}
+
+// ============================================================
+// 六、出题引擎
+// ============================================================
+
+// 简单种子随机数（mulberry32）
+function seededRandom(seed) {
+  let s = seed | 0;
+  return function() {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Fisher-Yates 洗牌
+function shuffle(arr, seed) {
+  const rng = seededRandom(seed);
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// 加权随机选择题目
+function pickQuestions(catId, itemId, count) {
+  const outer = QUESTION_BANK[catId];
+  if (!outer) return [];
+  // 兼容双层嵌套结构：QUESTION_BANK[catId] = { [catId]: { [itemId]: [...] } }
+  const qb = (outer[catId] !== undefined) ? outer[catId] : outer;
+  if (!qb || !qb[itemId]) return [];
+
+  const pool = qb[itemId];
+  const history = loadHistory(catId, itemId);
+  const attemptN = history.length;
+
+  // 收集最近3次出现过的题目ID
+  const recentQids = new Set();
+  const wrongQids = new Set();
+  history.slice(-3).forEach(h => {
+    if (h.questions) {
+      h.questions.forEach(q => {
+        recentQids.add(q.qid);
+        if (!q.correct) wrongQids.add(q.qid);
+      });
+    }
+  });
+
+  // 计算权重
+  const weights = pool.map(q => {
+    let w = 1.0;
+    if (recentQids.has(q.id)) w *= 0.2;
+    if (wrongQids.has(q.id)) w *= 1.5;
+    if (!recentQids.has(q.id)) w *= 1.0;
+    return { q, w };
+  });
+
+  // 加权随机选择
+  const selected = [];
+  const available = weights.slice();
+  const seed = hashStr(itemId + '_' + attemptN);
+  const rng = seededRandom(seed);
+
+  while (selected.length < count && available.length > 0) {
+    const totalW = available.reduce((s, a) => s + a.w, 0);
+    let r = rng() * totalW;
+    let idx = 0;
+    for (let i = 0; i < available.length; i++) {
+      r -= available[i].w;
+      if (r <= 0) { idx = i; break; }
+    }
+    selected.push(available[idx].q);
+    available.splice(idx, 1);
+  }
+
+  // 对每个选择题的选项进行洗牌
+  return selected.map(q => {
+    if ((q.type === 'choice' || q.type === 'multi_choice') && q.options) {
+      const shuffled = shuffleOptions(q, seed + selected.indexOf(q));
+      return { ...q, options: shuffled.options, _answerMap: shuffled.answerMap };
+    }
+    return q;
+  });
+}
+
+// 简单字符串哈希
+function hashStr(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+// 洗牌选项（保持原答案与新选项的映射）
+function shuffleOptions(q, extraSeed) {
+  const originalOptions = q.options.slice();
+  const originalAnswer = q.answer;
+
+  // 创建索引映射
+  const indices = originalOptions.map((_, i) => i);
+  const rng = seededRandom(hashStr(q.id) + extraSeed);
+  for (let i = indices.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+
+  const newOptions = indices.map(i => originalOptions[i]);
+  const newLabels = ['A', 'B', 'C', 'D', 'E', 'F'];
+
+  // 重写选项标签
+  const relabeledOptions = newOptions.map((opt, i) => {
+    return newLabels[i] + '. ' + opt.substring(opt.indexOf('.') + 2);
+  });
+
+  // 计算新答案
+  let answerMap = {};
+  if (q.type === 'multi_choice' && Array.isArray(originalAnswer)) {
+    answerMap.newAnswer = originalAnswer.map(oldLabel => {
+      const oldIdx = oldLabel.charCodeAt(0) - 'A'.charCodeAt(0);
+      const newIdx = indices.indexOf(oldIdx);
+      return newLabels[newIdx];
+    });
+  } else if (typeof originalAnswer === 'string' && originalAnswer.length === 1) {
+    const oldIdx = originalAnswer.charCodeAt(0) - 'A'.charCodeAt(0);
+    const newIdx = indices.indexOf(oldIdx);
+    answerMap.newAnswer = newLabels[newIdx];
+  }
+
+  return { options: relabeledOptions, answerMap };
+}
+
+// 模糊匹配
+function fuzzyMatch(userAnswer, correctAnswer) {
+  if (!userAnswer || !correctAnswer) return false;
+  const normalize = s => String(s).replace(/\s+/g, '').toLowerCase()
+    .replace(/[""]/g, '"').replace(/['']/g, "'")
+    .replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+  return normalize(userAnswer) === normalize(correctAnswer);
+}
+
+// 检查答案
+function checkAnswer(question, userAnswer) {
+  switch (question.type) {
+    case 'choice':
+    case 'true_false': {
+      const correct = question._answerMap ? question._answerMap.newAnswer : question.answer;
+      return String(userAnswer) === String(correct);
+    }
+    case 'multi_choice': {
+      const correct = question._answerMap ? question._answerMap.newAnswer : question.answer;
+      if (!Array.isArray(userAnswer) || !Array.isArray(correct)) return false;
+      if (userAnswer.length !== correct.length) return false;
+      return correct.every(c => userAnswer.includes(c));
+    }
+    case 'fill_blank':
+    case 'predict_output':
+      return fuzzyMatch(userAnswer, question.answer);
+    case 'find_error':
+      return fuzzyMatch(userAnswer, question.answer);
+    default:
+      return false;
+  }
+}
+
+// ============================================================
+// 七、计时器
+// ============================================================
+function startTimer() {
+  testStartTime = Date.now();
+  elapsedSeconds = 0;
+  updateTimerDisplay();
+  testTimerId = setInterval(() => {
+    elapsedSeconds = Math.floor((Date.now() - testStartTime) / 1000);
+    updateTimerDisplay();
+  }, 1000);
+}
+
+function stopTimer() {
+  if (testTimerId) {
+    clearInterval(testTimerId);
+    testTimerId = null;
+  }
+}
+
+function updateTimerDisplay() {
+  const el = document.getElementById('testTimer');
+  if (!el) return;
+  const m = Math.floor(elapsedSeconds / 60);
+  const s = elapsedSeconds % 60;
+  el.textContent = `⏱ ${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  if (elapsedSeconds > 600) el.classList.add('warning');
+  else el.classList.remove('warning');
+}
+
+// ============================================================
+// 八、每日Tips
+// ============================================================
+function getTodayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+}
+
+
+// ============================================================
+// 八-A、项目文件管理引擎（IndexedDB）
+// ============================================================
+function openCodeDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('quiz_code_store', 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('project_files')) {
+        db.createObjectStore('project_files', { keyPath: 'path' });
+      }
+    };
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function dbKey(catId, projId, fileName) {
+  return `${catId}/${projId}/${fileName}`;
+}
+
+async function saveProjectFiles(catId, projId, files) {
+  // files: [{ name, content, size }]
+
+  // API 模式：上传到服务器
+  if (API_BASE) {
+    const fd = new FormData();
+    let count = 0;
+    for (const f of files) {
+      fd.append('files', new Blob([f.content], { type: 'text/plain' }), f.name);
+      count++;
+    }
+    if (count > 0) {
+      try {
+        await fetch(`${API_BASE}/projects/${catId}/${projId}/files`, { method: 'POST', body: fd });
+      } catch(e) { console.warn('项目文件上传失败:', e); }
+    }
+  }
+
+  const db = await openCodeDB();
+  const tx = db.transaction('project_files', 'readwrite');
+  const store = tx.objectStore('project_files');
+  const fileNames = [];
+  for (const f of files) {
+    const key = dbKey(catId, projId, f.name);
+    fileNames.push(f.name);
+    store.put({ path: key, content: f.content, size: f.size, uploaded: Date.now() });
+  }
+  // 同时保存文件列表到 localStorage
+  try {
+    localStorage.setItem(getStorageKey(catId, `files_${projId}`), JSON.stringify(fileNames));
+    _scheduleServerSync();
+  } catch(e) {}
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function loadProjectFiles(catId, projId) {
+  const fileNames = getStoredFileList(catId, projId);
+  if (fileNames.length === 0) return [];
+  const db = await openCodeDB();
+  const tx = db.transaction('project_files', 'readonly');
+  const store = tx.objectStore('project_files');
+  const results = [];
+  return new Promise((resolve, reject) => {
+    let pending = fileNames.length;
+    if (pending === 0) { resolve([]); return; }
+    fileNames.forEach(name => {
+      const req = store.get(dbKey(catId, projId, name));
+      req.onsuccess = () => {
+        if (req.result) results.push({ name, content: req.result.content, size: req.result.size });
+        pending--;
+        if (pending === 0) resolve(results);
+      };
+      req.onerror = () => { pending--; if (pending === 0) resolve(results); };
+    });
+  });
+}
+
+async function deleteProjectFiles(catId, projId) {
+  const fileNames = getStoredFileList(catId, projId);
+  if (fileNames.length === 0) return;
+  const db = await openCodeDB();
+  const tx = db.transaction('project_files', 'readwrite');
+  const store = tx.objectStore('project_files');
+  fileNames.forEach(name => store.delete(dbKey(catId, projId, name)));
+  try { localStorage.removeItem(getStorageKey(catId, `files_${projId}`)); _scheduleServerSync(); } catch(e) {}
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+function getStoredFileList(catId, projId) {
+  try {
+    const raw = localStorage.getItem(getStorageKey(catId, `files_${projId}`));
+    return raw ? JSON.parse(raw) : [];
+  } catch(e) { return []; }
+}
+
+// ============================================================
+// 项目文件夹上传引擎
+// ============================================================
+// 核心设计：使用预创建的隐藏 <input type="file" webkitdirectory> 作为上传入口。
+// 原因：showDirectoryPicker() 在多层 async/await 或 Promise.then() 中无法可靠
+// 保留用户手势（transient user activation），而 webkitdirectory 方式通过
+// 直接同步调用 input.click() 从 onclick 上下文触发，100% 可靠。
+// ============================================================
+
+let _uploadCallback = null;  // 文件选择完成后的回调
+
+/** 获取或创建共享的隐藏文件夹上传 input */
+function getUploadInput() {
+  let input = document.getElementById('__folderUpload');
+  if (!input) {
+    input = document.createElement('input');
+    input.type = 'file';
+    input.id = '__folderUpload';
+    input.multiple = true;
+    input.webkitdirectory = true;
+    input.style.cssText = 'position:fixed;top:-200px;left:-200px;opacity:0;pointer-events:none;';
+    input.onchange = async function() {
+      const fileList = this.files;
+      const cb = _uploadCallback;
+      _uploadCallback = null;
+      if (!fileList || fileList.length === 0 || !cb) return;
+      try {
+        const files = [];
+        const seen = new Set();
+        for (const file of fileList) {
+          try {
+            const name = file.webkitRelativePath || file.name;
+            // 跳过隐藏文件和目录
+            if (name.startsWith('.') || name.includes('/.')) continue;
+            // 跳过常见非源码目录
+            if (/^(build|cmake-build|Debug|Release|node_modules|__pycache__|\.git|\.vs|\.vscode|obj|out|target)\//.test(name)) continue;
+            // 只保留源码类文本文件
+            const codeExts = ['.c','.h','.cpp','.hpp','.cc','.cxx','.hxx','.txt','.md',
+              'CMakeLists.txt','.cmake','.json','.xml','.yaml','.yml','.ini','.cfg',
+              '.py','.sh','.bat','Makefile','Dockerfile','.gitignore'];
+            const lowName = name.toLowerCase();
+            const isCode = codeExts.some(ext => lowName.endsWith(ext)) || !name.includes('.');
+            if (!isCode) continue;
+            // 去重
+            if (seen.has(name)) continue;
+            seen.add(name);
+            const content = await file.text();
+            if (content.length <= 500 * 1024) {
+              files.push({ name, content, size: content.length });
+            }
+          } catch(ex) { console.warn('读取文件失败:', file.name, ex); }
+        }
+        if (files.length === 0) {
+          alert('所选文件夹中未找到可识别的源码文件（.c/.h/.cpp 等）。');
+          return;
+        }
+        // 回调由调用方设置，负责保存文件和后续处理
+        cb(files);
+      } catch(e) {
+        console.error('处理上传文件失败:', e);
+        alert('处理文件失败: ' + e.message);
+      }
+    };
+    document.body.appendChild(input);
+  }
+  return input;
+}
+
+/** 统一的文件夹上传入口（必须在用户手势回调中同步调用） */
+function triggerFolderUpload(onFilesReady) {
+  _uploadCallback = onFilesReady;
+  const input = getUploadInput();
+  input.value = '';  // 重置以允许重新选择同一文件夹
+  input.click();      // 直接从同步上下文中触发，保留用户手势
+}
+
+// ============================================================
+// 八-B、自动检查引擎
+// ============================================================
+function matchGlob(pattern, fileName) {
+  // 简易 glob 匹配: "*.c" → 匹配所有 .c 文件，"src/**/*.c" → 匹配 src/ 下的 .c
+  if (!pattern.includes('*')) return pattern === fileName;
+  const parts = pattern.split('*');
+  if (parts.length === 2 && parts[0] === '' && parts[1].startsWith('.')) {
+    // *.ext 模式
+    return fileName.endsWith(parts[1]);
+  }
+  // 简化处理：** 匹配任意路径
+  const regexStr = pattern.replace(/\./g, '\\.').replace(/\*\*/g, '<<ANY>>').replace(/\*/g, '[^/]*').replace(/<<ANY>>/g, '.*');
+  try {
+    return new RegExp('^' + regexStr + '$').test(fileName);
+  } catch(e) { return false; }
+}
+
+function checkFileStructure(project, fileNames) {
+  const results = { matched: [], missing: [], checked: [] };
+  for (const ef of project.expectedFiles) {
+    const found = fileNames.filter(fn => matchGlob(ef.name, fn));
+    results.checked.push({ ...ef, found: found.length > 0, matches: found });
+    if (ef.required && found.length === 0) {
+      results.missing.push(ef);
+    } else if (found.length > 0) {
+      results.matched.push(ef);
+    }
+  }
+  return results;
+}
+
+function checkPatterns(project, fileContents) {
+  // fileContents: [{ name, content }]
+  const allResults = {};
+  const allText = fileContents.map(f => f.content).join('\n');
+
+  // 检查每个维度的检查项
+  for (const dim of project.dims) {
+    for (const check of dim.checks) {
+      if (check.type !== 'pattern') continue;
+      const key = check.id;
+      try {
+        const re = new RegExp(check.pattern, 'i');
+        let found = false, matchFile = '', matchLine = 0, matchText = '';
+        for (const f of fileContents) {
+          const lines = f.content.split('\n');
+          for (let i = 0; i < lines.length; i++) {
+            const m = lines[i].match(re);
+            if (m) {
+              found = true;
+              matchFile = f.name;
+              matchLine = i + 1;
+              matchText = m[0].substring(0, 60);
+              break;
+            }
+          }
+          if (found) break;
+        }
+        allResults[key] = { found, file: matchFile, line: matchLine, match: matchText };
+      } catch(e) {
+        allResults[key] = { found: false, error: true };
+      }
+    }
+  }
+
+  // 检查代码质量
+  if (project.codeChecks) {
+    for (const cc of project.codeChecks) {
+      if (cc.type !== 'pattern') continue;
+      const key = cc.id;
+      try {
+        const re = new RegExp(cc.pattern, 'i');
+        let found = false, matchFile = '', matchLine = 0, matchText = '';
+        for (const f of fileContents) {
+          const lines = f.content.split('\n');
+          for (let i = 0; i < lines.length; i++) {
+            const m = lines[i].match(re);
+            if (m) {
+              found = true;
+              matchFile = f.name;
+              matchLine = i + 1;
+              matchText = m[0].substring(0, 60);
+              break;
+            }
+            if (found) break;
+          }
+        }
+        allResults[key] = { found, file: matchFile, line: matchLine, match: matchText };
+      } catch(e) {
+        allResults[key] = { found: false, error: true };
+      }
+    }
+  }
+
+  return allResults;
+}
+
+function calcCodeMetrics(fileContents) {
+  let totalLines = 0, codeLines = 0, commentLines = 0, blankLines = 0, functionCount = 0;
+  const allText = fileContents.map(f => f.content).join('\n');
+  const lines = allText.split('\n');
+  totalLines = lines.length;
+
+  let inBlockComment = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed === '') { blankLines++; continue; }
+
+    // 块注释处理
+    if (inBlockComment) {
+      commentLines++;
+      if (trimmed.includes('*/')) inBlockComment = false;
+      continue;
+    }
+    if (trimmed.startsWith('/*')) {
+      commentLines++;
+      if (!trimmed.includes('*/')) inBlockComment = true;
+      continue;
+    }
+    if (trimmed.startsWith('//') || trimmed.startsWith('#')) {
+      commentLines++;
+      continue;
+    }
+    codeLines++;
+  }
+
+  // 函数计数（粗略：匹配函数定义模式）
+  const funcPattern = /(?:^|\n)\s*(?:(?:static|inline|extern|virtual|constexpr|friend)\s+)*(?:\w+(?:\s*<[^>]*>)?[\s*&]+)+(?:\w+::)?(\w+)\s*\([^)]*\)\s*(?:const\s*)?(?:noexcept\s*)?(?:override\s*)?(?:final\s*)?(?:\{|$)/gm;
+  const funcMatches = allText.match(funcPattern);
+  functionCount = funcMatches ? funcMatches.length : 0;
+
+  const commentRatio = totalLines > 0 ? commentLines / totalLines : 0;
+
+  return { totalLines, codeLines, commentLines, blankLines, functionCount, commentRatio,
+    avgFuncLen: functionCount > 0 ? Math.round(codeLines / functionCount) : 0 };
+}
+
+function runAllAutoChecks(project, fileContents) {
+  const fileNames = fileContents.map(f => f.name);
+  const fileCheck = checkFileStructure(project, fileNames);
+  const patternCheck = checkPatterns(project, fileContents);
+  const metrics = calcCodeMetrics(fileContents);
+  return { fileCheck, patternCheck, metrics };
+}
+
+function getAutoCheckCache(catId, projId) {
+  try {
+    const raw = localStorage.getItem(getStorageKey(catId, `autocheck_${projId}`));
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+function setAutoCheckCache(catId, projId, results) {
+  try {
+    localStorage.setItem(getStorageKey(catId, `autocheck_${projId}`), JSON.stringify(results));
+    _scheduleServerSync();
+  } catch(e) {}
+}
+
+// 简易 C/C++ 语法高亮
+function highlightCCode(code) {
+  // 转义HTML
+  let html = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // 行号
+  const lines = html.split('\n');
+  let result = '';
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+
+    // 预处理指令
+    if (/^\s*#/.test(line)) {
+      result += `<span class="code-line"><span class="c-pp">${line}</span></span>\n`;
+      continue;
+    }
+
+    // 单行注释
+    line = line.replace(/(\/\/.*$)/g, '<span class="c-cmt">$1</span>');
+
+    // 字符串（简化处理）
+    line = line.replace(/(["])(?:\\.|[^"\\])*?\1/g, '<span class="c-str">$&</span>');
+    line = line.replace(/(['])(?:\\.|[^'\\])*?\1/g, '<span class="c-str">$&</span>');
+
+    // 关键字
+    const kw = /\b(auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|int|long|register|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while|class|namespace|using|public|private|protected|virtual|override|final|template|typename|catch|throw|try|new|delete|operator|explicit|friend|inline|mutable|constexpr|noexcept|nullptr|decltype|static_cast|dynamic_cast|const_cast|reinterpret_cast|thread_local|alignas|alignof|concept|requires|co_await|co_return|co_yield|include|define|ifdef|ifndef|endif|pragma|error|elif)\b/g;
+    line = line.replace(kw, '<span class="c-kw">$&</span>');
+
+    // 数字
+    line = line.replace(/\b(\d+\.?\d*[fFlL]?|0[xX][0-9a-fA-F]+)\b/g, '<span class="c-num">$&</span>');
+
+    result += `<span class="code-line">${line}</span>\n`;
+  }
+
+  return result;
+}
+
+// ============================================================
+// 九、导航与视图渲染
+// ============================================================
+
+function navigate(view, catId, itemId) {
+  stopTimer();
+  currentView = view;
+  currentCategory = catId || null;
+  currentItemId = itemId || null;
+  currentQuestions = [];
+  currentQIndex = 0;
+  if (view !== 'result') testAnswers = [];  // 结果页需要保留testAnswers以供renderResult读取
+
+  // 更新页面标题
+  const titles = {
+    home: '📝 智能评测系统',
+    category: `${CATEGORIES[catId]?.icon || ''} ${CATEGORIES[catId]?.label || ''}`,
+    test: '📝 测试中...',
+    result: '📊 测试结果',
+    dashboard: '📊 学习仪表盘',
+    projects: '🏆 实战项目验收',
+    'project-detail': '🏆 项目验收工作台',
+  };
+  document.getElementById('headerTitle').textContent = titles[view] || titles.home;
+
+  renderCurrentView();
+  window.scrollTo(0, 0);
+}
+
+function renderCurrentView() {
+  switch (currentView) {
+    case 'home': renderHome(); break;
+    case 'category': renderCategory(); break;
+    case 'test': renderTest(); break;
+    case 'result': renderResult(); break;
+    case 'dashboard': renderDashboard(); break;
+    case 'projects': renderProjects(); break;
+    case 'project-detail': renderProjectDetail(currentCategory, currentItemId); break;
+    default: renderHome();
+  }
+}
+
+// ============================================================
+// 首页
+// ============================================================
+function renderHome() {
+  const main = document.getElementById('mainContent');
+
+  // 收集各分类统计
+  let catsHtml = '';
+  for (const [id, cat] of Object.entries(CATEGORIES)) {
+    const stats = getGlobalStats(id);
+    const pct = stats.totalItems > 0 ? Math.round(stats.totalTested / stats.totalItems * 100) : 0;
+    catsHtml += `
+      <div class="cat-card" onclick="navigate('category','${id}')">
+        <div class="cat-icon">${cat.icon}</div>
+        <div class="cat-name">${cat.label}</div>
+        <div class="cat-meta">${stats.totalTested}/${stats.totalItems} 项已测试 · 平均 ${stats.avgScore} 分</div>
+        <div class="cat-progress">
+          <div class="cat-progress-bar"><div class="cat-progress-fill" style="width:${pct}%"></div></div>
+        </div>
+      </div>`;
+  }
+
+  // 全局概览（合并C和C++）
+  let allTested = 0, allTotal = 0, allScore = 0, allAttempts = 0, allTime = 0;
+  for (const id of Object.keys(CATEGORIES)) {
+    const s = getGlobalStats(id);
+    allTested += s.totalTested;
+    allTotal += s.totalItems;
+    allAttempts += s.totalAttempts;
+    allScore += s.avgScore * s.totalAttempts;
+    allTime += s.totalTime;
+  }
+  const overallAvg = allAttempts > 0 ? Math.round(allScore / allAttempts) : 0;
+  const totalHours = Math.round(allTime / 3600 * 10) / 10;
+
+  main.innerHTML = `
+    <div class="dash-overview">
+      <div class="dash-stat">
+        <div class="stat-num">${allTested}/${allTotal}</div>
+        <div class="stat-label">📚 已测试知识点</div>
+      </div>
+      <div class="dash-stat">
+        <div class="stat-num">${overallAvg}</div>
+        <div class="stat-label">📊 综合平均分</div>
+      </div>
+      <div class="dash-stat">
+        <div class="stat-num">${allAttempts}</div>
+        <div class="stat-label">📝 累计测试次数</div>
+      </div>
+      <div class="dash-stat">
+        <div class="stat-num">${totalHours}h</div>
+        <div class="stat-label">⏱ 累计学习时长</div>
+      </div>
+    </div>
+
+    <h2 style="font-size:16px; margin-bottom:12px;">选择学习类别</h2>
+    <div class="categories">
+      ${catsHtml}
+      <div class="cat-card" style="opacity:0.5; cursor:default; border-style:dashed;">
+        <div class="cat-icon">☕</div>
+        <div class="cat-name">Java 技术栈</div>
+        <div class="cat-meta">即将推出...</div>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:10px; justify-content:center; margin-top:16px;">
+      <button class="btn btn-outline" onclick="navigate('dashboard')">📊 查看学习仪表盘</button>
+      <button class="btn btn-outline" onclick="navigate('projects')">🏆 实战项目验收</button>
+    </div>
+  `;
+}
+
+// ============================================================
+// 知识点列表
+// ============================================================
+function renderCategory() {
+  const main = document.getElementById('mainContent');
+  const cat = CATEGORIES[currentCategory];
+  if (!cat) { navigate('home'); return; }
+
+  const labels = cat.quadrantLabels;
+
+  // 按象限分组
+  const groups = { language:[], systems:[], algorithms:[], engineering:[] };
+  cat.items.forEach(item => {
+    groups[item.quadrant].push(item);
+  });
+
+  let html = `
+    <button class="back-btn" onclick="navigate('home')">← 返回首页</button>
+    <div class="filter-bar">
+      <input type="text" id="searchItems" placeholder="搜索知识点..." oninput="filterItems()">
+      <select id="filterRing" onchange="filterItems()">
+        <option value="all">全部难度</option>
+        <option value="basic">基础</option>
+        <option value="intermediate">进阶</option>
+        <option value="advanced">高级</option>
+      </select>
+      <select id="filterQuad" onchange="filterItems()">
+        <option value="all">全部分类</option>
+        <option value="language">${QUADRANT_ICONS.language} ${labels.language}</option>
+        <option value="systems">${QUADRANT_ICONS.systems} ${labels.systems}</option>
+        <option value="algorithms">${QUADRANT_ICONS.algorithms} ${labels.algorithms}</option>
+        <option value="engineering">${QUADRANT_ICONS.engineering} ${labels.engineering}</option>
+      </select>
+    </div>
+    <div id="itemListContainer"></div>
+  `;
+
+  main.innerHTML = html;
+  renderItemList(groups, labels);
+}
+
+function filterItems() {
+  const cat = CATEGORIES[currentCategory];
+  const labels = cat.quadrantLabels;
+  const groups = { language:[], systems:[], algorithms:[], engineering:[] };
+  cat.items.forEach(item => { groups[item.quadrant].push(item); });
+  renderItemList(groups, labels);
+}
+
+function renderItemList(groups, labels) {
+  const container = document.getElementById('itemListContainer');
+  if (!container) return;
+
+  const searchText = (document.getElementById('searchItems')?.value || '').toLowerCase();
+  const filterRing = document.getElementById('filterRing')?.value || 'all';
+  const filterQuad = document.getElementById('filterQuad')?.value || 'all';
+
+  let html = '';
+  const quadOrder = ['language', 'systems', 'algorithms', 'engineering'];
+
+  for (const quad of quadOrder) {
+    if (filterQuad !== 'all' && filterQuad !== quad) continue;
+
+    let items = groups[quad];
+    // 筛选
+    items = items.filter(item => {
+      if (filterRing !== 'all' && item.ring !== filterRing) return false;
+      if (searchText && !item.title.includes(searchText) && !item.desc.includes(searchText)) return false;
+      return true;
+    });
+
+    if (items.length === 0) continue;
+
+    // 按难度排序
+    items.sort((a, b) => RING_ORDER[a.ring] - RING_ORDER[b.ring]);
+
+    html += `<div class="section-header ${quad}">${QUADRANT_ICONS[quad]} ${labels[quad]} <span class="count">(${items.length}项)</span></div>`;
+    html += '<div class="item-list">';
+
+    items.forEach(item => {
+      const mastery = getMastery(currentCategory, item.id);
+      const history = loadHistory(currentCategory, item.id);
+      let scoreHtml = '';
+      if (mastery !== null) {
+        const cls = mastery >= 80 ? 'high' : mastery >= 60 ? 'mid' : 'low';
+        scoreHtml = `<div class="item-score ${cls}">⭐${mastery}</div>`;
+      } else {
+        scoreHtml = `<div class="item-score none">--</div>`;
+      }
+      const attempts = history.length;
+
+      html += `
+        <div class="item-row ${item.quadrant}" data-quad="${item.quadrant}" data-ring="${item.ring}"
+             onclick="navigate('test','${currentCategory}','${item.id}')">
+          <div class="item-info">
+            <div class="item-title">${item.title}</div>
+            <div class="item-desc">${item.desc}</div>
+          </div>
+          <div class="item-stats">
+            ${scoreHtml}
+            <div class="item-attempts">${attempts > 0 ? '测试'+attempts+'次' : '未测试'}</div>
+          </div>
+        </div>`;
+    });
+
+    html += '</div>';
+  }
+
+  if (!html) {
+    html = '<div style="text-align:center; padding:40px; color:var(--text2);">没有匹配的知识点</div>';
+  }
+
+  container.innerHTML = html;
+}
+
+// ============================================================
+// 测试界面
+// ============================================================
+function renderTest() {
+  const main = document.getElementById('mainContent');
+  const cat = CATEGORIES[currentCategory];
+  const item = cat.items.find(i => i.id === currentItemId);
+  if (!item) { navigate('category', currentCategory); return; }
+
+  // 出题
+  currentQuestions = pickQuestions(currentCategory, currentItemId, 5);
+  if (currentQuestions.length === 0) {
+    main.innerHTML = `
+      <button class="back-btn" onclick="navigate('category','${currentCategory}')">← 返回列表</button>
+      <div style="text-align:center; padding:60px; color:var(--text2);">
+        该知识点暂无题目，我们将尽快补充。<br>
+        <button class="btn btn-outline" style="margin-top:16px;" onclick="navigate('category','${currentCategory}')">返回列表</button>
+      </div>`;
+    return;
+  }
+
+  currentQIndex = 0;
+  testAnswers = [];
+  questionAnswered = false;
+  elapsedSeconds = 0;
+
+  main.innerHTML = `
+    <div class="test-header">
+      <button class="back-btn" onclick="confirmExit()">← 退出测试</button>
+      <div class="test-progress" id="testProgress">第 1/${currentQuestions.length} 题</div>
+      <div class="test-timer" id="testTimer">⏱ 00:00</div>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill" style="width:${(1/currentQuestions.length)*100}%"></div>
+    </div>
+    <div id="questionArea"></div>
+  `;
+
+  startTimer();
+  renderQuestion();
+}
+
+function confirmExit() {
+  if (testAnswers.length > 0 && testAnswers.length < currentQuestions.length) {
+    if (confirm('确定退出测试吗？当前进度将丢失。')) {
+      navigate('category', currentCategory);
+    }
+  } else {
+    navigate('category', currentCategory);
+  }
+}
+
+function renderQuestion() {
+  const q = currentQuestions[currentQIndex];
+  if (!q) return;
+
+  questionAnswered = false;
+  const area = document.getElementById('questionArea');
+  document.getElementById('testProgress').textContent = `第 ${currentQIndex+1}/${currentQuestions.length} 题`;
+  document.getElementById('progressFill').style.width = `${(currentQIndex+1)/currentQuestions.length*100}%`;
+
+  const diffLabel = RING_LABELS[q.difficulty] || q.difficulty;
+  const typeLabels = { choice:'单选题', multi_choice:'多选题', fill_blank:'代码填空', true_false:'判断对错', predict_output:'代码输出预测', find_error:'代码纠错' };
+  const typeLabel = typeLabels[q.type] || q.type;
+
+  let html = `
+    <div class="question-card">
+      <div class="q-meta">
+        <span class="q-badge type">${typeLabel}</span>
+        <span class="q-badge diff-${q.difficulty}">${diffLabel}</span>
+      </div>`;
+
+  if (q.scenario) {
+    html += `<div class="q-scenario">📖 ${q.scenario}</div>`;
+  }
+
+  html += `<div class="q-stem">${q.stem}</div>`;
+
+  if (q.code) {
+    html += `<div class="q-code">${escapeHtml(q.code)}</div>`;
+  }
+
+  // 根据题型渲染不同输入组件
+  if (q.type === 'choice') {
+    html += `<div class="q-options" id="qOptions">`;
+    q.options.forEach((opt, i) => {
+      const label = String.fromCharCode(65 + i);
+      html += `
+        <div class="q-option" data-value="${label}" onclick="selectChoice('${label}')">
+          <div class="q-radio" id="radio${label}"></div>
+          <span>${opt}</span>
+        </div>`;
+    });
+    html += `</div>`;
+  } else if (q.type === 'multi_choice') {
+    html += `<div class="q-options" id="qOptions">`;
+    q.options.forEach((opt, i) => {
+      const label = String.fromCharCode(65 + i);
+      html += `
+        <div class="q-option" data-value="${label}" onclick="toggleMultiChoice('${label}')">
+          <div class="q-checkbox" id="check${label}"></div>
+          <span>${opt}</span>
+        </div>`;
+    });
+    html += `</div>`;
+  } else if (q.type === 'fill_blank' || q.type === 'predict_output') {
+    html += `<input type="text" class="q-input" id="qInput" placeholder="输入你的答案..." autocomplete="off">`;
+  } else if (q.type === 'true_false') {
+    html += `<div class="q-options" id="qOptions">
+      <div class="q-option" data-value="true" onclick="selectChoice('true')">
+        <div class="q-radio" id="radiotrue"></div><span>✅ 正确</span>
+      </div>
+      <div class="q-option" data-value="false" onclick="selectChoice('false')">
+        <div class="q-radio" id="radiofalse"></div><span>❌ 错误</span>
+      </div>
+    </div>`;
+  } else if (q.type === 'find_error') {
+    html += `<input type="text" class="q-input" id="qInput" placeholder="描述你发现的错误并给出修正..." autocomplete="off">`;
+  }
+
+  html += `
+      <div class="q-feedback" id="qFeedback"></div>
+      <div style="margin-top:16px; display:flex; gap:10px; justify-content:flex-end;">
+        <button class="btn btn-primary" id="btnSubmit" onclick="submitAnswer()">提交答案</button>
+        <button class="btn btn-ghost" id="btnNext" style="display:none;" onclick="nextQuestion()">下一题 →</button>
+      </div>
+    </div>`;
+
+  area.innerHTML = html;
+
+  // 如果已经答过（回退场景），恢复状态
+  if (testAnswers[currentQIndex]) {
+    restoreAnswerState();
+  }
+}
+
+let selectedChoice = null;
+let selectedMulti = [];
+
+function selectChoice(val) {
+  if (questionAnswered) return;
+  selectedChoice = val;
+  // 更新UI
+  document.querySelectorAll('.q-option').forEach(opt => opt.classList.remove('selected'));
+  document.querySelectorAll('.q-radio').forEach(r => r.classList.remove('checked'));
+  const target = document.querySelector(`.q-option[data-value="${val}"]`);
+  if (target) {
+    target.classList.add('selected');
+    document.getElementById('radio' + val)?.classList.add('checked');
+  }
+}
+
+function toggleMultiChoice(val) {
+  if (questionAnswered) return;
+  const idx = selectedMulti.indexOf(val);
+  if (idx >= 0) {
+    selectedMulti.splice(idx, 1);
+  } else {
+    selectedMulti.push(val);
+  }
+  document.querySelectorAll('.q-checkbox').forEach(cb => cb.classList.remove('checked'));
+  document.querySelectorAll('.q-option').forEach(opt => opt.classList.remove('selected'));
+  selectedMulti.forEach(v => {
+    document.getElementById('check' + v)?.classList.add('checked');
+    document.querySelector(`.q-option[data-value="${v}"]`)?.classList.add('selected');
+  });
+}
+
+function submitAnswer() {
+  if (questionAnswered) return;
+
+  const q = currentQuestions[currentQIndex];
+  let userAnswer = null;
+
+  if (q.type === 'choice' || q.type === 'true_false') {
+    userAnswer = selectedChoice;
+  } else if (q.type === 'multi_choice') {
+    userAnswer = selectedMulti.slice();
+  } else if (q.type === 'fill_blank' || q.type === 'predict_output' || q.type === 'find_error') {
+    userAnswer = document.getElementById('qInput')?.value || '';
+  }
+
+  if (userAnswer === null || (typeof userAnswer === 'string' && userAnswer.trim() === '') || (Array.isArray(userAnswer) && userAnswer.length === 0)) {
+    // 未作答，提示
+    const btn = document.getElementById('btnSubmit');
+    btn.textContent = '请先选择答案';
+    setTimeout(() => { btn.textContent = '提交答案'; }, 1500);
+    return;
+  }
+
+  questionAnswered = true;
+  const qTime = Math.floor((Date.now() - testStartTime) / 1000) -
+    testAnswers.reduce((s, a) => s + (a.qTime || 0), 0);
+
+  const correct = checkAnswer(q, userAnswer);
+
+  testAnswers.push({
+    qid: q.id,
+    question: q.stem,
+    type: q.type,
+    userAnswer: userAnswer,
+    correctAnswer: q._answerMap ? q._answerMap.newAnswer : q.answer,
+    correct: correct,
+    qTime: qTime,
+    explanation: q.explanation || '',
+  });
+
+  // 显示反馈
+  const fb = document.getElementById('qFeedback');
+  const correctAns = q._answerMap ? q._answerMap.newAnswer : q.answer;
+  const correctDisplay = Array.isArray(correctAns) ? correctAns.join(', ') : String(correctAns);
+
+  if (correct) {
+    fb.className = 'q-feedback correct';
+    fb.innerHTML = `✅ 回答正确！${q.explanation ? '<br>📝 ' + q.explanation : ''}`;
+  } else {
+    fb.className = 'q-feedback wrong';
+    const userDisplay = Array.isArray(userAnswer) ? (userAnswer.length > 0 ? userAnswer.join(', ') : '未作答') : userAnswer;
+    fb.innerHTML = `❌ 回答错误。你的答案: ${escapeHtml(String(userDisplay))}，正确答案: ${escapeHtml(correctDisplay)}${q.explanation ? '<br>📝 ' + q.explanation : ''}`;
+  }
+
+  // 高亮选项
+  if (q.type === 'choice' || q.type === 'multi_choice' || q.type === 'true_false') {
+    document.querySelectorAll('.q-option').forEach(opt => {
+      opt.classList.add('disabled');
+      const val = opt.dataset.value;
+      const correctVals = Array.isArray(correctAns) ? correctAns : [correctAns];
+      if (correctVals.includes(String(val))) opt.classList.add('correct');
+      const userVals = Array.isArray(userAnswer) ? userAnswer : [userAnswer];
+      if (userVals.includes(String(val)) && !correctVals.includes(String(val))) opt.classList.add('wrong');
+    });
+  }
+
+  document.getElementById('btnSubmit').style.display = 'none';
+  const btnNext = document.getElementById('btnNext');
+  btnNext.style.display = 'inline-flex';
+  if (currentQIndex >= currentQuestions.length - 1) {
+    btnNext.textContent = '查看结果 📊';
+  }
+
+  // 保存历史（先保存以防中途退出）
+  saveCurrentProgress();
+}
+
+function restoreAnswerState() {
+  const prev = testAnswers[currentQIndex];
+  if (!prev) return;
+  questionAnswered = true;
+  if (prev.correct !== undefined) {
+    const fb = document.getElementById('qFeedback');
+    const correctDisplay = Array.isArray(prev.correctAnswer) ? prev.correctAnswer.join(', ') : String(prev.correctAnswer);
+    if (prev.correct) {
+      fb.className = 'q-feedback correct';
+      fb.innerHTML = `✅ 回答正确！${prev.explanation ? '<br>📝 ' + prev.explanation : ''}`;
+    } else {
+      fb.className = 'q-feedback wrong';
+      const userDisplay = Array.isArray(prev.userAnswer) ? prev.userAnswer.join(', ') : String(prev.userAnswer);
+      fb.innerHTML = `❌ 回答错误。你的答案: ${escapeHtml(userDisplay)}，正确答案: ${escapeHtml(correctDisplay)}${prev.explanation ? '<br>📝 ' + prev.explanation : ''}`;
+    }
+    document.getElementById('btnSubmit').style.display = 'none';
+    const btnNext = document.getElementById('btnNext');
+    btnNext.style.display = 'inline-flex';
+    if (currentQIndex >= currentQuestions.length - 1) {
+      btnNext.textContent = '查看结果 📊';
+    }
+  }
+}
+
+function saveCurrentProgress() {
+  // 中途保存
+  const history = loadHistory(currentCategory, currentItemId);
+  // 暂不完整保存，只在完成时保存
+}
+
+function nextQuestion() {
+  if (currentQIndex < currentQuestions.length - 1) {
+    currentQIndex++;
+    selectedChoice = null;
+    selectedMulti = [];
+    renderQuestion();
+  } else {
+    // 完成测试
+    finishTest();
+  }
+}
+
+function finishTest() {
+  stopTimer();
+  const totalTime = Math.floor((Date.now() - testStartTime) / 1000);
+  const score = testAnswers.filter(a => a.correct).length * 20;
+
+  // 保存到历史
+  const history = loadHistory(currentCategory, currentItemId);
+  history.push({
+    date: new Date().toISOString(),
+    score: score,
+    time: totalTime,
+    questions: testAnswers.map(a => ({
+      qid: a.qid,
+      correct: a.correct,
+      userAnswer: a.userAnswer,
+    })),
+  });
+  // 只保留最近20次
+  if (history.length > 20) history.splice(0, history.length - 20);
+  saveHistory(currentCategory, currentItemId, history);
+
+  navigate('result', currentCategory, currentItemId);
+}
+
+// ============================================================
+// 结果页
+// ============================================================
+function renderResult() {
+  const main = document.getElementById('mainContent');
+  const cat = CATEGORIES[currentCategory];
+  const item = cat.items.find(i => i.id === currentItemId);
+  const totalTime = testAnswers.reduce((s, a) => s + (a.qTime || 0), 0);
+  const correctCount = testAnswers.filter(a => a.correct).length;
+  const score = correctCount * 20;
+  const mastery = getMastery(currentCategory, currentItemId);
+
+  let gradeEmoji, gradeText;
+  if (score >= 80) { gradeEmoji = '🌟'; gradeText = '优秀'; }
+  else if (score >= 60) { gradeEmoji = '👍'; gradeText = '良好'; }
+  else if (score >= 40) { gradeEmoji = '📖'; gradeText = '还需努力'; }
+  else { gradeEmoji = '💪'; gradeText = '需要重点复习'; }
+
+  let reviewHtml = '';
+  testAnswers.forEach((a, i) => {
+    reviewHtml += `
+      <div class="review-item ${a.correct ? 'pass' : 'fail'}">
+        <div class="review-q">Q${i+1}. ${a.question.substring(0, 60)}${a.question.length > 60 ? '...' : ''}</div>
+        <div class="review-answer">
+          ${a.correct ? '✅ 正确' : `❌ 你的答案: ${escapeHtml(String(a.userAnswer))} → 正确答案: ${escapeHtml(String(a.correctAnswer))}`}
+        </div>
+        ${a.explanation ? `<div class="review-explain">💡 ${a.explanation}</div>` : ''}
+      </div>`;
+  });
+
+  // 学习建议
+  let suggestion = '';
+  const wrongItems = testAnswers.filter(a => !a.correct);
+  if (wrongItems.length >= 3) {
+    suggestion = '建议重新学习该知识点的基本概念，重点理解错题涉及的内容后再来测试。';
+  } else if (wrongItems.length >= 1) {
+    suggestion = '基本掌握，但仍有细节需要巩固。建议针对错题涉及的知识点再查阅资料。';
+  } else {
+    suggestion = '完全掌握！可以考虑进入下一个知识点的学习。';
+  }
+
+  main.innerHTML = `
+    <div class="result-card">
+      <div class="result-score">${score}</div>
+      <div class="result-label">${gradeEmoji} ${gradeText}</div>
+      <div class="result-details">
+        <div class="result-detail">
+          <div class="num">${correctCount}/${testAnswers.length}</div>
+          <div class="lbl">正确题数</div>
+        </div>
+        <div class="result-detail">
+          <div class="num">${Math.floor(totalTime/60)}分${totalTime%60}秒</div>
+          <div class="lbl">总用时</div>
+        </div>
+        <div class="result-detail">
+          <div class="num" style="color:${mastery >= 80 ? 'var(--correct)' : mastery >= 60 ? 'var(--gold)' : 'var(--wrong)'}">${mastery !== null ? '⭐'+mastery : '--'}</div>
+          <div class="lbl">综合掌握度</div>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="margin-bottom:10px;">📋 题目回顾</h3>
+    <div class="review-list">${reviewHtml}</div>
+
+    <div style="background:#f0f7ff; border-radius:var(--radius); padding:14px; margin:16px 0;">
+      💡 <strong>学习建议：</strong>${suggestion}
+    </div>
+
+    ${buildKanbanSuggestionHtml(currentCategory, currentItemId, score)}
+
+    <div class="actions">
+      <button class="btn btn-primary" onclick="navigate('test','${currentCategory}','${currentItemId}')">🔄 再来一次</button>
+      <button class="btn btn-outline" onclick="navigate('category','${currentCategory}')">📋 返回列表</button>
+      <button class="btn btn-ghost" onclick="navigate('dashboard')">📊 查看仪表盘</button>
+    </div>
+  `;
+}
+
+// ============================================================
+// 第二层联动：看板状态建议
+// ============================================================
+const KANBAN_STATUS_LABELS = { todo:'📥 待学习', doing:'📖 学习中', done:'✅ 已掌握', review:'🔄 需复习' };
+
+function getKanbanStatus(catId, itemId) {
+  try {
+    const raw = localStorage.getItem('learning-kanban-' + catId);
+    if (!raw) return 'todo';
+    const state = JSON.parse(raw);
+    return state[itemId] || 'todo';
+  } catch(e) { return 'todo'; }
+}
+
+function setKanbanStatus(catId, itemId, status) {
+  try {
+    const key = 'learning-kanban-' + catId;
+    const raw = localStorage.getItem(key);
+    const state = raw ? JSON.parse(raw) : {};
+    state[itemId] = status;
+    localStorage.setItem(key, JSON.stringify(state));
+  } catch(e) {}
+}
+
+function scoreToKanbanStatus(score) {
+  if (score >= 85) return 'done';
+  if (score >= 70) return 'doing';
+  if (score >= 50) return 'review';
+  return 'todo';
+}
+
+function buildKanbanSuggestionHtml(catId, itemId, score) {
+  const current = getKanbanStatus(catId, itemId);
+  const suggested = scoreToKanbanStatus(score);
+  const changed = suggested !== current;
+
+  const colors = { done:'#27ae60', doing:'#409eff', review:'#e6a23c', todo:'#909399' };
+  const sugColor = colors[suggested] || '#409eff';
+  const curColor = colors[current] || '#909399';
+
+  return `
+    <div id="kanbanSuggestion" style="background:#f0fff4;border:1px solid #b2dfdb;border-radius:var(--radius);padding:14px 16px;margin:12px 0;">
+      <div style="font-weight:700;margin-bottom:8px;">📋 看板状态联动</div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+        <span>当前：<span style="font-weight:700;color:${curColor};">${KANBAN_STATUS_LABELS[current]}</span></span>
+        ${changed ? `<span style="color:#aaa;">→</span>
+        <span>建议更新为：<span style="font-weight:700;color:${sugColor};">${KANBAN_STATUS_LABELS[suggested]}</span></span>
+        <span style="font-size:12px;color:#888;">（得分 ${score} 分）</span>` : `<span style="font-size:12px;color:#27ae60;">✅ 状态与成绩一致，无需调整</span>`}
+      </div>
+      ${changed ? `<div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-sm btn-primary" onclick="applyKanbanSuggestion('${catId}','${itemId}','${suggested}')">确认更新为「${KANBAN_STATUS_LABELS[suggested]}」</button>
+        <button class="btn btn-sm btn-outline" onclick="applyKanbanSuggestion('${catId}','${itemId}','review')" style="${suggested === 'review' ? 'display:none' : ''}">标为「需复习」</button>
+        <button class="btn btn-sm btn-ghost" onclick="document.getElementById('kanbanSuggestion').style.display='none'">跳过</button>
+      </div>` : ''}
+    </div>`;
+}
+
+function applyKanbanSuggestion(catId, itemId, status) {
+  setKanbanStatus(catId, itemId, status);
+  const el = document.getElementById('kanbanSuggestion');
+  if (el) {
+    el.innerHTML = `<div style="color:#27ae60;font-weight:700;">✅ 已将「${CATEGORIES[catId]?.items?.find(i=>i.id===itemId)?.title || itemId}」的看板状态更新为 ${KANBAN_STATUS_LABELS[status]}</div>`;
+  }
+}
+
+// ============================================================
+// 学习仪表盘
+// ============================================================
+function renderDashboard() {
+  const main = document.getElementById('mainContent');
+
+  // 合并统计
+  let allTested = 0, allTotal = 0, allAttempts = 0, allScore = 0, allTime = 0, allPassed = 0;
+  for (const id of Object.keys(CATEGORIES)) {
+    const s = getGlobalStats(id);
+    allTested += s.totalTested;
+    allTotal += s.totalItems;
+    allAttempts += s.totalAttempts;
+    allScore += s.avgScore * s.totalAttempts;
+    allTime += s.totalTime;
+    allPassed += s.passRate > 0 ? Math.round(s.totalAttempts * s.passRate / 100) : 0;
+  }
+  const overallAvg = allAttempts > 0 ? Math.round(allScore / allAttempts) : 0;
+  const overallPass = allAttempts > 0 ? Math.round(allPassed / allAttempts * 100) : 0;
+  const totalHours = Math.round(allTime / 3600 * 10) / 10;
+
+  // 薄弱点
+  let weakItems = [];
+  for (const [catId, cat] of Object.entries(CATEGORIES)) {
+    cat.items.forEach(item => {
+      const m = getMastery(catId, item.id);
+      if (m !== null && m < 60) {
+        weakItems.push({ catId, name: item.title, mastery: m, icon: cat.icon });
+      }
+    });
+  }
+  weakItems.sort((a, b) => a.mastery - b.mastery);
+
+  // 最近趋势（取所有测试记录的最后10条）
+  let allHistory = [];
+  for (const [catId, cat] of Object.entries(CATEGORIES)) {
+    cat.items.forEach(item => {
+      const history = loadHistory(catId, item.id);
+      history.forEach(h => {
+        allHistory.push({ date: h.date, score: h.score, item: item.title, cat: cat.icon });
+      });
+    });
+  }
+  allHistory.sort((a, b) => new Date(a.date) - new Date(b.date));
+  const recentTrend = allHistory.slice(-10);
+
+  let weakHtml = '';
+  if (weakItems.length === 0) {
+    weakHtml = '<div style="color:var(--text2); padding:20px; text-align:center;">🎉 暂无薄弱知识点！继续加油！</div>';
+  } else {
+    weakItems.slice(0, 10).forEach(w => {
+      weakHtml += `
+        <div class="mastery-row" style="cursor:pointer;" onclick="navigate('test','${w.catId}','${getItemIdByName(w.catId, w.name)}')">
+          <div class="mastery-name">${w.icon} ${w.name}</div>
+          <div class="mastery-bar-wrap"><div class="mastery-bar" style="width:${w.mastery}%; background:var(--wrong);"></div></div>
+          <div class="mastery-pct" style="color:var(--wrong);">${w.mastery}%</div>
+        </div>`;
+    });
+  }
+
+  // 掌握度排行
+  let masteryList = [];
+  for (const [catId, cat] of Object.entries(CATEGORIES)) {
+    cat.items.forEach(item => {
+      const m = getMastery(catId, item.id);
+      if (m !== null) {
+        masteryList.push({ catId, name: item.title, mastery: m, icon: cat.icon });
+      }
+    });
+  }
+  masteryList.sort((a, b) => b.mastery - a.mastery);
+  const topMastery = masteryList.slice(0, 10);
+
+  let topHtml = '';
+  topMastery.forEach(m => {
+    const color = m.mastery >= 80 ? 'var(--correct)' : m.mastery >= 60 ? 'var(--gold)' : 'var(--wrong)';
+    topHtml += `
+      <div class="mastery-row">
+        <div class="mastery-name">${m.icon} ${m.name}</div>
+        <div class="mastery-bar-wrap"><div class="mastery-bar" style="width:${m.mastery}%; background:${color};"></div></div>
+        <div class="mastery-pct" style="color:${color};">${m.mastery}%</div>
+      </div>`;
+  });
+
+  // 趋势图Canvas
+  const trendJson = JSON.stringify(recentTrend.map(t => t.score));
+
+  main.innerHTML = `
+    <button class="back-btn" onclick="navigate('home')">← 返回首页</button>
+
+    <div class="dash-overview">
+      <div class="dash-stat">
+        <div class="stat-num">${allTested}/${allTotal}</div>
+        <div class="stat-label">📚 已测试/总知识点</div>
+      </div>
+      <div class="dash-stat">
+        <div class="stat-num">${overallAvg}</div>
+        <div class="stat-label">📊 综合平均分</div>
+      </div>
+      <div class="dash-stat">
+        <div class="stat-num">${overallPass}%</div>
+        <div class="stat-label">✅ 通过率(≥60分)</div>
+      </div>
+      <div class="dash-stat">
+        <div class="stat-num">${totalHours}h</div>
+        <div class="stat-label">⏱ 累计学习时长</div>
+      </div>
+      <div class="dash-stat">
+        <div class="stat-num">${allAttempts}</div>
+        <div class="stat-label">📝 累计测试次数</div>
+      </div>
+    </div>
+
+    <div class="trend-chart">
+      <h3 style="margin-bottom:8px;">📈 最近测试趋势</h3>
+      <canvas id="trendCanvas" width="800" height="200"></canvas>
+      ${recentTrend.length === 0 ? '<div style="text-align:center; color:var(--text2); padding:20px;">暂无测试记录</div>' : ''}
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px;">
+      <div>
+        <h3 style="margin-bottom:8px;">⚠️ 需要复习</h3>
+        <div class="mastery-grid">${weakHtml}</div>
+      </div>
+      <div>
+        <h3 style="margin-bottom:8px;">🏅 掌握最好</h3>
+        <div class="mastery-grid">${topHtml || '<div style="color:var(--text2); padding:20px; text-align:center;">暂无测试记录</div>'}</div>
+      </div>
+    </div>
+  `;
+
+  // 绘制趋势图
+  if (recentTrend.length > 0) {
+    setTimeout(() => drawTrendChart(recentTrend), 50);
+  }
+}
+
+function getItemIdByName(catId, name) {
+  const cat = CATEGORIES[catId];
+  const item = cat.items.find(i => i.title === name);
+  return item ? item.id : cat.items[0].id;
+}
+
+function drawTrendChart(trendData) {
+  const canvas = document.getElementById('trendCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  const pad = { top: 20, right: 20, bottom: 40, left: 40 };
+  const pw = W - pad.left - pad.right;
+  const ph = H - pad.top - pad.bottom;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // 背景网格
+  ctx.strokeStyle = '#e9ecef';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (ph / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(W - pad.right, y);
+    ctx.stroke();
+    // Y轴标签
+    ctx.fillStyle = '#7f8c8d';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(100 - i * 25, pad.left - 6, y + 4);
+  }
+
+  if (trendData.length < 2) {
+    // 单点
+    const x = pad.left + pw / 2;
+    const y = pad.top + ph - (trendData[0].score / 100) * ph;
+    ctx.fillStyle = '#409eff';
+    ctx.beginPath();
+    ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#2c3e50';
+    ctx.textAlign = 'center';
+    ctx.fillText(trendData[0].score + '分', x, y - 12);
+    return;
+  }
+
+  // 折线
+  const step = pw / (trendData.length - 1);
+  ctx.strokeStyle = '#409eff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+
+  trendData.forEach((d, i) => {
+    const x = pad.left + step * i;
+    const y = pad.top + ph - (d.score / 100) * ph;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // 点
+  trendData.forEach((d, i) => {
+    const x = pad.left + step * i;
+    const y = pad.top + ph - (d.score / 100) * ph;
+    ctx.fillStyle = d.score >= 60 ? '#27ae60' : '#e74c3c';
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#2c3e50';
+    ctx.textAlign = 'center';
+    ctx.font = '10px sans-serif';
+    ctx.fillText(d.score, x, y - 10);
+  });
+
+  // X轴标签
+  ctx.fillStyle = '#7f8c8d';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'center';
+  const showEvery = Math.max(1, Math.floor(trendData.length / 5));
+  trendData.forEach((d, i) => {
+    if (i % showEvery === 0 || i === trendData.length - 1) {
+      const x = pad.left + step * i;
+      const dateStr = d.date.substring(5, 10);
+      ctx.fillText(dateStr, x, H - pad.bottom + 16);
+    }
+  });
+}
+
+// ============================================================
+// 项目验收页（增强版）
+// ============================================================
+function renderProjects() {
+  const main = document.getElementById('mainContent');
+
+  let html = `<div class="ws-toolbar">
+    <button class="back-btn" onclick="navigate('home')">← 返回首页</button>
+    <span style="font-size:12px; color:var(--text2);">点击「📋 验收」进入项目详情，上传代码后可自动检查</span>
+  </div>`;
+
+  for (const [catId, cat] of Object.entries(CATEGORIES)) {
+    const projects = cat.projectChecks || [];
+    if (projects.length === 0) continue;
+
+    html += `<h2 style="font-size:16px; margin:20px 0 10px;">${cat.icon} ${cat.label} — 实战项目</h2>`;
+    html += '<div class="project-grid">';
+
+    projects.forEach(proj => {
+      const scores = loadProjectScores(catId);
+      const projScores = scores[proj.id] || {};
+      const fileNames = getStoredFileList(catId, proj.id);
+      const fileCount = fileNames.length;
+      const checklist = loadChecklistState(catId, proj.id);
+
+      // 统计清单状态
+      let totalChecks = 0, doneChecks = 0;
+      const countChecks = (checks) => {
+        for (const c of checks) {
+          totalChecks++;
+          if (checklist[c.id] === 'pass') doneChecks++;
+        }
+      };
+      for (const dim of proj.dims) countChecks(dim.checks);
+      if (proj.codeChecks) countChecks(proj.codeChecks);
+
+      // 星级评分
+      const totalStars = Object.values(projScores).reduce((s, v) => s + (v || 0), 0);
+      const maxStars = proj.dims.length * 5;
+
+      html += `<div class="project-card">
+        <div class="project-name">${proj.name}</div>
+        <div style="font-size:12px; color:var(--text2); margin-bottom:6px;">${proj.desc}</div>
+        <div class="pc-status">
+          <span class="pc-status-item">📁 ${fileCount}文件</span>
+          <span class="pc-status-item">📋 ${doneChecks}/${totalChecks}项</span>
+        </div>
+        <div class="project-dims">`;
+
+      proj.dims.forEach((dim, di) => {
+        const star = projScores[dim.name] || 0;
+        html += `<div class="project-dim">
+          <span>${dim.name}</span>
+          <div class="project-stars">`;
+        for (let s = 1; s <= 5; s++) {
+          html += `<span class="project-star ${s <= star ? 'active' : ''}"
+            onclick="rateProject('${catId}','${proj.id}','${escapeHtml(dim.name)}',${s})"
+            title="${s}星">★</span>`;
+        }
+        html += `</div></div>`;
+      });
+
+      html += `
+        </div>
+        <div style="margin-top:8px; font-size:12px; font-weight:600; text-align:center;">
+          综合: ${'★'.repeat(Math.floor(totalStars/5))}${'☆'.repeat(proj.dims.length - Math.floor(totalStars/5))}
+          ${totalStars}/${maxStars}
+        </div>
+        <div class="pc-actions">
+          <button class="btn btn-sm" onclick="uploadProjectCode('${catId}','${proj.id}')">📤 上传</button>
+          <button class="btn btn-sm btn-primary" onclick="navigate('project-detail','${catId}','${proj.id}')">📋 验收</button>
+        </div>
+      </div>`;
+    });
+
+    html += '</div>';
+  }
+
+  main.innerHTML = html;
+}
+
+function rateProject(catId, projId, dimName, stars) {
+  const scores = loadProjectScores(catId);
+  if (!scores[projId]) scores[projId] = {};
+  scores[projId][dimName] = stars;
+  saveProjectScores(catId, scores);
+
+  // 根据当前视图重新渲染
+  if (currentView === 'project-detail') {
+    renderProjectDetail(catId, projId);
+  } else {
+    renderProjects();
+    window.scrollTo(0, document.querySelector('.project-grid')?.offsetTop || 0);
+  }
+}
+
+// 供项目列表页"📤 上传"按钮使用
+function uploadProjectCode(catId, projId) {
+  triggerFolderUpload(async (files) => {
+    await saveProjectFiles(catId, projId, files);
+    const project = findProject(catId, projId);
+    if (project) {
+      const checkResults = runAllAutoChecks(project, files);
+      setAutoCheckCache(catId, projId, checkResults);
+    }
+    renderProjects();
+  });
+}
+
+function findProject(catId, projId) {
+  const cat = CATEGORIES[catId];
+  if (!cat || !cat.projectChecks) return null;
+  return cat.projectChecks.find(p => p.id === projId);
+}
+
+// ============================================================
+// 项目详情/验收工作台
+// ============================================================
+async function renderProjectDetail(catId, projId) {
+  const main = document.getElementById('mainContent');
+  const project = findProject(catId, projId);
+  if (!project) { main.innerHTML = '<p>项目未找到</p>'; return; }
+
+  const cat = CATEGORIES[catId];
+  const scores = loadProjectScores(catId);
+  const projScores = scores[projId] || {};
+  const checklist = loadChecklistState(catId, projId);
+  const fileNames = getStoredFileList(catId, projId);
+
+  // 加载文件内容
+  let files = [];
+  if (fileNames.length > 0) {
+    files = await loadProjectFiles(catId, projId);
+  }
+
+  // 获取或运行自动检查
+  let autoResults = getAutoCheckCache(catId, projId);
+  if (!autoResults && files.length > 0) {
+    autoResults = runAllAutoChecks(project, files);
+    setAutoCheckCache(catId, projId, autoResults);
+  }
+
+  // 构建HTML
+  let html = `<div class="ws-toolbar">
+    <button class="back-btn" onclick="navigate('projects')">← 返回项目列表</button>
+    <span style="font-size:14px; font-weight:700; flex:1;">${project.name}</span>`;
+
+  html += `<button class="btn btn-sm" onclick="uploadProjectCodeAndRefresh('${catId}','${projId}')">📤 上传文件夹</button>`;
+  html += `<button class="btn btn-sm" onclick="showCodeEditor('${catId}','${projId}')">✏️ 在线编辑</button>`;
+  if (fileNames.length > 0) {
+    html += `<button class="btn btn-sm btn-danger" onclick="deleteProjectCode('${catId}','${projId}')">🗑 清除代码</button>`;
+  }
+  html += `</div>`;
+
+  html += `<div class="project-workspace">`;
+
+  // 左栏：文件树
+  html += `<div class="ws-left">
+    <div class="file-tree">
+      <div class="file-tree-title">📁 项目文件 <span class="ft-count">(${fileNames.length}个文件)</span></div>`;
+
+  if (fileNames.length === 0) {
+    html += `<div class="file-tree-empty">
+      📂 尚未上传代码<br><br>
+      点击上方 <b>📤 上传文件夹</b> 选择项目目录<br>
+      或 <b>✏️ 在线编辑</b> 手动编写代码
+    </div>`;
+  } else {
+    // 文件结构检查结果
+    if (autoResults && autoResults.fileCheck) {
+      for (const ef of autoResults.fileCheck.checked) {
+        const badgeClass = ef.found ? 'ok' : (ef.required ? 'miss' : 'warn');
+        const badgeText = ef.found ? '✓' : (ef.required ? '✗' : '?');
+        html += `<div class="file-tree-item" onclick="${ef.found && ef.matches.length > 0 ? `showCodeViewer('${escapeHtml(ef.matches[0])}', '${catId}', '${projId}')` : ''}" title="${ef.desc}">
+          <span class="ft-icon">${ef.required ? '🔴' : '🟡'}</span>
+          <span class="ft-name">${escapeHtml(ef.name)}</span>
+          <span class="ft-badge ${badgeClass}">${badgeText} ${ef.desc}</span>
+        </div>`;
+      }
+    }
+
+    // 实际文件列表
+    for (const fn of fileNames) {
+      html += `<div class="file-tree-item" onclick="showCodeViewer('${escapeHtml(fn)}','${catId}','${projId}')" title="点击查看代码">
+        <span class="ft-icon">📄</span>
+        <span class="ft-name">${escapeHtml(fn)}</span>
+      </div>`;
+    }
+
+    // 代码量统计
+    if (autoResults && autoResults.metrics) {
+      const m = autoResults.metrics;
+      html += `<div class="file-tree-metrics">
+        <span>📏 ${m.totalLines}行</span>
+        <span>📝 ${m.codeLines}代码</span>
+        <span>💬 ${m.commentLines}注释</span>
+        <span>⚙️ ${m.functionCount}函数</span>
+        <span>📊 ${(m.commentRatio*100).toFixed(0)}%注释率</span>
+      </div>`;
+    }
+  }
+  html += `</div>`;
+
+  // 上传区域（无文件时更明显）
+  if (fileNames.length === 0) {
+    html += `<div class="upload-area">
+      <button class="btn btn-sm" onclick="uploadProjectCodeAndRefresh('${catId}','${projId}')">📤 上传文件夹 (推荐)</button>
+      <button class="btn btn-sm btn-outline" onclick="showCodeEditor('${catId}','${projId}')">✏️ 在线编辑</button>
+      <div class="upload-hint">💡 支持 Chrome/Edge 选择整个文件夹，也支持 Firefox 选择文件</div>
+    </div>`;
+  }
+
+  html += `</div>`; // end ws-left
+
+  // 右栏：验收清单
+  html += `<div class="ws-right">
+    <div class="checklist">
+      <div class="checklist-header">
+        📋 验收清单
+        ${autoResults ? `<span class="ch-summary">
+          <span class="ch-auto">自动检查: ${countAutoPassed(project, autoResults)}</span>
+          &nbsp;|&nbsp;
+          <span class="ch-manual">人工: ${countManualPassed(project, checklist)}</span>
+        </span>` : ''}
+      </div>`;
+
+  // 每个维度
+  for (const dim of project.dims) {
+    const dimDone = dim.checks.filter(c => checklist[c.id] === 'pass').length;
+    const dimTotal = dim.checks.length;
+    html += `<div class="checklist-dim">
+      <div class="checklist-dim-header" onclick="toggleChecklistDim(this)">
+        <span class="dim-arrow ${dimDone === dimTotal ? 'expanded' : ''}">▶</span>
+        <span class="dim-name">${dim.name}</span>
+        <span class="dim-progress">
+          <span class="dp-done">${dimDone}</span>/${dimTotal}
+        </span>
+      </div>
+      <div class="checklist-items ${dimDone === dimTotal ? 'expanded' : ''}">`;
+
+    for (const check of dim.checks) {
+      const status = checklist[check.id] || 'pending';
+      const autoResult = autoResults && autoResults.patternCheck ? autoResults.patternCheck[check.id] : null;
+      const isAuto = check.type === 'pattern';
+      const autoPassed = autoResult && autoResult.found;
+
+      let statusClass = 'ci-pending', statusIcon = '';
+      if (status === 'pass') { statusClass = 'ci-pass'; statusIcon = '✓'; }
+      else if (status === 'fail') { statusClass = 'ci-fail'; statusIcon = '✗'; }
+      else if (isAuto && autoPassed) { statusClass = 'ci-pass'; statusIcon = '✓'; }
+
+      html += `<div class="check-item">
+        <span class="ci-status ${statusClass}" onclick="cycleCheckStatus('${catId}','${projId}','${check.id}')" title="点击切换状态">${statusIcon}</span>
+        <span class="ci-desc">${check.desc}</span>
+        ${isAuto ? (autoPassed
+          ? `<span class="ci-match" title="${autoResult.file}:${autoResult.line}">✅ ${autoResult.match}</span>`
+          : (autoResult && autoResult.error ? '' : `<span class="ci-tag auto" style="opacity:0.5">未检测到</span>`))
+          : ''}
+        <span class="ci-tag ${isAuto ? 'auto' : 'manual'}">${isAuto ? '自动' : '人工'}</span>
+      </div>`;
+    }
+
+    html += `</div></div>`;
+  }
+
+  // 代码质量检查
+  if (project.codeChecks && project.codeChecks.length > 0) {
+    const qDone = project.codeChecks.filter(c => checklist[c.id] === 'pass').length;
+    const qTotal = project.codeChecks.length;
+    html += `<div class="checklist-dim">
+      <div class="checklist-dim-header" onclick="toggleChecklistDim(this)">
+        <span class="dim-arrow">▶</span>
+        <span class="dim-name">🔍 代码质量</span>
+        <span class="dim-progress"><span class="dp-done">${qDone}</span>/${qTotal}</span>
+      </div>
+      <div class="checklist-items">`;
+
+    for (const cc of project.codeChecks) {
+      const status = checklist[cc.id] || 'pending';
+      const autoResult = autoResults && autoResults.patternCheck ? autoResults.patternCheck[cc.id] : null;
+      const isAuto = cc.type === 'pattern';
+      const autoPassed = autoResult && autoResult.found;
+
+      let metricResult = true;
+      if (cc.type === 'metric' && autoResults && autoResults.metrics) {
+        const val = autoResults.metrics[cc.metric];
+        metricResult = val !== undefined ? val >= (cc.min || 0) : true;
+      }
+
+      let statusClass = 'ci-pending', statusIcon = '';
+      if (status === 'pass') { statusClass = 'ci-pass'; statusIcon = '✓'; }
+      else if (status === 'fail') { statusClass = 'ci-fail'; statusIcon = '✗'; }
+      else if (isAuto && autoPassed) { statusClass = 'ci-pass'; statusIcon = '✓'; }
+      else if (cc.type === 'metric' && metricResult) { statusClass = 'ci-pass'; statusIcon = '✓'; }
+
+      html += `<div class="check-item">
+        <span class="ci-status ${statusClass}" onclick="cycleCheckStatus('${catId}','${projId}','${cc.id}')" title="点击切换状态">${statusIcon}</span>
+        <span class="ci-desc">${cc.desc}</span>
+        ${cc.type === 'metric' && autoResults && autoResults.metrics
+          ? `<span class="ci-match">${autoResults.metrics[cc.metric] !== undefined ? (autoResults.metrics[cc.metric]*100).toFixed(0)+'%' : 'N/A'}</span>`
+          : ''}
+        <span class="ci-tag ${isAuto ? 'auto' : 'manual'}">${isAuto ? '自动' : (cc.type === 'metric' ? '统计' : '人工')}</span>
+      </div>`;
+    }
+
+    html += `</div></div>`;
+  }
+
+  html += `</div></div></div>`; // end checklist, ws-right, project-workspace
+
+  // 底部：综合评价
+  html += `<div class="ws-bottom">
+    <div class="project-summary">
+      <div class="ps-score">
+        <div class="ps-num">${Object.values(projScores).reduce((s,v)=>s+(v||0),0)}/${project.dims.length*5}</div>
+        <div class="ps-label">综合评分</div>
+      </div>
+      <div class="ps-dims">`;
+
+  for (const dim of project.dims) {
+    const star = projScores[dim.name] || 0;
+    html += `<div class="ps-dim-row">
+      <span class="psd-name">${dim.name}</span>
+      <span class="psd-stars">${'★'.repeat(star)}${'☆'.repeat(5-star)}</span>
+      <span style="font-size:11px; color:var(--text2); cursor:pointer;" onclick="
+        const s=(prompt('评分(1-5):','${star}')||0);
+        if(s>=1&&s<=5) rateProject('${catId}','${projId}','${escapeHtml(dim.name)}',parseInt(s))
+      ">✏️</span>
+    </div>`;
+  }
+
+  const notes = projScores['_notes'] || '';
+  html += `</div>
+      <div class="ps-notes">
+        <textarea placeholder="📝 项目备注/审查意见..." onchange="saveProjectNotes('${catId}','${projId}',this.value)">${escapeHtml(notes)}</textarea>
+      </div>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:10px; justify-content:center;">
+      <button class="btn btn-primary" onclick="saveProjectEval('${catId}','${projId}')">💾 保存评价</button>
+      <button class="btn btn-outline" onclick="navigate('projects')">🏆 返回项目列表</button>
+    </div>
+  </div>`;
+
+  main.innerHTML = html;
+}
+
+// 清单状态管理
+function loadChecklistState(catId, projId) {
+  try {
+    const raw = localStorage.getItem(getStorageKey(catId, `checklist_${projId}`));
+    return raw ? JSON.parse(raw) : {};
+  } catch(e) { return {}; }
+}
+
+function saveChecklistState(catId, projId, state) {
+  try {
+    localStorage.setItem(getStorageKey(catId, `checklist_${projId}`), JSON.stringify(state));
+    _scheduleServerSync();
+  } catch(e) {}
+}
+
+function cycleCheckStatus(catId, projId, checkId) {
+  const state = loadChecklistState(catId, projId);
+  const current = state[checkId] || 'pending';
+  // pending → pass → fail → pending
+  if (current === 'pending') state[checkId] = 'pass';
+  else if (current === 'pass') state[checkId] = 'fail';
+  else state[checkId] = 'pending';
+  saveChecklistState(catId, projId, state);
+  renderProjectDetail(catId, projId);
+}
+
+function countAutoPassed(project, autoResults) {
+  if (!autoResults || !autoResults.patternCheck) return 0;
+  let count = 0;
+  for (const dim of project.dims) {
+    for (const c of dim.checks) {
+      if (c.type === 'pattern' && autoResults.patternCheck[c.id]?.found) count++;
+    }
+  }
+  if (project.codeChecks) {
+    for (const cc of project.codeChecks) {
+      if (cc.type === 'pattern' && autoResults.patternCheck[cc.id]?.found) count++;
+      if (cc.type === 'metric' && autoResults.metrics) {
+        const val = autoResults.metrics[cc.metric];
+        if (val !== undefined && val >= (cc.min || 0)) count++;
+      }
+    }
+  }
+  return count;
+}
+
+function countManualPassed(project, checklist) {
+  let count = 0;
+  for (const dim of project.dims) {
+    for (const c of dim.checks) {
+      if (c.type === 'manual' && checklist[c.id] === 'pass') count++;
+    }
+  }
+  if (project.codeChecks) {
+    for (const cc of project.codeChecks) {
+      if (cc.type === 'manual' && checklist[cc.id] === 'pass') count++;
+    }
+  }
+  return count;
+}
+
+function toggleChecklistDim(header) {
+  const arrow = header.querySelector('.dim-arrow');
+  const items = header.nextElementSibling;
+  arrow.classList.toggle('expanded');
+  items.classList.toggle('expanded');
+}
+
+// ============================================================
+// 代码查看器（弹窗）
+// ============================================================
+let currentViewerFile = null;
+
+async function showCodeViewer(fileName, catId, projId) {
+  const files = await loadProjectFiles(catId, projId);
+  const file = files.find(f => f.name === fileName);
+  if (!file) { alert('文件内容未找到'); return; }
+  currentViewerFile = { name: fileName, content: file.content };
+
+  const overlay = document.getElementById('codeModal');
+  const title = document.getElementById('modalTitle');
+  const body = document.getElementById('modalBody');
+
+  title.textContent = `📄 ${fileName}`;
+  body.innerHTML = `<pre class="code-viewer">${highlightCCode(file.content)}</pre>`;
+  overlay.classList.add('active');
+}
+
+// ============================================================
+// 在线编辑器（弹窗）
+// ============================================================
+let editorFiles = [];       // [{ name, content, isNew }]
+let editorCatId = '';
+let editorProjId = '';
+let editorActiveTab = 0;
+
+async function showCodeEditor(catId, projId) {
+  editorCatId = catId;
+  editorProjId = projId;
+  editorFiles = [];
+  editorActiveTab = 0;
+
+  // 加载已有文件
+  const fileNames = getStoredFileList(catId, projId);
+  if (fileNames.length > 0) {
+    const files = await loadProjectFiles(catId, projId);
+    editorFiles = files.map(f => ({ name: f.name, content: f.content, isNew: false }));
+  }
+
+  if (editorFiles.length === 0) {
+    // 默认创建 main.c
+    editorFiles.push({ name: 'main.c', content: '// 在此编写代码...\n', isNew: true });
+  }
+
+  renderEditorUI();
+  document.getElementById('editorModal').classList.add('active');
+}
+
+function renderEditorUI() {
+  const tabsDiv = document.getElementById('editorTabs');
+  let tabsHtml = '';
+  editorFiles.forEach((f, i) => {
+    tabsHtml += `<div class="editor-tab ${i === editorActiveTab ? 'active' : ''}"
+      onclick="switchEditorTab(${i})" ondblclick="renameEditorFile(${i})">
+      ${escapeHtml(f.name)}
+      ${editorFiles.length > 1 ? `<span class="et-close" onclick="event.stopPropagation();closeEditorTab(${i})">✕</span>` : ''}
+    </div>`;
+  });
+  tabsHtml += `<div class="editor-tab-add" onclick="addEditorFile()" title="新建文件">+</div>`;
+  tabsDiv.innerHTML = tabsHtml;
+
+  // 更新文本区
+  const textarea = document.getElementById('editorTextarea');
+  textarea.value = editorFiles[editorActiveTab]?.content || '';
+}
+
+function switchEditorTab(index) {
+  // 保存当前tab内容
+  const textarea = document.getElementById('editorTextarea');
+  if (editorFiles[editorActiveTab]) {
+    editorFiles[editorActiveTab].content = textarea.value;
+  }
+  editorActiveTab = index;
+  renderEditorUI();
+}
+
+function addEditorFile() {
+  const name = prompt('输入新文件名 (例如: shell.c):');
+  if (!name || !name.trim()) return;
+  // 保存当前内容
+  const textarea = document.getElementById('editorTextarea');
+  if (editorFiles[editorActiveTab]) {
+    editorFiles[editorActiveTab].content = textarea.value;
+  }
+  editorFiles.push({ name: name.trim(), content: '', isNew: true });
+  editorActiveTab = editorFiles.length - 1;
+  renderEditorUI();
+}
+
+function closeEditorTab(index) {
+  if (editorFiles.length <= 1) return;
+  editorFiles.splice(index, 1);
+  if (editorActiveTab >= editorFiles.length) editorActiveTab = editorFiles.length - 1;
+  renderEditorUI();
+}
+
+function renameEditorFile(index) {
+  const newName = prompt('重命名文件:', editorFiles[index].name);
+  if (!newName || !newName.trim()) return;
+  editorFiles[index].name = newName.trim();
+  renderEditorUI();
+}
+
+async function saveEditorFiles() {
+  // 保存当前tab内容
+  const textarea = document.getElementById('editorTextarea');
+  if (editorFiles[editorActiveTab]) {
+    editorFiles[editorActiveTab].content = textarea.value;
+  }
+
+  // 验证：至少有一个非空文件
+  const nonEmpty = editorFiles.filter(f => f.content.trim().length > 0);
+  if (nonEmpty.length === 0) {
+    alert('请至少编写一个非空文件。');
+    return;
+  }
+
+  await saveProjectFiles(editorCatId, editorProjId,
+    editorFiles.map(f => ({ name: f.name, content: f.content, size: f.content.length })));
+
+  // 运行自动检查
+  const project = findProject(editorCatId, editorProjId);
+  if (project) {
+    const files = editorFiles.map(f => ({ name: f.name, content: f.content }));
+    const checkResults = runAllAutoChecks(project, files);
+    setAutoCheckCache(editorCatId, editorProjId, checkResults);
+  }
+
+  closeEditor();
+  renderProjectDetail(editorCatId, editorProjId);
+}
+
+function closeEditor() {
+  document.getElementById('editorModal').classList.remove('active');
+}
+
+function closeModal() {
+  document.getElementById('codeModal').classList.remove('active');
+  currentViewerFile = null;
+}
+
+// 供项目详情页"上传文件夹"按钮使用
+function uploadProjectCodeAndRefresh(catId, projId) {
+  triggerFolderUpload(async (files) => {
+    await saveProjectFiles(catId, projId, files);
+    const project = findProject(catId, projId);
+    if (project) {
+      const checkResults = runAllAutoChecks(project, files);
+      setAutoCheckCache(catId, projId, checkResults);
+    }
+    renderProjectDetail(catId, projId);
+  });
+}
+
+async function deleteProjectCode(catId, projId) {
+  if (!confirm('确定清除已上传的项目代码吗？此操作不可撤销。')) return;
+  await deleteProjectFiles(catId, projId);
+  try { localStorage.removeItem(getStorageKey(catId, `autocheck_${projId}`)); } catch(e) {}
+  try { localStorage.removeItem(getStorageKey(catId, `checklist_${projId}`)); } catch(e) {}
+  _scheduleServerSync();
+  renderProjectDetail(catId, projId);
+}
+
+function saveProjectNotes(catId, projId, notes) {
+  const scores = loadProjectScores(catId);
+  if (!scores[projId]) scores[projId] = {};
+  scores[projId]['_notes'] = notes;
+  saveProjectScores(catId, scores);
+}
+
+function saveProjectEval(catId, projId) {
+  alert('✅ 评价已保存！可在项目列表页查看综合评分。');
+  // 数据已实时保存到 localStorage，此处为确认反馈
+}
+
+// ============================================================
+// 工具函数
+// ============================================================
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ============================================================
+// 十、初始化
+// ============================================================
+function init() {
+  // 从服务器同步最新数据（API 模式）
+  syncQuizFromServer();
+
+  // URL Hash 路由：支持 quiz-system.html#catId/itemId 直接跳入知识点
+  const hash = location.hash.slice(1);
+  if (hash) {
+    const parts = hash.split('/');
+    const catId = parts[0];
+    const itemId = parts[1] || null;
+    if (CATEGORIES[catId]) {
+      renderTipBar();
+      if (itemId && CATEGORIES[catId].items.find(i => i.id === itemId)) {
+        navigate('category', catId, itemId);
+      } else {
+        navigate('category', catId);
+      }
+    } else {
+      renderTipBar();
+      navigate('home');
+    }
+  } else {
+    renderTipBar();
+    navigate('home');
+  }
+
+  // 弹窗点击遮罩关闭
+  document.getElementById('codeModal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+  document.getElementById('editorModal').addEventListener('click', function(e) {
+    if (e.target === this) closeEditor();
+  });
+
+  // 编辑器Tab切换时自动保存当前内容
+  document.getElementById('editorTextarea').addEventListener('input', function() {
+    if (editorFiles[editorActiveTab]) {
+      editorFiles[editorActiveTab].content = this.value;
+    }
+  });
+}
+
+// 页面加载
+document.addEventListener('DOMContentLoaded', init);
+
+// 全局键盘快捷键
+document.addEventListener('keydown', (e) => {
+  // ESC关闭弹窗
+  if (e.key === 'Escape') {
+    const codeModal = document.getElementById('codeModal');
+    const editorModal = document.getElementById('editorModal');
+    if (editorModal.classList.contains('active')) { closeEditor(); return; }
+    if (codeModal.classList.contains('active')) { closeModal(); return; }
+  }
+
+  if (currentView === 'test' && !questionAnswered) {
+    const q = currentQuestions[currentQIndex];
+    if (q.type === 'choice') {
+      const key = e.key.toUpperCase();
+      if (key >= 'A' && key <= 'D') {
+        selectChoice(key);
+      }
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      submitAnswer();
+    }
+  }
+  if (currentView === 'test' && questionAnswered) {
+    if (e.key === 'Enter' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      nextQuestion();
+    }
+  }
+});
+</script>
+
+</body>
+</html>

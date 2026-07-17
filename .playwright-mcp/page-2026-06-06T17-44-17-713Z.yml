@@ -1,0 +1,26 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - heading "📝 测试中..." [level=1] [ref=e366] [cursor=pointer]
+    - generic [ref=e5]:
+      - button "🏠 首页" [ref=e6] [cursor=pointer]
+      - button "📊 仪表盘" [ref=e7] [cursor=pointer]
+      - button "🏆 项目验收" [ref=e8] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]: 💡
+    - generic [ref=e12]: 💡 设计模式：单例模式的懒汉式(Double-Checked Locking)在C++11之前因为内存重排序问题是不安全的。
+    - generic "关闭" [ref=e13] [cursor=pointer]: ✕
+  - generic [ref=e14]:
+    - generic [ref=e367]:
+      - button "← 退出测试" [ref=e368] [cursor=pointer]
+      - generic [ref=e369]: 第 4/5 题
+      - generic [ref=e370]: ⏱ 01:34
+    - generic [ref=e410]:
+      - generic [ref=e411]:
+        - generic [ref=e412]: 判断对错
+        - generic [ref=e413]: 基础
+      - generic [ref=e414]: 📖 代码审查中看到构造函数使用了初始化列表和赋值两种方式。
+      - generic [ref=e415]: 判断：对于类成员对象，在构造函数初始化列表中初始化与在构造函数体内赋值的效率完全相同。
+      - generic [ref=e416]:
+        - generic [ref=e419] [cursor=pointer]: ✅ 正确
+        - generic [ref=e422] [cursor=pointer]: ❌ 错误
+      - button "提交答案" [ref=e424] [cursor=pointer]

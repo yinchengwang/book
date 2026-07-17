@@ -1,0 +1,631 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e3]:
+      - link "🎯 Reading Radar" [ref=e4] [cursor=pointer]:
+        - /url: index.html
+        - generic [ref=e5]: 🎯
+        - generic [ref=e6]: Reading Radar
+      - list [ref=e7]:
+        - listitem [ref=e8]:
+          - link "📡 雷达图" [ref=e9] [cursor=pointer]:
+            - /url: index.html
+            - generic [ref=e10]: 📡
+            - generic [ref=e11]: 雷达图
+        - listitem [ref=e12]:
+          - link "📋 看板" [ref=e13] [cursor=pointer]:
+            - /url: learning-kanban.html
+            - generic [ref=e14]: 📋
+            - generic [ref=e15]: 看板
+        - listitem [ref=e16]:
+          - link "📝 测验" [ref=e17] [cursor=pointer]:
+            - /url: quiz-system.html
+            - generic [ref=e18]: 📝
+            - generic [ref=e19]: 测验
+        - listitem [ref=e20]:
+          - link "📖 学习" [ref=e21] [cursor=pointer]:
+            - /url: learn.html
+            - generic [ref=e22]: 📖
+            - generic [ref=e23]: 学习
+        - listitem [ref=e24]:
+          - link "📊 仪表盘" [ref=e25] [cursor=pointer]:
+            - /url: dashboard.html
+            - generic [ref=e26]: 📊
+            - generic [ref=e27]: 仪表盘
+        - listitem [ref=e28]:
+          - link "🗓️ 五年计划" [ref=e29] [cursor=pointer]:
+            - /url: five-year-plan.html
+            - generic [ref=e30]: 🗓️
+            - generic [ref=e31]: 五年计划
+  - banner [ref=e32]:
+    - generic [ref=e33]:
+      - generic [ref=e34]:
+        - generic [ref=e35]: Learning Route
+        - heading "🔮 向量数据库技术栈 · 学习内容页" [level=1] [ref=e495]
+        - generic [ref=e37]: 当前知识点：向量索引基础。页面路由格式固定为 learn.html#<catId>/<itemId>。
+      - navigation [ref=e38]:
+        - link "← 返回看板" [ref=e39] [cursor=pointer]:
+          - /url: learning-kanban.html
+        - link "📊 仪表盘" [ref=e40] [cursor=pointer]:
+          - /url: dashboard.html
+        - link "🎯 去测验" [ref=e41] [cursor=pointer]:
+          - /url: quiz-system.html#vdb/db-vector-basic
+    - generic [ref=e42]:
+      - button "🔧 C 技术栈" [ref=e496] [cursor=pointer]
+      - button "⚙️ C++ 技术栈" [ref=e497] [cursor=pointer]
+      - button "🌳 数据结构技术栈" [ref=e498] [cursor=pointer]
+      - button "🗄️ 数据库内核技术栈" [ref=e499] [cursor=pointer]
+      - button "🐍 Python 技术栈" [ref=e500] [cursor=pointer]
+      - button "🐧 Linux 技术栈" [ref=e501] [cursor=pointer]
+      - button "🔮 向量数据库技术栈" [ref=e502] [cursor=pointer]
+  - main [ref=e50]:
+    - complementary [ref=e51]:
+      - generic [ref=e52]:
+        - generic [ref=e53]: 🔮 向量数据库技术栈 · 知识点目录
+        - generic [ref=e54]: 共 15 个知识点，当前已筛出 15 个。
+        - textbox "搜索知识点..." [ref=e56]
+        - combobox [ref=e58]:
+          - option "全部象限" [selected]
+          - option "语言/线性结构"
+          - option "系统/树形结构"
+          - option "算法/图结构"
+          - option "工程/算法设计"
+      - generic [ref=e59]:
+        - generic [ref=e503]:
+          - generic [ref=e504]:
+            - generic [ref=e505]: 向量基础
+            - generic [ref=e506]: "1"
+          - link "向量索引基础 基础 待学习 未测" [ref=e507] [cursor=pointer]:
+            - /url: "#vdb/db-vector-basic"
+            - generic [ref=e508]: 向量索引基础
+            - generic [ref=e509]:
+              - generic [ref=e510]: 基础
+              - generic [ref=e511]: 待学习
+              - generic [ref=e512]: 未测
+        - generic [ref=e513]:
+          - generic [ref=e514]:
+            - generic [ref=e515]: 索引算法
+            - generic [ref=e516]: "5"
+          - link "IVF家族索引(IVFFlat/IVFPQ/IVFSQ) 进阶 待学习 未测" [ref=e517] [cursor=pointer]:
+            - /url: "#vdb/db-ivf-variants"
+            - generic [ref=e518]: IVF家族索引(IVFFlat/IVFPQ/IVFSQ)
+            - generic [ref=e519]:
+              - generic [ref=e520]: 进阶
+              - generic [ref=e521]: 待学习
+              - generic [ref=e522]: 未测
+          - link "HNSW索引原理与实现 进阶 待学习 未测" [ref=e523] [cursor=pointer]:
+            - /url: "#vdb/db-hnsw"
+            - generic [ref=e524]: HNSW索引原理与实现
+            - generic [ref=e525]:
+              - generic [ref=e526]: 进阶
+              - generic [ref=e527]: 待学习
+              - generic [ref=e528]: 未测
+          - link "图索引详解(NSW/HNSW/NSG/Vamana) 高级 待学习 未测" [ref=e529] [cursor=pointer]:
+            - /url: "#vdb/db-graph-index"
+            - generic [ref=e530]: 图索引详解(NSW/HNSW/NSG/Vamana)
+            - generic [ref=e531]:
+              - generic [ref=e532]: 高级
+              - generic [ref=e533]: 待学习
+              - generic [ref=e534]: 未测
+          - link "磁盘向量索引(DiskANN) 高级 待学习 未测" [ref=e535] [cursor=pointer]:
+            - /url: "#vdb/db-diskann"
+            - generic [ref=e536]: 磁盘向量索引(DiskANN)
+            - generic [ref=e537]:
+              - generic [ref=e538]: 高级
+              - generic [ref=e539]: 待学习
+              - generic [ref=e540]: 未测
+          - link "Pinecone 存储与索引 进阶 待学习 未测" [ref=e541] [cursor=pointer]:
+            - /url: "#vdb/vdb-pinecone-storage"
+            - generic [ref=e542]: Pinecone 存储与索引
+            - generic [ref=e543]:
+              - generic [ref=e544]: 进阶
+              - generic [ref=e545]: 待学习
+              - generic [ref=e546]: 未测
+        - generic [ref=e547]:
+          - generic [ref=e548]:
+            - generic [ref=e549]: 量化与压缩
+            - generic [ref=e550]: "3"
+          - link "乘积量化(PQ)与向量压缩 进阶 待学习 未测" [ref=e551] [cursor=pointer]:
+            - /url: "#vdb/db-pq-quant"
+            - generic [ref=e552]: 乘积量化(PQ)与向量压缩
+            - generic [ref=e553]:
+              - generic [ref=e554]: 进阶
+              - generic [ref=e555]: 待学习
+              - generic [ref=e556]: 未测
+          - link "量化技术全景(PQ/OPQ/SQ/AQ/RVQ) 高级 待学习 未测" [ref=e557] [cursor=pointer]:
+            - /url: "#vdb/db-quantization"
+            - generic [ref=e558]: 量化技术全景(PQ/OPQ/SQ/AQ/RVQ)
+            - generic [ref=e559]:
+              - generic [ref=e560]: 高级
+              - generic [ref=e561]: 待学习
+              - generic [ref=e562]: 未测
+          - link "标量量化与SIMD距离计算 进阶 待学习 未测" [ref=e563] [cursor=pointer]:
+            - /url: "#vdb/db-scalar-quant"
+            - generic [ref=e564]: 标量量化与SIMD距离计算
+            - generic [ref=e565]:
+              - generic [ref=e566]: 进阶
+              - generic [ref=e567]: 待学习
+              - generic [ref=e568]: 未测
+        - generic [ref=e569]:
+          - generic [ref=e570]:
+            - generic [ref=e571]: 系统与工程
+            - generic [ref=e572]: "6"
+          - link "Milvus系统架构 进阶 待学习 未测" [ref=e573] [cursor=pointer]:
+            - /url: "#vdb/db-milvus-arch"
+            - generic [ref=e574]: Milvus系统架构
+            - generic [ref=e575]:
+              - generic [ref=e576]: 进阶
+              - generic [ref=e577]: 待学习
+              - generic [ref=e578]: 未测
+          - link "Milvus段(Segment)管理 进阶 待学习 未测" [ref=e579] [cursor=pointer]:
+            - /url: "#vdb/db-milvus-segment"
+            - generic [ref=e580]: Milvus段(Segment)管理
+            - generic [ref=e581]:
+              - generic [ref=e582]: 进阶
+              - generic [ref=e583]: 待学习
+              - generic [ref=e584]: 未测
+          - link "Milvus索引构建与调度 高级 待学习 未测" [ref=e585] [cursor=pointer]:
+            - /url: "#vdb/db-milvus-index"
+            - generic [ref=e586]: Milvus索引构建与调度
+            - generic [ref=e587]:
+              - generic [ref=e588]: 高级
+              - generic [ref=e589]: 待学习
+              - generic [ref=e590]: 未测
+          - link "Milvus混合查询(标量+向量) 高级 待学习 未测" [ref=e591] [cursor=pointer]:
+            - /url: "#vdb/db-milvus-search"
+            - generic [ref=e592]: Milvus混合查询(标量+向量)
+            - generic [ref=e593]:
+              - generic [ref=e594]: 高级
+              - generic [ref=e595]: 待学习
+              - generic [ref=e596]: 未测
+          - link "混合查询(标量+向量/SPANN) 高级 待学习 未测" [ref=e597] [cursor=pointer]:
+            - /url: "#vdb/db-hybrid-search"
+            - generic [ref=e598]: 混合查询(标量+向量/SPANN)
+            - generic [ref=e599]:
+              - generic [ref=e600]: 高级
+              - generic [ref=e601]: 待学习
+              - generic [ref=e602]: 未测
+          - link "Pinecone Serverless 架构 基础 待学习 未测" [ref=e603] [cursor=pointer]:
+            - /url: "#vdb/vdb-pinecone-serverless"
+            - generic [ref=e604]: Pinecone Serverless 架构
+            - generic [ref=e605]:
+              - generic [ref=e606]: 基础
+              - generic [ref=e607]: 待学习
+              - generic [ref=e608]: 未测
+    - generic [ref=e340]:
+      - generic [ref=e341]:
+        - generic [ref=e342]:
+          - generic [ref=e609]: 🔮 向量数据库技术栈
+          - generic [ref=e610]: 向量基础
+          - generic [ref=e611]: 基础
+          - generic [ref=e612]: 待学习
+          - generic [ref=e613]: 未测验
+        - heading "向量索引基础" [level=2] [ref=e614]
+        - generic [ref=e349]: Flat(Brute Force)精确搜索、IVF(Inverted File)倒排划分、聚类中心(centroid)的K-Means训练、nprobe参数控制搜索精度。Faiss的IVFFlat是入门级向量索引。 学习时重点围绕 Flat 暴力搜索、IVF 倒排划分、K-Means 聚类中心训练、nprobe 参数调优，从原理到工程实现逐层深入。
+        - generic [ref=e350]:
+          - link "🎯 去做 10 题测验" [ref=e351] [cursor=pointer]:
+            - /url: quiz-system.html#vdb/db-vector-basic
+          - link "📋 返回学习看板" [ref=e352] [cursor=pointer]:
+            - /url: learning-kanban.html
+        - generic [ref=e353]:
+          - generic [ref=e354]:
+            - button "← 上一个" [disabled] [ref=e355]
+            - button "下一个 →" [ref=e356] [cursor=pointer]
+          - generic [ref=e357]: 路由：learn.html#vdb/db-vector-basic
+      - generic [ref=e358]:
+        - generic [ref=e615]:
+          - generic [ref=e616]: 当前状态
+          - generic [ref=e617]: 待学习
+          - generic [ref=e618]: 来自学习看板的本地状态
+        - generic [ref=e619]:
+          - generic [ref=e620]: 最近均分
+          - generic [ref=e621]: "--"
+          - generic [ref=e622]: 还没有测验记录
+        - generic [ref=e623]:
+          - generic [ref=e624]: 测验次数
+          - generic [ref=e625]: "0"
+          - generic [ref=e626]: 先学内容再去测验
+        - generic [ref=e627]:
+          - generic [ref=e628]: 同象限知识点
+          - generic [ref=e629]: "1"
+          - generic [ref=e630]: 向量基础 方向的连续学习范围
+      - generic [ref=e375]:
+        - generic [ref=e376]:
+          - generic [ref=e631]:
+            - generic [ref=e632]:
+              - generic [ref=e633]: 入门路径
+              - generic [ref=e634]: "01"
+            - generic [ref=e635]: 先理解问题和基础方法，再看优化和变体。
+            - generic [ref=e636]:
+              - generic [ref=e637]:
+                - generic [ref=e638]: "1"
+                - paragraph [ref=e639]: 围绕 Flat 暴力搜索、IVF 倒排划分、K-Means 聚类中心训练、nprobe 参数调优 先回答三个问题：它解决什么问题、比上一代好在哪里、引入什么新代价。
+              - generic [ref=e640]:
+                - generic [ref=e641]: "2"
+                - paragraph [ref=e642]: 入门时先画一张搜索或构建流程图，把数据流和参数串起来。
+              - generic [ref=e643]:
+                - generic [ref=e644]: "3"
+                - paragraph [ref=e645]: 不要一开始就调参，先把索引类型的选择逻辑理解清楚。
+          - generic [ref=e646]:
+            - generic [ref=e647]:
+              - generic [ref=e648]: 核心原理
+              - generic [ref=e649]: "02"
+            - generic [ref=e650]: 把索引拆成数据结构、搜索策略和代价模型。
+            - generic [ref=e651]:
+              - generic [ref=e652]:
+                - generic [ref=e653]: "1"
+                - paragraph [ref=e654]: Flat(Brute Force)精确搜索、IVF(Inverted File)倒排划分、聚类中心(centroid)的K-Means训练、nprobe参数控制搜索精度。Faiss的IVFFlat是入门级向量索引。
+              - generic [ref=e655]:
+                - generic [ref=e656]: "2"
+                - paragraph [ref=e657]: 原理层要重点解释 Flat 暴力搜索、IVF 倒排划分、K-Means 聚类中心训练、nprobe 参数调优 为什么有效，它换来了什么收益，又引入了什么代价。
+              - generic [ref=e658]:
+                - generic [ref=e659]: "3"
+                - paragraph [ref=e660]: 理解 ANN 索引时必须把召回率、延迟和内存放在一起看，单独优化任何一边都容易失真。
+          - generic [ref=e661]:
+            - generic [ref=e662]:
+              - generic [ref=e663]: 实战与工作
+              - generic [ref=e664]: "03"
+            - generic [ref=e665]: 把索引选型和参数带回真实系统。
+            - generic [ref=e666]:
+              - generic [ref=e667]:
+                - generic [ref=e668]: "1"
+                - paragraph [ref=e669]: 向量基础方向先理解距离度量和召回率的定义，再对比不同索引的输出差异。
+              - generic [ref=e670]:
+                - generic [ref=e671]: "2"
+                - paragraph [ref=e672]: 工作里真正要落地的是 Flat 暴力搜索、IVF 倒排划分、K-Means 聚类中心训练、nprobe 参数调优，通常体现在召回达标、延迟可控、成本可接受上。
+              - generic [ref=e673]:
+                - generic [ref=e674]: "3"
+                - paragraph [ref=e675]: 建议用 recall-vs-QPS 曲线做索引选型，而不是只看单点指标。
+          - generic [ref=e676]:
+            - generic [ref=e677]:
+              - generic [ref=e678]: 调优与面试
+              - generic [ref=e679]: "04"
+            - generic [ref=e680]: 整理关键参数、取舍逻辑和常见坑。
+            - generic [ref=e681]:
+              - generic [ref=e682]:
+                - generic [ref=e683]: "1"
+                - paragraph [ref=e684]: 面试会追问召回率为什么不到 100%、参数如何调优、不同索引的选型依据。
+              - generic [ref=e685]:
+                - generic [ref=e686]: "2"
+                - paragraph [ref=e687]: 调优时先看指标再动手，确认瓶颈是 recall 不够还是 QPS 不够，再决定调参数还是换索引。
+              - generic [ref=e688]:
+                - generic [ref=e689]: "3"
+                - paragraph [ref=e690]: 面试回答尽量把原理、参数、 trade-off 和线上案例连成闭环。
+          - generic [ref=e691]:
+            - generic [ref=e692]:
+              - generic [ref=e693]: 📖 深度阅读
+              - generic [ref=e694]: "05"
+            - generic [ref=e695]: 内容待补充。
+            - generic [ref=e697]:
+              - heading "Flat（Brute Force）精确搜索：所有向量检索的原点" [level=2] [ref=e698]
+              - blockquote [ref=e699]:
+                - text: 在开始聊 IVF、HNSW、PQ 这些花哨的玩意儿之前，我得先和你聊聊这个最"笨"、最直接、但也最重要的方法。
+                - text: 理解了它，后面所有的 ANN 索引你都能一眼看穿本质。
+              - separator [ref=e700]
+              - heading "一、为什么说 Flat 是所有索引的\"照妖镜\"？" [level=2] [ref=e701]
+              - paragraph [ref=e702]: 做向量检索的人经常说一句话：
+              - blockquote [ref=e703]: 「你的 HNSW 召回率 98%？——和 Flat 比过吗？」
+              - paragraph [ref=e704]:
+                - text: 因为不管你怎么优化、怎么近似、怎么压缩，
+                - strong [ref=e705]: 最终裁判只有一个
+                - text: ：你的结果和 Flat 的结果重合多少。
+              - paragraph [ref=e706]: 这就像学排序算法——你学快排之前得先知道冒泡排序是什么，因为它定义了「排序正确」的标准。Flat 就是向量检索世界的冒泡排序。
+              - heading "一个很形象的比喻" [level=3] [ref=e707]
+              - paragraph [ref=e708]:
+                - text: 把向量检索比作
+                - strong [ref=e709]: 在图书馆找书
+                - text: ：
+              - list [ref=e710]:
+                - listitem [ref=e711]:
+                  - strong [ref=e712]: Flat（暴力搜索）
+                  - text: ：你走遍图书馆的每一个书架、每一本书，找到最相关的那本 → 保证找到，但累死
+                - listitem [ref=e713]:
+                  - strong [ref=e714]: IVF
+                  - text: ：你先问管理员「文学类在哪片？」→ 直奔那个区域找 → 快了很多，但万一书放错架了就漏了
+                - listitem [ref=e715]:
+                  - strong [ref=e716]: HNSW
+                  - text: ：你按朋友的朋友的朋友介绍去找人 → 几步就到，但可能不是最优路径
+              - paragraph [ref=e717]:
+                - strong [ref=e718]: 没有 Flat，你永远不知道上面那些方法到底"丢了多少"。
+              - separator [ref=e719]
+              - heading "二、Flat 到底在干什么？" [level=2] [ref=e720]
+              - heading "2.1 算法流程" [level=3] [ref=e721]
+              - paragraph [ref=e722]: Flat 的搜索算法用一句话就能说清楚：
+              - code [ref=e724]: "输入：查询向量 q, 数据库 D = [v₀, v₁, ..., vₙ₋₁], 返回数量 k 输出：最近的 k 个向量（下标 + 距离） 步骤： for i = 0 to n-1: dist[i] = 计算(q, vᵢ) // 逐个比 sort(D, dist) // 全排 return D[0..k-1] // 取前k"
+              - paragraph [ref=e725]: 没有任何花招。就是遍历、计算距离、排序。
+              - heading "2.2 用手算感受一下" [level=3] [ref=e726]
+              - paragraph [ref=e727]: 来个超级小的例子，让你对数量级有感觉。
+              - paragraph [ref=e728]:
+                - text: 假设有 5 个 2 维向量，查询
+                - code [ref=e729]: q = (5.0, 3.5)
+                - text: ：
+              - code [ref=e731]: "向量库： v₀ = (1.2, 3.1) v₁ = (2.5, 4.2) v₂ = (4.3, 1.8) v₃ = (5.6, 3.9) v₄ = (7.2, 2.5) 欧氏距离: d₀ = √((5.0-1.2)² + (3.5-3.1)²) = √(14.44+0.16) = 3.82 d₁ = √((5.0-2.5)² + (3.5-4.2)²) = √(6.25+0.49) = 2.60 d₂ = √((5.0-4.3)² + (3.5-1.8)²) = √(0.49+2.89) = 1.84 d₃ = √((5.0-5.6)² + (3.5-3.9)²) = √(0.36+0.16) = 0.72 ← 最近 d₄ = √((5.0-7.2)² + (3.5-2.5)²) = √(4.84+1.0) = 2.42 Top-3: [v₃, v₂, v₄] 距离: [0.72, 1.84, 2.42]"
+              - paragraph [ref=e732]: 这就是 Flat 的全部。100% 准确，但 5 个向量你要算 5 次——50 万个就要算 50 万次，这就是 Flat 的代价。
+              - separator [ref=e733]
+              - heading "三、距离度量：不只是\"大小\"的问题" [level=2] [ref=e734]
+              - paragraph [ref=e735]:
+                - text: 说起"两个向量多像"，大多数人第一反应是欧氏距离。但在向量检索的世界里，
+                - strong [ref=e736]: 选什么距离比怎么算更重要
+                - text: 。
+              - heading "三种最常用的距离" [level=3] [ref=e737]
+              - table [ref=e738]:
+                - rowgroup [ref=e739]:
+                  - row "度量 公式 直觉 Faiss 对应" [ref=e740]:
+                    - columnheader "度量" [ref=e741]
+                    - columnheader "公式" [ref=e742]
+                    - columnheader "直觉" [ref=e743]
+                    - columnheader "Faiss 对应" [ref=e744]
+                - rowgroup [ref=e745]:
+                  - row "------ ------ ------ -----------" [ref=e746]:
+                    - cell "------" [ref=e747]
+                    - cell "------" [ref=e748]
+                    - cell "------" [ref=e749]
+                    - cell "-----------" [ref=e750]
+                  - row "L2 欧氏距离 √Σ(qᵢ - vᵢ)² 空间中的直线距离 IndexFlatL2" [ref=e751]:
+                    - cell "L2 欧氏距离" [ref=e752]
+                    - cell "√Σ(qᵢ - vᵢ)²" [ref=e753]:
+                      - code [ref=e754]: √Σ(qᵢ - vᵢ)²
+                    - cell "空间中的直线距离" [ref=e755]
+                    - cell "IndexFlatL2" [ref=e756]:
+                      - code [ref=e757]: IndexFlatL2
+                  - row "内积 IP Σ qᵢ · vᵢ 同向性 + 大小 IndexFlatIP" [ref=e758]:
+                    - cell "内积 IP" [ref=e759]
+                    - cell "Σ qᵢ · vᵢ" [ref=e760]:
+                      - code [ref=e761]: Σ qᵢ · vᵢ
+                    - cell "同向性 + 大小" [ref=e762]
+                    - cell "IndexFlatIP" [ref=e763]:
+                      - code [ref=e764]: IndexFlatIP
+                  - row "余弦相似度 cos(θ) = (q·v) / (│q│·│v│) 方向一致性 IndexFlatIP+归一化" [ref=e765]:
+                    - cell "余弦相似度" [ref=e766]
+                    - cell "cos(θ) = (q·v) / (│q│·│v│)" [ref=e767]:
+                      - code [ref=e768]: cos(θ) = (q·v) / (│q│·│v│)
+                    - cell "方向一致性" [ref=e769]
+                    - cell "IndexFlatIP+归一化" [ref=e770]:
+                      - code [ref=e771]: IndexFlatIP
+                      - text: +归一化
+              - heading "关键区别" [level=3] [ref=e772]
+              - blockquote [ref=e773]: "**L2 在乎\"长度差\"和\"方向差\"；余弦只在乎\"方向\"；内积两者都要。**"
+              - paragraph [ref=e774]:
+                - text: 举个实际例子：做文本搜索时，
+                - code [ref=e775]: "\"苹果\""
+                - text: 的向量模长一般比
+                - code [ref=e776]: "\"这是一个苹果\""
+                - text: 短。
+              - list [ref=e777]:
+                - listitem [ref=e778]: L2 会把模长大的判为"远"，余弦不在乎。
+                - listitem [ref=e779]: Embedding 模型通常建议用余弦/内积，因为语义方向更重要。
+                - listitem [ref=e780]: 图像特征（如 SIFT）则常用 L2，因为特征本身已经归一化过。
+              - heading "面试/工作中容易忽略的坑" [level=3] [ref=e781]
+              - paragraph [ref=e782]:
+                - strong [ref=e783]: L2 距离在 Faiss 中返回的是平方和，不是开方后的值。
+              - code [ref=e785]: Flat L2 返回：d² = Σ(qᵢ - vᵢ)² 你以为的： d = √Σ(qᵢ - vᵢ)²
+              - paragraph [ref=e786]:
+                - strong [ref=e787]: 为什么 Faiss 不开方？
+                - text: 因为开方是单调变换——排序顺序不变，省掉能省一个 O(N·D) 的开方，在百万级别是巨大的节省。这个细节在后面对比 ANN 召回率时要注意。
+              - separator [ref=e788]
+              - heading "四、复杂度分析：为什么 Flat 快不起来？" [level=2] [ref=e789]
+              - heading "时间成本" [level=3] [ref=e790]
+              - code [ref=e792]: "搜索一次的时间 ≈ N × D × (一次浮点乘加的成本) N = 100万, D = 128: 1,000,000 × 128 = 128,000,000 次浮点操作 约 50~200ms（取决于硬件和 SIMD 优化） N = 1亿, D = 128: 100,000,000 × 128 = 12,800,000,000 次浮点操作 约 5~20 秒 → 不可接受"
+              - paragraph [ref=e793]:
+                - strong [ref=e794]: 所以一条经验法则：
+              - table [ref=e795]:
+                - rowgroup [ref=e796]:
+                  - row "数据量 单次查询延迟 建议" [ref=e797]:
+                    - columnheader "数据量" [ref=e798]
+                    - columnheader "单次查询延迟" [ref=e799]
+                    - columnheader "建议" [ref=e800]
+                - rowgroup [ref=e801]:
+                  - row "-------- ------------ ------" [ref=e802]:
+                    - cell "--------" [ref=e803]
+                    - cell "------------" [ref=e804]
+                    - cell "------" [ref=e805]
+                  - row "< 1 万 ~1-5ms 直接用 Flat" [ref=e806]:
+                    - cell "< 1 万" [ref=e807]
+                    - cell "~1-5ms" [ref=e808]
+                    - cell "直接用 Flat" [ref=e809]
+                  - row "1 万 ~ 10 万 ~5-50ms Flat 勉强可用，考虑 IVF" [ref=e810]:
+                    - cell "1 万 ~ 10 万" [ref=e811]
+                    - cell "~5-50ms" [ref=e812]
+                    - cell "Flat 勉强可用，考虑 IVF" [ref=e813]
+                  - row "10 万 ~ 100 万 ~50-500ms 上 IVFFlat / HNSW" [ref=e814]:
+                    - cell "10 万 ~ 100 万" [ref=e815]
+                    - cell "~50-500ms" [ref=e816]
+                    - cell "上 IVFFlat / HNSW" [ref=e817]
+                  - row "100 万 ~ 1 亿 ~秒级 HNSW / IVF+PQ / DiskANN" [ref=e818]:
+                    - cell "100 万 ~ 1 亿" [ref=e819]
+                    - cell "~秒级" [ref=e820]
+                    - cell "HNSW / IVF+PQ / DiskANN" [ref=e821]
+                  - row "> 1 亿 无法接受 DiskANN / SPANN" [ref=e822]:
+                    - cell "> 1 亿" [ref=e823]
+                    - cell "无法接受" [ref=e824]
+                    - cell "DiskANN / SPANN" [ref=e825]
+              - heading "空间成本" [level=3] [ref=e826]
+              - code [ref=e828]: "内存 = N × D × 4 字节（float32） N=100万, D=128: 100万×128×4 = 512MB N=1亿, D=128: 1亿×128×4 = 51.2GB ← 单机可能装不下"
+              - paragraph [ref=e829]:
+                - strong [ref=e830]: Flat 存的是完整向量、原始精度。
+                - text: 它不压缩、不量化。这也是为什么数据大了之后必须用 PQ、SQ 等量化手段的原因——不只是为了快，更是为了能装进内存。
+              - separator [ref=e831]
+              - heading "五、代码说话：多种语言实现" [level=2] [ref=e832]
+              - heading "5.1 Python（最常用，直接调 Faiss）" [level=3] [ref=e833]
+              - code [ref=e835]: "import faiss import numpy as np import time d = 128 # 维度 nb = 100000 # 10 万条数据 nq = 100 # 100 个查询 k = 10 # 返回 top-10 # 造些随机数据模拟 Embedding np.random.seed(42) xb = np.random.random((nb, d)).astype('float32') xq = np.random.random((nq, d)).astype('float32') # ---- Flat L2 索引 ---- index = faiss.IndexFlatL2(d) index.add(xb) # 没有 train 步骤！ # 搜索 t0 = time.time() D, I = index.search(xq, k) # D = 距离, I = 下标 t1 = time.time() print(f\"搜索 {nq} 条查询，耗时: {t1-t0:.4f} 秒\") print(f\"平均每条: {(t1-t0)/nq*1000:.2f} ms\") print(f\"查询 0 的最近邻下标: {I[0]}\") print(f\"查询 0 的最近距离: {D[0]}\")"
+              - blockquote [ref=e836]: "注意：`IndexFlat` 没有 `train()` 方法，因为不需要训练。这是它和 IVF、PQ 等索引的区别点——直接 `add` 就行。面试里常考：「哪些 Faiss 索引需要 train？哪些不需要？」答案就是：Flat 不需要，IVF/PQ 需要（因为要聚类/训练码本）。"
+              - heading "5.2 C++（Faiss C++ API）" [level=3] [ref=e837]
+              - code [ref=e839]: "#include <faiss/IndexFlat.h> #include <faiss/index_io.h> #include <iostream> #include <vector> int main() { int d = 128; // 维度 int nb = 100000; // 10 万条 int nq = 10; // 10 个查询 int k = 5; // 返回 top-5 // 造数据 std::vector<float> xb(nb * d); std::vector<float> xq(nq * d); srand(42); for (size_t i = 0; i < nb * d; i++) xb[i] = (float)rand() / RAND_MAX; for (size_t i = 0; i < nq * d; i++) xq[i] = (float)rand() / RAND_MAX; // 创建 FlatL2 索引 faiss::IndexFlatL2 index(d); // add → 注意：数据类型是指针 index.add(nb, xb.data()); // 搜索 std::vector<faiss::idx_t> labels(nq * k); std::vector<float> distances(nq * k); index.search(nq, xq.data(), k, distances.data(), labels.data()); // 打印结果 std::cout << \"查询 0 最近邻: \"; for (int j = 0; j < k; j++) std::cout << labels[j] << \" \"; std::cout << std::endl; std::cout << \"对应距离: \"; for (int j = 0; j < k; j++) std::cout << distances[j] << \" \"; std::cout << std::endl; return 0; }"
+              - heading "5.3 纯 C++ 手写（从零实现，理解原理）" [level=3] [ref=e840]
+              - paragraph [ref=e841]: 这是面试手写题经常出现的版本——不依赖 Faiss，自己实现 Brute Force：
+              - code [ref=e843]: "#include <vector> #include <algorithm> #include <cmath> #include <iostream> struct Neighbor { int id; float dist; bool operator<(const Neighbor& other) const { return dist < other.dist; // 小根堆排序用 } }; std::vector<Neighbor> brute_force_knn( const float* database, int n, int d, const float* query, int k ) { std::vector<Neighbor> results; results.reserve(n); for (int i = 0; i < n; i++) { float dist = 0.0f; // L2 距离：Σ(q - v)² for (int j = 0; j < d; j++) { float diff = query[j] - database[i * d + j]; dist += diff * diff; } results.push_back({i, dist}); } // 排序取前 k std::partial_sort( results.begin(), results.begin() + k, results.end() ); results.resize(k); return results; } int main() { int n = 10000, d = 128, k = 5; std::vector<float> db(n * d); std::vector<float> q(d); // ... 初始化数据 ... auto knn = brute_force_knn(db.data(), n, d, q.data(), k); for (auto& nb : knn) std::cout << \"id=\" << nb.id << \" dist=\" << nb.dist << \"\\n\"; }"
+              - blockquote [ref=e844]:
+                - text: 这个手写版本面试里很常见。优化点通常追问：
+                - text: "- 怎么不用全排序？→ `std::partial_sort` 或最大堆维护 Top-K"
+                - text: "- 能更快吗？→ SIMD 距离计算"
+                - text: "- 能并行吗？→ OpenMP `#pragma omp parallel for`"
+              - heading "5.4 Python 从零手写（理解 Top-K 堆优化）" [level=3] [ref=e845]
+              - code [ref=e847]: "import numpy as np import heapq def flat_search(query, database, k): \"\"\" 手写 Flat 搜索，用最大堆维护 Top-K。 时间复杂度 O(N·D + N·logK)，比全排序 O(N·logN) 快。 \"\"\" heap = [] # 最大堆（存负距离模拟最小堆） for i, vec in enumerate(database): diff = query - vec dist = np.dot(diff, diff) # L2 平方距离 heapq.heappush(heap, (-dist, i)) # 取负→最大堆 if len(heap) > k: heapq.heappop(heap) # 弹出最大的（即距离最远的） # 堆里的就是 Top-K result = sorted( [(-d, idx) for d, idx in heap], key=lambda x: x[0] ) return [(idx, dist) for dist, idx in result]"
+              - paragraph [ref=e848]:
+                - strong [ref=e849]: 这个版本的亮点
+                - text: ：
+              - list [ref=e850]:
+                - listitem [ref=e851]: 用最大堆避免了全排序
+                - listitem [ref=e852]: 空间复杂度从 O(N) 降到 O(k)
+                - listitem [ref=e853]: 工业级实现（Faiss）也是这么干的
+              - separator [ref=e854]
+              - heading "六、深入了解 Faiss 底层实现" [level=2] [ref=e855]
+              - heading "6.1 IndexFlat 内部长什么样？" [level=3] [ref=e856]
+              - paragraph [ref=e857]:
+                - text: 当你调用
+                - code [ref=e858]: index.search()
+                - text: 时，Faiss 内部走的是这样的调用链：
+              - code [ref=e860]: IndexFlat::search() └─ knn_L2sqr() 或 knn_inner_product() └─ fvec_L2sqr() ← 向量化距离计算 └─ BLAS sgemv() ← 或手写 SIMD 循环
+              - heading "6.2 内存布局：为什么 Faiss 这么快？" [level=3] [ref=e861]
+              - paragraph [ref=e862]: Flat 存储向量用的是连续的行优先（Row-Major）布局：
+              - code [ref=e864]: xb = [v₀_0, v₀_1, ..., v₀_d-1, v₁_0, v₁_1, ..., v₁_d-1, ...] └────── 第 0 个向量 ──────┘└────── 第 1 个向量 ──────┘
+              - paragraph [ref=e865]:
+                - text: 这种布局在遍历时
+                - strong [ref=e866]: CPU 缓存友好
+                - text: ——从内存中加载一块就是连续几个向量的部分维度，不会到处跳。看似不起眼，但在 N=100 万时，缓存命中率差 30% 不是开玩笑的。
+              - heading "6.3 SIMD 加速的秘密" [level=3] [ref=e867]
+              - paragraph [ref=e868]:
+                - text: Faiss 的
+                - code [ref=e869]: fvec_L2sqr
+                - text: 内部用到了：
+              - list [ref=e870]:
+                - listitem [ref=e871]:
+                  - strong [ref=e872]: SSE
+                  - text: ：一次处理 4 个 float
+                - listitem [ref=e873]:
+                  - strong [ref=e874]: AVX2
+                  - text: ：一次处理 8 个 float（主流）
+                - listitem [ref=e875]:
+                  - strong [ref=e876]: ARM NEON
+                  - text: ：手机/服务器 ARM 平台
+              - paragraph [ref=e877]: 以一个 128 维向量为例，用 AVX2：
+              - code [ref=e879]: 串行：循环 128 次，每次 1 次减 + 1 次乘 + 1 次加 AVX2：循环 16 次，每次 8 个减 + 8 个乘 + 8 个加 → 理论 8 倍加速
+              - code [ref=e881]: "// 伪代码：AVX2 加速 L2 距离计算 // 假设 d 是 8 的倍数，指针 32 字节对齐 __m256 sum = _mm256_setzero_ps(); for (int j = 0; j < d; j += 8) { __m256 a = _mm256_load_ps(&q[j]); // 8 个 float __m256 b = _mm256_load_ps(&db[i*d + j]); __m256 diff = _mm256_sub_ps(a, b); sum = _mm256_fmadd_ps(diff, diff, sum); // FMA: diff² + sum } // 将 8 个部分和累加 → 最终距离"
+              - blockquote [ref=e882]: "这就是为什么实际环境里 Faiss 的 Flat 搜索比你的 `for` 循环快 5-10 倍的原因——不只是语言（C++ vs Python）的差距，更重要的是 SIMD 指令。"
+              - heading "6.4 多线程搜索" [level=3] [ref=e883]
+              - code [ref=e885]: "index.nprobe = 10 # IVF 搜索参数（Flat 没有这个） # 但 Flat 也可以多线程搜索： faiss.omp_set_num_threads(8) D, I = index.search(xq, k) # 自动并行"
+              - paragraph [ref=e886]:
+                - text: Faiss 在
+                - code [ref=e887]: search()
+                - text: 内部用 OpenMP 把查询分块并行。100 个查询如果开 8 线程，每个线程处理 12-13 个查询。这也是为什么批量查询比单条查询快很多的原因。
+              - separator [ref=e888]
+              - heading "七、Flat 在生产中的三个真实用途" [level=2] [ref=e889]
+              - heading "7.1 做 ANN 的精度基准（最常见用法）" [level=3] [ref=e890]
+              - code [ref=e892]: "# 1. 用 Flat 算 ground truth gt_index = faiss.IndexFlatL2(d) gt_index.add(xb) D_gt, I_gt = gt_index.search(xq, k) # 2. ANN 索引搜索 ann_index = faiss.IndexIVFFlat( faiss.IndexFlatL2(d), d, nlist, faiss.METRIC_L2 ) ann_index.train(xb) ann_index.add(xb) ann_index.nprobe = 10 D_ann, I_ann = ann_index.search(xq, k) # 3. 算召回率 recall_at_1 = (I_gt[:, :1] == I_ann[:, :1]).mean() recall_at_10 = (I_gt[:, :10] == I_ann[:, :10]).mean() print(f\"Recall@1: {recall_at_1:.2%}, Recall@10: {recall_at_10:.2%}\")"
+              - heading "7.2 小数据集的直接检索（省事）" [level=3] [ref=e893]
+              - paragraph [ref=e894]: 如果你的数据量不超过 10 万，Flat 完全够用：
+              - code [ref=e896]: "# 一万条 Embedding 用 Flat 一遍过 # ~5ms/query → 10k/s QPS index = faiss.IndexFlatIP(d) # 文本检索用内积 index.add(xb)"
+              - paragraph [ref=e897]:
+                - text: 很多刚开始做 RAG 项目的团队，数据量在几千到几万的时候，
+                - strong [ref=e898]: 用 Flat 就够了，根本不需要上 ANN
+                - text: 。加个索引反而多了一堆参数要调。
+              - heading "7.3 作为高级索引的底层组件（最容易被忽视）" [level=3] [ref=e899]
+              - code [ref=e901]: "# Flat 是许多 ANN 索引的\"基石\" quantizer = faiss.IndexFlatL2(d) # ← 看这里 index_ivf = faiss.IndexIVFFlat(quantizer, d, nlist) # HNSW 搜索时也需要 Flat 做精确距离比较 index_hnsw = faiss.IndexHNSWFlat(d, M)"
+              - paragraph [ref=e902]:
+                - strong [ref=e903]: IVF 索引的工作原理
+                - text: ：
+              - paragraph [ref=e904]: 1. 对数据库做 K-Means 聚类（得到 nlist 个中心）
+              - paragraph [ref=e905]: 2. 每个向量被分配到最近的中心
+              - paragraph [ref=e906]: 3. 搜索时用 Flat 算出查询向量到 nlist 个中心的距离
+              - paragraph [ref=e907]: 4. 选最近 nprobe 个中心，只在这些中心的桶里用 Flat 精确搜索
+              - paragraph [ref=e908]:
+                - strong [ref=e909]: 你看，最底层还是 Flat。
+              - separator [ref=e910]
+              - heading "八、什么时候该用、什么时候该换" [level=2] [ref=e911]
+              - paragraph [ref=e912]: 我画了张决策速查图给你：
+              - code [ref=e914]: 数据量 × 维度 │ ├── < 1 万条 │ └── ✅ 直接 Flat，别折腾 │ ├── 1 万 ~ 10 万条 │ ├── ✅ Flat 勉强够用（~10ms/query） │ └── 追求速度 → IVFFlat(nlist=sqrt(N)) │ ├── 10 万 ~ 100 万条 │ ├── 可以但别用 Flat（~50-200ms/query） │ ├── 高精度 → HNSW │ └── 求均衡 → IVFFlat(nprobe=10~20) │ ├── 100 万 ~ 1000 万条 │ ├── ❌ 不要用 Flat │ ├── 内存够 → HNSW │ └── 内存不够 → IVF+PQ / SQ │ └── > 1 亿条 └── DiskANN / SPANN（磁盘索引）
+              - paragraph [ref=e915]:
+                - strong [ref=e916]: 还有一个反直觉的场景：
+              - blockquote [ref=e917]: "**过滤条件非常强（过滤掉 95%+ 的数据）→ 回到 Flat**"
+              - paragraph [ref=e918]: 为什么？因为 ANN 索引的分区是基于全量数据做的。如果过滤后只剩下 2% 的数据，这些数据可能散落在各个分区里，HNSW/IVF 的加速效果大幅下降，甚至不如直接扫一遍过滤后的数据用 Flat。很多生产系统在混合查询（标量 + 向量）时，会在某些条件下回退到 Flat。
+              - separator [ref=e919]
+              - heading "九、总结面试必考点" [level=2] [ref=e920]
+              - paragraph [ref=e921]: 如果你准备面试，Flat 相关的常考问题：
+              - table [ref=e922]:
+                - rowgroup [ref=e923]:
+                  - row "问题 回答要点" [ref=e924]:
+                    - columnheader "问题" [ref=e925]
+                    - columnheader "回答要点" [ref=e926]
+                - rowgroup [ref=e927]:
+                  - row "------ ---------" [ref=e928]:
+                    - cell "------" [ref=e929]
+                    - cell "---------" [ref=e930]
+                  - row "Flat 的时空复杂度 时间 O(N·D)，空间 O(N·D)" [ref=e931]:
+                    - cell "Flat 的时空复杂度" [ref=e932]
+                    - cell "时间 O(N·D)，空间 O(N·D)" [ref=e933]
+                  - row "为什么不用 Flat？ N 大时太慢，无法扩展" [ref=e934]:
+                    - cell "为什么不用 Flat？" [ref=e935]
+                    - cell "N 大时太慢，无法扩展" [ref=e936]
+                  - row "什么时候应该用？ 小数据集、精度基准、强过滤场景" [ref=e937]:
+                    - cell "什么时候应该用？" [ref=e938]
+                    - cell "小数据集、精度基准、强过滤场景" [ref=e939]
+                  - row "Flat 和 IVFFlat 什么关系？ IVFFlat = 聚类 + Flat（两次都用到了 Flat）" [ref=e940]:
+                    - cell "Flat 和 IVFFlat 什么关系？" [ref=e941]
+                    - cell "IVFFlat = 聚类 + Flat（两次都用到了 Flat）" [ref=e942]
+                  - row "Faiss 里 Flat 返回的 L2 是开方后的吗？ 不是，是平方和（省计算）" [ref=e943]:
+                    - cell "Faiss 里 Flat 返回的 L2 是开方后的吗？" [ref=e944]
+                    - cell "不是，是平方和（省计算）" [ref=e945]
+                  - row "怎么加速 Flat？ SIMD（AVX2/SSE）+ OpenMP 多线程 + 连续内存布局" [ref=e946]:
+                    - cell "怎么加速 Flat？" [ref=e947]
+                    - cell "SIMD（AVX2/SSE）+ OpenMP 多线程 + 连续内存布局" [ref=e948]
+              - separator [ref=e949]
+              - heading "十、参考与扩展阅读" [level=2] [ref=e950]
+              - list [ref=e951]:
+                - listitem [ref=e952]:
+                  - 'link "Faiss 官方教程: Brute force search without an index" [ref=e953] [cursor=pointer]':
+                    - /url: https://github.com/facebookresearch/Faiss/wiki/Brute-force-search-without-an-index
+                - listitem [ref=e954]:
+                  - link "Faiss IndexFlat API 文档" [ref=e955] [cursor=pointer]:
+                    - /url: https://faiss.ai/cpp_api/struct/structfaiss_1_1IndexFlat.html
+                - listitem [ref=e956]:
+                  - 'link "Faiss 中文文档: 暴力搜索" [ref=e957] [cursor=pointer]':
+                    - /url: https://www.aidoczh.com/faiss/docs/indexes/brute-force-search/
+                - listitem [ref=e958]:
+                  - link "Faiss 源码深度解析" [ref=e959] [cursor=pointer]:
+                    - /url: https://blog.csdn.net/weixin_39624769/article/details/111674025
+                - listitem [ref=e960]:
+                  - 'link "知乎: 向量数据库入坑指南" [ref=e961] [cursor=pointer]':
+                    - /url: https://cloud.tencent.cn/developer/article/2153614
+                - listitem [ref=e962]:
+                  - link "FAISS IndexFlat 详解 & 使用指南" [ref=e963] [cursor=pointer]:
+                    - /url: https://bge-model.com/tutorial/3_Indexing/3.1.3.html
+                - listitem [ref=e964]:
+                  - 'link "CS 441 课程: Similarity, Retrieval, and Clustering" [ref=e965] [cursor=pointer]':
+                    - /url: https://courses.grainger.illinois.edu/cs441/fa2025/lectures/Lecture%2004%20-%20Similarity,%20Retrieval,%20and%20Clustering.pdf
+              - separator [ref=e966]
+              - blockquote [ref=e967]: "**一句话总结**：Flat 不是让你在大数据量下用的——它是你比较所有 ANN 索引时的\"正确标准\"。每次调参后问自己一个问题：「和 Flat 比召回掉了几个点？」"
+        - complementary [ref=e444]:
+          - generic [ref=e445]:
+            - generic [ref=e447]: 学习锚点
+            - generic [ref=e448]:
+              - generic [ref=e968]:
+                - generic [ref=e969]: 学习焦点
+                - generic [ref=e970]: Flat 暴力搜索、IVF 倒排划分、K-Means 聚类中心训练、nprobe 参数调优
+              - generic [ref=e971]:
+                - generic [ref=e972]: 所属方向
+                - generic [ref=e973]: 向量基础 / 基础
+              - generic [ref=e974]:
+                - generic [ref=e975]: 建议动作
+                - generic [ref=e976]: 画搜索链路、对比参数效果、读论文源码，再结合实际场景
+              - link "入门路径 跳转" [ref=e977] [cursor=pointer]:
+                - /url: "#sec-starter"
+                - generic [ref=e978]: 入门路径
+                - generic [ref=e979]: 跳转
+              - link "核心原理 跳转" [ref=e980] [cursor=pointer]:
+                - /url: "#sec-principle"
+                - generic [ref=e981]: 核心原理
+                - generic [ref=e982]: 跳转
+              - link "实战与工作 跳转" [ref=e983] [cursor=pointer]:
+                - /url: "#sec-practice"
+                - generic [ref=e984]: 实战与工作
+                - generic [ref=e985]: 跳转
+              - link "调优与面试 跳转" [ref=e986] [cursor=pointer]:
+                - /url: "#sec-tuning"
+                - generic [ref=e987]: 调优与面试
+                - generic [ref=e988]: 跳转
+              - link "📖 深度阅读 跳转" [ref=e989] [cursor=pointer]:
+                - /url: "#sec-deepdive"
+                - generic [ref=e990]: 📖 深度阅读
+                - generic [ref=e991]: 跳转
+          - generic [ref=e473]:
+            - generic [ref=e475]: 相关知识点
+            - generic [ref=e992]: 当前象限没有更多相邻知识点。

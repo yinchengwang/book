@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🏗️ 五年建设计划 · 筑基 → 丰收</title>
+<style>
+/* ===== 基础变量 ===== */
+:root {
+  --bg: #f5f0e8;
+  --card: #fffef9;
+  --border: #d9cdb3;
+  --text: #3d3226;
+  --muted: #8b7d6b;
+  --year1: #8B6914; --year1bg: #fef9e7;
+  --year2: #1a6b5a; --year2bg: #e8f6f3;
+  --year3: #6b3a7d; --year3bg: #f5edf8;
+  --year4: #c0392b; --year4bg: #fdedec;
+  --year5: #d4a017; --year5bg: #fff8e1;
+  --done: #27ae60; --partial: #f39c12; --miss: #ccc;
+  --radius: 10px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: "PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.6;
+}
+/* ===== 头部 ===== */
+.header {
+  background: linear-gradient(135deg, #2c2416 0%, #4a3724 50%, #2c2416 100%);
+  color: #f5e6c8;
+  text-align: center;
+  padding: 32px 20px 24px;
+  position: relative;
+  overflow: hidden;
+}
+.header::before {
+  content: ''; position: absolute; inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  pointer-events: none;
+}
+.header h1 { font-size: 2em; font-weight: 900; letter-spacing: 2px; position: relative; }
+.header .subtitle { font-size: 0.95em; opacity: 0.75; margin-top: 6px; position: relative; }
+.back-link {
+  position: absolute; left: 20px; top: 18px;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border-radius: 18px;
+  background: rgba(255,255,255,0.08); color: #f5e6c8;
+  text-decoration: none; border: 1px solid rgba(245,230,200,0.2);
+  font-size: 0.85em; font-weight: 700; z-index: 1;
+}
+.back-link:hover { background: rgba(255,255,255,0.14); }
+
+/* ===== 年份导航 ===== */
+.year-nav {
+  display: flex; gap: 8px; justify-content: center;
+  padding: 16px; flex-wrap: wrap;
+}
+.year-btn {
+  padding: 10px 20px; border-radius: 25px; border: 2px solid var(--border);
+  background: var(--card); cursor: pointer; font-size: 0.92em;
+  font-weight: 700; transition: all 0.2s; color: var(--text);
+  position: relative;
+}
+.year-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.year-btn.active { color: #fff; border-color: transparent; transform: translateY(-1px); }
+.year-btn.y1.active { background: var(--year1); }
+.year-btn.y2.active { background: var(--year2); }
+.year-btn.y3.active { background: var(--year3); }
+.year-btn.y4.active { background: var(--year4); }
+.year-btn.y5.active { background: var(--year5); }
+.year-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 6px; vertical-align: middle;
+}
+.y1 .year-dot { background: var(--year1); } .y1.active .year-dot { background: rgba(255,255,255,0.7); }
+.y2 .year-dot { background: var(--year2); } .y2.active .year-dot { background: rgba(255,255,255,0.7); }
+.y3 .year-dot { background: var(--year3); } .y3.active .year-dot { background: rgba(255,255,255,0.7); }
+.y4 .year-dot { background: var(--year4); } .y4.active .year-dot { background: rgba(255,255,255,0.7); }
+.y5 .year-dot { background: var(--year5); } .y5.active .year-dot { background: rgba(255,255,255,0.7); }
+
+/* ===== 主布局 ===== */
+.main { max-width: 1100px; margin: 0 auto; padding: 0 16px 40px; }
+
+/* ===== 年度主题卡 ===== */
+.theme-card {
+  border-radius: var(--radius); padding: 24px 28px; margin: 16px 0;
+  border-left: 5px solid; position: relative;
+}
+.theme-card.y1 { background: var(--year1bg); border-color: var(--year1); }
+.theme-card.y2 { background: var(--year2bg); border-color: var(--year2); }
+.theme-card.y3 { background: var(--year3bg); border-color: var(--year3); }
+.theme-card.y4 { background: var(--year4bg); border-color: var(--year4); }
+.theme-card.y5 { background: var(--year5bg); border-color: var(--year5); }
+.theme-card h2 { font-size: 1.4em; margin-bottom: 4px; }
+.theme-card .core-tag {
+  display: inline-block; padding: 3px 10px; border-radius: 12px;
+  font-size: 0.82em; font-weight: 700; margin-right: 8px;
+  color: #fff;
+}
+.y1 .core-tag { background: var(--year1); }
+.y2 .core-tag { background: var(--year2); }
+.y3 .core-tag { background: var(--year3); }
+.y4 .core-tag { background: var(--year4); }
+.y5 .core-tag { background: var(--year5); }
+.theme-card .actions { margin-top: 10px; font-size: 0.9em; color: var(--muted); }
+.theme-card .actions li { margin: 3px 0; list-style: "▸ "; }
+
+/* ===== 月度学习清单 ===== */
+.monthly-learning {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+}
+.monthly-learning h3 { font-size: 1.1em; margin-bottom: 4px; }
+.monthly-learning .ml-theme { font-size: 0.85em; color: var(--muted); margin-bottom: 12px; }
+.monthly-learning .ml-progress { font-size: 0.9em; margin-bottom: 10px; }
+.monthly-learning .ml-bar { height: 6px; background: var(--border); border-radius: 3px; margin-bottom: 12px; overflow: hidden; }
+.monthly-learning .ml-bar-fill { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.3s; }
+.monthly-learning .ml-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 0.9em;
+}
+.monthly-learning .ml-item:last-child { border-bottom: none; }
+.monthly-learning .ml-stack { font-size: 0.75em; padding: 1px 6px; border-radius: 4px; background: var(--year1bg); color: var(--year1); white-space: nowrap; }
+.monthly-learning .ml-status { font-size: 0.8em; margin-left: auto; white-space: nowrap; }
+.monthly-learning .ml-diff { font-size: 0.7em; padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
+.ml-diff.easy { background: #e8f5e9; color: #2e7d32; }
+.ml-diff.medium { background: #fff3e0; color: #e65100; }
+.ml-diff.hard { background: #fce4ec; color: #c62828; }
+
+/* ===== 学习 chip（弹窗内） ===== */
+.learning-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.learning-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border-radius: 16px; border: 1px solid var(--border);
+  font-size: 0.82em; cursor: pointer; user-select: none;
+  transition: all 0.15s; background: var(--card);
+}
+.learning-chip:hover { border-color: var(--accent); }
+.learning-chip.active { background: #e3f2fd; border-color: #1976d2; color: #1565c0; }
+
+/* ===== 提前完成弹窗 ===== */
+.completion-dialog {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.completion-dialog .cd-box {
+  background: var(--card); border-radius: 16px; padding: 28px 24px;
+  max-width: 420px; width: 90%; text-align: center;
+}
+.completion-dialog h3 { font-size: 1.3em; margin-bottom: 8px; }
+.completion-dialog p { font-size: 0.9em; color: var(--muted); margin-bottom: 18px; }
+.completion-dialog .cd-actions { display: flex; flex-direction: column; gap: 8px; }
+.completion-dialog .cd-btn {
+  padding: 10px 16px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--card); cursor: pointer; font-size: 0.9em; transition: all 0.15s;
+}
+.completion-dialog .cd-btn:hover { border-color: var(--accent); }
+.completion-dialog .cd-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.completion-dialog .cd-btn.dismiss { font-size: 0.8em; color: var(--muted); border: none; background: none; }
+
+/* ===== 蓝色学习标记点 ===== */
+.dot.learn { background: #1976d2; }
+.dot.learn-miss { background: #e0e0e0; }
+
+/* ===== 统计面板 ===== */
+.stats-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px; margin: 16px 0;
+}
+.stat-box {
+  background: var(--card); border-radius: var(--radius); padding: 16px;
+  text-align: center; border: 1px solid var(--border);
+}
+.stat-box .num { font-size: 2em; font-weight: 900; line-height: 1.2; }
+.stat-box .label { font-size: 0.82em; color: var(--muted); margin-top: 2px; }
+.stat-box.good .num { color: var(--done); }
+.stat-box.warn .num { color: var(--partial); }
+
+/* ===== 月份导航 ===== */
+.month-nav {
+  display: flex; align-items: center; justify-content: center;
+  gap: 16px; margin: 20px 0 12px;
+}
+.month-nav button {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 20px; padding: 6px 16px; cursor: pointer;
+  font-size: 0.9em; transition: all 0.2s;
+}
+.month-nav button:hover { background: #eee; }
+.month-nav .month-label { font-size: 1.15em; font-weight: 700; min-width: 120px; text-align: center; }
+
+/* ===== 周标签头部 ===== */
+.weekday-header {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  gap: 4px; margin-bottom: 4px; text-align: center;
+  font-size: 0.8em; font-weight: 700; color: var(--muted);
+}
+
+/* ===== 日历网格 ===== */
+.calendar-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.day-cell {
+  aspect-ratio: 1 / 1; border-radius: 8px;
+  background: var(--card); border: 1px solid var(--border);
+  padding: 4px; cursor: pointer; transition: all 0.15s;
+  display: flex; flex-direction: column;
+  position: relative; min-width: 0;
+}
+.day-cell:hover { border-color: #888; transform: scale(1.03); z-index: 2; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.day-cell.empty { background: transparent; border-color: transparent; cursor: default; }
+.day-cell.empty:hover { transform: none; box-shadow: none; }
+.day-cell.today { border: 2.5px solid #e74c3c !important; }
+.day-cell .day-num {
+  font-size: 0.78em; font-weight: 700; color: var(--text);
+  line-height: 1; margin-bottom: 2px;
+}
+.day-cell.today .day-num { color: #e74c3c; }
+.day-cell .dot-row {
+  display: flex; gap: 2px; flex-wrap: wrap;
+  margin-top: auto;
+}
+.day-cell .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot.done { background: var(--done); }
+.dot.partial { background: var(--partial); }
+.dot.miss { background: var(--miss); }
+.day-cell .extra-tag {
+  font-size: 0.58em; background: #e8e8e8; border-radius: 3px;
+  padding: 0 3px; line-height: 1.4; margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ===== 打卡弹窗 ===== */
+.modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5); z-index: 100;
+  justify-content: center; align-items: center;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: var(--card); border-radius: 14px;
+  padding: 28px 24px; max-width: 500px; width: 92%;
+  max-height: 85vh; overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+}
+.modal h3 { margin-bottom: 16px; font-size: 1.15em; }
+.modal .check-group { margin-bottom: 14px; }
+.modal .check-group h4 {
+  font-size: 0.92em; margin-bottom: 6px;
+  padding-bottom: 4px; border-bottom: 1px solid var(--border);
+}
+.modal label {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 0; cursor: pointer; font-size: 0.9em;
+}
+.modal label input[type=checkbox] {
+  width: 18px; height: 18px; accent-color: var(--done);
+}
+.modal label .item-desc { font-size: 0.78em; color: var(--muted); margin-left: 4px; }
+.modal .note-area {
+  width: 100%; min-height: 60px; margin-top: 12px;
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px; font-size: 0.88em; resize: vertical;
+  font-family: inherit;
+}
+.modal .btn-row { display: flex; gap: 10px; margin-top: 16px; justify-content: flex-end; }
+.modal button {
+  padding: 8px 20px; border-radius: 20px; border: none;
+  font-size: 0.9em; font-weight: 700; cursor: pointer; transition: all 0.2s;
+}
+.modal .btn-save { background: #2c2416; color: #f5e6c8; }
+.modal .btn-save:hover { background: #4a3724; }
+.modal .btn-close { background: #eee; color: var(--text); }
+.modal .btn-close:hover { background: #ddd; }
+.modal .btn-delete { background: #fde8e8; color: #c0392b; font-size: 0.8em; }
+
+/* ===== 图例 ===== */
+.legend {
+  display: flex; gap: 16px; justify-content: center;
+  font-size: 0.78em; color: var(--muted); margin-top: 8px; flex-wrap: wrap;
+}
+.legend span { display: flex; align-items: center; gap: 4px; }
+.legend .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+/* ===== 今日面板 ===== */
+.today-panel {
+  background: var(--card); border-radius: var(--radius);
+  padding: 20px 24px; margin: 16px 0; border: 2px solid #e74c3c;
+  position: relative;
+}
+.today-panel::before {
+  content: '今天'; position: absolute; top: -12px; left: 20px;
+  background: #e74c3c; color: #fff; padding: 2px 14px;
+  border-radius: 10px; font-size: 0.78em; font-weight: 700;
+}
+.today-panel h3 { margin-bottom: 10px; font-size: 1.05em; }
+.today-panel .quick-checks {
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+.today-panel .quick-chip {
+  padding: 6px 14px; border-radius: 18px; border: 1.5px solid var(--border);
+  background: #fff; cursor: pointer; font-size: 0.85em;
+  transition: all 0.2s; user-select: none;
+}
+.today-panel .quick-chip.done {
+  background: #e8f8ef; border-color: var(--done); color: var(--done);
+}
+.today-panel .quick-chip:hover { transform: scale(1.04); }
+.today-panel .btn-edit {
+  display: inline-block; margin-top: 10px; padding: 6px 16px;
+  background: #e74c3c; color: #fff; border: none; border-radius: 16px;
+  cursor: pointer; font-size: 0.85em; font-weight: 700;
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 640px) {
+  .back-link { position: static; margin-bottom: 14px; }
+  .header h1 { font-size: 1.4em; }
+  .year-btn { padding: 8px 14px; font-size: 0.82em; }
+  .stats-row { grid-template-columns: repeat(3, 1fr); }
+  .day-cell { aspect-ratio: auto; min-height: 40px; }
+  .day-cell .dot { width: 5px; height: 5px; }
+  .day-cell .day-num { font-size: 0.7em; }
+}
+</style>
+</head>
+<body>
+
+<!-- 统一导航栏 -->
+<nav id="global-nav"></nav>
+
+<!-- ===== 头部 ===== -->
+<div class="header">
+  <a class="back-link" href="dashboard.html">← 返回仪表盘</a>
+  <h1>🏗️ 五年建设计划</h1>
+  <p class="subtitle">稳根基 · 长续航 · 向高处 — 像建设国家一样建设自己</p>
+</div>
+
+<!-- ===== 年份导航 ===== -->
+<div class="year-nav" id="yearNav"></div>
+
+<div class="main">
+  <!-- 年度主题卡 -->
+  <div class="theme-card" id="themeCard"></div>
+
+  <!-- 月度学习清单 -->
+  <div class="monthly-learning" id="monthlyLearning"></div>
+
+  <!-- 统计面板 -->
+  <div class="stats-row" id="statsRow"></div>
+
+  <!-- 今日快速打卡 -->
+  <div class="today-panel" id="todayPanel"></div>
+
+  <!-- 月份导航 -->
+  <div class="month-nav">
+    <button onclick="changeMonth(-1)">◀ 上月</button>
+    <span class="month-label" id="monthLabel"></span>
+    <button onclick="changeMonth(1)">下月 ▶</button>
+    <button onclick="goToToday()" style="margin-left:8px;">📍 今天</button>
+  </div>
+
+  <!-- 日历 -->
+  <div class="weekday-header">
+    <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+  </div>
+  <div class="calendar-grid" id="calendarGrid"></div>
+  <div class="legend">
+    <span><span class="dot done"></span> 全部完成</span>
+    <span><span class="dot partial"></span> 部分完成</span>
+    <span><span class="dot miss"></span> 未打卡</span>
+  </div>
+</div>
+
+<!-- ===== 打卡弹窗 ===== -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modal"></div>
+</div>
+
+<script src="data/app/items-registry.js"></script>
+<script src="data/app/nav-component.js"></script>
+<script src="data/content/learn-roadmap.js"></script>
+<script>
+"use strict";
+
+// 初始化统一导航栏
+initGlobalNav("plan");
+
+// ==================== 数据定义 ====================
+
+const YEAR_CONFIG = {
+  2026: {
+    name: '筑基年', cls: 'y1',
+    core: '打好基础',
+    actions: [
+      '养成规律作息、运动、饮食三大习惯',
+      '梳理财务（还清高息负债、建立应急金）',
+      '确定 1 个长期深耕方向',
+      '减少无效社交'
+    ]
+  },
+  2027: {
+    name: '能力年', cls: 'y2',
+    core: '提升硬实力',
+    actions: [
+      '深耕一项不可替代的核心技能',
+      '建立稳定输出（作品、经验、人脉）',
+      '学会情绪管理',
+      '实现收入稳步提升'
+    ]
+  },
+  2028: {
+    name: '提质年', cls: 'y3',
+    core: '优化生活与认知',
+    actions: [
+      '改善居住环境与形象',
+      '拓展认知（读书、见人、走出去）',
+      '建立被动收入/副业体系',
+      '修复重要关系'
+    ]
+  },
+  2029: {
+    name: '抗风险年', cls: 'y4',
+    core: '建立保障与自由',
+    actions: [
+      '完善健康、医疗、养老保障',
+      '合理配置资产',
+      '拥有随时可选择的自由（不被工作绑架）',
+      '心态成熟稳定'
+    ]
+  },
+  2030: {
+    name: '丰收年', cls: 'y5',
+    core: '全面进入良性循环',
+    actions: [
+      '身体、能力、财富、心态全面向好',
+      '拥有清晰的下一个五年方向',
+      '成为更可靠、强大、温柔的自己'
+    ]
+  }
+};
+
+// 五大核心工程（每日打卡项）
+const CORE_PROJECTS = [
+  { id: 'health',   label: '🏗️ 健康基建', items: [
+    { id: 'sleep',    label: '睡眠 7h+',     desc: '不熬夜，作息规律' },
+    { id: 'exercise', label: '运动 30min+',   desc: '每周至少 3 次' },
+    { id: 'diet',     label: '饮食规律',      desc: '少油少糖，多蛋白' },
+    { id: 'posture',  label: '颈椎/视力保护', desc: '不久坐，定时远眺' }
+  ]},
+  { id: 'skill',    label: '💪 能力精进', items: [
+    { id: 'deepwork', label: '深度学习 2h+',   desc: '不可替代的核心技能' },
+    { id: 'output',   label: '输出笔记/代码',  desc: '作品积累，日拱一卒' },
+    { id: 'english',  label: '英语/专业阅读',  desc: '技术文档或论文' }
+  ]},
+  { id: 'finance',  label: '💰 财务管理', items: [
+    { id: 'accounting', label: '记账',         desc: '记录每笔收支' },
+    { id: 'saving',     label: '理性消费/储蓄', desc: '非必要不买' }
+  ]},
+  { id: 'relation', label: '🤝 关系维护', items: [
+    { id: 'family',   label: '家人沟通',       desc: '电话/视频/陪伴' },
+    { id: 'social',   label: '有效社交',       desc: '减少无效社交' },
+    { id: 'gratitude',label: '感恩记录',       desc: '写下 1 件感恩的事' }
+  ]},
+  { id: 'cognition',label: '📚 认知拓展', items: [
+    { id: 'reading',  label: '阅读 30min+',    desc: '非技术书籍或深度文章' },
+    { id: 'review',   label: '每日复盘',        desc: '总结今天，规划明天' },
+    { id: 'newthing', label: '新知/见识',       desc: '学到一个新东西' }
+  ]}
+];
+
+// 年度特定打卡项（除五大核心工程外）
+const YEAR_EXTRA_ITEMS = {
+  2026: [
+    { id: 'direction', label: '🎯 深耕方向', desc: '花时间探索/确认长期方向' },
+    { id: 'habit',     label: '🔄 习惯养成', desc: '坚持早起/冥想/写作等新习惯' },
+  ],
+  2027: [
+    { id: 'portfolio', label: '📁 作品输出', desc: '公开文章/开源项目/演讲' },
+    { id: 'emotion',   label: '🧘 情绪管理', desc: '不冲动，练习正念' },
+  ],
+  2028: [
+    { id: 'sideproject', label: '💼 副业探索', desc: '研究/启动被动收入渠道' },
+    { id: 'network',     label: '🌐 拓展人脉', desc: '见新朋友/参加行业活动' },
+  ],
+  2029: [
+    { id: 'insurance', label: '🛡️ 保障检查', desc: '保险/体检/养老规划' },
+    { id: 'freedom',   label: '🕊️ 自由资本', desc: '积累"说不"的底气' },
+  ],
+  2030: [
+    { id: 'mentor',    label: '🌟 影响他人', desc: '指导/分享/回馈' },
+    { id: 'next5',     label: '🗺️ 下个五年', desc: '思考 2031-2035 的方向' },
+  ]
+};
+
+// ==================== 状态管理 ====================
+
+const STORAGE_KEY = 'five_year_plan_state';
+const API_BASE = (window.location.protocol === 'http:' || window.location.protocol === 'https:')
+  ? window.location.origin + '/api' : null;
+
+let appState = null;       // { "2026": { "06": { "08": { checks:{...}, note:"" } } } }
+let currentYear = 2026;
+let currentMonth = 6;      // 1-12
+let editingDate = null;    // "YYYY-MM-DD"
+
+function getToday() {
+  const d = new Date();
+  return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() };
+}
+
+function dateKey(y, m, d) {
+  return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    appState = raw ? JSON.parse(raw) : {};
+  } catch(e) { appState = {}; }
+}
+
+function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+  if (API_BASE) _apiSave();
+}
+
+let _apiTimer = null;
+function _apiSave() {
+  clearTimeout(_apiTimer);
+  _apiTimer = setTimeout(async () => {
+    try {
+      await fetch(`${API_BASE}/state/five-year-plan`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(appState)
+      });
+    } catch(e) { /* 静默失败 */ }
+  }, 500);
+}
+
+async function syncFromServer() {
+  if (!API_BASE) return;
+  try {
+    const res = await fetch(`${API_BASE}/state/five-year-plan`);
+    if (res.ok) {
+      const serverData = await res.json();
+      if (serverData && Object.keys(serverData).length > 0) {
+        // 合并：服务器数据优先（多设备同步）
+        const local = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+        appState = deepMerge(local, serverData);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+      }
+    }
+  } catch(e) { /* 静默 */ }
+}
+
+function deepMerge(base, override) {
+  const result = JSON.parse(JSON.stringify(base));
+  for (const key of Object.keys(override)) {
+    if (override[key] && typeof override[key] === 'object' && !Array.isArray(override[key])) {
+      result[key] = deepMerge(result[key] || {}, override[key]);
+    } else {
+      result[key] = override[key];
+    }
+  }
+  return result;
+}
+
+function getDayData(y, m, d) {
+  const ym = String(m).padStart(2, '0');
+  const dd = String(d).padStart(2, '0');
+  return appState[y]?.[ym]?.[dd] || { checks: {}, note: '' };
+}
+
+function setDayData(y, m, d, data) {
+  const ym = String(m).padStart(2, '0');
+  const dd = String(d).padStart(2, '0');
+  if (!appState[y]) appState[y] = {};
+  if (!appState[y][ym]) appState[y][ym] = {};
+  appState[y][ym][dd] = data;
+  saveState();
+}
+
+function countDayChecks(data) {
+  let total = 0, done = 0;
+  for (const proj of CORE_PROJECTS) {
+    for (const item of proj.items) {
+      total++;
+      if (data.checks[item.id]) done++;
+    }
+  }
+  // Year extra items
+  const extras = YEAR_EXTRA_ITEMS[currentYear] || [];
+  for (const item of extras) {
+    total++;
+    if (data.checks[item.id]) done++;
+  }
+  return { total, done };
+}
+
+// ==================== 渲染 ====================
+
+function renderYearNav() {
+  const nav = document.getElementById('yearNav');
+  nav.innerHTML = Object.entries(YEAR_CONFIG).map(([y, cfg]) => {
+    const active = +y === currentYear ? ' active' : '';
+    return `<button class="year-btn ${cfg.cls}${active}" onclick="switchYear(${y})">
+      <span class="year-dot"></span>${y} ${cfg.name}
+    </button>`;
+  }).join('');
+}
+
+function renderThemeCard() {
+  const cfg = YEAR_CONFIG[currentYear];
+  const card = document.getElementById('themeCard');
+  card.className = `theme-card ${cfg.cls}`;
+  card.innerHTML = `
+    <h2><span class="core-tag">${cfg.core}</span> ${currentYear} · ${cfg.name}</h2>
+    <ul class="actions">${cfg.actions.map(a => `<li>${a}</li>`).join('')}</ul>
+  `;
+}
+
+function renderStats() {
+  const today = getToday();
+  const td = getDayData(today.year, today.month, today.day);
+  const { done, total } = countDayChecks(td);
+  const todayPct = total > 0 ? Math.round(done / total * 100) : 0;
+
+  // 计算本月完成率
+  const ym = String(currentMonth).padStart(2, '0');
+  let monthTotal = 0, monthDone = 0;
+  const monthData = appState[currentYear]?.[ym] || {};
+  for (const [dd, data] of Object.entries(monthData)) {
+    const c = countDayChecks(data);
+    monthTotal += c.total;
+    monthDone += c.done;
+  }
+  const monthPct = monthTotal > 0 ? Math.round(monthDone / monthTotal * 100) : 0;
+
+  // 计算当前连续打卡天数
+  let streak = 0;
+  const d = new Date();
+  while (true) {
+    const data = getDayData(d.getFullYear(), d.getMonth() + 1, d.getDate());
+    const c = countDayChecks(data);
+    if (c.done > 0) {
+      streak++;
+      d.setDate(d.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+
+  // 累计打卡天数
+  let totalDays = 0;
+  for (const [y, months] of Object.entries(appState)) {
+    for (const [m, days] of Object.entries(months)) {
+      for (const [dd, data] of Object.entries(days)) {
+        if (countDayChecks(data).done > 0) totalDays++;
+      }
+    }
+  }
+
+  document.getElementById('statsRow').innerHTML = `
+    <div class="stat-box ${todayPct >= 70 ? 'good' : 'warn'}">
+      <div class="num">${todayPct}%</div>
+      <div class="label">今日完成率</div>
+    </div>
+    <div class="stat-box ${monthPct >= 60 ? 'good' : 'warn'}">
+      <div class="num">${monthPct}%</div>
+      <div class="label">本月完成率</div>
+    </div>
+    <div class="stat-box good">
+      <div class="num">${streak}</div>
+      <div class="label">连续打卡 (天)</div>
+    </div>
+    <div class="stat-box good">
+      <div class="num">${totalDays}</div>
+      <div class="label">累计打卡 (天)</div>
+    </div>
+  `;
+}
+
+function renderTodayPanel() {
+  const today = getToday();
+  const data = getDayData(today.year, today.month, today.day);
+  const panel = document.getElementById('todayPanel');
+
+  let chips = '';
+  for (const proj of CORE_PROJECTS) {
+    for (const item of proj.items) {
+      const isDone = data.checks[item.id];
+      chips += `<span class="quick-chip${isDone ? ' done' : ''}" onclick="quickToggle('${item.id}')" title="${item.label}">${isDone ? '✅' : '⬜'} ${item.label}</span>`;
+    }
+  }
+  const extras = YEAR_EXTRA_ITEMS[currentYear] || [];
+  for (const item of extras) {
+    const isDone = data.checks[item.id];
+    chips += `<span class="quick-chip${isDone ? ' done' : ''}" onclick="quickToggle('${item.id}')" title="${item.label}">${isDone ? '✅' : '⬜'} ${item.label}</span>`;
+  }
+
+  panel.innerHTML = `
+    <h3>📅 今日打卡 · ${today.year}年${today.month}月${today.day}日</h3>
+    <div class="quick-checks">${chips}</div>
+    <button class="btn-edit" onclick="openModal('${dateKey(today.year, today.month, today.day)}')">📝 详细编辑</button>
+  `;
+}
+
+function quickToggle(itemId) {
+  const today = getToday();
+  let data = getDayData(today.year, today.month, today.day);
+  data = JSON.parse(JSON.stringify(data)); // clone
+  data.checks[itemId] = !data.checks[itemId];
+  setDayData(today.year, today.month, today.day, data);
+  renderAll();
+}
+
+function renderCalendar() {
+  const grid = document.getElementById('calendarGrid');
+  const today = getToday();
+
+  document.getElementById('monthLabel').textContent = `${currentYear}年 ${currentMonth}月`;
+
+  // 当月第一天是周几 (0=Sun)
+  const firstDay = new Date(currentYear, currentMonth - 1, 1).getDay();
+  // 当月天数
+  const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+
+  let html = '';
+  // 填充空白
+  for (let i = 0; i < firstDay; i++) {
+    html += '<div class="day-cell empty"></div>';
+  }
+  // 填充日期
+  for (let d = 1; d <= daysInMonth; d++) {
+    const isToday = (currentYear === today.year && currentMonth === today.month && d === today.day);
+    const data = getDayData(currentYear, currentMonth, d);
+    const { done, total } = countDayChecks(data);
+    const dk = dateKey(currentYear, currentMonth, d);
+
+    // 生成 5 组项目的完成状态点
+    let dots = '';
+    for (const proj of CORE_PROJECTS) {
+      let projDone = 0, projTotal = proj.items.length;
+      for (const item of proj.items) {
+        if (data.checks[item.id]) projDone++;
+      }
+      if (projTotal === 0) continue;
+      const cls = projDone === projTotal ? 'done' : (projDone > 0 ? 'partial' : 'miss');
+      dots += `<span class="dot ${cls}"></span>`;
+    }
+    // 年度额外项
+    const extras = YEAR_EXTRA_ITEMS[currentYear] || [];
+    if (extras.length > 0) {
+      let extraDone = 0;
+      for (const item of extras) {
+        if (data.checks[item.id]) extraDone++;
+      }
+      const cls = extraDone === extras.length ? 'done' : (extraDone > 0 ? 'partial' : 'miss');
+      dots += `<span class="dot ${cls}"></span>`;
+    }
+
+    // 学习标记点（蓝色 dot）
+    var learnCls = data.hasLearning ? 'learn' : 'learn-miss';
+    dots += `<span class="dot ${learnCls}"></span>`;
+
+    // 笔记标记
+    let extraTag = '';
+    if (data.note && data.note.trim()) {
+      extraTag = `<span class="extra-tag">📝</span>`;
+    }
+
+    html += `<div class="day-cell${isToday ? ' today' : ''}" onclick="openModal('${dk}')">
+      <span class="day-num">${d}</span>
+      <div class="dot-row">${dots}</div>
+      ${extraTag}
+    </div>`;
+  }
+  grid.innerHTML = html;
+}
+
+// ==================== 弹窗 ====================
+
+function openModal(dateKeyStr) {
+  editingDate = dateKeyStr;
+  const [y, m, d] = dateKeyStr.split('-').map(Number);
+  const data = getDayData(y, m, d);
+  const modal = document.getElementById('modal');
+
+  // 构建五大核心工程勾选框
+  let groupsHtml = '';
+  for (const proj of CORE_PROJECTS) {
+    let itemsHtml = '';
+    for (const item of proj.items) {
+      const checked = data.checks[item.id] ? ' checked' : '';
+      itemsHtml += `<label><input type="checkbox" data-check="${item.id}"${checked}> ${item.label} <span class="item-desc">${item.desc}</span></label>`;
+    }
+    groupsHtml += `<div class="check-group"><h4>${proj.label}</h4>${itemsHtml}</div>`;
+  }
+
+  // 年度额外项
+  const extras = YEAR_EXTRA_ITEMS[currentYear] || [];
+  if (extras.length > 0) {
+    let itemsHtml = '';
+    for (const item of extras) {
+      const checked = data.checks[item.id] ? ' checked' : '';
+      itemsHtml += `<label><input type="checkbox" data-check="${item.id}"${checked}> ${item.label} <span class="item-desc">${item.desc}</span></label>`;
+    }
+    groupsHtml += `<div class="check-group"><h4>🎯 ${currentYear}年度专项</h4>${itemsHtml}</div>`;
+  }
+
+  // ── 📚 今日学习选择区 ──
+  var learningHtml = '';
+  if (typeof LEARNING_ROADMAP !== 'undefined') {
+    var plan = getMonthlyPlan(currentYear, m);
+    if (plan && plan.items && plan.items.length > 0) {
+      var lState = getLearningState();
+      var chipsHtml = '';
+      plan.items.forEach(function(item) {
+        var title = item.id;
+        if (typeof ITEMS_REGISTRY !== 'undefined' && ITEMS_REGISTRY[item.id]) {
+          title = ITEMS_REGISTRY[item.id].title;
+        }
+        var st = lState[item.id] || 'todo';
+        var activeClass = (st === 'done' || st === 'doing') ? ' active' : '';
+        var icon = st === 'done' ? '✅' : (st === 'doing' ? '📖' : '⬜');
+        chipsHtml += '<span class="learning-chip' + activeClass + '" data-learn-id="' + item.id + '" onclick="event.stopPropagation(); quickToggleLearning(\'' + item.id + '\')">' + icon + ' ' + title + '</span>';
+      });
+      learningHtml =
+        '<div class="check-group"><h4>📚 今日学习</h4>' +
+        '<div class="learning-chips">' + chipsHtml + '</div></div>';
+    } else {
+      learningHtml =
+        '<div class="check-group"><h4>📚 今日学习</h4>' +
+        '<p style="color:var(--muted);font-size:0.82em;">本月暂无学习计划</p></div>';
+    }
+  }
+
+  modal.innerHTML = `
+    <h3>📋 ${y}年${m}月${d}日 打卡记录</h3>
+    ${groupsHtml}
+    ${learningHtml}
+    <textarea class="note-area" id="modalNote" placeholder="✍️ 今日笔记/复盘...">${escapeHtml(data.note || '')}</textarea>
+    <div class="btn-row">
+      <button class="btn-delete" onclick="deleteDayData()">🗑️ 清除</button>
+      <button class="btn-close" onclick="closeModal()">取消</button>
+      <button class="btn-save" onclick="saveModal()">💾 保存</button>
+    </div>
+  `;
+
+  document.getElementById('modalOverlay').classList.add('show');
+}
+
+function saveModal() {
+  const [y, m, d] = editingDate.split('-').map(Number);
+  const checks = {};
+  document.querySelectorAll('#modal input[type=checkbox]').forEach(cb => {
+    checks[cb.dataset.check] = cb.checked;
+  });
+  const note = document.getElementById('modalNote').value;
+  // 记录当日是否有学习活动（蓝色标记点）
+  const hasLearning = document.querySelectorAll('.learning-chip.active').length > 0;
+  setDayData(y, m, d, { checks, note, hasLearning });
+  closeModal();
+  renderAll();
+}
+
+function deleteDayData() {
+  if (!confirm('确定要清除这一天的所有打卡记录吗？')) return;
+  const [y, m, d] = editingDate.split('-').map(Number);
+  const ym = String(m).padStart(2, '0');
+  const dd = String(d).padStart(2, '0');
+  if (appState[y]?.[ym]?.[dd]) {
+    delete appState[y][ym][dd];
+    saveState();
+  }
+  closeModal();
+  renderAll();
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('show');
+  editingDate = null;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ==================== 导航 ====================
+
+function switchYear(y) {
+  currentYear = y;
+  // 如果当前月份超出该年范围（未来年份可能还没到），跳到1月
+  const today = getToday();
+  if (y > today.year) currentMonth = 1;
+  else if (y === today.year) currentMonth = today.month;
+  renderAll();
+}
+
+function changeMonth(delta) {
+  currentMonth += delta;
+  if (currentMonth > 12) {
+    if (currentYear < 2030) { currentYear++; currentMonth = 1; }
+    else { currentMonth = 12; }
+  } else if (currentMonth < 1) {
+    if (currentYear > 2026) { currentYear--; currentMonth = 12; }
+    else { currentMonth = 1; }
+  }
+  renderAll();
+}
+
+function goToToday() {
+  const today = getToday();
+  currentYear = today.year;
+  currentMonth = today.month;
+  renderAll();
+}
+
+// ==================== 全部渲染 ====================
+
+// ── 月度学习清单 ──
+
+/** 获取看板学习状态（从 localStorage 读取） */
+function getLearningState() {
+  const key = "learning-kanban-statuses";
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : {};
+  } catch(e) { return {}; }
+}
+
+/** 设置单个知识点的看板状态 */
+function setLearningItemState(itemId, newStatus) {
+  const key = "learning-kanban-statuses";
+  var saved = {};
+  try {
+    var raw = localStorage.getItem(key);
+    if (raw) saved = JSON.parse(raw);
+  } catch(e) {}
+  saved[itemId] = newStatus;
+  localStorage.setItem(key, JSON.stringify(saved));
+}
+
+/** 读取提前完成的前移状态 */
+function getPullForwardState() {
+  try {
+    const raw = localStorage.getItem("learning-roadmap-state");
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+/** 获取实际要显示的月份（处理前移后） */
+function getEffectiveMonth() {
+  const pf = getPullForwardState();
+  return pf && pf.currentMonth ? pf.currentMonth : currentMonth;
+}
+
+/** 渲染月度学习清单 */
+function renderMonthlyLearning() {
+  const container = document.getElementById('monthlyLearning');
+  if (!container) return;
+
+  // 优雅降级：learn-roadmap 未加载
+  if (typeof LEARNING_ROADMAP === 'undefined') {
+    container.style.display = 'none';
+    return;
+  }
+
+  const plan = getMonthlyPlan(currentYear, currentMonth);
+  if (!plan || !plan.items || plan.items.length === 0) {
+    container.innerHTML = '<h3>📚 月度学习</h3><p style="color:var(--muted);font-size:0.85em;">本月暂无学习计划</p>';
+    return;
+  }
+
+  const state = getLearningState();
+  const doneCount = plan.items.filter(function(item) {
+    return state[item.id] === 'done';
+  }).length;
+  const total = plan.items.length;
+  const pct = Math.round(doneCount / total * 100);
+
+  const STATUS_LABELS = {
+    'done': '✅ 已掌握',
+    'doing': '📖 进行中',
+    'review': '🔄 待复习',
+    'todo': '📥'
+  };
+
+  var itemsHtml = '';
+  plan.items.forEach(function(item) {
+    var st = state[item.id] || 'todo';
+    var stLabel = STATUS_LABELS[st] || '📥';
+    // 从 registry 查找标题
+    var title = item.id;
+    if (typeof ITEMS_REGISTRY !== 'undefined' && ITEMS_REGISTRY[item.id]) {
+      title = ITEMS_REGISTRY[item.id].title;
+    }
+    itemsHtml += '<div class="ml-item">' +
+      '<span class="ml-stack">' + item.stack.toUpperCase() + '</span>' +
+      '<span>' + title + '</span>' +
+      '<span class="ml-diff ' + item.difficulty + '">' + item.difficulty + '</span>' +
+      '<span class="ml-status">' + stLabel + '</span>' +
+    '</div>';
+  });
+
+  container.style.display = '';
+  container.innerHTML =
+    '<h3>📚 ' + currentMonth + '月学习 · ' + (plan.label || '') + '</h3>' +
+    '<div class="ml-progress">' + doneCount + '/' + total + ' 完成</div>' +
+    '<div class="ml-bar"><div class="ml-bar-fill" style="width:' + pct + '%"></div></div>' +
+    itemsHtml;
+
+  // 检查是否全部完成
+  if (doneCount === total && total > 0) {
+    checkMonthCompletion(currentMonth);
+  }
+}
+
+/** 检查当月是否全部完成，弹出确认对话框 */
+function checkMonthCompletion(month) {
+  // 防止重复弹窗
+  if (window._completionDialogShown) return;
+
+  const pf = getPullForwardState();
+  // 如果用户选择了"不再提醒"，跳过
+  if (pf && pf.noRemind) return;
+
+  window._completionDialogShown = true;
+  renderCompletionDialog(month);
+}
+
+/** 提前完成弹窗 */
+function renderCompletionDialog(month) {
+  // 移除旧弹窗
+  var old = document.querySelector('.completion-dialog');
+  if (old) old.remove();
+
+  var overlay = document.createElement('div');
+  overlay.className = 'completion-dialog';
+  overlay.innerHTML =
+    '<div class="cd-box">' +
+      '<h3>🎉 本月计划提前完成！</h3>' +
+      '<p>你已掌握 ' + month + ' 月全部 ' + getMonthlyPlan(currentYear, month).items.length + ' 个知识点</p>' +
+      '<div class="cd-actions">' +
+        '<button class="cd-btn primary" onclick="pullForwardNextMonth(' + month + ')">🚀 提前开始下月内容</button>' +
+        '<button class="cd-btn" onclick="reviewWeakPoints()">🔍 复习本月薄弱点</button>' +
+        '<button class="cd-btn dismiss" onclick="dismissCompletion()">不再提醒</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+
+  // 点击遮罩关闭
+  overlay.addEventListener('click', function(e) {
+    if (e.target === overlay) dismissCompletion();
+  });
+}
+
+/** Pull-Forward：提前开始下月内容 */
+function pullForwardNextMonth(fromMonth) {
+  var nextMonth = fromMonth + 1;
+  if (nextMonth > 12) {
+    alert('已到年末！恭喜完成全年计划 🎉');
+    dismissCompletion();
+    return;
+  }
+
+  var key = 'learning-roadmap-state';
+  var state = getPullForwardState() || {};
+  state.pulledForward = true;
+  state.fromMonth = fromMonth;
+  state.currentMonth = nextMonth;
+  state.timestamp = new Date().toISOString();
+  localStorage.setItem(key, JSON.stringify(state));
+
+  dismissCompletion();
+  alert('已切换到 ' + nextMonth + ' 月学习计划！\n' + getMonthlyPlan(currentYear, nextMonth).label);
+  renderMonthlyLearning();
+}
+
+/** 复习薄弱点（跳转到测验错题本） */
+function reviewWeakPoints() {
+  dismissCompletion();
+  window.open('quiz-system.html?mode=wrong', '_blank');
+}
+
+/** 关闭弹窗 */
+function dismissCompletion() {
+  var overlay = document.querySelector('.completion-dialog');
+  if (overlay) overlay.remove();
+  window._completionDialogShown = false;
+}
+
+/** 在弹窗中快速切换学习 chip */
+function quickToggleLearning(itemId) {
+  var state = getLearningState();
+  var current = state[itemId] || 'todo';
+  var next = current === 'todo' ? 'doing' : (current === 'doing' ? 'done' : 'todo');
+  setLearningItemState(itemId, next);
+
+  // 刷新弹窗中的 chip 状态
+  var chips = document.querySelectorAll('.learning-chip[data-learn-id="' + itemId + '"]');
+  chips.forEach(function(chip) {
+    if (next === 'done') {
+      chip.classList.add('active');
+      chip.innerHTML = '✅ ' + chip.textContent.replace(/^[⬜✅] /, '');
+    } else if (next === 'doing') {
+      chip.classList.add('active');
+      chip.innerHTML = '📖 ' + chip.textContent.replace(/^[⬜✅📖] /, '');
+    } else {
+      chip.classList.remove('active');
+      chip.innerHTML = '⬜ ' + chip.textContent.replace(/^[⬜✅📖] /, '');
+    }
+  });
+
+  // 更新月度学习清单
+  renderMonthlyLearning();
+}
+
+function renderAll() {
+  renderYearNav();
+  renderThemeCard();
+  renderMonthlyLearning();
+  renderStats();
+  renderTodayPanel();
+  renderCalendar();
+}
+
+// ==================== 初始化 ====================
+
+async function init() {
+  loadState();
+  if (API_BASE) await syncFromServer();
+  const today = getToday();
+  currentYear = today.year;
+  currentMonth = today.month;
+  renderAll();
+
+  // 键盘快捷键
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeModal();
+  });
+}
+
+init();
+</script>
+</body>
+</html>

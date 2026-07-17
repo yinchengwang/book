@@ -1,0 +1,3 @@
+count=10000
+dims=100
+dtype=int32

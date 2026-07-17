@@ -1,0 +1,28 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - heading "📝 测试中..." [level=1] [ref=e54] [cursor=pointer]
+    - generic [ref=e5]:
+      - button "🏠 首页" [ref=e6] [cursor=pointer]
+      - button "📊 仪表盘" [ref=e7] [cursor=pointer]
+      - button "🏆 项目验收" [ref=e8] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]: 💡
+    - generic [ref=e12]: 💡 设计模式：单例模式的懒汉式(Double-Checked Locking)在C++11之前因为内存重排序问题是不安全的。
+    - generic "关闭" [ref=e13] [cursor=pointer]: ✕
+  - generic [ref=e14]:
+    - generic [ref=e55]:
+      - button "← 退出测试" [ref=e56] [cursor=pointer]
+      - generic [ref=e57]: 第 2/5 题
+      - generic [ref=e58]: ⏱ 00:53
+    - generic [ref=e72]:
+      - generic [ref=e73]:
+        - generic [ref=e74]: 单选题
+        - generic [ref=e75]: 基础
+      - generic [ref=e76]: 📖 你在设计一个日志类，需要确保无论对象如何创建或销毁，日志文件都被正确管理。
+      - generic [ref=e77]: 关于C++构造函数的调用顺序，以下说法正确的是：
+      - generic [ref=e78]:
+        - generic [ref=e81] [cursor=pointer]: A. 虚基类的构造函数最后调用
+        - generic [ref=e84] [cursor=pointer]: B. 基类构造函数先于成员构造函数被调用
+        - generic [ref=e87] [cursor=pointer]: C. 成员构造函数先于基类构造函数被调用
+        - generic [ref=e90] [cursor=pointer]: D. 析构顺序与构造顺序完全相同
+      - button "提交答案" [ref=e92] [cursor=pointer]

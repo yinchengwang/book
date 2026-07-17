@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>面试追踪 — Reading Radar</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css">
+<style>
+:root {
+  --bg: #f0f2f5;
+  --card: #ffffff;
+  --text: #2c3e50;
+  --text2: #7f8c8d;
+  --border: #e1e4e8;
+  --shadow: 0 2px 10px rgba(0,0,0,0.07);
+  --shadow-lg: 0 8px 30px rgba(0,0,0,0.12);
+  --radius: 12px;
+  --primary: #409eff;
+  --primary-bg: #ecf5ff;
+
+  /* 状态颜色 */
+  --st-intention: #95a5a6;
+  --st-communicating: #5c9ce6;
+  --st-applied: #5c9ce6;
+  --st-resume_screen: #e6a23c;
+  --st-first_interview: #27ae60;
+  --st-second_interview: #27ae60;
+  --st-third_interview: #27ae60;
+  --st-manager_interview: #9b59b6;
+  --st-hr_interview: #9b59b6;
+  --st-salary_negotiation: #e74c3c;
+  --st-background_check: #e74c3c;
+  --st-offer: #f39c12;
+  --st-accepted: #2ecc71;
+  --st-rejected: #bdc3c7;
+
+  /* 进度条 */
+  --progress-done: #409eff;
+  --progress-pending: #e8e8e8;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+/* ===== 头部 ===== */
+.tracker-header {
+  padding: 14px 20px;
+  margin-top: 56px;
+}
+
+.tracker-header h1 {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+
+/* ===== 工具栏 ===== */
+.toolbar {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 12px 20px 0;
+}
+
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.toolbar-row:last-child { margin-bottom: 0; }
+
+.toolbar select,
+.toolbar input[type="text"] {
+  padding: 7px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--card);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.toolbar select:focus,
+.toolbar input[type="text"]:focus {
+  border-color: var(--primary);
+}
+
+.toolbar input[type="text"] {
+  flex: 1;
+  min-width: 150px;
+  max-width: 260px;
+}
+
+.toolbar-btn {
+  padding: 7px 14px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.toolbar-btn:active { transform: scale(0.96); }
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+}
+.btn-primary:hover { background: #3a8ee6; }
+
+.btn-outline {
+  background: var(--card);
+  color: var(--text2);
+  border: 1.5px solid var(--border);
+}
+.btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+
+.btn-outline.active {
+  background: var(--primary-bg);
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.toolbar-spacer { flex: 1; }
+
+/* ===== 统计概览 ===== */
+.stats-bar {
+  max-width: 1400px;
+  margin: 10px auto 0;
+  padding: 0 20px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stat-chip {
+  background: var(--card);
+  border-radius: 8px;
+  padding: 8px 14px;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.stat-chip .stat-num {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.stat-chip .stat-label {
+  color: var(--text2);
+  font-size: 12px;
+}
+
+.stat-total .stat-num { color: var(--text); }
+.stat-active .stat-num { color: var(--primary); }
+.stat-offer .stat-num { color: #f39c12; }
+.stat-rejected .stat-num { color: var(--st-rejected); }
+
+/* ===== 快捷筛选条 ===== */
+.quick-filter {
+  max-width: 1400px;
+  margin: 10px auto 0;
+  padding: 0 20px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.qf-btn {
+  padding: 5px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--card);
+  color: var(--text2);
+  transition: all 0.15s;
+}
+
+.qf-btn:active { transform: scale(0.96); }
+.qf-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.qf-btn .qf-count {
+  font-size: 10px;
+  opacity: 0.7;
+  margin-left: 2px;
+}
+
+/* ===== 主内容区 ===== */
+.tracker-main {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 16px 20px 40px;
+}
+
+/* ===== 月份分组 ===== */
+.month-group {
+  margin-bottom: 20px;
+}
+
+.month-header {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  padding: 8px 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+
+.month-header:hover { color: var(--primary); }
+
+.month-arrow {
+  font-size: 10px;
+  transition: transform 0.2s;
+  display: inline-block;
+}
+
+.month-arrow.collapsed { transform: rotate(-90deg); }
+
+.month-count {
+  font-size: 12px;
+  color: var(--text2);
+  font-weight: 400;
+}
+
+.month-cards {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scroll-behavior: smooth;
+}
+
+.month-cards::-webkit-scrollbar { height: 4px; }
+.month-cards::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
+
+.month-cards.collapsed { display: none; }
+
+/* ===== 公司卡片 ===== */
+.company-card {
+  flex-shrink: 0;
+  width: 240px;
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  overflow: hidden;
+}
+
+.company-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* 进度条 */
+.card-progress {
+  height: 4px;
+  display: flex;
+  gap: 2px;
+  padding: 6px 10px 4px;
+  background: #fafafa;
+}
+
+.card-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.card-dot.done {
+  border: none;
+}
+
+.card-dot.current {
+  width: 10px;
+  height: 10px;
+  margin: -1px 0;
+  box-shadow: 0 0 0 2px rgba(64,158,255,0.3);
+}
+
+.card-dot.special-star {
+  font-size: 8px;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f39c12;
+}
+
+/* 卡片内容 */
+.card-body {
+  padding: 10px 12px 12px;
+}
+
+.card-company {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-position {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-info {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text2);
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.card-info-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.card-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.card-tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #f1f3f5;
+  color: var(--text2);
+  font-weight: 600;
+}
+
+.card-status {
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.card-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.card-footer {
+  padding: 6px 12px 10px;
+  font-size: 11px;
+  color: var(--text2);
+  border-top: 1px solid #f0f2f5;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* ===== 空状态 ===== */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text2);
+}
+
+.empty-icon { font-size: 48px; margin-bottom: 12px; }
+.empty-text { font-size: 14px; }
+
+/* ===== 详情面板（底部 Sheet） ===== */
+.detail-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 200;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.detail-overlay.open { display: flex; }
+
+.detail-sheet {
+  background: var(--card);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-width: 700px;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 8px 20px 28px;
+  animation: slideUp 0.3s ease-out;
+  box-shadow: var(--shadow-lg);
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.detail-handle {
+  width: 36px;
+  height: 4px;
+  background: #d0d5dd;
+  border-radius: 2px;
+  margin: 0 auto 16px;
+}
+
+.detail-header {
+  margin-bottom: 16px;
+}
+
+.detail-company {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.detail-meta {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text2);
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.detail-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.detail-status-bar .card-progress {
+  flex: 1;
+  margin: 0;
+  padding: 4px 8px;
+}
+
+/* 状态切换按钮 */
+.status-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.status-btn {
+  padding: 4px 8px;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--card);
+  color: var(--text2);
+  transition: all 0.15s;
+}
+
+.status-btn:active { transform: scale(0.96); }
+
+.status-btn.active {
+  color: #fff;
+  border-color: transparent;
+}
+
+/* Tab 栏 */
+.detail-tabs {
+  display: flex;
+  gap: 2px;
+  background: #f1f3f5;
+  border-radius: 8px;
+  padding: 2px;
+  margin-bottom: 16px;
+}
+
+.detail-tab {
+  flex: 1;
+  padding: 8px 0;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text2);
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.detail-tab.active {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+
+/* Tab 内容 */
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+.content-area {
+  min-height: 120px;
+  padding: 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.content-area.editing {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.content-toolbar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.toolbar-tool {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  background: var(--card);
+  color: var(--text2);
+  transition: all 0.15s;
+}
+
+.toolbar-tool:hover { background: #f5f6f8; color: var(--text); }
+
+/* 面试轮次 */
+.interview-round {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.round-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text2);
+  transition: background 0.15s;
+}
+
+.round-header:hover { background: #f5f6f8; }
+
+.round-arrow {
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+
+.round-arrow.expanded { transform: rotate(90deg); }
+
+.round-body {
+  display: none;
+  padding: 0 14px 12px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.round-body.expanded { display: block; }
+
+.round-body pre {
+  background: #f6f8fa;
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.round-body pre code {
+  background: none;
+  padding: 0;
+  font-size: 13px;
+}
+
+.btn-add-round {
+  padding: 8px 14px;
+  border: 1.5px dashed var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text2);
+  width: 100%;
+  transition: all 0.15s;
+}
+
+.btn-add-round:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* 详情面板操作按钮 */
+.detail-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.detail-btn {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.detail-btn:active { transform: scale(0.96); }
+
+.detail-btn-edit {
+  background: var(--primary-bg);
+  color: var(--primary);
+}
+
+.detail-btn-delete {
+  background: #fce4ec;
+  color: #e74c3c;
+}
+
+/* ===== 新建弹窗 ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 300;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-overlay.open { display: flex; }
+
+.modal-dialog {
+  background: var(--card);
+  border-radius: var(--radius);
+  width: 90%;
+  max-width: 480px;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 20px 24px 24px;
+  box-shadow: var(--shadow-lg);
+  animation: fadeIn 0.2s;
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.form-group {
+  margin-bottom: 12px;
+}
+
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text2);
+  margin-bottom: 4px;
+}
+
+.form-input,
+.form-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--card);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.form-input:focus,
+.form-select:focus { border-color: var(--primary); }
+
+.form-row {
+  display: flex;
+  gap: 8px;
+}
+
+.form-row .form-group { flex: 1; }
+
+.form-salary-display {
+  font-size: 13px;
+  color: var(--primary);
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.form-status-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.form-status-btn {
+  padding: 5px 10px;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--card);
+  color: var(--text2);
+  transition: all 0.15s;
+}
+
+.form-status-btn.selected {
+  color: #fff;
+  border-color: transparent;
+}
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.form-actions .form-btn {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.form-btn-cancel {
+  background: #f1f3f5;
+  color: var(--text2);
+}
+
+.form-btn-submit {
+  background: var(--primary);
+  color: #fff;
+}
+
+/* ===== 确认弹窗 ===== */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 400;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirm-overlay.open { display: flex; }
+
+.confirm-dialog {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  width: 320px;
+  box-shadow: var(--shadow-lg);
+  animation: fadeIn 0.2s;
+  text-align: center;
+}
+
+.confirm-text {
+  font-size: 14px;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.confirm-actions button {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.confirm-cancel {
+  background: #f1f3f5;
+  color: var(--text2);
+}
+
+.confirm-ok {
+  background: #e74c3c;
+  color: #fff;
+}
+
+/* ===== 地域多选面板 ===== */
+.city-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  box-shadow: var(--shadow-lg);
+  z-index: 50;
+  display: none;
+  min-width: 160px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.city-dropdown.open { display: block; }
+
+.city-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.city-option:hover { background: #f5f6f8; }
+
+.city-check {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.city-check.checked {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 768px) {
+  .toolbar-row { gap: 6px; }
+  .toolbar input[type="text"] { max-width: 180px; }
+  .company-card { width: 220px; }
+  .stats-bar { gap: 6px; }
+  .stat-chip { padding: 6px 10px; }
+  .stat-chip .stat-num { font-size: 16px; }
+  .detail-sheet { padding: 8px 16px 24px; }
+}
+
+@media (max-width: 480px) {
+  .toolbar { padding: 8px 12px 0; }
+  .toolbar-row { gap: 4px; }
+  .toolbar select,
+  .toolbar input[type="text"] { padding: 6px 8px; font-size: 12px; }
+  .toolbar-btn { padding: 6px 10px; font-size: 12px; }
+  .stats-bar { padding: 0 12px; gap: 4px; }
+  .stat-chip { padding: 5px 8px; }
+  .stat-chip .stat-num { font-size: 14px; }
+  .stat-chip .stat-label { font-size: 11px; }
+  .quick-filter { padding: 0 12px; }
+  .qf-btn { padding: 4px 8px; font-size: 11px; }
+  .tracker-main { padding: 12px 12px 32px; }
+  .company-card { width: 200px; }
+  .month-header { font-size: 14px; }
+  .detail-sheet { padding: 4px 12px 20px; }
+  .modal-dialog { width: 95%; padding: 16px; }
+}
+</style>
+</head>
+<body>
+
+<nav id="global-nav"></nav>
+
+<header class="tracker-header">
+  <h1>📊 面试追踪</h1>
+</header>
+
+<!-- 工具栏 -->
+<div class="toolbar">
+  <div class="toolbar-row">
+    <select id="monthSelect" title="选择月份">
+      <option value="all">📅 全部月份</option>
+    </select>
+    <input type="text" id="searchInput" placeholder="🔍 搜索公司/岗位/技术栈...">
+    <div style="position:relative">
+      <button class="toolbar-btn btn-outline" id="cityFilterBtn">🌍 地域: 全部</button>
+      <div class="city-dropdown" id="cityDropdown"></div>
+    </div>
+    <select id="sortSelect" title="排序方式">
+      <option value="updated">📌 最新状态更新</option>
+      <option value="created">📌 最新创建时间</option>
+      <option value="salary-desc">💰 薪资降序</option>
+      <option value="name-asc">🔤 名称 A-Z</option>
+    </select>
+    <div class="toolbar-spacer"></div>
+    <button class="toolbar-btn btn-primary" id="btnNew">＋ 新建面试</button>
+  </div>
+</div>
+
+<!-- 统计概览 -->
+<div class="stats-bar" id="statsBar">
+  <div class="stat-chip stat-total">
+    <span class="stat-num" id="statTotal">0</span>
+    <span class="stat-label">总计</span>
+  </div>
+  <div class="stat-chip stat-active">
+    <span class="stat-num" id="statActive">0</span>
+    <span class="stat-label">流程中</span>
+  </div>
+  <div class="stat-chip stat-offer">
+    <span class="stat-num" id="statOffer">0</span>
+    <span class="stat-label">Offer</span>
+  </div>
+  <div class="stat-chip stat-rejected">
+    <span class="stat-num" id="statRejected">0</span>
+    <span class="stat-label">已拒绝</span>
+  </div>
+</div>
+
+<!-- 快捷筛选条 -->
+<div class="quick-filter" id="quickFilter">
+  <button class="qf-btn active" data-filter="all">全部</button>
+  <button class="qf-btn" data-filter="active">流程中</button>
+  <button class="qf-btn" data-filter="pending">待回复</button>
+  <button class="qf-btn" data-filter="offer">Offer</button>
+  <button class="qf-btn" data-filter="rejected">已拒绝</button>
+</div>
+
+<!-- 主内容 -->
+<div class="tracker-main" id="trackerMain">
+  <div class="empty-state" id="emptyState">
+    <div class="empty-icon">🎯</div>
+    <div class="empty-text">还没有面试记录，点击「新建面试」开始追踪</div>
+  </div>
+</div>
+
+<!-- 详情面板 -->
+<div class="detail-overlay" id="detailOverlay">
+  <div class="detail-sheet" id="detailSheet">
+    <div class="detail-handle"></div>
+    <div class="detail-header" id="detailHeader"></div>
+    <div class="detail-status-bar" id="detailStatusBar"></div>
+    <div class="status-switcher" id="statusSwitcher"></div>
+    <div class="detail-tabs" id="detailTabs">
+      <button class="detail-tab active" data-tab="jd">📄 JD</button>
+      <button class="detail-tab" data-tab="tech">💬 技术问题</button>
+      <button class="detail-tab" data-tab="comp">📋 综合面</button>
+      <button class="detail-tab" data-tab="notes">📝 备注</button>
+    </div>
+    <div class="tab-content active" id="tab-jd"></div>
+    <div class="tab-content" id="tab-tech"></div>
+    <div class="tab-content" id="tab-comp"></div>
+    <div class="tab-content" id="tab-notes"></div>
+    <div class="detail-actions">
+      <button class="detail-btn detail-btn-edit" id="btnEditInfo">✏️ 编辑信息</button>
+      <button class="detail-btn detail-btn-delete" id="btnDeleteCompany">🗑️ 删除公司</button>
+    </div>
+  </div>
+</div>
+
+<!-- 新建弹窗 -->
+<div class="modal-overlay" id="newModal">
+  <div class="modal-dialog">
+    <div class="modal-title">新建面试记录</div>
+    <div class="form-group">
+      <label class="form-label">公司 *</label>
+      <input type="text" class="form-input" id="formCompany" placeholder="如：字节跳动">
+    </div>
+    <div class="form-group">
+      <label class="form-label">岗位 *</label>
+      <input type="text" class="form-input" id="formPosition" placeholder="如：C++ 后端开发">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">技术栈</label>
+        <select class="form-select" id="formStack">
+          <option value="">选择...</option>
+          <option value="C">C</option>
+          <option value="C++" selected>C++</option>
+          <option value="Python">Python</option>
+          <option value="Java">Java</option>
+          <option value="Go">Go</option>
+          <option value="JavaScript">JavaScript</option>
+          <option value="其他">其他</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">方向</label>
+        <input type="text" class="form-input" id="formDirection" placeholder="如：基础架构">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Base 地域</label>
+      <select class="form-select" id="formCity">
+        <option value="北京">北京</option>
+        <option value="上海">上海</option>
+        <option value="杭州">杭州</option>
+        <option value="深圳">深圳</option>
+        <option value="广州">广州</option>
+        <option value="成都">成都</option>
+        <option value="南京">南京</option>
+        <option value="武汉">武汉</option>
+        <option value="远程">远程</option>
+        <option value="其他">其他</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">月薪 (k)</label>
+        <input type="number" class="form-input" id="formSalary" placeholder="35" min="1" max="200">
+      </div>
+      <div class="form-group">
+        <label class="form-label">月数</label>
+        <input type="number" class="form-input" id="formMonths" placeholder="16" min="1" max="30">
+      </div>
+    </div>
+    <div class="form-salary-display" id="formAnnualDisplay"></div>
+    <div class="form-group">
+      <label class="form-label">初始状态</label>
+      <div class="form-status-group" id="formStatusGroup"></div>
+    </div>
+    <div class="form-actions">
+      <button class="form-btn form-btn-cancel" id="btnCancelNew">取消</button>
+      <button class="form-btn form-btn-submit" id="btnSubmitNew">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 确认弹窗 -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-dialog">
+    <div class="confirm-text" id="confirmText"></div>
+    <div class="confirm-actions">
+      <button class="confirm-cancel" id="btnConfirmCancel">取消</button>
+      <button class="confirm-ok" id="btnConfirmOk">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- 面试轮次新增弹窗 -->
+<div class="modal-overlay" id="roundModal">
+  <div class="modal-dialog">
+    <div class="modal-title">新增面试轮次</div>
+    <div class="form-group">
+      <label class="form-label">轮次类型</label>
+      <select class="form-select" id="roundType">
+        <option value="一面">一面</option>
+        <option value="二面">二面</option>
+        <option value="三面">三面</option>
+        <option value="主管面">主管面</option>
+        <option value="HR面">HR面</option>
+        <option value="其他">其他</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">面试日期</label>
+      <input type="date" class="form-input" id="roundDate">
+    </div>
+    <div class="form-group">
+      <label class="form-label">面试内容（Markdown）</label>
+      <textarea class="form-input" id="roundContent" rows="8" placeholder="## 问题&#10;&#10;1. Q: ...&#10;   A: ..."></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="form-btn form-btn-cancel" id="btnCancelRound">取消</button>
+      <button class="form-btn form-btn-submit" id="btnSubmitRound">保存</button>
+    </div>
+  </div>
+</div>
+
+<script src="data/app/items-registry.js"></script>
+<script src="data/app/nav-component.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+<script src="data/app/interview-tracker.js"></script>
+</body>
+</html>

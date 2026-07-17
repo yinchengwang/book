@@ -1,0 +1,11 @@
+{
+  "name": "@book/web-workspaces",
+  "version": "1.0.0",
+  "description": "apps/web/ npm workspace——含 knowledge_hub + games-mini-program + taro-template",
+  "private": true,
+  "workspaces": [
+    "taro-template",
+    "knowledge_hub",
+    "games-mini-program"
+  ]
+}

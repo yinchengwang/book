@@ -1,0 +1,17 @@
+{
+  "name": "reading-radar",
+  "version": "1.0.0",
+  "description": "这是一个面向 C / C++ / 数据结构 / 数据库内核 / Python 的静态学习站点。项目把知识地图、学习看板、知识测评、学习内容页、全景仪表盘和五年计划放在同一套本地数据模型上，默认无构建工具，直接打开 HTML 即可使用；如果需要多设备同步，可以启动 `server.js`，把状态持久化到 `user-data/`。",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "playwright": "^1.60.0"
+  }
+}

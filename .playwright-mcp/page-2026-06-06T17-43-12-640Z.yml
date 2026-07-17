@@ -1,0 +1,25 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - heading "📝 测试中..." [level=1] [ref=e366] [cursor=pointer]
+    - generic [ref=e5]:
+      - button "🏠 首页" [ref=e6] [cursor=pointer]
+      - button "📊 仪表盘" [ref=e7] [cursor=pointer]
+      - button "🏆 项目验收" [ref=e8] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]: 💡
+    - generic [ref=e12]: 💡 设计模式：单例模式的懒汉式(Double-Checked Locking)在C++11之前因为内存重排序问题是不安全的。
+    - generic "关闭" [ref=e13] [cursor=pointer]: ✕
+  - generic [ref=e14]:
+    - generic [ref=e367]:
+      - button "← 退出测试" [ref=e368] [cursor=pointer]
+      - generic [ref=e369]: 第 2/5 题
+      - generic [ref=e370]: ⏱ 00:29
+    - generic [ref=e386]:
+      - generic [ref=e387]:
+        - generic [ref=e388]: 代码输出预测
+        - generic [ref=e389]: 进阶
+      - generic [ref=e390]: 📖 面试中被问到初始化列表的陷阱。
+      - generic [ref=e391]: 以下代码输出什么？
+      - generic [ref=e392]: "#include <iostream> class A { int x, y; public: A(int v) : y(v), x(y) {} void print() { std::cout << x << ',' << y; } }; int main() { A a(5); a.print(); }"
+      - textbox "输入你的答案..." [ref=e393]
+      - button "提交答案" [ref=e395] [cursor=pointer]

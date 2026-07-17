@@ -1,0 +1,457 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "mermaid2excalidraw",
+  "elements": [
+    {
+      "id": "m2e_1",
+      "type": "rectangle",
+      "x": -800.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_2",
+      "type": "text",
+      "x": -740.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "排序<br/>冒泡/插入/选择<br/>归并/快速/堆",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_3",
+      "type": "rectangle",
+      "x": 1410.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_4",
+      "type": "text",
+      "x": 1470.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "二分查找<br/>标准/左手边/右手边",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_5",
+      "type": "rectangle",
+      "x": 220.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_6",
+      "type": "text",
+      "x": 280.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "双指针<br/>快慢/左右/滑动窗口",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_7",
+      "type": "rectangle",
+      "x": -460.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_8",
+      "type": "text",
+      "x": -400.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "单调栈<br/>Next Greater Element",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_9",
+      "type": "rectangle",
+      "x": 730.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_10",
+      "type": "text",
+      "x": 790.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "end",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_11",
+      "type": "rectangle",
+      "x": 560.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_12",
+      "type": "text",
+      "x": 620.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "动态规划<br/>背包/股票/打家劫舍",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_13",
+      "type": "rectangle",
+      "x": 50.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_14",
+      "type": "text",
+      "x": 110.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "回溯<br/>全排列/组合/子集",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_15",
+      "type": "rectangle",
+      "x": -120.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_16",
+      "type": "text",
+      "x": -60.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "分治<br/>归并排序/快速幂",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_17",
+      "type": "rectangle",
+      "x": -290.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_18",
+      "type": "text",
+      "x": -230.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "贪心<br/>区间调度/哈夫曼",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_19",
+      "type": "rectangle",
+      "x": 1240.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_20",
+      "type": "text",
+      "x": 1300.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "KMP<br/>字符串匹配",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_21",
+      "type": "rectangle",
+      "x": 1070.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_22",
+      "type": "text",
+      "x": 1130.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "K-Means<br/>聚类分析",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_23",
+      "type": "rectangle",
+      "x": 390.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_24",
+      "type": "text",
+      "x": 450.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "量化<br/>PQ/LVQ 压缩",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_25",
+      "type": "rectangle",
+      "x": -970.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_26",
+      "type": "text",
+      "x": -910.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "距离计算<br/>欧氏/余弦/汉明<br/>SIMD 加速",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_27",
+      "type": "rectangle",
+      "x": -630.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_28",
+      "type": "text",
+      "x": -570.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "分词词典<br/>Trie/AC自动机",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_29",
+      "type": "rectangle",
+      "x": 1580.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_30",
+      "type": "text",
+      "x": 1640.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "基础算法",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_31",
+      "type": "rectangle",
+      "x": 1750.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_32",
+      "type": "text",
+      "x": 1810.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "高级算法",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_33",
+      "type": "rectangle",
+      "x": 900.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_34",
+      "type": "text",
+      "x": 960.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "专用算法",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_35",
+      "type": "arrow",
+      "x": 1640.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          170.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_36",
+      "type": "arrow",
+      "x": 1810.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -850.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    }
+  ],
+  "appState": {
+    "gridSize": null,
+    "viewBackgroundColor": "#ffffff"
+  }
+}

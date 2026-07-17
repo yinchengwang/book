@@ -1,0 +1,364 @@
+/**
+ * 能力差距分析样式 - 项目主风格
+ */
+.gap-page {
+  min-height: 100vh;
+  background: transparent;
+  padding: 24px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.gap-header {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.gap-title {
+  font-size: 28px;
+  font-weight: 800;
+  display: block;
+  background: linear-gradient(135deg, #818cf8, #c084fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gap-subtitle {
+  font-size: 13px;
+  color: var(--text-3);
+  margin-top: 4px;
+  display: block;
+}
+
+/* === 空状态 === */
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  background: var(--card-bg);
+  border: 1px dashed var(--border);
+  border-radius: 20px;
+  margin-top: 24px;
+}
+
+.empty-emoji {
+  font-size: 64px;
+  display: block;
+  margin-bottom: 16px;
+}
+
+.empty-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  display: block;
+}
+
+.empty-desc {
+  font-size: 14px;
+  color: var(--text-2);
+  line-height: 1.7;
+  margin: 16px auto 24px;
+  max-width: 480px;
+  display: block;
+  white-space: pre-line;
+}
+
+.empty-stats {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.empty-stat {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 20px;
+  min-width: 80px;
+  text-align: center;
+}
+
+.empty-stat-num {
+  display: block;
+  font-size: 24px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #818cf8, #c084fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.empty-stat-label {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 2px;
+  display: block;
+}
+
+.empty-cta {
+  display: inline-block;
+  padding: 14px 32px;
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  color: #fff;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.3);
+  transition: all 0.15s;
+}
+
+.empty-cta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(99, 102, 241, 0.4);
+}
+
+.empty-tip {
+  margin-top: 20px;
+  font-size: 12px;
+  color: var(--text-3);
+  opacity: 0.7;
+  display: block;
+}
+
+/* === 正常状态 === */
+.gap-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.overview-card {
+  background: var(--header-gradient);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 16px;
+  padding: 24px;
+}
+
+.overview-header {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.overview-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.overview-meta {
+  font-size: 11px;
+  color: var(--text-3);
+  background: var(--card-bg);
+  padding: 3px 10px;
+  border-radius: 10px;
+}
+
+.overview-progress {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+
+.progress-circle {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.25));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--primary);
+}
+
+.progress-percent {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.progress-label {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.progress-target {
+  flex: 1;
+}
+
+.target-value {
+  font-size: 32px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #10b981, #34d399);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.target-label {
+  font-size: 12px;
+  color: var(--text-3);
+  display: block;
+  margin-top: 2px;
+}
+
+.gap-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gap-item {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.gap-urgent {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.gap-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.domain-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.gap-value {
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.gap-warning {
+  color: #fbbf24;
+  font-weight: 700;
+}
+
+.progress-bar {
+  margin-bottom: 12px;
+}
+
+.progress-track {
+  position: relative;
+  height: 8px;
+  background: var(--card-bg);
+  border-radius: 4px;
+}
+
+.progress-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-fill.current {
+  background: linear-gradient(90deg, var(--primary), var(--primary-2));
+  left: 0;
+}
+
+.progress-fill.target {
+  background: #10b981;
+  width: 3px;
+  height: 14px;
+  top: -3px;
+}
+
+.progress-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+
+.label-current {
+  font-size: 11px;
+  color: #a5b4fc;
+  font-weight: 700;
+}
+
+.label-target {
+  font-size: 11px;
+  color: #6ee7b7;
+  font-weight: 700;
+}
+
+.gap-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(245, 158, 11, 0.15);
+  border-radius: 8px;
+  margin-top: 12px;
+}
+
+.suggestion-icon {
+  font-size: 16px;
+}
+
+.suggestion-text {
+  font-size: 12px;
+  color: #fcd34d;
+}
+
+.suggestions-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.suggestions-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 12px;
+  display: block;
+}
+
+.suggestions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.suggestion-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.sug-number {
+  width: 24px;
+  height: 24px;
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.sug-text {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+}

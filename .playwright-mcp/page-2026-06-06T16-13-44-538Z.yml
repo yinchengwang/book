@@ -1,0 +1,38 @@
+- generic [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]: C 程序员技术栈
+    - generic [ref=e4]:
+      - button "📚 读书雷达" [ref=e5] [cursor=pointer]
+      - button "🔧 C 技术栈" [active] [ref=e6] [cursor=pointer]
+      - button "⚙️ C++ 技术栈" [ref=e7] [cursor=pointer]
+    - generic [ref=e8]:
+      - button "📡 雷达视图" [ref=e9] [cursor=pointer]
+      - button "📋 看板视图" [ref=e10] [cursor=pointer]
+  - generic [ref=e11]:
+    - generic [ref=e12]:
+      - generic [ref=e13]:
+        - generic [ref=e14]: "44"
+        - generic [ref=e15]: 📚 待阅读
+      - generic [ref=e16]:
+        - generic [ref=e17]: "0"
+        - generic [ref=e18]: 📖 阅读中
+      - generic [ref=e19]:
+        - generic [ref=e20]: "0"
+        - generic [ref=e21]: ✅ 已读完
+      - generic [ref=e22]:
+        - generic [ref=e23]: "0"
+        - generic [ref=e24]: ⭐ 已掌握
+    - textbox "🔍 搜索技术点、标签..." [ref=e46]
+    - generic [ref=e27]:
+      - button "📚 全部 (44)" [ref=e47] [cursor=pointer]
+      - button "📗 语言核心 (12)" [ref=e48] [cursor=pointer]
+      - button "📘 系统编程 (11)" [ref=e49] [cursor=pointer]
+      - button "📙 数据结构与算法 (10)" [ref=e50] [cursor=pointer]
+      - button "📕 工程实践 (11)" [ref=e51] [cursor=pointer]
+    - generic [ref=e33]:
+      - generic [ref=e36]:
+        - generic [ref=e37]: 待阅读
+        - generic [ref=e39]: 阅读中
+        - generic [ref=e41]: 已读完
+        - generic [ref=e43]: 已掌握
+      - generic [ref=e45]: 💡 点击圆点查看书籍详情 | 圆点越大 = 越推荐

@@ -1,0 +1,451 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "mermaid2excalidraw",
+  "elements": [
+    {
+      "id": "m2e_1",
+      "type": "rectangle",
+      "x": 305.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_2",
+      "type": "text",
+      "x": 365.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "原始向量<br/>D=128维 float32<br/>512字节",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_3",
+      "type": "rectangle",
+      "x": 475.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_4",
+      "type": "text",
+      "x": 535.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "分 D/d 块<br/>每块 d=8维",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_5",
+      "type": "rectangle",
+      "x": 645.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_6",
+      "type": "text",
+      "x": 705.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "Block-1: 8维",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_7",
+      "type": "rectangle",
+      "x": -375.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_8",
+      "type": "text",
+      "x": -315.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "Block-2: 8维",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_9",
+      "type": "rectangle",
+      "x": 135.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_10",
+      "type": "text",
+      "x": 195.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "... 14个块",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_11",
+      "type": "rectangle",
+      "x": -205.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_12",
+      "type": "text",
+      "x": -145.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "end",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_13",
+      "type": "rectangle",
+      "x": 815.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_14",
+      "type": "text",
+      "x": 875.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "K-Means<br/>K=256 聚类",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_15",
+      "type": "rectangle",
+      "x": 985.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_16",
+      "type": "text",
+      "x": 1045.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "生成码本<br/>256 × 8 float32",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_17",
+      "type": "rectangle",
+      "x": 1155.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_18",
+      "type": "text",
+      "x": 1215.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "编码: q1,q2...q16<br/>每个 q 占 1 字节",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_19",
+      "type": "rectangle",
+      "x": -545.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_20",
+      "type": "text",
+      "x": -485.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "压缩率: 1/64",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_21",
+      "type": "rectangle",
+      "x": 1325.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_22",
+      "type": "text",
+      "x": 1385.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "并行计算<br/>距离查表",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_23",
+      "type": "rectangle",
+      "x": -35.0,
+      "y": 50,
+      "width": 120,
+      "height": 60,
+      "strokeColor": "#1a1a1a",
+      "backgroundColor": "#e7f5ff",
+      "strokeWidth": 2
+    },
+    {
+      "id": "m2e_24",
+      "type": "text",
+      "x": 25.0,
+      "y": 80.0,
+      "width": 110,
+      "height": 50,
+      "text": "累加各块距离<br/>总距离排序",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle"
+    },
+    {
+      "id": "m2e_25",
+      "type": "arrow",
+      "x": 365.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          340.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_26",
+      "type": "arrow",
+      "x": 535.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -850.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_27",
+      "type": "arrow",
+      "x": 535.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -340.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_28",
+      "type": "arrow",
+      "x": 705.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          170.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_29",
+      "type": "arrow",
+      "x": 875.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          170.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_30",
+      "type": "arrow",
+      "x": 1045.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          170.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_31",
+      "type": "arrow",
+      "x": 1215.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          170.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    },
+    {
+      "id": "m2e_32",
+      "type": "arrow",
+      "x": 1385.0,
+      "y": 110,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -1360.0,
+          -60
+        ]
+      ],
+      "strokeColor": "#1a1a1a",
+      "strokeWidth": 2,
+      "endArrowhead": "arrow"
+    }
+  ],
+  "appState": {
+    "gridSize": null,
+    "viewBackgroundColor": "#ffffff"
+  }
+}

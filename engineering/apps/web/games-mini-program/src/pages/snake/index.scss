@@ -1,0 +1,143 @@
+/* 贪吃蛇页面样式 */
+.snake-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20rpx;
+  box-sizing: border-box;
+}
+
+.header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20rpx 0;
+}
+
+.score {
+  font-size: 32rpx;
+  color: #00d9ff;
+}
+
+.score-value {
+  font-weight: bold;
+  font-size: 40rpx;
+}
+
+.game-board {
+  margin-top: 20rpx;
+  background: #1a1a2e;
+  border: 4rpx solid #00d9ff;
+  border-radius: 8rpx;
+}
+
+.grid-row {
+  display: flex;
+}
+
+.grid-cell {
+  width: 36rpx;
+  height: 36rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.1);
+}
+
+.grid-cell.snake {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  border-radius: 4rpx;
+}
+
+.grid-cell.snake-head {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+  border-radius: 50%;
+  box-shadow: 0 0 10rpx #38ef7d;
+}
+
+.grid-cell.food {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+  border-radius: 50%;
+  box-shadow: 0 0 8rpx #ff6b6b;
+}
+
+.controls {
+  margin-top: 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.direction-pad {
+  display: grid;
+  grid-template-areas:
+    ". up ."
+    "left . right"
+    ". down .";
+  gap: 10rpx;
+}
+
+.dir-btn {
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 16rpx;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  font-size: 48rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+}
+
+.dir-btn:active {
+  opacity: 0.8;
+  transform: scale(0.95);
+}
+
+.dir-btn.up { grid-area: up; }
+.dir-btn.down { grid-area: down; }
+.dir-btn.left { grid-area: left; }
+.dir-btn.right { grid-area: right; }
+
+.game-over-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.game-over-text {
+  font-size: 60rpx;
+  font-weight: bold;
+  color: #ff6b6b;
+  margin-bottom: 20rpx;
+}
+
+.final-score {
+  font-size: 36rpx;
+  color: #fff;
+  margin-bottom: 40rpx;
+}
+
+.restart-btn {
+  padding: 24rpx 60rpx;
+  border-radius: 16rpx;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  font-size: 32rpx;
+  border: none;
+}
+
+.hint {
+  margin-top: 30rpx;
+  font-size: 24rpx;
+  color: #8b8b8b;
+}

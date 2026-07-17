@@ -1,0 +1,3107 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - link "CSDN首页" [ref=e8] [cursor=pointer]:
+        - /url: https://www.csdn.net/
+        - img "CSDN首页" [ref=e9]
+      - list [ref=e10]:
+        - listitem "阅读深度、前沿文章" [ref=e11]:
+          - link "博客" [ref=e12] [cursor=pointer]:
+            - /url: https://blog.csdn.net/
+        - listitem "高价值源码课程分享" [ref=e13]:
+          - link "下载" [ref=e14] [cursor=pointer]:
+            - /url: https://download.csdn.net/
+        - listitem "DevPress官方社区" [ref=e15]:
+          - link "社区" [ref=e16] [cursor=pointer]:
+            - /url: https://devpress.csdn.net/
+        - listitem "开源代码托管" [ref=e17]:
+          - link "AtomGit" [ref=e18] [cursor=pointer]:
+            - /url: https://link.csdn.net?target=https%3A%2F%2Fgitcode.com%3Futm_source%3Dcsdn_toolbar
+            - img [ref=e19]
+            - text: AtomGit
+        - listitem "模型市场" [ref=e20]:
+          - link "模型市场" [ref=e21] [cursor=pointer]:
+            - /url: https://taotoken.net?utm_source=tt_csdn_home_topbar
+            - img [ref=e22]
+            - text: 模型市场
+            - img [ref=e23]
+        - listitem [ref=e24]:
+          - generic [ref=e25] [cursor=pointer]: 更多
+    - generic [ref=e29]:
+      - textbox "claude.md" [ref=e31]
+      - button "搜索" [ref=e32] [cursor=pointer]:
+        - generic [ref=e34]: 搜索
+      - paragraph [ref=e35] [cursor=pointer]:
+        - generic [ref=e36]: AI 搜索
+    - generic [ref=e38]:
+      - generic [ref=e40] [cursor=pointer]: 登录
+      - link "新用户会员0.5元/天" [ref=e55] [cursor=pointer]:
+        - /url: https://mall.csdn.net/vip?utm_source=vip_toolbarhyzx_hy
+      - link "消息" [ref=e58] [cursor=pointer]:
+        - /url: https://i.csdn.net/#/msg/index
+        - generic [ref=e59]: 消息
+      - link "创作中心" [ref=e62] [cursor=pointer]:
+        - /url: https://mp.csdn.net
+      - link "创作" [ref=e64] [cursor=pointer]:
+        - /url: https://mp.csdn.net/edit
+  - generic [ref=e67]:
+    - generic [ref=e68]:
+      - main [ref=e69]:
+        - generic [ref=e70]:
+          - generic [ref=e72]:
+            - heading "Claude Code教程（二）| Claude Code的使用技巧" [level=1] [ref=e74]
+            - generic [ref=e75]:
+              - generic [ref=e77]:
+                - generic [ref=e78]: 原创
+                - generic [ref=e79]: 已于 2026-03-05 17:31:19 修改
+                - generic [ref=e80]: ·
+                - generic [ref=e81]: 3.7k 阅读
+                - generic [ref=e82] [cursor=pointer]:
+                  - generic [ref=e83]: ·
+                  - generic [ref=e84]: "17"
+                - generic [ref=e85]: ·
+                - generic [ref=e86] [cursor=pointer]: "42"
+                - generic [ref=e87]: ·
+                - generic [ref=e89] [cursor=pointer]: CC 4.0 BY-SA版权
+              - generic [ref=e91]:
+                - generic [ref=e92]:
+                  - generic [ref=e93]: 文章标签：
+                  - paragraph [ref=e94]:
+                    - link "#Claude Code" [ref=e95] [cursor=pointer]:
+                      - /url: https://so.csdn.net/so/search/s.do?q=Claude+Code&t=all&o=vip&s=&l=&f=&viparticle=&from_tracking_code=tag_word&from_code=app_blog_art
+                - paragraph
+          - generic [ref=e98]:
+            - link "Claude Code学习篇 专栏收录该内容" [ref=e100] [cursor=pointer]:
+              - /url: https://blog.csdn.net/qq_20236937/category_13082901.html
+              - generic [ref=e102]:
+                - generic [ref=e103]: Claude Code学习篇
+                - generic [ref=e104]: 专栏收录该内容
+            - generic [ref=e106]: 14 篇文章
+            - generic [ref=e108] [cursor=pointer]: 订阅专栏
+          - article [ref=e109]:
+            - generic [ref=e111]:
+              - paragraph
+              - generic [ref=e112]:
+                - heading "Claude Code教程（二）| Claude Code的使用技巧" [level=4] [ref=e113]: Claude Code教程（二）| Claude Code的使用技巧
+                - list [ref=e114]:
+                  - listitem [ref=e115]:
+                    - link "一、快速入门" [ref=e116] [cursor=pointer]:
+                      - /url: "#_1"
+                  - listitem [ref=e117]:
+                    - list [ref=e118]:
+                      - listitem [ref=e119]:
+                        - link "1.1 安装与认证" [ref=e120] [cursor=pointer]:
+                          - /url: "#11__2"
+                      - listitem [ref=e121]:
+                        - link "1.2 创建 CLAUDE.md 文件" [ref=e122] [cursor=pointer]:
+                          - /url: "#12__CLAUDEmd__38"
+                      - listitem [ref=e123]:
+                        - link "1.3 配置工具权限" [ref=e124] [cursor=pointer]:
+                          - /url: "#13__115"
+                      - listitem [ref=e125]:
+                        - link "1.4 开启免授权模式" [ref=e126] [cursor=pointer]:
+                          - /url: "#14__168"
+                  - listitem [ref=e127]:
+                    - link "二、高效提需求" [ref=e128] [cursor=pointer]:
+                      - /url: "#_242"
+                  - listitem [ref=e129]:
+                    - list [ref=e130]:
+                      - listitem [ref=e131]:
+                        - link "2.1 先理解项目再动手" [ref=e132] [cursor=pointer]:
+                          - /url: "#21__244"
+                      - listitem [ref=e133]:
+                        - link "2.2 需求描述要具体" [ref=e134] [cursor=pointer]:
+                          - /url: "#22__260"
+                      - listitem [ref=e135]:
+                        - link "2.3 复杂需求分步执行" [ref=e136] [cursor=pointer]:
+                          - /url: "#23__271"
+                  - listitem [ref=e137]:
+                    - link "三、官方推荐工作流" [ref=e138] [cursor=pointer]:
+                      - /url: "#_290"
+                  - listitem [ref=e139]:
+                    - list [ref=e140]:
+                      - listitem [ref=e141]:
+                        - link "3.1 探索 → 计划 → 编码 → 提交" [ref=e142] [cursor=pointer]:
+                          - /url: "#31________292"
+                      - listitem [ref=e143]:
+                        - link "3.2 测试驱动开发（TDD）" [ref=e144] [cursor=pointer]:
+                          - /url: "#32_TDD_318"
+                      - listitem [ref=e145]:
+                        - link "3.3 视觉驱动开发" [ref=e146] [cursor=pointer]:
+                          - /url: "#33__336"
+                  - listitem [ref=e147]:
+                    - link "四、深度思考模式" [ref=e148] [cursor=pointer]:
+                      - /url: "#_352"
+                  - listitem [ref=e149]:
+                    - link "五、实操技巧" [ref=e150] [cursor=pointer]:
+                      - /url: "#_379"
+                  - listitem [ref=e151]:
+                    - list [ref=e152]:
+                      - listitem [ref=e153]:
+                        - link "5.1 发送图片处理" [ref=e154] [cursor=pointer]:
+                          - /url: "#51__381"
+                      - listitem [ref=e155]:
+                        - link "5.2 恢复历史会话" [ref=e156] [cursor=pointer]:
+                          - /url: "#52__399"
+                      - listitem [ref=e157]:
+                        - link "5.3 编辑记忆文件" [ref=e158] [cursor=pointer]:
+                          - /url: "#53__439"
+                      - listitem [ref=e159]:
+                        - link "5.4 上下文管理" [ref=e160] [cursor=pointer]:
+                          - /url: "#54__458"
+                  - listitem [ref=e161]:
+                    - link "六、斜杠命令完整参考" [ref=e162] [cursor=pointer]:
+                      - /url: "#_500"
+                  - listitem [ref=e163]:
+                    - list [ref=e164]:
+                      - listitem [ref=e165]:
+                        - link "6.1 核心命令" [ref=e166] [cursor=pointer]:
+                          - /url: "#61__502"
+                      - listitem [ref=e167]:
+                        - link "6.2 会话管理" [ref=e168] [cursor=pointer]:
+                          - /url: "#62__512"
+                      - listitem [ref=e169]:
+                        - link "6.3 模型与费用" [ref=e170] [cursor=pointer]:
+                          - /url: "#63__520"
+                      - listitem [ref=e171]:
+                        - link "6.4 配置与状态" [ref=e172] [cursor=pointer]:
+                          - /url: "#64__529"
+                      - listitem [ref=e173]:
+                        - link "6.5 开发工具" [ref=e174] [cursor=pointer]:
+                          - /url: "#65__540"
+                  - listitem [ref=e175]:
+                    - link "七、与工具系统交互" [ref=e176] [cursor=pointer]:
+                      - /url: "#_553"
+                  - listitem [ref=e177]:
+                    - list [ref=e178]:
+                      - listitem [ref=e179]:
+                        - link "7.1 Git 交互" [ref=e180] [cursor=pointer]:
+                          - /url: "#71_Git__554"
+                      - listitem [ref=e181]:
+                        - link "7.2 GitHub 交互" [ref=e182] [cursor=pointer]:
+                          - /url: "#72_GitHub__586"
+                      - listitem [ref=e183]:
+                        - link "7.3 Linux/Shell 命令助手" [ref=e184] [cursor=pointer]:
+                          - /url: "#73_LinuxShell__601"
+                      - listitem [ref=e185]:
+                        - link "7.4 代码库问答" [ref=e186] [cursor=pointer]:
+                          - /url: "#74__618"
+                  - listitem [ref=e187]:
+                    - link "八、模型切换与费用" [ref=e188] [cursor=pointer]:
+                      - /url: "#_636"
+                  - listitem [ref=e189]:
+                    - list [ref=e190]:
+                      - listitem [ref=e191]:
+                        - link "8.1 模型切换" [ref=e192] [cursor=pointer]:
+                          - /url: "#81__638"
+                      - listitem [ref=e193]:
+                        - link "8.2 查看消耗" [ref=e194] [cursor=pointer]:
+                          - /url: "#82__655"
+                      - listitem [ref=e195]:
+                        - link "8.3 订阅说明" [ref=e196] [cursor=pointer]:
+                          - /url: "#83__690"
+                  - listitem [ref=e197]:
+                    - link "九、自定义命令" [ref=e198] [cursor=pointer]:
+                      - /url: "#_707"
+                  - listitem [ref=e199]:
+                    - list [ref=e200]:
+                      - listitem [ref=e201]:
+                        - link "9.1 命令类型" [ref=e202] [cursor=pointer]:
+                          - /url: "#91__709"
+                      - listitem [ref=e203]:
+                        - link "9.2 创建项目级命令" [ref=e204] [cursor=pointer]:
+                          - /url: "#92__722"
+                      - listitem [ref=e205]:
+                        - link "9.3 创建用户级命令" [ref=e206] [cursor=pointer]:
+                          - /url: "#93__749"
+                      - listitem [ref=e207]:
+                        - link "9.4 高级功能" [ref=e208] [cursor=pointer]:
+                          - /url: "#94__774"
+                  - listitem [ref=e209]:
+                    - link "十、快捷键速查" [ref=e210] [cursor=pointer]:
+                      - /url: "#_839"
+                  - listitem [ref=e211]:
+                    - link "附录：多 Claude 工作流" [ref=e212] [cursor=pointer]:
+                      - /url: "#_Claude__855"
+                  - listitem [ref=e213]:
+                    - list [ref=e214]:
+                      - listitem [ref=e215]:
+                        - link "一个写代码，一个审查" [ref=e216] [cursor=pointer]:
+                          - /url: "#_856"
+                      - listitem [ref=e217]:
+                        - link "使用 Git Worktrees 并行开发" [ref=e218] [cursor=pointer]:
+                          - /url: "#_Git_Worktrees__869"
+                  - listitem [ref=e219]:
+                    - link "参考资料" [ref=e220] [cursor=pointer]:
+                      - /url: "#_895"
+              - paragraph
+              - heading "一、快速入门" [level=2] [ref=e221]: 一、快速入门
+              - heading "1.1 安装与认证" [level=3] [ref=e222]: 1.1 安装与认证
+              - blockquote [ref=e223]:
+                - paragraph [ref=e224]:
+                  - text: 📍
+                  - strong [ref=e225]: 执行位置
+                  - text: "：在任意目录打开终端（Windows: PowerShell 或 CMD，Mac/Linux: Terminal）"
+              - generic [ref=e226]:
+                - code [ref=e227]: "┌──────────────────────────────────────────────────────────────────┐ │ Terminal - □ x │ ├──────────────────────────────────────────────────────────────────┤ │ C:\\Users\\YourName> npm install -g @anthropic/claude-code │ │ + @anthropic/claude-code@1.0.x │ │ added 1 package in 10s │ │ │ │ C:\\Users\\YourName> claude login │ │ ✓ Successfully logged in │ │ │ │ C:\\Users\\YourName> claude auth status │ │ ✓ Authenticated as: your-email@example.com │ │ │ │ C:\\Users\\YourName> claude │ │ ╭─────────────────────────────────────────────────────────────╮ │ │ │ Welcome to Claude Code! │ │ │ │ Type your message or use /help for commands │ │ │ ╰─────────────────────────────────────────────────────────────╯ │ │ > │ └──────────────────────────────────────────────────────────────────┘"
+                - generic [ref=e228]:
+                  - button "一键获取完整项目代码" [ref=e229] [cursor=pointer]
+                  - generic [ref=e230] [cursor=pointer]: 登录复制
+                - generic [ref=e232] [cursor=pointer]: 展开
+                - list [ref=e233]:
+                  - listitem [ref=e234]: "1"
+                  - listitem [ref=e235]: "2"
+                  - listitem [ref=e236]: "3"
+                  - listitem [ref=e237]: "4"
+                  - listitem [ref=e238]: "5"
+                  - listitem [ref=e239]: "6"
+                  - listitem [ref=e240]: "7"
+                  - listitem [ref=e241]: "8"
+                  - listitem [ref=e242]: "9"
+                  - listitem [ref=e243]: "10"
+                  - listitem [ref=e244]: "11"
+                  - listitem [ref=e245]: "12"
+                  - listitem [ref=e246]: "13"
+                  - listitem [ref=e247]: "14"
+                  - listitem [ref=e248]: "15"
+                  - listitem [ref=e249]: "16"
+                  - listitem [ref=e250]: "17"
+                  - listitem [ref=e251]: "18"
+                  - listitem [ref=e252]: "19"
+                  - listitem [ref=e253]: "20"
+              - paragraph [ref=e254]:
+                - strong [ref=e255]: 命令说明：
+              - table [ref=e257]:
+                - rowgroup [ref=e258]:
+                  - row "命令 说明" [ref=e259]:
+                    - columnheader "命令" [ref=e260]
+                    - columnheader "说明" [ref=e261]
+                - rowgroup [ref=e262]:
+                  - row "npm install -g @anthropic/claude-code 全局安装 Claude Code" [ref=e263]:
+                    - cell "npm install -g @anthropic/claude-code" [ref=e264]:
+                      - code [ref=e265]: npm install -g @anthropic/claude-code
+                    - cell "全局安装 Claude Code" [ref=e266]
+                  - row "claude login 登录认证" [ref=e267]:
+                    - cell "claude login" [ref=e268]:
+                      - code [ref=e269]: claude login
+                    - cell "登录认证" [ref=e270]
+                  - row "claude auth status 检查认证状态" [ref=e271]:
+                    - cell "claude auth status" [ref=e272]:
+                      - code [ref=e273]: claude auth status
+                    - cell "检查认证状态" [ref=e274]
+                  - row "claude 启动 Claude Code 进入交互模式" [ref=e275]:
+                    - cell "claude" [ref=e276]:
+                      - code [ref=e277]: claude
+                    - cell "启动 Claude Code 进入交互模式" [ref=e278]
+              - heading "1.2 创建 CLAUDE.md 文件" [level=3] [ref=e279]: 1.2 创建 CLAUDE.md 文件
+              - paragraph [ref=e280]: CLAUDE.md 是 Claude Code 的核心配置文件，在每次会话启动时会被自动读取并加入上下文中。
+              - paragraph [ref=e281]:
+                - strong [ref=e282]: 文件内容建议包含：
+              - table [ref=e284]:
+                - rowgroup [ref=e285]:
+                  - row "内容类型 说明" [ref=e286]:
+                    - columnheader "内容类型" [ref=e287]
+                    - columnheader "说明" [ref=e288]
+                - rowgroup [ref=e289]:
+                  - row "项目基础信息 架构说明、技术栈" [ref=e290]:
+                    - cell "项目基础信息" [ref=e291]
+                    - cell "架构说明、技术栈" [ref=e292]
+                  - row "常用命令 构建脚本、测试命令" [ref=e293]:
+                    - cell "常用命令" [ref=e294]
+                    - cell "构建脚本、测试命令" [ref=e295]
+                  - row "代码规范 命名约定、格式要求" [ref=e296]:
+                    - cell "代码规范" [ref=e297]
+                    - cell "命名约定、格式要求" [ref=e298]
+                  - row "测试指南 测试框架、覆盖率要求" [ref=e299]:
+                    - cell "测试指南" [ref=e300]
+                    - cell "测试框架、覆盖率要求" [ref=e301]
+                  - row "开发环境 环境变量、依赖说明" [ref=e302]:
+                    - cell "开发环境" [ref=e303]
+                    - cell "环境变量、依赖说明" [ref=e304]
+                  - row "文件引用 可通过 @path/to/file 引用项目文件" [ref=e305]:
+                    - cell "文件引用" [ref=e306]
+                    - cell "可通过 @path/to/file 引用项目文件" [ref=e307]:
+                      - text: 可通过
+                      - code [ref=e308]: "@path/to/file"
+                      - text: 引用项目文件
+              - paragraph [ref=e309]:
+                - strong [ref=e310]: 创建方式一：使用 /init 命令自动生成（推荐）
+              - blockquote [ref=e311]:
+                - paragraph [ref=e312]:
+                  - text: 📍
+                  - strong [ref=e313]: 执行位置
+                  - text: ：先 cd 到你的项目根目录，然后启动 claude 并输入
+                  - code [ref=e314]: /init
+              - generic [ref=e315]:
+                - code [ref=e316]: ┌──────────────────────────────────────────────────────────────────┐ │ Terminal - □ x │ ├──────────────────────────────────────────────────────────────────┤ │ C:\Users\YourName> cd D:\Projects\my-project │ │ D:\Projects\my-project> claude │ │ │ │ > /init │ │ ✓ Created CLAUDE.md with project configuration │ └──────────────────────────────────────────────────────────────────┘
+                - generic [ref=e317]:
+                  - button "一键获取完整项目代码" [ref=e318] [cursor=pointer]
+                  - generic [ref=e319] [cursor=pointer]: 登录复制
+                - list [ref=e320]:
+                  - listitem [ref=e321]: "1"
+                  - listitem [ref=e322]: "2"
+                  - listitem [ref=e323]: "3"
+                  - listitem [ref=e324]: "4"
+                  - listitem [ref=e325]: "5"
+                  - listitem [ref=e326]: "6"
+                  - listitem [ref=e327]: "7"
+                  - listitem [ref=e328]: "8"
+                  - listitem [ref=e329]: "9"
+              - paragraph [ref=e330]:
+                - strong [ref=e331]: 创建方式二：手动创建
+              - blockquote [ref=e332]:
+                - paragraph [ref=e333]:
+                  - text: 📍
+                  - strong [ref=e334]: 执行位置
+                  - text: ：在项目根目录下创建文件
+              - generic [ref=e335]:
+                - code [ref=e336]: "┌──────────────────────────────────────────────────────────────────┐ │ Terminal (Windows PowerShell) - □ x │ ├──────────────────────────────────────────────────────────────────┤ │ D:\\Projects\\my-project> New-Item CLAUDE.md │ │ # 或者用 CMD: │ │ D:\\Projects\\my-project> type nul > CLAUDE.md │ └──────────────────────────────────────────────────────────────────┘"
+                - generic [ref=e337]:
+                  - button "一键获取完整项目代码" [ref=e338] [cursor=pointer]
+                  - generic [ref=e339] [cursor=pointer]: 登录复制
+                - list [ref=e340]:
+                  - listitem [ref=e341]: "1"
+                  - listitem [ref=e342]: "2"
+                  - listitem [ref=e343]: "3"
+                  - listitem [ref=e344]: "4"
+                  - listitem [ref=e345]: "5"
+                  - listitem [ref=e346]: "6"
+                  - listitem [ref=e347]: "7"
+              - paragraph [ref=e348]:
+                - strong [ref=e349]: 📁 文件位置优先级（从高到低）：
+              - table [ref=e351]:
+                - rowgroup [ref=e352]:
+                  - row "优先级 路径 Windows 实际位置 说明" [ref=e353]:
+                    - columnheader "优先级" [ref=e354]
+                    - columnheader "路径" [ref=e355]
+                    - columnheader "Windows 实际位置" [ref=e356]
+                    - columnheader "说明" [ref=e357]
+                - rowgroup [ref=e358]:
+                  - row "1 ./CLAUDE.md D:\\Projects\\my-project\\CLAUDE.md 项目根目录（推荐，可提交到 git）" [ref=e359]:
+                    - cell "1" [ref=e360]
+                    - cell "./CLAUDE.md" [ref=e361]:
+                      - code [ref=e362]: ./CLAUDE.md
+                    - cell "D:\\Projects\\my-project\\CLAUDE.md" [ref=e363]:
+                      - code [ref=e364]: D:\Projects\my-project\CLAUDE.md
+                    - cell "项目根目录（推荐，可提交到 git）" [ref=e365]
+                  - row "2 ./CLAUDE.local.md D:\\Projects\\my-project\\CLAUDE.local.md 项目本地（不提交到 git）" [ref=e366]:
+                    - cell "2" [ref=e367]
+                    - cell "./CLAUDE.local.md" [ref=e368]:
+                      - code [ref=e369]: ./CLAUDE.local.md
+                    - cell "D:\\Projects\\my-project\\CLAUDE.local.md" [ref=e370]:
+                      - code [ref=e371]: D:\Projects\my-project\CLAUDE.local.md
+                    - cell "项目本地（不提交到 git）" [ref=e372]
+                  - row "3 ~/.claude/CLAUDE.md C:\\Users\\YourName\\.claude\\CLAUDE.md 全局配置" [ref=e373]:
+                    - cell "3" [ref=e374]
+                    - cell "~/.claude/CLAUDE.md" [ref=e375]:
+                      - code [ref=e376]: ~/.claude/CLAUDE.md
+                    - cell "C:\\Users\\YourName\\.claude\\CLAUDE.md" [ref=e377]:
+                      - code [ref=e378]: C:\Users\YourName\.claude\CLAUDE.md
+                    - cell "全局配置" [ref=e379]
+                  - row "4 父目录 自动向上查找 父目录中的也会被读取" [ref=e380]:
+                    - cell "4" [ref=e381]
+                    - cell "父目录" [ref=e382]
+                    - cell "自动向上查找" [ref=e383]
+                    - cell "父目录中的也会被读取" [ref=e384]
+              - paragraph [ref=e385]:
+                - strong [ref=e386]: 官方示例：
+              - generic [ref=e387]:
+                - code [ref=e388]: "# 项目说明 这是一个 TypeScript + React 项目，使用 Vite 构建。 # 代码规范 - 使用 ESLint 和 Prettier - 组件使用函数式写法 - 测试文件放在 __tests__ 目录 # 常用命令 - npm run dev: 启动开发服务器 - npm run test: 运行测试 - npm run build: 构建生产版本 # 重要提示 IMPORTANT: 所有 API 请求必须经过 src/api/request.ts 封装 YOU MUST: 新增组件需要同时编写单元测试"
+                - generic [ref=e389]:
+                  - button "一键获取完整项目代码" [ref=e390] [cursor=pointer]
+                  - generic [ref=e391]: markdown
+                  - generic [ref=e392] [cursor=pointer]: 登录复制
+                - generic [ref=e394] [cursor=pointer]: 展开
+                - list [ref=e395]:
+                  - listitem [ref=e396]: "1"
+                  - listitem [ref=e397]: "2"
+                  - listitem [ref=e398]: "3"
+                  - listitem [ref=e399]: "4"
+                  - listitem [ref=e400]: "5"
+                  - listitem [ref=e401]: "6"
+                  - listitem [ref=e402]: "7"
+                  - listitem [ref=e403]: "8"
+                  - listitem [ref=e404]: "9"
+                  - listitem [ref=e405]: "10"
+                  - listitem [ref=e406]: "11"
+                  - listitem [ref=e407]: "12"
+                  - listitem [ref=e408]: "13"
+                  - listitem [ref=e409]: "14"
+                  - listitem [ref=e410]: "15"
+                  - listitem [ref=e411]: "16"
+              - blockquote [ref=e412]:
+                - paragraph [ref=e413]:
+                  - text: 💡
+                  - strong [ref=e414]: 优化技巧
+                  - text: ：使用 “IMPORTANT” 或 “YOU MUST” 等强调词可以提高 Claude 的遵循度。
+              - heading "1.3 配置工具权限" [level=3] [ref=e415]: 1.3 配置工具权限
+              - paragraph [ref=e416]: Claude Code 默认采用保守的权限策略，可以通过以下四种方式显式授权：
+              - table [ref=e418]:
+                - rowgroup [ref=e419]:
+                  - row "方式 说明" [ref=e420]:
+                    - columnheader "方式" [ref=e421]
+                    - columnheader "说明" [ref=e422]
+                - rowgroup [ref=e423]:
+                  - row "交互式授权 启动时的授权提示，逐个确认" [ref=e424]:
+                    - cell "交互式授权" [ref=e425]
+                    - cell "启动时的授权提示，逐个确认" [ref=e426]
+                  - row "/permissions 命令 在会话中管理权限" [ref=e427]:
+                    - cell "/permissions 命令" [ref=e428]:
+                      - code [ref=e429]: /permissions
+                      - text: 命令
+                    - cell "在会话中管理权限" [ref=e430]
+                  - row "编辑配置文件 手动编辑 .claude/settings.json" [ref=e431]:
+                    - cell "编辑配置文件" [ref=e432]
+                    - cell "手动编辑 .claude/settings.json" [ref=e433]:
+                      - text: 手动编辑
+                      - code [ref=e434]: .claude/settings.json
+                  - row "启动参数 --allowedTools 参数" [ref=e435]:
+                    - cell "启动参数" [ref=e436]
+                    - cell "--allowedTools 参数" [ref=e437]:
+                      - code [ref=e438]: "--allowedTools"
+                      - text: 参数
+              - paragraph [ref=e439]:
+                - strong [ref=e440]:
+                  - text: 方式一：在 Claude Code 交互界面中输入
+                  - code [ref=e441]: /permissions
+              - generic [ref=e442]:
+                - code [ref=e443]: "┌──────────────────────────────────────────────────────────────────┐ │ Claude Code - □ x │ ├──────────────────────────────────────────────────────────────────┤ │ > /permissions │ │ │ │ Current permissions: │ │ ✓ Edit - File editing │ │ ✓ Bash(git commit:*) - Git commit operations │ │ ○ WebFetch(*) - URL access │ │ │ │ Use arrow keys to toggle, Enter to confirm │ └──────────────────────────────────────────────────────────────────┘"
+                - generic [ref=e444]:
+                  - button "一键获取完整项目代码" [ref=e445] [cursor=pointer]
+                  - generic [ref=e446] [cursor=pointer]: 登录复制
+                - generic [ref=e448] [cursor=pointer]: 展开
+                - list [ref=e449]:
+                  - listitem [ref=e450]: "1"
+                  - listitem [ref=e451]: "2"
+                  - listitem [ref=e452]: "3"
+                  - listitem [ref=e453]: "4"
+                  - listitem [ref=e454]: "5"
+                  - listitem [ref=e455]: "6"
+                  - listitem [ref=e456]: "7"
+                  - listitem [ref=e457]: "8"
+                  - listitem [ref=e458]: "9"
+                  - listitem [ref=e459]: "10"
+                  - listitem [ref=e460]: "11"
+                  - listitem [ref=e461]: "12"
+              - paragraph [ref=e462]:
+                - strong [ref=e463]: 方式二：启动时通过命令行参数授权
+              - blockquote [ref=e464]:
+                - paragraph [ref=e465]:
+                  - text: 📍
+                  - strong [ref=e466]: 执行位置
+                  - text: ：在终端中启动 claude 时带上参数
+              - generic [ref=e467]:
+                - code [ref=e468]: ┌──────────────────────────────────────────────────────────────────┐ │ Terminal - □ x │ ├──────────────────────────────────────────────────────────────────┤ │ D:\Projects\my-project> claude --allowedTools Edit,Bash(git *) │ └──────────────────────────────────────────────────────────────────┘
+                - generic [ref=e469]:
+                  - button "一键获取完整项目代码" [ref=e470] [cursor=pointer]
+                  - generic [ref=e471] [cursor=pointer]: 登录复制
+                - list [ref=e472]:
+                  - listitem [ref=e473]: "1"
+                  - listitem [ref=e474]: "2"
+                  - listitem [ref=e475]: "3"
+                  - listitem [ref=e476]: "4"
+                  - listitem [ref=e477]: "5"
+              - paragraph [ref=e478]:
+                - strong [ref=e479]: 📁 配置文件位置（Windows）：
+              - list [ref=e480]:
+                - listitem [ref=e481]:
+                  - text: 项目级：
+                  - code [ref=e482]: D:\Projects\my-project\.claude\settings.json
+                - listitem [ref=e483]:
+                  - text: 用户级：
+                  - code [ref=e484]: C:\Users\YourName\.claude\settings.json
+              - paragraph [ref=e485]:
+                - strong [ref=e486]: 推荐允许的工具：
+              - table [ref=e488]:
+                - rowgroup [ref=e489]:
+                  - row "工具 说明" [ref=e490]:
+                    - columnheader "工具" [ref=e491]
+                    - columnheader "说明" [ref=e492]
+                - rowgroup [ref=e493]:
+                  - row "Edit 文件编辑" [ref=e494]:
+                    - cell "Edit" [ref=e495]:
+                      - code [ref=e496]: Edit
+                    - cell "文件编辑" [ref=e497]
+                  - row "Bash(git commit:*) Git 提交操作" [ref=e498]:
+                    - cell "Bash(git commit:*)" [ref=e499]:
+                      - code [ref=e500]: Bash(git commit:*)
+                    - cell "Git 提交操作" [ref=e501]
+                  - row "Bash(git push:*) Git 推送操作" [ref=e502]:
+                    - cell "Bash(git push:*)" [ref=e503]:
+                      - code [ref=e504]: Bash(git push:*)
+                    - cell "Git 推送操作" [ref=e505]
+                  - row "WebFetch(*) 访问 URL 网址" [ref=e506]:
+                    - cell "WebFetch(*)" [ref=e507]:
+                      - code [ref=e508]: WebFetch(*)
+                    - cell "访问 URL 网址" [ref=e509]
+              - heading "1.4 开启免授权模式" [level=3] [ref=e510]: 1.4 开启免授权模式
+              - paragraph [ref=e511]: 频繁的授权提示会影响效率，可以开启免授权模式：
+              - blockquote [ref=e512]:
+                - paragraph [ref=e513]:
+                  - text: 📍
+                  - strong [ref=e514]: 执行位置
+                  - text: ：在终端中启动 claude 时带上参数
+                  - code [ref=e515]: "--dangerously-skip-permissions"
+                  - text: 完整的命令为：
+                  - code [ref=e516]: claude --dangerously-skip-permissions
+              - generic [ref=e517]:
+                - code [ref=e518]: "┌──────────────────────────────────────────────────────────────────┐ │ Terminal - □ x │ ├──────────────────────────────────────────────────────────────────┤ │ D:\\Projects\\my-project> claude --dangerously-skip-permissions │ │ │ │ ⚠️ WARNING: You are about to enable Bypassing Permissions mode │ │ This will allow Claude to execute commands without confirmation │ │ │ │ Are you sure? (Yes/No): Yes │ │ │ │ ╭─────────────────────────────────────────────────────────────╮ │ │ │ Claude Code [Bypassing Permissions] │ │ │ ╰─────────────────────────────────────────────────────────────╯ │ │ > │ └──────────────────────────────────────────────────────────────────┘"
+                - generic [ref=e519]:
+                  - button "一键获取完整项目代码" [ref=e520] [cursor=pointer]
+                  - generic [ref=e521] [cursor=pointer]: 登录复制
+                - generic [ref=e523] [cursor=pointer]: 展开
+                - list [ref=e524]:
+                  - listitem [ref=e525]: "1"
+                  - listitem [ref=e526]: "2"
+                  - listitem [ref=e527]: "3"
+                  - listitem [ref=e528]: "4"
+                  - listitem [ref=e529]: "5"
+                  - listitem [ref=e530]: "6"
+                  - listitem [ref=e531]: "7"
+                  - listitem [ref=e532]: "8"
+                  - listitem [ref=e533]: "9"
+                  - listitem [ref=e534]: "10"
+                  - listitem [ref=e535]: "11"
+                  - listitem [ref=e536]: "12"
+                  - listitem [ref=e537]: "13"
+                  - listitem [ref=e538]: "14"
+                  - listitem [ref=e539]: "15"
+              - paragraph [ref=e540]:
+                - text: 启动后终端会显示黄色的
+                - code [ref=e541]: Bypassing Permissions
+                - text: 标识。
+              - paragraph [ref=e542]:
+                - strong [ref=e543]: 设置别名永久生效：
+              - paragraph [ref=e544]:
+                - strong [ref=e545]: Windows PowerShell：
+              - blockquote [ref=e546]:
+                - paragraph [ref=e547]:
+                  - text: 📍
+                  - strong [ref=e548]: 配置文件位置
+                  - text: ：
+                  - code [ref=e549]: C:\Users\YourName\Documents\PowerShell\Microsoft.PowerShell_profile.ps1
+              - generic [ref=e550]:
+                - code [ref=e551]: "┌──────────────────────────────────────────────────────────────────┐ │ PowerShell - □ x │ ├──────────────────────────────────────────────────────────────────┤ │ # 打开 PowerShell 配置文件 │ │ PS C:\\> notepad $PROFILE │ │ │ │ # 在文件中添加以下内容： │ │ # function cc { claude --dangerously-skip-permissions $args } │ │ │ │ # 保存后重新加载配置 │ │ PS C:\\> . $PROFILE │ │ │ │ # 之后就可以用 cc 命令启动了 │ │ PS C:\\> cc │ └──────────────────────────────────────────────────────────────────┘"
+                - generic [ref=e552]:
+                  - button "一键获取完整项目代码" [ref=e553] [cursor=pointer]
+                  - generic [ref=e554] [cursor=pointer]: 登录复制
+                - generic [ref=e556] [cursor=pointer]: 展开
+                - list [ref=e557]:
+                  - listitem [ref=e558]: "1"
+                  - listitem [ref=e559]: "2"
+                  - listitem [ref=e560]: "3"
+                  - listitem [ref=e561]: "4"
+                  - listitem [ref=e562]: "5"
+                  - listitem [ref=e563]: "6"
+                  - listitem [ref=e564]: "7"
+                  - listitem [ref=e565]: "8"
+                  - listitem [ref=e566]: "9"
+                  - listitem [ref=e567]: "10"
+                  - listitem [ref=e568]: "11"
+                  - listitem [ref=e569]: "12"
+                  - listitem [ref=e570]: "13"
+                  - listitem [ref=e571]: "14"
+                  - listitem [ref=e572]: "15"
+              - paragraph [ref=e573]:
+                - strong [ref=e574]: Mac/Linux：
+              - blockquote [ref=e575]:
+                - paragraph [ref=e576]:
+                  - text: 📍
+                  - strong [ref=e577]: 配置文件位置
+                  - text: ：
+                  - code [ref=e578]: ~/.bashrc
+                  - text: 或
+                  - code [ref=e579]: ~/.zshrc
+              - generic [ref=e580]:
+                - code [ref=e581]: "┌──────────────────────────────────────────────────────────────────┐ │ Terminal - □ x │ ├──────────────────────────────────────────────────────────────────┤ │ # 添加别名到配置文件 │ │ $ echo \"alias cc='claude --dangerously-skip-permissions'\" >> ~/.zshrc │ │ │ │ # 重新加载配置 │ │ $ source ~/.zshrc │ │ │ │ # 之后就可以用 cc 命令启动了 │ │ $ cc │ └──────────────────────────────────────────────────────────────────┘"
+                - generic [ref=e582]:
+                  - button "一键获取完整项目代码" [ref=e583] [cursor=pointer]
+                  - generic [ref=e584] [cursor=pointer]: 登录复制
+                - generic [ref=e586] [cursor=pointer]: 展开
+                - list [ref=e587]:
+                  - listitem [ref=e588]: "1"
+                  - listitem [ref=e589]: "2"
+                  - listitem [ref=e590]: "3"
+                  - listitem [ref=e591]: "4"
+                  - listitem [ref=e592]: "5"
+                  - listitem [ref=e593]: "6"
+                  - listitem [ref=e594]: "7"
+                  - listitem [ref=e595]: "8"
+                  - listitem [ref=e596]: "9"
+                  - listitem [ref=e597]: "10"
+                  - listitem [ref=e598]: "11"
+                  - listitem [ref=e599]: "12"
+              - blockquote [ref=e600]:
+                - paragraph [ref=e601]:
+                  - text: ⚠️
+                  - strong [ref=e602]: 安全警告
+                  - text: ：官方建议在没有网络访问的容器中使用此模式，以避免数据泄露风险（如 prompt injection 攻击）。
+              - separator [ref=e603]
+              - heading "二、高效提需求" [level=2] [ref=e604]: 二、高效提需求
+              - heading "2.1 先理解项目再动手" [level=3] [ref=e605]: 2.1 先理解项目再动手
+              - paragraph [ref=e606]: 在修改代码之前，先让 Claude 理解你的项目：
+              - generic [ref=e607]:
+                - code [ref=e608]: 分析一下数据库表结构 这个应用中的错误是如何处理的？ 认证模块是怎么实现的？ 支付流程是怎么工作的？
+                - generic [ref=e609]:
+                  - button "一键获取完整项目代码" [ref=e610] [cursor=pointer]
+                  - generic [ref=e611] [cursor=pointer]: 登录复制
+                - list [ref=e612]:
+                  - listitem [ref=e613]: "1"
+                  - listitem [ref=e614]: "2"
+                  - listitem [ref=e615]: "3"
+                  - listitem [ref=e616]: "4"
+                  - listitem [ref=e617]: "5"
+                  - listitem [ref=e618]: "6"
+                  - listitem [ref=e619]: "7"
+              - blockquote [ref=e620]:
+                - paragraph [ref=e621]: 官方建议：修改前让 AI 理解业务和代码，才能更精准、高效地辅助开发。
+              - heading "2.2 需求描述要具体" [level=3] [ref=e622]: 2.2 需求描述要具体
+              - table [ref=e624]:
+                - rowgroup [ref=e625]:
+                  - row "质量 示例" [ref=e626]:
+                    - columnheader "质量" [ref=e627]
+                    - columnheader "示例" [ref=e628]
+                - rowgroup [ref=e629]:
+                  - row "❌ 差 修复这个漏洞" [ref=e630]:
+                    - cell "❌ 差" [ref=e631]
+                    - cell "修复这个漏洞" [ref=e632]:
+                      - code [ref=e633]: 修复这个漏洞
+                  - row "✅ 好 修复用户登录时不输入密码出现的空指针错误" [ref=e634]:
+                    - cell "✅ 好" [ref=e635]
+                    - cell "修复用户登录时不输入密码出现的空指针错误" [ref=e636]:
+                      - code [ref=e637]: 修复用户登录时不输入密码出现的空指针错误
+                  - row "❌ 差 给 foo.py 添加测试" [ref=e638]:
+                    - cell "❌ 差" [ref=e639]
+                    - cell "给 foo.py 添加测试" [ref=e640]:
+                      - code [ref=e641]: 给 foo.py 添加测试
+                  - row "✅ 好 给 foo.py 编写一个新的测试用例，覆盖用户已登出的边界情况，不要使用 mock" [ref=e642]:
+                    - cell "✅ 好" [ref=e643]
+                    - cell "给 foo.py 编写一个新的测试用例，覆盖用户已登出的边界情况，不要使用 mock" [ref=e644]:
+                      - code [ref=e645]: 给 foo.py 编写一个新的测试用例，覆盖用户已登出的边界情况，不要使用 mock
+                  - row "❌ 差 添加一个日历组件" [ref=e646]:
+                    - cell "❌ 差" [ref=e647]
+                    - cell "添加一个日历组件" [ref=e648]:
+                      - code [ref=e649]: 添加一个日历组件
+                  - row "✅ 好 先看看首页现有的组件是怎么实现的，理解一下代码模式。HotDogWidget.php 是个好例子。然后按照这个模式实现一个新的日历组件，让用户可以选择月份，并且可以前后翻页选择年份" [ref=e650]:
+                    - cell "✅ 好" [ref=e651]
+                    - cell "先看看首页现有的组件是怎么实现的，理解一下代码模式。HotDogWidget.php 是个好例子。然后按照这个模式实现一个新的日历组件，让用户可以选择月份，并且可以前后翻页选择年份" [ref=e652]:
+                      - code [ref=e653]: 先看看首页现有的组件是怎么实现的，理解一下代码模式。HotDogWidget.php 是个好例子。然后按照这个模式实现一个新的日历组件，让用户可以选择月份，并且可以前后翻页选择年份
+              - heading "2.3 复杂需求分步执行" [level=3] [ref=e654]: 2.3 复杂需求分步执行
+              - paragraph [ref=e655]:
+                - strong [ref=e656]: 小任务
+                - text: ：可以一次性发送，AI 能整体考虑代码结构和风格。
+              - paragraph [ref=e657]:
+                - strong [ref=e658]: 大需求
+                - text: ：建议拆解成小步骤：
+              - generic [ref=e659]:
+                - code [ref=e660]: 第一步：给用户 API 创建一个新接口 第二步：给请求的字段添加必要的验证 第三步：编写这个接口的测试用例 第四步：更新 API 文档
+                - generic [ref=e661]:
+                  - button "一键获取完整项目代码" [ref=e662] [cursor=pointer]
+                  - generic [ref=e663] [cursor=pointer]: 登录复制
+                - list [ref=e664]:
+                  - listitem [ref=e665]: "1"
+                  - listitem [ref=e666]: "2"
+                  - listitem [ref=e667]: "3"
+                  - listitem [ref=e668]: "4"
+              - paragraph [ref=e669]:
+                - strong [ref=e670]: 原因：
+              - list [ref=e671]:
+                - listitem [ref=e672]: AI 上下文有限制，代码量太长可能输出不全或被截断
+                - listitem [ref=e673]: 分步执行更安全，每一步完成后可以先 review/测试
+              - separator [ref=e674]
+              - heading "三、官方推荐工作流" [level=2] [ref=e675]: 三、官方推荐工作流
+              - heading "3.1 探索 → 计划 → 编码 → 提交" [level=3] [ref=e676]: 3.1 探索 → 计划 → 编码 → 提交
+              - paragraph [ref=e677]: 这是 Anthropic 官方推荐的通用工作流：
+              - paragraph [ref=e678]:
+                - strong [ref=e679]: 第一步：探索（明确告诉它不要写代码）
+              - generic [ref=e680]:
+                - code [ref=e681]: 请阅读 src/auth 目录下的文件，理解认证模块的实现方式，但先不要写代码
+                - generic [ref=e682]:
+                  - button "一键获取完整项目代码" [ref=e683] [cursor=pointer]
+                  - generic [ref=e684] [cursor=pointer]: 登录复制
+                - list [ref=e685]:
+                  - listitem [ref=e686]: "1"
+              - paragraph [ref=e687]:
+                - strong [ref=e688]: 第二步：计划（使用 think 关键词）
+              - generic [ref=e689]:
+                - code [ref=e690]: 请 think hard 制定一个实现用户权限管理的方案
+                - generic [ref=e691]:
+                  - button "一键获取完整项目代码" [ref=e692] [cursor=pointer]
+                  - generic [ref=e693] [cursor=pointer]: 登录复制
+                - list [ref=e694]:
+                  - listitem [ref=e695]: "1"
+              - paragraph [ref=e696]:
+                - strong [ref=e697]: 第三步：编码
+              - generic [ref=e698]:
+                - code [ref=e699]: 请按照刚才的方案实现代码，并验证实现的合理性
+                - generic [ref=e700]:
+                  - button "一键获取完整项目代码" [ref=e701] [cursor=pointer]
+                  - generic [ref=e702] [cursor=pointer]: 登录复制
+                - list [ref=e703]:
+                  - listitem [ref=e704]: "1"
+              - paragraph [ref=e705]:
+                - strong [ref=e706]: 第四步：提交
+              - generic [ref=e707]:
+                - code [ref=e708]: 请提交代码并创建 Pull Request，同时更新 README
+                - generic [ref=e709]:
+                  - button "一键获取完整项目代码" [ref=e710] [cursor=pointer]
+                  - generic [ref=e711] [cursor=pointer]: 登录复制
+                - list [ref=e712]:
+                  - listitem [ref=e713]: "1"
+              - blockquote [ref=e714]:
+                - paragraph [ref=e715]:
+                  - text: 💡
+                  - strong [ref=e716]: 关键点
+                  - text: ：步骤 1-2 非常重要！没有它们，Claude 容易直接跳到编码阶段。
+              - heading "3.2 测试驱动开发（TDD）" [level=3] [ref=e717]: 3.2 测试驱动开发（TDD）
+              - paragraph [ref=e718]: Anthropic 内部最喜欢的工作流之一：
+              - generic [ref=e719]:
+                - code [ref=e720]: 1. 请根据预期的输入输出编写测试用例 （明确告诉它我们在做 TDD，避免创建 mock 实现） 2. 请运行测试并确认它们失败，不要写实现代码 3. 测试满意后，请提交测试 4. 请编写代码让测试通过，不要修改测试 继续直到所有测试通过 5. 测试全部通过后，请提交代码
+                - generic [ref=e721]:
+                  - button "一键获取完整项目代码" [ref=e722] [cursor=pointer]
+                  - generic [ref=e723] [cursor=pointer]: 登录复制
+                - generic [ref=e725] [cursor=pointer]: 展开
+                - list [ref=e726]:
+                  - listitem [ref=e727]: "1"
+                  - listitem [ref=e728]: "2"
+                  - listitem [ref=e729]: "3"
+                  - listitem [ref=e730]: "4"
+                  - listitem [ref=e731]: "5"
+                  - listitem [ref=e732]: "6"
+                  - listitem [ref=e733]: "7"
+                  - listitem [ref=e734]: "8"
+                  - listitem [ref=e735]: "9"
+                  - listitem [ref=e736]: "10"
+                  - listitem [ref=e737]: "11"
+              - heading "3.3 视觉驱动开发" [level=3] [ref=e738]: 3.3 视觉驱动开发
+              - paragraph [ref=e739]: 适用于 UI 开发：
+              - generic [ref=e740]:
+                - code [ref=e741]: 1. 给 Claude 提供截图能力（如 Puppeteer MCP 服务器） 2. 拖拽或粘贴设计稿图片 3. 请实现这个设计，截图查看结果，然后迭代直到匹配设计稿 4. 满意后请提交
+                - generic [ref=e742]:
+                  - button "一键获取完整项目代码" [ref=e743] [cursor=pointer]
+                  - generic [ref=e744] [cursor=pointer]: 登录复制
+                - list [ref=e745]:
+                  - listitem [ref=e746]: "1"
+                  - listitem [ref=e747]: "2"
+                  - listitem [ref=e748]: "3"
+                  - listitem [ref=e749]: "4"
+                  - listitem [ref=e750]: "5"
+                  - listitem [ref=e751]: "6"
+                  - listitem [ref=e752]: "7"
+              - separator [ref=e753]
+              - heading "四、深度思考模式" [level=2] [ref=e754]: 四、深度思考模式
+              - paragraph [ref=e755]: 使用 “think” 关键词激活深度思考模式，官方确认有四个级别：
+              - table [ref=e757]:
+                - rowgroup [ref=e758]:
+                  - row "级别 关键词 思考预算 适用场景" [ref=e759]:
+                    - columnheader "级别" [ref=e760]
+                    - columnheader "关键词" [ref=e761]
+                    - columnheader "思考预算" [ref=e762]
+                    - columnheader "适用场景" [ref=e763]
+                - rowgroup [ref=e764]:
+                  - row "1 think 基础 简单问题" [ref=e765]:
+                    - cell "1" [ref=e766]
+                    - cell "think" [ref=e767]:
+                      - code [ref=e768]: think
+                    - cell "基础" [ref=e769]
+                    - cell "简单问题" [ref=e770]
+                  - row "2 think hard 中等 中等复杂度" [ref=e771]:
+                    - cell "2" [ref=e772]
+                    - cell "think hard" [ref=e773]:
+                      - code [ref=e774]: think hard
+                    - cell "中等" [ref=e775]
+                    - cell "中等复杂度" [ref=e776]
+                  - row "3 think harder 深入 复杂问题" [ref=e777]:
+                    - cell "3" [ref=e778]
+                    - cell "think harder" [ref=e779]:
+                      - code [ref=e780]: think harder
+                    - cell "深入" [ref=e781]
+                    - cell "复杂问题" [ref=e782]
+                  - row "4 ultrathink 最大 最复杂的架构/算法问题" [ref=e783]:
+                    - cell "4" [ref=e784]
+                    - cell "ultrathink" [ref=e785]:
+                      - code [ref=e786]: ultrathink
+                    - cell "最大" [ref=e787]
+                    - cell "最复杂的架构/算法问题" [ref=e788]
+              - paragraph [ref=e789]:
+                - strong [ref=e790]: 使用示例：
+              - generic [ref=e791]:
+                - code [ref=e792]: 请 think hard 分析这段代码的性能问题 请 ultrathink 设计一个高并发的消息队列架构
+                - generic [ref=e793]:
+                  - button "一键获取完整项目代码" [ref=e794] [cursor=pointer]
+                  - generic [ref=e795] [cursor=pointer]: 登录复制
+                - list [ref=e796]:
+                  - listitem [ref=e797]: "1"
+                  - listitem [ref=e798]: "2"
+                  - listitem [ref=e799]: "3"
+              - blockquote [ref=e800]:
+                - paragraph [ref=e801]: 官方说明：这些关键词直接映射到系统中不同级别的思考预算，每一级都会逐步增加 Claude 可用的思考预算。
+              - paragraph [ref=e802]:
+                - strong [ref=e803]: 费用提醒：
+              - list [ref=e804]:
+                - listitem [ref=e805]:
+                  - code [ref=e806]: ultrathink
+                  - text: 消耗最大，一个简单的 1+1 计算可能耗费 0.06 美元
+                - listitem [ref=e807]: Max 套餐用户可以放心使用，Pro 用户需注意用量
+              - separator [ref=e808]
+              - heading "五、实操技巧" [level=2] [ref=e809]: 五、实操技巧
+              - heading "5.1 发送图片处理" [level=3] [ref=e810]: 5.1 发送图片处理
+              - paragraph [ref=e811]: Claude Code 支持发送图片进行处理：
+              - paragraph [ref=e812]:
+                - strong [ref=e813]: 粘贴方式：
+              - list [ref=e814]:
+                - listitem [ref=e815]:
+                  - strong [ref=e816]: Mac
+                  - text: ：使用
+                  - code [ref=e817]: Ctrl + V
+                  - text: （注意：不是 Command + V）
+                - listitem [ref=e818]:
+                  - strong [ref=e819]: Windows/Linux
+                  - text: ：使用
+                  - code [ref=e820]: Ctrl + V
+              - paragraph [ref=e821]:
+                - strong [ref=e822]: 使用场景：
+              - generic [ref=e823]:
+                - code [ref=e824]: 这个图片显示了什么？ 这是错误的截图，是什么原因导致的？ 请根据这个图片的设计稿实现网页
+                - generic [ref=e825]:
+                  - button "一键获取完整项目代码" [ref=e826] [cursor=pointer]
+                  - generic [ref=e827] [cursor=pointer]: 登录复制
+                - list [ref=e828]:
+                  - listitem [ref=e829]: "1"
+                  - listitem [ref=e830]: "2"
+                  - listitem [ref=e831]: "3"
+                  - listitem [ref=e832]: "4"
+                  - listitem [ref=e833]: "5"
+              - heading "5.2 恢复历史会话" [level=3] [ref=e834]: 5.2 恢复历史会话
+              - paragraph [ref=e835]:
+                - strong [ref=e836]: 非交互模式下（还没进入 Claude Code）：
+              - blockquote [ref=e837]:
+                - paragraph [ref=e838]:
+                  - text: 📍
+                  - strong [ref=e839]: 执行位置
+                  - text: ：在终端中，还没启动 claude 时
+              - generic [ref=e840]:
+                - code [ref=e841]: "┌──────────────────────────────────────────────────────────────────┐ │ Terminal - □ x │ ├──────────────────────────────────────────────────────────────────┤ │ # 自动继续最近的对话 │ │ D:\\Projects\\my-project> claude --continue │ │ # 或简写 │ │ D:\\Projects\\my-project> claude -c │ │ │ │ # 显示历史对话选择器 │ │ D:\\Projects\\my-project> claude --resume │ │ # 或简写 │ │ D:\\Projects\\my-project> claude -r │ │ │ │ Select a session to resume: │ │ > 2025-01-08 14:30 - 修复登录bug │ │ 2025-01-08 10:15 - 添加用户模块 │ │ 2025-01-07 16:45 - 重构API │ └──────────────────────────────────────────────────────────────────┘"
+                - generic [ref=e842]:
+                  - button "一键获取完整项目代码" [ref=e843] [cursor=pointer]
+                  - generic [ref=e844] [cursor=pointer]: 登录复制
+                - generic [ref=e846] [cursor=pointer]: 展开
+                - list [ref=e847]:
+                  - listitem [ref=e848]: "1"
+                  - listitem [ref=e849]: "2"
+                  - listitem [ref=e850]: "3"
+                  - listitem [ref=e851]: "4"
+                  - listitem [ref=e852]: "5"
+                  - listitem [ref=e853]: "6"
+                  - listitem [ref=e854]: "7"
+                  - listitem [ref=e855]: "8"
+                  - listitem [ref=e856]: "9"
+                  - listitem [ref=e857]: "10"
+                  - listitem [ref=e858]: "11"
+                  - listitem [ref=e859]: "12"
+                  - listitem [ref=e860]: "13"
+                  - listitem [ref=e861]: "14"
+                  - listitem [ref=e862]: "15"
+                  - listitem [ref=e863]: "16"
+                  - listitem [ref=e864]: "17"
+                  - listitem [ref=e865]: "18"
+              - table [ref=e867]:
+                - rowgroup [ref=e868]:
+                  - row "命令 说明" [ref=e869]:
+                    - columnheader "命令" [ref=e870]
+                    - columnheader "说明" [ref=e871]
+                - rowgroup [ref=e872]:
+                  - row "claude --continue 或 claude -c 自动继续最近的对话" [ref=e873]:
+                    - cell "claude --continue 或 claude -c" [ref=e874]:
+                      - code [ref=e875]: claude --continue
+                      - text: 或
+                      - code [ref=e876]: claude -c
+                    - cell "自动继续最近的对话" [ref=e877]
+                  - row "claude --resume 或 claude -r 显示历史对话选择器" [ref=e878]:
+                    - cell "claude --resume 或 claude -r" [ref=e879]:
+                      - code [ref=e880]: claude --resume
+                      - text: 或
+                      - code [ref=e881]: claude -r
+                    - cell "显示历史对话选择器" [ref=e882]
+              - paragraph [ref=e883]:
+                - strong [ref=e884]: 交互模式下（已进入 Claude Code）：
+              - blockquote [ref=e885]:
+                - paragraph [ref=e886]:
+                  - text: 📍
+                  - strong [ref=e887]: 执行位置
+                  - text: ：在 Claude Code 交互界面中输入
+                  - code [ref=e888]: /resume
+              - paragraph [ref=e889]: 使用上下方向键选中历史记录即可恢复。
+              - paragraph [ref=e890]:
+                - img "恢复历史会话" [ref=e891]
+              - heading "5.3 编辑 记忆 文件" [level=3] [ref=e892]:
+                - text: 5.3 编辑
+                - generic [ref=e893] [cursor=pointer]: 记忆
+                - text: 文件
+              - blockquote [ref=e895]:
+                - paragraph [ref=e896]:
+                  - text: 📍
+                  - strong [ref=e897]: 执行位置
+                  - text: ：在 Claude Code 交互界面中输入
+                  - code [ref=e898]: /memory
+                  - img "编辑记忆文件" [ref=e899]
+              - paragraph [ref=e900]:
+                - strong [ref=e901]: 📁 记忆文件位置（Windows）：
+              - list [ref=e902]:
+                - listitem [ref=e903]:
+                  - text: 用户级：
+                  - code [ref=e904]: C:\Users\YourName\.claude\CLAUDE.md
+                - listitem [ref=e905]:
+                  - text: 项目级：
+                  - code [ref=e906]: D:\Projects\my-project\CLAUDE.md
+              - paragraph [ref=e907]:
+                - strong [ref=e908]: 示例：设置永远用中文回复
+              - paragraph [ref=e909]: 在用户级记忆文件中添加：
+              - generic [ref=e910]:
+                - code [ref=e911]: 每次请用中文回答我。
+                - generic [ref=e912]:
+                  - button "一键获取完整项目代码" [ref=e913] [cursor=pointer]
+                  - generic [ref=e914] [cursor=pointer]: 登录复制
+                - list [ref=e915]:
+                  - listitem [ref=e916]: "1"
+              - paragraph [ref=e917]:
+                - img "设置中文回复" [ref=e918]
+              - paragraph [ref=e919]: 设置后，所有项目的交互都会使用中文回答。
+              - heading "5.4 上下文管理" [level=3] [ref=e920]: 5.4 上下文管理
+              - paragraph [ref=e921]:
+                - strong [ref=e922]:
+                  - code [ref=e923]: /clear
+                  - text: vs
+                  - code [ref=e924]: /compact
+                  - text: 的区别：
+              - table [ref=e926]:
+                - rowgroup [ref=e927]:
+                  - row "命令 作用 使用场景" [ref=e928]:
+                    - columnheader "命令" [ref=e929]
+                    - columnheader "作用" [ref=e930]
+                    - columnheader "使用场景" [ref=e931]
+                - rowgroup [ref=e932]:
+                  - row "/clear 完全清除对话历史 切换到完全不同的任务" [ref=e933]:
+                    - cell "/clear" [ref=e934]:
+                      - code [ref=e935]: /clear
+                    - cell "完全清除对话历史" [ref=e936]
+                    - cell "切换到完全不同的任务" [ref=e937]
+                  - row "/compact 压缩对话但保留摘要 继续当前任务但需要释放空间" [ref=e938]:
+                    - cell "/compact" [ref=e939]:
+                      - code [ref=e940]: /compact
+                    - cell "压缩对话但保留摘要" [ref=e941]
+                    - cell "继续当前任务但需要释放空间" [ref=e942]
+              - paragraph [ref=e943]:
+                - strong [ref=e944]:
+                  - code [ref=e945]: /compact
+                  - text: 高级用法：
+              - blockquote [ref=e946]:
+                - paragraph [ref=e947]:
+                  - text: 📍
+                  - strong [ref=e948]: 执行位置
+                  - text: ：在 Claude Code 交互界面中输入
+              - generic [ref=e949]:
+                - code [ref=e950]: "┌──────────────────────────────────────────────────────────────────┐ │ Claude Code - □ x │ ├──────────────────────────────────────────────────────────────────┤ │ > /compact focus on auth errors from the last two commits │ │ │ │ ✓ Conversation compacted │ │ ✓ Preserved context: auth errors from recent commits │ │ ✓ Tokens reduced: 45,000 → 8,500 │ └──────────────────────────────────────────────────────────────────┘"
+                - generic [ref=e951]:
+                  - button "一键获取完整项目代码" [ref=e952] [cursor=pointer]
+                  - generic [ref=e953] [cursor=pointer]: 登录复制
+                - list [ref=e954]:
+                  - listitem [ref=e955]: "1"
+                  - listitem [ref=e956]: "2"
+                  - listitem [ref=e957]: "3"
+                  - listitem [ref=e958]: "4"
+                  - listitem [ref=e959]: "5"
+                  - listitem [ref=e960]: "6"
+                  - listitem [ref=e961]: "7"
+                  - listitem [ref=e962]: "8"
+                  - listitem [ref=e963]: "9"
+              - paragraph [ref=e964]: 可以指定保留重点，让摘要更有针对性。
+              - paragraph [ref=e965]:
+                - strong [ref=e966]: 管理建议：
+              - list [ref=e967]:
+                - listitem [ref=e968]:
+                  - text: 使用
+                  - code [ref=e969]: /context
+                  - text: 查看当前上下文使用情况
+                - listitem [ref=e970]: Claude Code 默认在上下文超过 95% 容量时自动压缩
+                - listitem [ref=e971]:
+                  - text: 可通过
+                  - code [ref=e972]: /config
+                  - text: 开启/关闭自动压缩
+                - listitem [ref=e973]: 建议在 70% 容量时主动压缩
+              - paragraph [ref=e974]:
+                - img "上下文压缩" [ref=e975]
+              - paragraph [ref=e976]:
+                - strong [ref=e977]: 有效管理成本和性能：
+              - list [ref=e978]:
+                - listitem [ref=e979]:
+                  - text: 定期使用
+                  - code [ref=e980]: /compact
+                  - text: 手动压缩
+                - listitem [ref=e981]:
+                  - text: 定时使用
+                  - code [ref=e982]: /clear
+                  - text: 重置上下文
+                - listitem [ref=e983]: 分解复杂任务，需求尽量具体化
+              - separator [ref=e984]
+              - heading "六、斜杠命令完整参考" [level=2] [ref=e985]: 六、斜杠命令完整参考
+              - heading "6.1 核心命令" [level=3] [ref=e986]: 6.1 核心命令
+              - table [ref=e988]:
+                - rowgroup [ref=e989]:
+                  - row "命令 功能说明" [ref=e990]:
+                    - columnheader "命令" [ref=e991]
+                    - columnheader "功能说明" [ref=e992]
+                - rowgroup [ref=e993]:
+                  - row "/help 显示帮助和可用命令" [ref=e994]:
+                    - cell "/help" [ref=e995]:
+                      - code [ref=e996]: /help
+                    - cell "显示帮助和可用命令" [ref=e997]
+                  - row "/init 初始化项目，生成 CLAUDE.md" [ref=e998]:
+                    - cell "/init" [ref=e999]:
+                      - code [ref=e1000]: /init
+                    - cell "初始化项目，生成 CLAUDE.md" [ref=e1001]
+                  - row "/clear 清除对话历史" [ref=e1002]:
+                    - cell "/clear" [ref=e1003]:
+                      - code [ref=e1004]: /clear
+                    - cell "清除对话历史" [ref=e1005]
+                  - row "/compact [instructions] 压缩对话，可指定保留重点" [ref=e1006]:
+                    - cell "/compact [instructions]" [ref=e1007]:
+                      - code [ref=e1008]: /compact [instructions]
+                    - cell "压缩对话，可指定保留重点" [ref=e1009]
+                  - row "/exit 退出 Claude Code" [ref=e1010]:
+                    - cell "/exit" [ref=e1011]:
+                      - code [ref=e1012]: /exit
+                    - cell "退出 Claude Code" [ref=e1013]
+              - heading "6.2 会话管理" [level=3] [ref=e1014]: 6.2 会话管理
+              - table [ref=e1016]:
+                - rowgroup [ref=e1017]:
+                  - row "命令 功能说明" [ref=e1018]:
+                    - columnheader "命令" [ref=e1019]
+                    - columnheader "功能说明" [ref=e1020]
+                - rowgroup [ref=e1021]:
+                  - row "/resume [session] 恢复历史会话（按 ID 或名称）" [ref=e1022]:
+                    - cell "/resume [session]" [ref=e1023]:
+                      - code [ref=e1024]: /resume [session]
+                    - cell "恢复历史会话（按 ID 或名称）" [ref=e1025]
+                  - row "/rename <name> 重命名当前会话" [ref=e1026]:
+                    - cell "/rename <name>" [ref=e1027]:
+                      - code [ref=e1028]: /rename <name>
+                    - cell "重命名当前会话" [ref=e1029]
+                  - row "/export [filename] 导出对话到文件或剪贴板" [ref=e1030]:
+                    - cell "/export [filename]" [ref=e1031]:
+                      - code [ref=e1032]: /export [filename]
+                    - cell "导出对话到文件或剪贴板" [ref=e1033]
+              - heading "6.3 模型与费用" [level=3] [ref=e1034]: 6.3 模型与费用
+              - table [ref=e1036]:
+                - rowgroup [ref=e1037]:
+                  - row "命令 功能说明" [ref=e1038]:
+                    - columnheader "命令" [ref=e1039]
+                    - columnheader "功能说明" [ref=e1040]
+                - rowgroup [ref=e1041]:
+                  - row "/model 选择或切换 AI 模型" [ref=e1042]:
+                    - cell "/model" [ref=e1043]:
+                      - code [ref=e1044]: /model
+                    - cell "选择或切换 AI 模型" [ref=e1045]
+                  - row "/cost 显示 Token 使用统计" [ref=e1046]:
+                    - cell "/cost" [ref=e1047]:
+                      - code [ref=e1048]: /cost
+                    - cell "显示 Token 使用统计" [ref=e1049]
+                  - row "/usage 显示订阅计划用量和限制（仅订阅用户）" [ref=e1050]:
+                    - cell "/usage" [ref=e1051]:
+                      - code [ref=e1052]: /usage
+                    - cell "显示订阅计划用量和限制（仅订阅用户）" [ref=e1053]
+                  - row "/stats 可视化每日使用量、会话历史等" [ref=e1054]:
+                    - cell "/stats" [ref=e1055]:
+                      - code [ref=e1056]: /stats
+                    - cell "可视化每日使用量、会话历史等" [ref=e1057]
+              - heading "6.4 配置与状态" [level=3] [ref=e1058]: 6.4 配置与状态
+              - table [ref=e1060]:
+                - rowgroup [ref=e1061]:
+                  - row "命令 功能说明" [ref=e1062]:
+                    - columnheader "命令" [ref=e1063]
+                    - columnheader "功能说明" [ref=e1064]
+                - rowgroup [ref=e1065]:
+                  - row "/config 打开设置界面" [ref=e1066]:
+                    - cell "/config" [ref=e1067]:
+                      - code [ref=e1068]: /config
+                    - cell "打开设置界面" [ref=e1069]
+                  - row "/status 显示版本、模型、账户和连接状态" [ref=e1070]:
+                    - cell "/status" [ref=e1071]:
+                      - code [ref=e1072]: /status
+                    - cell "显示版本、模型、账户和连接状态" [ref=e1073]
+                  - row "/permissions 查看或更新权限" [ref=e1074]:
+                    - cell "/permissions" [ref=e1075]:
+                      - code [ref=e1076]: /permissions
+                    - cell "查看或更新权限" [ref=e1077]
+                  - row "/memory 编辑 CLAUDE.md 记忆文件" [ref=e1078]:
+                    - cell "/memory" [ref=e1079]:
+                      - code [ref=e1080]: /memory
+                    - cell "编辑 CLAUDE.md 记忆文件" [ref=e1081]
+                  - row "/doctor 检查 Claude Code 安装健康状态" [ref=e1082]:
+                    - cell "/doctor" [ref=e1083]:
+                      - code [ref=e1084]: /doctor
+                    - cell "检查 Claude Code 安装健康状态" [ref=e1085]
+                  - row "/context 可视化当前上下文使用情况" [ref=e1086]:
+                    - cell "/context" [ref=e1087]:
+                      - code [ref=e1088]: /context
+                    - cell "可视化当前上下文使用情况" [ref=e1089]
+              - heading "6.5 开发工具" [level=3] [ref=e1090]: 6.5 开发工具
+              - table [ref=e1092]:
+                - rowgroup [ref=e1093]:
+                  - row "命令 功能说明" [ref=e1094]:
+                    - columnheader "命令" [ref=e1095]
+                    - columnheader "功能说明" [ref=e1096]
+                - rowgroup [ref=e1097]:
+                  - row "/review 请求代码审查" [ref=e1098]:
+                    - cell "/review" [ref=e1099]:
+                      - code [ref=e1100]: /review
+                    - cell "请求代码审查" [ref=e1101]
+                  - row "/security-review 完成当前分支的安全审查" [ref=e1102]:
+                    - cell "/security-review" [ref=e1103]:
+                      - code [ref=e1104]: /security-review
+                    - cell "完成当前分支的安全审查" [ref=e1105]
+                  - row "/add-dir 添加额外的工作目录" [ref=e1106]:
+                    - cell "/add-dir" [ref=e1107]:
+                      - code [ref=e1108]: /add-dir
+                    - cell "添加额外的工作目录" [ref=e1109]
+                  - row "/mcp 管理 MCP 服务器连接" [ref=e1110]:
+                    - cell "/mcp" [ref=e1111]:
+                      - code [ref=e1112]: /mcp
+                    - cell "管理 MCP 服务器连接" [ref=e1113]
+                  - row "/hooks 管理工具事件的钩子配置" [ref=e1114]:
+                    - cell "/hooks" [ref=e1115]:
+                      - code [ref=e1116]: /hooks
+                    - cell "管理工具事件的钩子配置" [ref=e1117]
+                  - row "/todos 列出当前 TODO 项目" [ref=e1118]:
+                    - cell "/todos" [ref=e1119]:
+                      - code [ref=e1120]: /todos
+                    - cell "列出当前 TODO 项目" [ref=e1121]
+                  - row "/pr-comments 查看 Pull Request 评论" [ref=e1122]:
+                    - cell "/pr-comments" [ref=e1123]:
+                      - code [ref=e1124]: /pr-comments
+                    - cell "查看 Pull Request 评论" [ref=e1125]
+              - separator [ref=e1126]
+              - heading "七、与工具系统交互" [level=2] [ref=e1127]: 七、与工具系统交互
+              - heading "7.1 Git 交互" [level=3] [ref=e1128]: 7.1 Git 交互
+              - paragraph [ref=e1129]: 用自然语言操作 Git，无需记忆复杂命令：
+              - table [ref=e1131]:
+                - rowgroup [ref=e1132]:
+                  - row "需求 自然语言" [ref=e1133]:
+                    - columnheader "需求" [ref=e1134]
+                    - columnheader "自然语言" [ref=e1135]
+                - rowgroup [ref=e1136]:
+                  - row "查看修改 我修改了哪些文件" [ref=e1137]:
+                    - cell "查看修改" [ref=e1138]
+                    - cell "我修改了哪些文件" [ref=e1139]:
+                      - code [ref=e1140]: 我修改了哪些文件
+                  - row "智能提交 用合理描述性信息提交我的更改" [ref=e1141]:
+                    - cell "智能提交" [ref=e1142]
+                    - cell "用合理描述性信息提交我的更改" [ref=e1143]:
+                      - code [ref=e1144]: 用合理描述性信息提交我的更改
+                  - row "推送代码 推送本分支到远程" [ref=e1145]:
+                    - cell "推送代码" [ref=e1146]
+                    - cell "推送本分支到远程" [ref=e1147]:
+                      - code [ref=e1148]: 推送本分支到远程
+                  - row "切换分支 删除本分支并切换到 master 分支" [ref=e1149]:
+                    - cell "切换分支" [ref=e1150]
+                    - cell "删除本分支并切换到 master 分支" [ref=e1151]:
+                      - code [ref=e1152]: 删除本分支并切换到 master 分支
+                  - row "查看历史 显示最近 3 次提交中所有文件列表" [ref=e1153]:
+                    - cell "查看历史" [ref=e1154]
+                    - cell "显示最近 3 次提交中所有文件列表" [ref=e1155]:
+                      - code [ref=e1156]: 显示最近 3 次提交中所有文件列表
+                  - row "创建 PR 为这些更改创建一个 Pull Request" [ref=e1157]:
+                    - cell "创建 PR" [ref=e1158]
+                    - cell "为这些更改创建一个 Pull Request" [ref=e1159]:
+                      - code [ref=e1160]: 为这些更改创建一个 Pull Request
+                  - row "解决冲突 帮我解决合并冲突" [ref=e1161]:
+                    - cell "解决冲突" [ref=e1162]
+                    - cell "帮我解决合并冲突" [ref=e1163]:
+                      - code [ref=e1164]: 帮我解决合并冲突
+              - paragraph [ref=e1165]:
+                - strong [ref=e1166]: 示例效果：
+              - blockquote [ref=e1167]:
+                - paragraph [ref=e1168]: 我修改了哪些文件
+              - paragraph [ref=e1169]:
+                - img "查看修改文件" [ref=e1170]
+              - blockquote [ref=e1171]:
+                - paragraph [ref=e1172]: 用合理描述性信息提交我的更改
+              - paragraph [ref=e1173]:
+                - img "智能提交" [ref=e1174]
+              - blockquote [ref=e1175]:
+                - paragraph [ref=e1176]: 推送本分支到远程
+              - paragraph [ref=e1177]:
+                - img "推送到远程" [ref=e1178]
+              - blockquote [ref=e1179]:
+                - paragraph [ref=e1180]: 显示最近3次提交中所有文件列表
+              - paragraph [ref=e1181]:
+                - img "查看提交历史" [ref=e1182]
+              - heading "7.2 GitHub 交互" [level=3] [ref=e1183]: 7.2 GitHub 交互
+              - paragraph [ref=e1184]:
+                - text: 如果安装了
+                - code [ref=e1185]: gh
+                - text: CLI，Claude 可以：
+              - generic [ref=e1186]:
+                - code [ref=e1187]: "# 创建 Issue 为这个 bug 创建一个 GitHub Issue # 查看 PR 评论 /pr-comments # 安装 GitHub App /install-github-app"
+                - generic [ref=e1188]:
+                  - button "一键获取完整项目代码" [ref=e1189] [cursor=pointer]
+                  - generic [ref=e1190] [cursor=pointer]: 登录复制
+                - list [ref=e1191]:
+                  - listitem [ref=e1192]: "1"
+                  - listitem [ref=e1193]: "2"
+                  - listitem [ref=e1194]: "3"
+                  - listitem [ref=e1195]: "4"
+                  - listitem [ref=e1196]: "5"
+                  - listitem [ref=e1197]: "6"
+                  - listitem [ref=e1198]: "7"
+                  - listitem [ref=e1199]: "8"
+              - heading "7.3 Linux /Shell 命令助手" [level=3] [ref=e1200]:
+                - text: "7.3"
+                - generic [ref=e1201] [cursor=pointer]: Linux
+                - text: /Shell 命令助手
+              - paragraph [ref=e1203]:
+                - strong [ref=e1204]: 交互模式：
+              - blockquote [ref=e1205]:
+                - paragraph [ref=e1206]:
+                  - text: 📍
+                  - strong [ref=e1207]: 执行位置
+                  - text: ：在 Claude Code 交互界面中直接用自然语言描述需求
+              - paragraph [ref=e1208]:
+                - text: Claude 会自动生成并执行复杂的命令（如
+                - code [ref=e1209]: find
+                - text: ","
+                - code [ref=e1210]: wc
+                - text: ","
+                - code [ref=e1211]: sort
+                - text: 组合）。
+              - paragraph [ref=e1212]:
+                - img "Linux交互模式" [ref=e1213]
+              - paragraph [ref=e1214]:
+                - strong [ref=e1215]: 非交互模式：
+              - blockquote [ref=e1216]:
+                - paragraph [ref=e1217]:
+                  - text: 📍
+                  - strong [ref=e1218]: 执行位置
+                  - text: ：在终端中，使用
+                  - code [ref=e1219]: "-p"
+                  - text: 参数执行单次命令
+                  - code [ref=e1220]: claude -p "列出行数最多的前3个.java文件"
+              - paragraph [ref=e1221]:
+                - text: 执行完成后自动退出，返回终端。
+                - img "Linux非交互模式" [ref=e1222]
+              - heading "7.4 代码库问答" [level=3] [ref=e1223]: 7.4 代码库问答
+              - paragraph [ref=e1224]: 新人入职时的利器：
+              - generic [ref=e1225]:
+                - code [ref=e1226]: 这个项目的认证是怎么工作的？ 数据库 schema 在哪里定义的？ 如何添加一个新的 API 端点？ 支付流程是怎么实现的？
+                - generic [ref=e1227]:
+                  - button "一键获取完整项目代码" [ref=e1228] [cursor=pointer]
+                  - generic [ref=e1229] [cursor=pointer]: 登录复制
+                - list [ref=e1230]:
+                  - listitem [ref=e1231]: "1"
+                  - listitem [ref=e1232]: "2"
+                  - listitem [ref=e1233]: "3"
+                  - listitem [ref=e1234]: "4"
+                  - listitem [ref=e1235]: "5"
+                  - listitem [ref=e1236]: "6"
+                  - listitem [ref=e1237]: "7"
+              - blockquote [ref=e1238]:
+                - paragraph [ref=e1239]: Anthropic 内部已将此作为核心入职工作流，显著提升了新人上手速度。
+              - separator [ref=e1240]
+              - heading "八、模型切换与费用" [level=2] [ref=e1241]: 八、模型切换与费用
+              - heading "8.1 模型切换" [level=3] [ref=e1242]: 8.1 模型切换
+              - paragraph [ref=e1243]:
+                - text: Claude Code 目前支持
+                - strong [ref=e1244]: Claude Opus
+                - text: 与
+                - strong [ref=e1245]: Claude Sonnet 4
+                - text: 两个模型：
+              - generic [ref=e1246]:
+                - code [ref=e1247]: /model
+                - generic [ref=e1248]:
+                  - button "一键获取完整项目代码" [ref=e1249] [cursor=pointer]
+                  - generic [ref=e1250] [cursor=pointer]: 登录复制
+                - list [ref=e1251]:
+                  - listitem [ref=e1252]: "1"
+              - paragraph [ref=e1253]:
+                - img "模型切换" [ref=e1254]
+              - table [ref=e1256]:
+                - rowgroup [ref=e1257]:
+                  - row "模型 特点 适用用户" [ref=e1258]:
+                    - columnheader "模型" [ref=e1259]
+                    - columnheader "特点" [ref=e1260]
+                    - columnheader "适用用户" [ref=e1261]
+                - rowgroup [ref=e1262]:
+                  - row "Claude Sonnet 4 默认模型，性价比高 Pro / Max" [ref=e1263]:
+                    - cell "Claude Sonnet 4" [ref=e1264]
+                    - cell "默认模型，性价比高" [ref=e1265]
+                    - cell "Pro / Max" [ref=e1266]
+                  - row "Claude Opus 更强大，费用是 Sonnet 的 5 倍 仅 Max" [ref=e1267]:
+                    - cell "Claude Opus" [ref=e1268]
+                    - cell "更强大，费用是 Sonnet 的 5 倍" [ref=e1269]
+                    - cell "仅 Max" [ref=e1270]
+              - blockquote [ref=e1271]:
+                - paragraph [ref=e1272]:
+                  - text: 💡
+                  - strong [ref=e1273]: 建议
+                  - text: ：日常使用 Sonnet 4 即可，体验与 Opus 差别不大，但费用仅为 1/5。
+              - heading "8.2 查看消耗" [level=3] [ref=e1274]: 8.2 查看消耗
+              - paragraph [ref=e1275]:
+                - strong [ref=e1276]: 方式一：内置命令
+              - blockquote [ref=e1277]:
+                - paragraph [ref=e1278]:
+                  - text: 📍
+                  - strong [ref=e1279]: 执行位置
+                  - text: ：在 Claude Code 交互界面中输入
+                  - code [ref=e1280]: /cost
+              - paragraph [ref=e1281]: 显示当前会话已消耗的 Token 和费用。
+              - paragraph [ref=e1282]:
+                - img "查看消耗" [ref=e1283]
+              - paragraph [ref=e1284]:
+                - strong [ref=e1285]: 方式二：ccusage 工具（推荐）
+              - blockquote [ref=e1286]:
+                - paragraph [ref=e1287]:
+                  - text: 📍
+                  - strong [ref=e1288]: 执行位置
+                  - text: ：在终端中（任意目录）
+              - generic [ref=e1289]:
+                - code [ref=e1290]: "┌──────────────────────────────────────────────────────────────────┐ │ Terminal - □ x │ ├──────────────────────────────────────────────────────────────────┤ │ # 安装 ccusage │ │ C:\\Users\\YourName> npm install -g ccusage │ │ │ │ # 查看指定日期后的消耗 │ │ C:\\Users\\YourName> ccusage -s 20250701 │ │ │ │ Usage from 2025-07-01: │ │ ├─ Total sessions: 45 │ │ ├─ Total tokens: 1,234,567 │ │ └─ Total cost: $45.67 │ │ │ │ # 实时查看消耗 │ │ C:\\Users\\YourName> ccusage blocks --live │ └──────────────────────────────────────────────────────────────────┘"
+                - generic [ref=e1291]:
+                  - button "一键获取完整项目代码" [ref=e1292] [cursor=pointer]
+                  - generic [ref=e1293] [cursor=pointer]: 登录复制
+                - generic [ref=e1295] [cursor=pointer]: 展开
+                - list [ref=e1296]:
+                  - listitem [ref=e1297]: "1"
+                  - listitem [ref=e1298]: "2"
+                  - listitem [ref=e1299]: "3"
+                  - listitem [ref=e1300]: "4"
+                  - listitem [ref=e1301]: "5"
+                  - listitem [ref=e1302]: "6"
+                  - listitem [ref=e1303]: "7"
+                  - listitem [ref=e1304]: "8"
+                  - listitem [ref=e1305]: "9"
+                  - listitem [ref=e1306]: "10"
+                  - listitem [ref=e1307]: "11"
+                  - listitem [ref=e1308]: "12"
+                  - listitem [ref=e1309]: "13"
+                  - listitem [ref=e1310]: "14"
+                  - listitem [ref=e1311]: "15"
+                  - listitem [ref=e1312]: "16"
+                  - listitem [ref=e1313]: "17"
+              - paragraph [ref=e1314]:
+                - img "ccusage工具" [ref=e1315]
+              - heading "8.3 订阅说明" [level=3] [ref=e1316]: 8.3 订阅说明
+              - table [ref=e1318]:
+                - rowgroup [ref=e1319]:
+                  - row "订阅类型 计费方式 模型支持 说明" [ref=e1320]:
+                    - columnheader "订阅类型" [ref=e1321]
+                    - columnheader "计费方式" [ref=e1322]
+                    - columnheader "模型支持" [ref=e1323]
+                    - columnheader "说明" [ref=e1324]
+                - rowgroup [ref=e1325]:
+                  - row "Pro 按月计费 仅 Sonnet 超量后暂时不可用，等待恢复" [ref=e1326]:
+                    - cell "Pro" [ref=e1327]
+                    - cell "按月计费" [ref=e1328]
+                    - cell "仅 Sonnet" [ref=e1329]
+                    - cell "超量后暂时不可用，等待恢复" [ref=e1330]
+                  - row "Max 按月计费 Sonnet + Opus 超量后暂时不可用，等待恢复" [ref=e1331]:
+                    - cell "Max" [ref=e1332]
+                    - cell "按月计费" [ref=e1333]
+                    - cell "Sonnet + Opus" [ref=e1334]
+                    - cell "超量后暂时不可用，等待恢复" [ref=e1335]
+              - paragraph [ref=e1336]:
+                - img "订阅用量" [ref=e1337]
+              - paragraph [ref=e1338]: 超过使用量后会显示限制提示：
+              - paragraph [ref=e1339]:
+                - img "超量限制" [ref=e1340]
+              - blockquote [ref=e1341]:
+                - paragraph [ref=e1342]: Pro / Max 订阅用户是按月计费，不是按使用量计费。超过使用量后需要等待指定时间恢复。
+              - separator [ref=e1343]
+              - heading "九、自定义命令" [level=2] [ref=e1344]: 九、自定义命令
+              - heading "9.1 命令类型" [level=3] [ref=e1345]: 9.1 命令类型
+              - table [ref=e1347]:
+                - rowgroup [ref=e1348]:
+                  - row "类型 目录位置 调用方式 作用范围" [ref=e1349]:
+                    - columnheader "类型" [ref=e1350]
+                    - columnheader "目录位置" [ref=e1351]
+                    - columnheader "调用方式" [ref=e1352]
+                    - columnheader "作用范围" [ref=e1353]
+                - rowgroup [ref=e1354]:
+                  - row "项目级 .claude/commands/ /project:<name> 仅当前项目" [ref=e1355]:
+                    - cell "项目级" [ref=e1356]
+                    - cell ".claude/commands/" [ref=e1357]:
+                      - code [ref=e1358]: .claude/commands/
+                    - cell "/project:<name>" [ref=e1359]:
+                      - code [ref=e1360]: /project:<name>
+                    - cell "仅当前项目" [ref=e1361]
+                  - row "用户级 ~/.claude/commands/ /user:<name> 所有项目" [ref=e1362]:
+                    - cell "用户级" [ref=e1363]
+                    - cell "~/.claude/commands/" [ref=e1364]:
+                      - code [ref=e1365]: ~/.claude/commands/
+                    - cell "/user:<name>" [ref=e1366]:
+                      - code [ref=e1367]: /user:<name>
+                    - cell "所有项目" [ref=e1368]
+              - paragraph [ref=e1369]:
+                - strong [ref=e1370]: 📁 Windows 实际路径：
+              - list [ref=e1371]:
+                - listitem [ref=e1372]:
+                  - text: 项目级：
+                  - code [ref=e1373]: D:\Projects\my-project\.claude\commands\
+                - listitem [ref=e1374]:
+                  - text: 用户级：
+                  - code [ref=e1375]: C:\Users\YourName\.claude\commands\
+              - blockquote [ref=e1376]:
+                - paragraph [ref=e1377]: 注意：如果项目命令和用户命令同名，项目命令优先。
+              - heading "9.2 创建项目级命令" [level=3] [ref=e1378]: 9.2 创建项目级命令
+              - blockquote [ref=e1379]:
+                - paragraph [ref=e1380]:
+                  - text: 📍
+                  - strong [ref=e1381]: 执行位置
+                  - text: ：在终端中，先 cd 到项目根目录
+              - generic [ref=e1382]:
+                - code [ref=e1383]: "┌──────────────────────────────────────────────────────────────────┐ │ Terminal (Windows PowerShell) - □ x │ ├──────────────────────────────────────────────────────────────────┤ │ # 进入项目目录 │ │ PS C:\\> cd D:\\Projects\\my-project │ │ │ │ # 创建命令目录 │ │ PS D:\\Projects\\my-project> mkdir -p .claude\\commands │ │ │ │ # 创建优化命令文件 │ │ PS D:\\Projects\\my-project> Set-Content -Path \".claude\\commands\\optimize.md\" -Value \"分析这个项目的性能，并提出三个具体的优化建议。\" │ │ │ │ # 或者用记事本编辑 │ │ PS D:\\Projects\\my-project> notepad .claude\\commands\\optimize.md │ └──────────────────────────────────────────────────────────────────┘"
+                - generic [ref=e1384]:
+                  - button "一键获取完整项目代码" [ref=e1385] [cursor=pointer]
+                  - generic [ref=e1386] [cursor=pointer]: 登录复制
+                - generic [ref=e1388] [cursor=pointer]: 展开
+                - list [ref=e1389]:
+                  - listitem [ref=e1390]: "1"
+                  - listitem [ref=e1391]: "2"
+                  - listitem [ref=e1392]: "3"
+                  - listitem [ref=e1393]: "4"
+                  - listitem [ref=e1394]: "5"
+                  - listitem [ref=e1395]: "6"
+                  - listitem [ref=e1396]: "7"
+                  - listitem [ref=e1397]: "8"
+                  - listitem [ref=e1398]: "9"
+                  - listitem [ref=e1399]: "10"
+                  - listitem [ref=e1400]: "11"
+                  - listitem [ref=e1401]: "12"
+                  - listitem [ref=e1402]: "13"
+                  - listitem [ref=e1403]: "14"
+                  - listitem [ref=e1404]: "15"
+              - paragraph [ref=e1405]:
+                - strong [ref=e1406]: 📁 创建的文件位置
+                - text: ：
+                - code [ref=e1407]: D:\Projects\my-project\.claude\commands\optimize.md
+              - paragraph [ref=e1408]:
+                - strong [ref=e1409]: 使用方式（在 Claude Code 中）：
+                - img "项目级命令效果" [ref=e1410]
+              - heading "9.3 创建用户级命令" [level=3] [ref=e1411]: 9.3 创建用户级命令
+              - blockquote [ref=e1412]:
+                - paragraph [ref=e1413]:
+                  - text: 📍
+                  - strong [ref=e1414]: 执行位置
+                  - text: ：在终端中（任意目录）
+              - generic [ref=e1415]:
+                - code [ref=e1416]: "┌──────────────────────────────────────────────────────────────────┐ │ Terminal (Windows PowerShell) - □ x │ ├──────────────────────────────────────────────────────────────────┤ │ # 创建用户级命令目录 │ │ PS C:\\> mkdir -p $HOME\\.claude\\commands │ │ │ │ # 创建推送命令文件 │ │ PS C:\\> Set-Content -Path \"$HOME\\.claude\\commands\\push.md\" -Value \"用合理描述性信息提交所有变更文件，然后推送到远程仓库。\" │ │ │ │ # 或者用记事本编辑 │ │ PS C:\\> notepad $HOME\\.claude\\commands\\push.md │ └──────────────────────────────────────────────────────────────────┘"
+                - generic [ref=e1417]:
+                  - button "一键获取完整项目代码" [ref=e1418] [cursor=pointer]
+                  - generic [ref=e1419] [cursor=pointer]: 登录复制
+                - generic [ref=e1421] [cursor=pointer]: 展开
+                - list [ref=e1422]:
+                  - listitem [ref=e1423]: "1"
+                  - listitem [ref=e1424]: "2"
+                  - listitem [ref=e1425]: "3"
+                  - listitem [ref=e1426]: "4"
+                  - listitem [ref=e1427]: "5"
+                  - listitem [ref=e1428]: "6"
+                  - listitem [ref=e1429]: "7"
+                  - listitem [ref=e1430]: "8"
+                  - listitem [ref=e1431]: "9"
+                  - listitem [ref=e1432]: "10"
+                  - listitem [ref=e1433]: "11"
+                  - listitem [ref=e1434]: "12"
+              - paragraph [ref=e1435]:
+                - strong [ref=e1436]: 📁 创建的文件位置
+                - text: ：
+                - code [ref=e1437]: C:\Users\YourName\.claude\commands\push.md
+              - paragraph [ref=e1438]:
+                - strong [ref=e1439]: 使用方式（在 Claude Code 中）：
+              - paragraph [ref=e1440]:
+                - img "用户级命令效果" [ref=e1441]
+              - heading "9.4 高级功能" [level=3] [ref=e1442]: 9.4 高级功能
+              - paragraph [ref=e1443]:
+                - strong [ref=e1444]: 使用参数（$ARGUMENTS）：
+              - blockquote [ref=e1445]:
+                - paragraph [ref=e1446]:
+                  - text: 📍
+                  - strong [ref=e1447]: 文件位置
+                  - text: ：
+                  - code [ref=e1448]: .claude/commands/fix-issue.md
+              - generic [ref=e1449]:
+                - code [ref=e1450]: "请修复 GitHub Issue #$ARGUMENTS 1. 先阅读 Issue 内容 2. 分析问题原因 3. 实现修复方案 4. 编写测试验证"
+                - generic [ref=e1451]:
+                  - button "一键获取完整项目代码" [ref=e1452] [cursor=pointer]
+                  - generic [ref=e1453]: markdown
+                  - generic [ref=e1454] [cursor=pointer]: 登录复制
+                - list [ref=e1455]:
+                  - listitem [ref=e1456]: "1"
+                  - listitem [ref=e1457]: "2"
+                  - listitem [ref=e1458]: "3"
+                  - listitem [ref=e1459]: "4"
+                  - listitem [ref=e1460]: "5"
+                  - listitem [ref=e1461]: "6"
+              - paragraph [ref=e1462]:
+                - strong [ref=e1463]: 使用方式：
+              - generic [ref=e1464]:
+                - code [ref=e1465]: "┌──────────────────────────────────────────────────────────────────┐ │ Claude Code - □ x │ ├──────────────────────────────────────────────────────────────────┤ │ > /project:fix-issue 1234 │ │ │ │ 正在修复 GitHub Issue #1234... │ │ 1. 读取 Issue 内容 │ │ 2. 分析问题原因 │ │ ... │ └──────────────────────────────────────────────────────────────────┘"
+                - generic [ref=e1466]:
+                  - button "一键获取完整项目代码" [ref=e1467] [cursor=pointer]
+                  - generic [ref=e1468] [cursor=pointer]: 登录复制
+                - generic [ref=e1470] [cursor=pointer]: 展开
+                - list [ref=e1471]:
+                  - listitem [ref=e1472]: "1"
+                  - listitem [ref=e1473]: "2"
+                  - listitem [ref=e1474]: "3"
+                  - listitem [ref=e1475]: "4"
+                  - listitem [ref=e1476]: "5"
+                  - listitem [ref=e1477]: "6"
+                  - listitem [ref=e1478]: "7"
+                  - listitem [ref=e1479]: "8"
+                  - listitem [ref=e1480]: "9"
+                  - listitem [ref=e1481]: "10"
+              - paragraph [ref=e1482]:
+                - strong [ref=e1483]:
+                  - text: 使用位置参数（
+                  - generic [ref=e2834]: 1,
+                  - text: 2）：
+              - blockquote [ref=e1484]:
+                - paragraph [ref=e1485]:
+                  - text: 📍
+                  - strong [ref=e1486]: 文件位置
+                  - text: ：
+                  - code [ref=e1487]: .claude/commands/create-component.md
+              - generic [ref=e1488]:
+                - code [ref=e1489]: 请在 $1 目录下创建名为 $2 的组件
+                - generic [ref=e1490]:
+                  - button "一键获取完整项目代码" [ref=e1491] [cursor=pointer]
+                  - generic [ref=e1492]: markdown
+                  - generic [ref=e1493] [cursor=pointer]: 登录复制
+                - list [ref=e1494]:
+                  - listitem [ref=e1495]: "1"
+              - paragraph [ref=e1496]:
+                - strong [ref=e1497]: 使用方式：
+                - code [ref=e1498]: /project:create-component src/components Button
+              - paragraph [ref=e1499]:
+                - strong [ref=e1500]: 使用 Frontmatter：
+              - blockquote [ref=e1501]:
+                - paragraph [ref=e1502]:
+                  - text: 📍
+                  - strong [ref=e1503]: 文件位置
+                  - text: ：
+                  - code [ref=e1504]: .claude/commands/fix-issue.md
+              - generic [ref=e1505]:
+                - code [ref=e1506]: "--- description: 修复 GitHub Issue allowed-tools: - Edit - Bash(git:*) - Read argument-hint: <issue-number> --- 请修复 GitHub Issue #$1"
+                - generic [ref=e1507]:
+                  - button "一键获取完整项目代码" [ref=e1508] [cursor=pointer]
+                  - generic [ref=e1509]: markdown
+                  - generic [ref=e1510] [cursor=pointer]: 登录复制
+                - generic [ref=e1512] [cursor=pointer]: 展开
+                - list [ref=e1513]:
+                  - listitem [ref=e1514]: "1"
+                  - listitem [ref=e1515]: "2"
+                  - listitem [ref=e1516]: "3"
+                  - listitem [ref=e1517]: "4"
+                  - listitem [ref=e1518]: "5"
+                  - listitem [ref=e1519]: "6"
+                  - listitem [ref=e1520]: "7"
+                  - listitem [ref=e1521]: "8"
+                  - listitem [ref=e1522]: "9"
+                  - listitem [ref=e1523]: "10"
+              - paragraph [ref=e1524]:
+                - strong [ref=e1525]: 命名空间（子目录）：
+              - blockquote [ref=e1526]:
+                - paragraph [ref=e1527]:
+                  - text: 📍
+                  - strong [ref=e1528]: 文件位置
+                  - text: ：
+                  - code [ref=e1529]: .claude/commands/frontend/component.md
+              - paragraph [ref=e1530]:
+                - text: 使用方式：
+                - code [ref=e1531]: /project:frontend:component
+              - separator [ref=e1532]
+              - heading "十、快捷键速查" [level=2] [ref=e1533]: 十、快捷键速查
+              - table [ref=e1535]:
+                - rowgroup [ref=e1536]:
+                  - row "快捷键 功能" [ref=e1537]:
+                    - columnheader "快捷键" [ref=e1538]
+                    - columnheader "功能" [ref=e1539]
+                - rowgroup [ref=e1540]:
+                  - row "/ 查看所有斜杠命令" [ref=e1541]:
+                    - cell / [ref=e1542]:
+                      - code [ref=e1543]: /
+                    - cell "查看所有斜杠命令" [ref=e1544]
+                  - row "↑ / ↓ 浏览命令历史" [ref=e1545]:
+                    - cell "↑ / ↓" [ref=e1546]:
+                      - code [ref=e1547]: ↑
+                      - text: /
+                      - code [ref=e1548]: ↓
+                    - cell "浏览命令历史" [ref=e1549]
+                  - row "Tab 命令/文件路径快速补全" [ref=e1550]:
+                    - cell "Tab" [ref=e1551]:
+                      - code [ref=e1552]: Tab
+                    - cell "命令/文件路径快速补全" [ref=e1553]
+                  - row "Shift + Tab 切换自动接受模式" [ref=e1554]:
+                    - cell "Shift + Tab" [ref=e1555]:
+                      - code [ref=e1556]: Shift + Tab
+                    - cell "切换自动接受模式" [ref=e1557]
+                  - row "Escape 中断 Claude 当前响应（保留已生成内容）" [ref=e1558]:
+                    - cell "Escape" [ref=e1559]:
+                      - code [ref=e1560]: Escape
+                    - cell "中断 Claude 当前响应（保留已生成内容）" [ref=e1561]
+                  - row "Ctrl + C 取消当前输入/退出" [ref=e1562]:
+                    - cell "Ctrl + C" [ref=e1563]:
+                      - code [ref=e1564]: Ctrl + C
+                    - cell "取消当前输入/退出" [ref=e1565]
+                  - row "Ctrl + L 清屏" [ref=e1566]:
+                    - cell "Ctrl + L" [ref=e1567]:
+                      - code [ref=e1568]: Ctrl + L
+                    - cell "清屏" [ref=e1569]
+                  - row "Ctrl + V 粘贴图片（Mac 也是 Ctrl+V）" [ref=e1570]:
+                    - cell "Ctrl + V" [ref=e1571]:
+                      - code [ref=e1572]: Ctrl + V
+                    - cell "粘贴图片（Mac 也是 Ctrl+V）" [ref=e1573]
+                  - row "Option + Enter 换行（Mac）" [ref=e1574]:
+                    - cell "Option + Enter" [ref=e1575]:
+                      - code [ref=e1576]: Option + Enter
+                    - cell "换行（Mac）" [ref=e1577]
+              - separator [ref=e1578]
+              - heading "附录：多 Claude 工作流" [level=2] [ref=e1579]: 附录：多 Claude 工作流
+              - heading "一个写代码，一个审查" [level=3] [ref=e1580]: 一个写代码，一个审查
+              - generic [ref=e1581]:
+                - code [ref=e1582]: ┌──────────────────────────────────────────────────────────────────┐ │ 工作流程 │ ├──────────────────────────────────────────────────────────────────┤ │ 1. 用 Claude A 写代码 │ │ 2. 运行 /clear 或启动新终端的 Claude B │ │ 3. 让 Claude B 审查 Claude A 的代码 │ │ 4. 再启动 Claude C 根据审查意见修改代码 │ └──────────────────────────────────────────────────────────────────┘
+                - generic [ref=e1583]:
+                  - button "一键获取完整项目代码" [ref=e1584] [cursor=pointer]
+                  - generic [ref=e1585] [cursor=pointer]: 登录复制
+                - list [ref=e1586]:
+                  - listitem [ref=e1587]: "1"
+                  - listitem [ref=e1588]: "2"
+                  - listitem [ref=e1589]: "3"
+                  - listitem [ref=e1590]: "4"
+                  - listitem [ref=e1591]: "5"
+                  - listitem [ref=e1592]: "6"
+                  - listitem [ref=e1593]: "7"
+                  - listitem [ref=e1594]: "8"
+              - heading "使用 Git Worktrees 并行开发" [level=3] [ref=e1595]: 使用 Git Worktrees 并行开发
+              - blockquote [ref=e1596]:
+                - paragraph [ref=e1597]:
+                  - text: 📍
+                  - strong [ref=e1598]: 执行位置
+                  - text: ：在终端中，项目根目录
+              - generic [ref=e1599]:
+                - code [ref=e1600]: "┌──────────────────────────────────────────────────────────────────┐ │ Terminal - □ x │ ├──────────────────────────────────────────────────────────────────┤ │ # 创建 worktree │ │ D:\\Projects\\my-project> git worktree add ..\\project-feature-a feature-a │ │ D:\\Projects\\my-project> git worktree add ..\\project-feature-b feature-b │ │ │ │ # 在每个 worktree 启动 Claude（打开多个终端窗口） │ │ # 终端 1: │ │ D:\\Projects\\project-feature-a> claude │ │ │ │ # 终端 2: │ │ D:\\Projects\\project-feature-b> claude │ └──────────────────────────────────────────────────────────────────┘"
+                - generic [ref=e1601]:
+                  - button "一键获取完整项目代码" [ref=e1602] [cursor=pointer]
+                  - generic [ref=e1603] [cursor=pointer]: 登录复制
+                - generic [ref=e1605] [cursor=pointer]: 展开
+                - list [ref=e1606]:
+                  - listitem [ref=e1607]: "1"
+                  - listitem [ref=e1608]: "2"
+                  - listitem [ref=e1609]: "3"
+                  - listitem [ref=e1610]: "4"
+                  - listitem [ref=e1611]: "5"
+                  - listitem [ref=e1612]: "6"
+                  - listitem [ref=e1613]: "7"
+                  - listitem [ref=e1614]: "8"
+                  - listitem [ref=e1615]: "9"
+                  - listitem [ref=e1616]: "10"
+                  - listitem [ref=e1617]: "11"
+                  - listitem [ref=e1618]: "12"
+                  - listitem [ref=e1619]: "13"
+                  - listitem [ref=e1620]: "14"
+              - blockquote [ref=e1621]:
+                - paragraph [ref=e1622]: 优势：比多次 clone 更轻量，共享 Git 历史和 reflog。
+              - separator [ref=e1623]
+              - heading "参考资料" [level=2] [ref=e1624]: 参考资料
+              - paragraph [ref=e1625]:
+                - text: 【1】
+                - link "榨干 Claude Code 的 16 个实用小技巧（高端玩法，建议收藏！）" [ref=e1626] [cursor=pointer]:
+                  - /url: https://www.cnblogs.com/javastack/p/18978280
+                - text: 【2】
+                - link "Claude Code 最佳实践和使用技巧" [ref=e1627] [cursor=pointer]:
+                  - /url: https://www.claude-cn.org/posts/Claude-code-best-practices-tips.html#%E5%88%9B%E5%BB%BA%E6%96%B9%E5%BC%8F-%E2%80%8B
+                - text: 【3】
+                - link "Claude Code Best Practices - Anthropic 官方" [ref=e1628] [cursor=pointer]:
+                  - /url: https://www.anthropic.com/engineering/claude-code-best-practices
+                - text: 【4】
+                - link "Claude Code 官方文档" [ref=e1629] [cursor=pointer]:
+                  - /url: https://code.claude.com/docs
+                - text: 【5】
+                - link "斜杠命令参考" [ref=e1630] [cursor=pointer]:
+                  - /url: https://code.claude.com/docs/en/slash-commands
+        - generic [ref=e1631]:
+          - generic [ref=e1632]:
+            - link "Slow菜鸟" [ref=e1634] [cursor=pointer]:
+              - /url: https://blog.csdn.net/qq_20236937
+              - img [ref=e1635]
+              - generic [ref=e1636]: Slow菜鸟
+            - link "关注" [ref=e1638] [cursor=pointer]:
+              - /url: javascript:;
+          - list [ref=e1640]:
+            - listitem [ref=e1641]:
+              - generic [ref=e1643] [cursor=pointer]: "17"
+            - listitem [ref=e1644]
+            - listitem [ref=e1646]:
+              - link "42" [ref=e1647] [cursor=pointer]:
+                - /url: javascript:;
+                - generic [ref=e1648]: "42"
+            - listitem [ref=e1649]:
+              - link "0" [ref=e1650] [cursor=pointer]:
+                - /url: "#commentBox"
+                - generic [ref=e1651]: "0"
+            - listitem [ref=e1652]:
+              - link "分享" [ref=e1653] [cursor=pointer]:
+                - /url: javascript:;
+                - generic [ref=e1654]: 分享
+            - listitem [ref=e1655]
+          - generic [ref=e1659] [cursor=pointer]: 专栏目录
+        - generic [ref=e1662]:
+          - generic [ref=e1663]:
+            - link "这可能是目前最全的《Claude code使用指南》" [ref=e1665] [cursor=pointer]:
+              - /url: https://devpress.csdn.net/v1/article/detail/149160666
+              - generic [ref=e1666]:
+                - text: 这可能是目前最全的《
+                - emphasis [ref=e1667]: Claude
+                - emphasis [ref=e1668]: code
+                - emphasis [ref=e1669]: 使用
+                - text: 指南》
+            - generic [ref=e1670]:
+              - link "m0_53117338的博客" [ref=e1672] [cursor=pointer]:
+                - /url: https://blog.csdn.net/m0_53117338
+                - generic [ref=e1673]: m0_53117338的博客
+              - generic [ref=e1675]: "4930"
+          - link "本文详细介绍了ClaudeCode CLI智能编程助手的使用指南，主要内容包括：安装方法（支持六种平台）、基础命令操作、MCP服务集成、系统配置管理、安全权限设置、思考模式调整等核心功能。重点讲解了如何通过配置文件和环境变量定制开发环境，以及团队协作场景下的Git自动化审查和CI/CD集成方案。文章还提供了高级特性如持久化记忆、多目录工作区等实用技巧，并附有完整命令参考表和故障排查指南，帮助开发者快速掌握这款基于Claude 4模型的强大编程工具。" [ref=e1677] [cursor=pointer]:
+            - /url: https://devpress.csdn.net/v1/article/detail/149160666
+            - generic [ref=e1678]:
+              - text: 本文详细介绍了
+              - emphasis [ref=e1679]: Claude
+              - emphasis [ref=e1680]: Code
+              - text: CLI智能编程助手的
+              - emphasis [ref=e1681]: 使用
+              - text: 指南，主要内容包括：安装方法（支持六种平台）、基础命令操作、MCP服务集成、系统配置管理、安全权限设置、思考模式调整等核心功能。重点讲解了如何通过配置文件和环境变量定制开发环境，以及团队协作场景下的Git自动化审查和CI/CD集成方案。文章还提供了高级特性如持久化记忆、多目录工作区等实用
+              - emphasis [ref=e1682]: 技巧
+              - text: ，并附有完整命令参考表和故障排查指南，帮助开发者快速掌握这款基于
+              - emphasis [ref=e1683]: Claude
+              - text: 4模型的强大编程工具。
+        - generic [ref=e1686]:
+          - generic [ref=e1687]:
+            - link "Claude Code教程（一） | 认识 Claude Code" [ref=e1689] [cursor=pointer]:
+              - /url: https://blog.csdn.net/qq_20236937/article/details/157697468
+              - generic [ref=e1690]:
+                - emphasis [ref=e1691]: Claude
+                - emphasis [ref=e1692]: Code
+                - emphasis [ref=e1693]: 教程
+                - text: （一） | 认识
+                - emphasis [ref=e1694]: Claude
+                - emphasis [ref=e1695]: Code
+            - generic [ref=e1696]:
+              - link "qq_20236937的博客" [ref=e1698] [cursor=pointer]:
+                - /url: https://blog.csdn.net/qq_20236937
+                - generic [ref=e1699]: qq_20236937的博客
+              - generic [ref=e1701]: 1万+
+          - link "Claude Code教程（一） | 认识 Claude Code" [ref=e1703] [cursor=pointer]:
+            - /url: https://blog.csdn.net/qq_20236937/article/details/157697468
+            - generic [ref=e1704]:
+              - emphasis [ref=e1705]: Claude
+              - emphasis [ref=e1706]: Code
+              - emphasis [ref=e1707]: 教程
+              - text: （一） | 认识
+              - emphasis [ref=e1708]: Claude
+              - emphasis [ref=e1709]: Code
+        - generic [ref=e1710]:
+          - generic [ref=e1712]:
+            - generic [ref=e1713]:
+              - link "Claude md文件规则使用技巧_claude.md文件" [ref=e1715] [cursor=pointer]:
+                - /url: https://blog.csdn.net/luoshanxuli2010/article/details/159012324
+                - generic [ref=e1716]:
+                  - emphasis [ref=e1717]: Claude
+                  - emphasis [ref=e1718]: md
+                  - text: 文件规则
+                  - emphasis [ref=e1719]: 使用
+                  - emphasis [ref=e1720]: 技巧
+                  - text: _
+                  - emphasis [ref=e1721]: claude
+                  - emphasis [ref=e1722]: .
+                  - emphasis [ref=e1723]: md
+                  - text: 文件
+              - generic [ref=e1726]: 5-14
+            - link "CLAUDE.md 作为Claude Code的\"项目说明书\",记录项目核心信息,形成持久上下文记忆,每次对话自动加载。 1.1 文件定义 CLAUDE.md 是 Claude Code 的项目备忘录,位于代码仓库中的配置文件,用于说明项目组织方式、约定、规范及开发流程。 1.2 存放位置 - 常规项目:仓库根目录,团队共享 - Monorepo:父级目录 - 用户主目录..." [ref=e1728] [cursor=pointer]:
+              - /url: https://blog.csdn.net/luoshanxuli2010/article/details/159012324
+              - generic [ref=e1729]:
+                - emphasis [ref=e1730]: CLAUDE
+                - emphasis [ref=e1731]: .
+                - emphasis [ref=e1732]: md
+                - text: 作为
+                - emphasis [ref=e1733]: Claude
+                - emphasis [ref=e1734]: Code
+                - text: 的"项目说明书",记录项目核心信息,形成持久上下文记忆,每次对话自动加载。 1
+                - emphasis [ref=e1735]: .
+                - text: 1 文件定义
+                - emphasis [ref=e1736]: CLAUDE
+                - emphasis [ref=e1737]: .
+                - emphasis [ref=e1738]: md
+                - text: 是
+                - emphasis [ref=e1739]: Claude
+                - emphasis [ref=e1740]: Code
+                - text: 的项目备忘录,位于代码仓库中的配置文件,用于说明项目组织方式、约定、规范及开发流程。 1
+                - emphasis [ref=e1741]: .
+                - text: 2 存放位置 - 常规项目:仓库根目录,团队共享 - Monorepo:父级目录 - 用户主目录
+                - emphasis [ref=e1742]: .
+                - emphasis [ref=e1743]: .
+                - emphasis [ref=e1744]: .
+          - generic [ref=e1746]:
+            - generic [ref=e1747]:
+              - link "CLAUDE.md 完全指南:让 AI 记住你的项目_claude md" [ref=e1749] [cursor=pointer]:
+                - /url: https://blog.csdn.net/qq_28299919/article/details/159659294
+                - generic [ref=e1750]:
+                  - emphasis [ref=e1751]: CLAUDE
+                  - emphasis [ref=e1752]: .
+                  - emphasis [ref=e1753]: md
+                  - text: 完全指南:让 AI 记住你的项目_
+                  - emphasis [ref=e1754]: claude
+                  - emphasis [ref=e1755]: md
+              - generic [ref=e1758]: 5-14
+            - link "CLAUDE.md 内容在上下文中越来越靠前,权重逐渐降低注意力分配处理长上下文时,对早期内容的关注度自然下降规则冲突当你的指令和 Claude 默认行为冲突时,胜出方不确定模糊规则越具体的规则遵守率越高,模糊的规则更容易被忽视 💡结论:CLAUDE.md 管\"应该怎么做\",Hooks 管\"必须怎么做\"。安全关键规则(禁止..." [ref=e1760] [cursor=pointer]:
+              - /url: https://blog.csdn.net/qq_28299919/article/details/159659294
+              - generic [ref=e1761]:
+                - emphasis [ref=e1762]: CLAUDE
+                - emphasis [ref=e1763]: .
+                - emphasis [ref=e1764]: md
+                - text: 内容在上下文中越来越靠前,权重逐渐降低注意力分配处理长上下文时,对早期内容的关注度自然下降规则冲突当你的指令和
+                - emphasis [ref=e1765]: Claude
+                - text: "默认行为冲突时,胜出方不确定模糊规则越具体的规则遵守率越高,模糊的规则更容易被忽视 💡结论:"
+                - emphasis [ref=e1766]: CLAUDE
+                - emphasis [ref=e1767]: .
+                - emphasis [ref=e1768]: md
+                - text: 管"应该怎么做",Hooks 管"必须怎么做"。安全关键规则
+                - emphasis [ref=e1769]: (
+                - text: 禁止
+                - emphasis [ref=e1770]: .
+                - emphasis [ref=e1771]: .
+                - emphasis [ref=e1772]: .
+          - generic [ref=e1774]:
+            - generic [ref=e1775]:
+              - link "第 1 篇：重新理解 CLAUDE.md——它不是文档，而是项目协作的配置中枢" [ref=e1777] [cursor=pointer]:
+                - /url: https://blog.csdn.net/Ed7zgeE9X/article/details/159177611
+                - generic [ref=e1778]:
+                  - text: 第 1 篇：重新理解
+                  - emphasis [ref=e1779]: CLAUDE
+                  - emphasis [ref=e1780]: .
+                  - emphasis [ref=e1781]: md
+                  - text: ——它不是文档，而是项目协作的配置中枢
+              - generic [ref=e1782]:
+                - link "前端达人" [ref=e1784] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/Ed7zgeE9X
+                  - generic [ref=e1785]: 前端达人
+                - generic [ref=e1787]: "422"
+            - link "最糟的是——有时候你忘了交代某个关键约束（比如\"slug 不能改\"），Claude 就真的把 slug 改了，导致页面 URL 断裂、搜索索引失效、内链全部 404。📌 本篇核心认知：CLAUDE.md 不是给人看的说明文档，而是给 Claude 用的项目级配置文件。它假设读者是一个新加入项目的人类开发者，需要了解项目背景、怎么安装、怎么运行、架构是什么样。大多数开发者第一次听到 CLAUDE.md，会本能地把它和 README.md 归为一类——\"不就是个项目说明文件嘛\"。你是不是也在重复做这件事？" [ref=e1789] [cursor=pointer]:
+              - /url: https://blog.csdn.net/Ed7zgeE9X/article/details/159177611
+              - generic [ref=e1790]:
+                - text: 最糟的是——有时候你忘了交代某个关键约束（比如"slug 不能改"），
+                - emphasis [ref=e1791]: Claude
+                - text: 就真的把 slug 改了，导致页面 URL 断裂、搜索索引失效、内链全部 404。📌 本篇核心认知：
+                - emphasis [ref=e1792]: CLAUDE
+                - emphasis [ref=e1793]: .
+                - emphasis [ref=e1794]: md
+                - text: 不是给人看的说明文档，而是给
+                - emphasis [ref=e1795]: Claude
+                - text: 用的项目级配置文件。它假设读者是一个新加入项目的人类开发者，需要了解项目背景、怎么安装、怎么运行、架构是什么样。大多数开发者第一次听到
+                - emphasis [ref=e1796]: CLAUDE
+                - emphasis [ref=e1797]: .
+                - emphasis [ref=e1798]: md
+                - text: ，会本能地把它和 README
+                - emphasis [ref=e1799]: .
+                - emphasis [ref=e1800]: md
+                - text: 归为一类——"不就是个项目说明文件嘛"。你是不是也在重复做这件事？
+          - generic [ref=e1802]:
+            - generic [ref=e1803]:
+              - link "Windows上使用配置Claude Code教程" [ref=e1805] [cursor=pointer]:
+                - /url: https://devpress.csdn.net/v1/article/detail/149310862
+                - generic [ref=e1806]:
+                  - text: Windows上
+                  - emphasis [ref=e1807]: 使用
+                  - text: 配置
+                  - emphasis [ref=e1808]: Claude
+                  - emphasis [ref=e1809]: Code
+                  - emphasis [ref=e1810]: 教程
+              - generic [ref=e1811]:
+                - link "hututu的博客" [ref=e1813] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/weixin_45710042
+                  - generic [ref=e1814]: hututu的博客
+                - generic [ref=e1816]: "6681"
+            - link "详情查看下面的链接。" [ref=e1818] [cursor=pointer]:
+              - /url: https://devpress.csdn.net/v1/article/detail/149310862
+              - generic [ref=e1819]: 详情查看下面的链接。
+          - generic [ref=e1821]:
+            - generic [ref=e1822]:
+              - link "【AI智能体】Claude Code 核心记忆文件 CLAUDE.md实战操作详解_claude..." [ref=e1824] [cursor=pointer]:
+                - /url: https://blog.csdn.net/zhangcongyi420/article/details/159799311
+                - generic [ref=e1825]:
+                  - text: 【AI智能体】
+                  - emphasis [ref=e1826]: Claude
+                  - emphasis [ref=e1827]: Code
+                  - text: 核心记忆文件
+                  - emphasis [ref=e1828]: CLAUDE
+                  - emphasis [ref=e1829]: .
+                  - emphasis [ref=e1830]: md
+                  - text: 实战操作详解_
+                  - emphasis [ref=e1831]: claude
+                  - emphasis [ref=e1832]: .
+                  - emphasis [ref=e1833]: .
+                  - emphasis [ref=e1834]: .
+              - generic [ref=e1837]: 5-13
+            - link "3.1.2 CLAUDE.md 核心特点 3.1.3 CLAUDE.md 核心价值 3.2 CLAUDE.md 目录结构说明 3.2.1 Claude.md 文件存放目录优先级 3.3 Claude.md 文件创建 3.3.1 Claude.md 文件创建的几种方式 3.4 Claude.md 文件项目操作实践 3.4.1 Claude.md 文件可以存放的内容 ..." [ref=e1839] [cursor=pointer]:
+              - /url: https://blog.csdn.net/zhangcongyi420/article/details/159799311
+              - generic [ref=e1840]:
+                - text: "3"
+                - emphasis [ref=e1841]: .
+                - text: "1"
+                - emphasis [ref=e1842]: .
+                - text: "2"
+                - emphasis [ref=e1843]: CLAUDE
+                - emphasis [ref=e1844]: .
+                - emphasis [ref=e1845]: md
+                - text: 核心特点 3
+                - emphasis [ref=e1846]: .
+                - text: "1"
+                - emphasis [ref=e1847]: .
+                - text: "3"
+                - emphasis [ref=e1848]: CLAUDE
+                - emphasis [ref=e1849]: .
+                - emphasis [ref=e1850]: md
+                - text: 核心价值 3
+                - emphasis [ref=e1851]: .
+                - text: "2"
+                - emphasis [ref=e1852]: CLAUDE
+                - emphasis [ref=e1853]: .
+                - emphasis [ref=e1854]: md
+                - text: 目录结构说明 3
+                - emphasis [ref=e1855]: .
+                - text: "2"
+                - emphasis [ref=e1856]: .
+                - text: "1"
+                - emphasis [ref=e1857]: Claude
+                - emphasis [ref=e1858]: .
+                - emphasis [ref=e1859]: md
+                - text: 文件存放目录优先级 3
+                - emphasis [ref=e1860]: .
+                - text: "3"
+                - emphasis [ref=e1861]: Claude
+                - emphasis [ref=e1862]: .
+                - emphasis [ref=e1863]: md
+                - text: 文件创建 3
+                - emphasis [ref=e1864]: .
+                - text: "3"
+                - emphasis [ref=e1865]: .
+                - text: "1"
+                - emphasis [ref=e1866]: Claude
+                - emphasis [ref=e1867]: .
+                - emphasis [ref=e1868]: md
+                - text: 文件创建的几种方式 3
+                - emphasis [ref=e1869]: .
+                - text: "4"
+                - emphasis [ref=e1870]: Claude
+                - emphasis [ref=e1871]: .
+                - emphasis [ref=e1872]: md
+                - text: 文件项目操作实践 3
+                - emphasis [ref=e1873]: .
+                - text: "4"
+                - emphasis [ref=e1874]: .
+                - text: "1"
+                - emphasis [ref=e1875]: Claude
+                - emphasis [ref=e1876]: .
+                - emphasis [ref=e1877]: md
+                - text: 文件可以存放的内容
+                - emphasis [ref=e1878]: .
+                - emphasis [ref=e1879]: .
+                - emphasis [ref=e1880]: .
+          - generic [ref=e1882]:
+            - generic [ref=e1883]:
+              - link "Claude-Code项目配置与管理_claude.md" [ref=e1885] [cursor=pointer]:
+                - /url: https://blog.csdn.net/2501_94019145/article/details/158581559
+                - generic [ref=e1886]:
+                  - emphasis [ref=e1887]: Claude
+                  - text: "-"
+                  - emphasis [ref=e1888]: Code
+                  - text: 项目配置与管理_
+                  - emphasis [ref=e1889]: claude
+                  - emphasis [ref=e1890]: .
+                  - emphasis [ref=e1891]: md
+              - generic [ref=e1894]: 5-12
+            - 'link "CLAUDE.md是Claude Code 的项目配置文件,类似于.cursorrules或.github/copilot-instructions.md。它允许你为特定项目定义: 项目背景信息:让 Claude 了解你的项目 编码规范:统一的代码风格和模式 工作流程:特定的开发流程 工具限制:限制或允许特定工具的使用" [ref=e1896] [cursor=pointer]':
+              - /url: https://blog.csdn.net/2501_94019145/article/details/158581559
+              - generic [ref=e1897]:
+                - emphasis [ref=e1898]: CLAUDE
+                - emphasis [ref=e1899]: .
+                - emphasis [ref=e1900]: md
+                - text: 是
+                - emphasis [ref=e1901]: Claude
+                - emphasis [ref=e1902]: Code
+                - text: 的项目配置文件,类似于
+                - emphasis [ref=e1903]: .
+                - text: cursorrules或
+                - emphasis [ref=e1904]: .
+                - text: github/copilot-instructions
+                - emphasis [ref=e1905]: .
+                - emphasis [ref=e1906]: md
+                - text: "。它允许你为特定项目定义: 项目背景信息:让"
+                - emphasis [ref=e1907]: Claude
+                - text: 了解你的项目 编码规范:统一的代码风格和模式 工作流程:特定的开发流程 工具限制:限制或允许特定工具的
+                - emphasis [ref=e1908]: 使用
+          - generic [ref=e1910]:
+            - generic [ref=e1911]:
+              - link "【Claude Code】Claude Code 使用指南" [ref=e1913] [cursor=pointer]:
+                - /url: https://aoyunlan.blog.csdn.net/article/details/155242671
+                - generic [ref=e1914]:
+                  - text: 【
+                  - emphasis [ref=e1915]: Claude
+                  - emphasis [ref=e1916]: Code
+                  - text: 】
+                  - emphasis [ref=e1917]: Claude
+                  - emphasis [ref=e1918]: Code
+                  - emphasis [ref=e1919]: 使用
+                  - text: 指南
+              - generic [ref=e1920]:
+                - link "大家好，我是敖云岚，一个沉迷代码的 “技术玩家”。擅长 Java、C++ 开发，对 MySQL、Redis、RabbitMQ 等技术也颇有研究。博客里既有硬核技术干货，也有诙谐幽默的编程日常分享。愿和你一起，笑着学技术，快乐敲代码！" [ref=e1922] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/m0_75022408
+                  - generic [ref=e1923]: 大家好，我是敖云岚，一个沉迷代码的 “技术玩家”。擅长 Java、C++ 开发，对 MySQL、Redis、RabbitMQ 等技术也颇有研究。博客里既有硬核技术干货，也有诙谐幽默的编程日常分享。愿和你一起，笑着学技术，快乐敲代码！
+                - generic [ref=e1925]: "8850"
+            - link "本文介绍了AI编码助手Claude的基础和进阶操作指南。基础部分涵盖启动命令、模式切换（自动编辑/Plan/Yolo模式）、资源监控等核心功能，重点讲解了斜杠命令的使用方法。进阶操作详细说明了CLAUDE.md文件的创建与管理，包括项目规范、代码风格等内容的配置，以及如何通过该文件建立持久上下文。同时提醒了使用过程中的安全风险，建议通过配置文件限制AI对关键代码的访问权限。全文提供了完整的操作指引和安全建议，帮助开发者高效安全地使用Claude进行编码辅助。" [ref=e1927] [cursor=pointer]:
+              - /url: https://aoyunlan.blog.csdn.net/article/details/155242671
+              - generic [ref=e1928]:
+                - text: 本文介绍了AI编码助手
+                - emphasis [ref=e1929]: Claude
+                - text: 的基础和进阶操作指南。基础部分涵盖启动命令、模式切换（自动编辑/Plan/Yolo模式）、资源监控等核心功能，重点讲解了斜杠命令的
+                - emphasis [ref=e1930]: 使用
+                - text: 方法。进阶操作详细说明了
+                - emphasis [ref=e1931]: CLAUDE
+                - emphasis [ref=e1932]: .
+                - emphasis [ref=e1933]: md
+                - text: 文件的创建与管理，包括项目规范、代码风格等内容的配置，以及如何通过该文件建立持久上下文。同时提醒了
+                - emphasis [ref=e1934]: 使用
+                - text: 过程中的安全风险，建议通过配置文件限制AI对关键代码的访问权限。全文提供了完整的操作指引和安全建议，帮助开发者高效安全地
+                - emphasis [ref=e1935]: 使用
+                - emphasis [ref=e1936]: Claude
+                - text: 进行编码辅助。
+          - generic [ref=e1938]:
+            - generic [ref=e1939]:
+              - link "Claude Code教程（四）| Skills 安装使用与热门插件精选（实操篇） 热门推荐" [ref=e1941] [cursor=pointer]:
+                - /url: https://devpress.csdn.net/v1/article/detail/159687780
+                - generic [ref=e1942]:
+                  - emphasis [ref=e1943]: Claude
+                  - emphasis [ref=e1944]: Code
+                  - emphasis [ref=e1945]: 教程
+                  - text: （四）| Skills 安装
+                  - emphasis [ref=e1946]: 使用
+                  - text: 与热门插件精选（实操篇）
+                - generic [ref=e1947]: 热门推荐
+              - generic [ref=e1948]:
+                - link "qq_20236937的博客" [ref=e1950] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937
+                  - generic [ref=e1951]: qq_20236937的博客
+                - generic [ref=e1953]: 1万+
+            - link "Claude Code教程（四）| Skills 安装使用与热门插件精选（实操篇）" [ref=e1955] [cursor=pointer]:
+              - /url: https://devpress.csdn.net/v1/article/detail/159687780
+              - generic [ref=e1956]:
+                - emphasis [ref=e1957]: Claude
+                - emphasis [ref=e1958]: Code
+                - emphasis [ref=e1959]: 教程
+                - text: （四）| Skills 安装
+                - emphasis [ref=e1960]: 使用
+                - text: 与热门插件精选（实操篇）
+          - generic [ref=e1962]:
+            - generic [ref=e1963]:
+              - link "CLAUDE.md项目记忆文件完全指南_claude.md 位置" [ref=e1965] [cursor=pointer]:
+                - /url: https://blog.csdn.net/it_czz/article/details/158706650
+                - generic [ref=e1966]:
+                  - emphasis [ref=e1967]: CLAUDE
+                  - emphasis [ref=e1968]: .
+                  - emphasis [ref=e1969]: md
+                  - text: 项目记忆文件完全指南_
+                  - emphasis [ref=e1970]: claude
+                  - emphasis [ref=e1971]: .
+                  - emphasis [ref=e1972]: md
+                  - text: 位置
+              - generic [ref=e1975]: 5-13
+            - link "CLAUDE.md项目记忆文件完全指南:让AI记住你的项目规范 一、为什么需要CLAUDE.md? 作为一名开发团队负责人,我经常遇到这样的问题:每个开发者有不同的编码习惯,有的用2空格缩进,有的用4空格;有的用分号,有的不用。这些不一致会导致代码审查困难、维护成本增加。CLAUDE.md就是解决这个问题的最佳方案。它让AI在每次会..." [ref=e1977] [cursor=pointer]:
+              - /url: https://blog.csdn.net/it_czz/article/details/158706650
+              - generic [ref=e1978]:
+                - emphasis [ref=e1979]: CLAUDE
+                - emphasis [ref=e1980]: .
+                - emphasis [ref=e1981]: md
+                - text: 项目记忆文件完全指南:让AI记住你的项目规范 一、为什么需要
+                - emphasis [ref=e1982]: CLAUDE
+                - emphasis [ref=e1983]: .
+                - emphasis [ref=e1984]: md
+                - text: "? 作为一名开发团队负责人,我经常遇到这样的问题:每个开发者有不同的编码习惯,有的用2空格缩进,有的用4空格;有的用分号,有的不用。这些不一致会导致代码审查困难、维护成本增加。"
+                - emphasis [ref=e1985]: CLAUDE
+                - emphasis [ref=e1986]: .
+                - emphasis [ref=e1987]: md
+                - text: 就是解决这个问题的最佳方案。它让AI在每次会
+                - emphasis [ref=e1988]: .
+                - emphasis [ref=e1989]: .
+                - emphasis [ref=e1990]: .
+          - generic [ref=e1992]:
+            - generic [ref=e1993]:
+              - link "【AI编程实战】一文讲透 CLAUDE.md:让 AI 真正「懂」你的项目" [ref=e1995] [cursor=pointer]:
+                - /url: https://blog.csdn.net/u011239443/article/details/160773175
+                - generic [ref=e1996]:
+                  - text: 【AI编程实战】一文讲透
+                  - emphasis [ref=e1997]: CLAUDE
+                  - emphasis [ref=e1998]: .
+                  - emphasis [ref=e1999]: md
+                  - text: :让 AI 真正「懂」你的项目
+              - generic [ref=e2002]: 5-4
+            - 'link "一、什么是 CLAUDE.md? 1.1 一个被低估的文件 项目根目录/ ├── CLAUDE.md ← AI 的「入职手册」├── src/ ├── tests/ └── package.json AI写代码 1 2 3 4 5 这份文件里,你可以写: 项目是干什么的 技术栈是什么 目录结构怎么组织 ..." [ref=e2004] [cursor=pointer]':
+              - /url: https://blog.csdn.net/u011239443/article/details/160773175
+              - generic [ref=e2005]:
+                - text: 一、什么是
+                - emphasis [ref=e2006]: CLAUDE
+                - emphasis [ref=e2007]: .
+                - emphasis [ref=e2008]: md
+                - text: "? 1"
+                - emphasis [ref=e2009]: .
+                - text: 1 一个被低估的文件 项目根目录/ ├──
+                - emphasis [ref=e2010]: CLAUDE
+                - emphasis [ref=e2011]: .
+                - emphasis [ref=e2012]: md
+                - text: ← AI 的「入职手册」├── src/ ├── tests/ └── package
+                - emphasis [ref=e2013]: .
+                - text: "json AI写代码 1 2 3 4 5 这份文件里,你可以写: 项目是干什么的 技术栈是什么 目录结构怎么组织"
+                - emphasis [ref=e2014]: .
+                - emphasis [ref=e2015]: .
+                - emphasis [ref=e2016]: .
+          - generic [ref=e2018]:
+            - generic [ref=e2019]:
+              - link "Claude Code教程（二） | Claude Code 核心信息与使用指南" [ref=e2021] [cursor=pointer]:
+                - /url: https://blog.csdn.net/qq_20236937/article/details/153044873
+                - generic [ref=e2022]:
+                  - emphasis [ref=e2023]: Claude
+                  - emphasis [ref=e2024]: Code
+                  - emphasis [ref=e2025]: 教程
+                  - text: （
+                  - emphasis [ref=e2026]: 二
+                  - text: ） |
+                  - emphasis [ref=e2027]: Claude
+                  - emphasis [ref=e2028]: Code
+                  - text: 核心信息与
+                  - emphasis [ref=e2029]: 使用
+                  - text: 指南
+              - generic [ref=e2030]:
+                - link "qq_20236937的博客" [ref=e2032] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937
+                  - generic [ref=e2033]: qq_20236937的博客
+                - generic [ref=e2035]: "1834"
+            - link "Claude Code 核心信息与使用指南" [ref=e2037] [cursor=pointer]:
+              - /url: https://blog.csdn.net/qq_20236937/article/details/153044873
+              - generic [ref=e2038]:
+                - emphasis [ref=e2039]: Claude
+                - emphasis [ref=e2040]: Code
+                - text: 核心信息与
+                - emphasis [ref=e2041]: 使用
+                - text: 指南
+          - generic [ref=e2043]:
+            - generic [ref=e2044]:
+              - link "Claude Code 开发使用技巧" [ref=e2046] [cursor=pointer]:
+                - /url: https://devpress.csdn.net/v1/article/detail/149242825
+                - generic [ref=e2047]:
+                  - emphasis [ref=e2048]: Claude
+                  - emphasis [ref=e2049]: Code
+                  - text: 开发
+                  - emphasis [ref=e2050]: 使用
+                  - emphasis [ref=e2051]: 技巧
+              - generic [ref=e2052]:
+                - link "weixin_47426048的博客" [ref=e2054] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/weixin_47426048
+                  - generic [ref=e2055]: weixin_47426048的博客
+                - generic [ref=e2057]: "8344"
+            - link "《Claude Code 2025：AI编程助手终极指南》摘要 Claude Code是由Anthropic推出的革命性命令行AI编程助手，具备200K token超大上下文窗口，能够理解完整代码库。其核心功能包括智能代码编辑、自动bug修复、架构分析、测试管理和Git工作流支持。2025最新版本在SWE-bench测试中达到72.5%准确率，实测提升开发者效率300%。 安装需Node.js环境，支持macOS/Linux/WSL，提供 200/月不同订阅计划。关键特性包括：跨文件编辑、自动测试修" [ref=e2059] [cursor=pointer]:
+              - /url: https://devpress.csdn.net/v1/article/detail/149242825
+              - generic [ref=e2060]:
+                - text: 《
+                - emphasis [ref=e2061]: Claude
+                - emphasis [ref=e2062]: Code
+                - text: 2025：AI编程助手终极指南》摘要
+                - emphasis [ref=e2063]: Claude
+                - emphasis [ref=e2064]: Code
+                - text: 是由Anthropic推出的革命性命令行AI编程助手，具备200K token超大上下文窗口，能够理解完整代码库。其核心功能包括智能代码编辑、自动bug修复、架构分析、测试管理和Git工作流支持。2025最新版本在SWE-bench测试中达到72
+                - emphasis [ref=e2065]: .
+                - text: 5%准确率，实测提升开发者效率300%。 安装需Node
+                - emphasis [ref=e2066]: .
+                - text: js环境，支持macOS/Linux/WSL，提供
+                - generic [ref=e2067]:
+                  - generic [ref=e2071]: 20−
+                  - math [ref=e2072]:
+                    - generic [ref=e2073]: "20"
+                    - generic [ref=e2074]: −
+                - text: 200/月不同订阅计划。关键特性包括：跨文件编辑、自动测试修
+          - generic [ref=e2076]:
+            - generic [ref=e2077]:
+              - link "Claude Code 使用教程" [ref=e2079] [cursor=pointer]:
+                - /url: https://devpress.csdn.net/v1/article/detail/151293433
+                - generic [ref=e2080]:
+                  - emphasis [ref=e2081]: Claude
+                  - emphasis [ref=e2082]: Code
+                  - emphasis [ref=e2083]: 使用
+                  - emphasis [ref=e2084]: 教程
+              - generic [ref=e2085]:
+                - link "XZY__one的博客" [ref=e2087] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/XZY__one
+                  - generic [ref=e2088]: XZY__one的博客
+                - generic [ref=e2090]: "4985"
+            - link "Claude Code 是 Anthropic 开发的终端 AI 编码助手，通过斜杠命令控制 AI 行为。主要命令包括：/add-dir 设置工作目录，/init 初始化项目生成 CLAUDE.md 文档，/compact 压缩对话内容，/clear 重置对话，/memory 编辑记忆文件，/status 查看会话状态，/cost 统计令牌消耗，/config 修改配置，/model 切换 AI 模型。进阶技巧可通过关键词调整 AI 思考深度，从快速执行到深度分析。这些命令帮助开发者高效使用 Claude" [ref=e2092] [cursor=pointer]:
+              - /url: https://devpress.csdn.net/v1/article/detail/151293433
+              - generic [ref=e2093]:
+                - emphasis [ref=e2094]: Claude
+                - emphasis [ref=e2095]: Code
+                - text: 是 Anthropic 开发的终端 AI 编码助手，通过斜杠命令控制 AI 行为。主要命令包括：/add-dir 设置工作目录，/init 初始化项目生成
+                - emphasis [ref=e2096]: CLAUDE
+                - emphasis [ref=e2097]: .
+                - emphasis [ref=e2098]: md
+                - text: 文档，/compact 压缩对话内容，/clear 重置对话，/memory 编辑记忆文件，/status 查看会话状态，/cost 统计令牌消耗，/config 修改配置，/model 切换 AI 模型。进阶
+                - emphasis [ref=e2099]: 技巧
+                - text: 可通过关键词调整 AI 思考深度，从快速执行到深度分析。这些命令帮助开发者高效
+                - emphasis [ref=e2100]: 使用
+                - emphasis [ref=e2101]: Claude
+          - generic [ref=e2103]:
+            - generic [ref=e2104]:
+              - link "Claude Code 的使用技巧" [ref=e2106] [cursor=pointer]:
+                - /url: https://blog.csdn.net/beilingcc/article/details/149309123
+                - generic [ref=e2107]:
+                  - emphasis [ref=e2108]: Claude
+                  - emphasis [ref=e2109]: Code
+                  - text: 的
+                  - emphasis [ref=e2110]: 使用
+                  - emphasis [ref=e2111]: 技巧
+              - generic [ref=e2112]:
+                - link "学习AI应用开发，分享AI干货、获取最新AI咨询" [ref=e2114] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/beilingcc
+                  - generic [ref=e2115]: 学习AI应用开发，分享AI干货、获取最新AI咨询
+                - generic [ref=e2117]: "4055"
+            - link "上一篇文章，我们介绍了 Claude Code 的安装和环境配置以及基本使用，有的小伙伴在使用过程中有一些疑问，比如在 Windows 的 WSL Ubuntu 中怎么访问项目文件？怎么做一些个性化配置？下面我给大家分享一些实用的 Claude Code 使用技巧" [ref=e2119] [cursor=pointer]:
+              - /url: https://blog.csdn.net/beilingcc/article/details/149309123
+              - generic [ref=e2120]:
+                - text: 上一篇文章，我们介绍了
+                - emphasis [ref=e2121]: Claude
+                - emphasis [ref=e2122]: Code
+                - text: 的安装和环境配置以及基本
+                - emphasis [ref=e2123]: 使用
+                - text: ，有的小伙伴在
+                - emphasis [ref=e2124]: 使用
+                - text: 过程中有一些疑问，比如在 Windows 的 WSL Ubuntu 中怎么访问项目文件？怎么做一些个性化配置？下面我给大家分享一些实用的
+                - emphasis [ref=e2125]: Claude
+                - emphasis [ref=e2126]: Code
+                - emphasis [ref=e2127]: 使用
+                - emphasis [ref=e2128]: 技巧
+          - generic [ref=e2130]:
+            - generic [ref=e2131]:
+              - link "Claude Code如何集成到VSCode、PyCharm IDE及使用技巧" [ref=e2133] [cursor=pointer]:
+                - /url: https://aidev.blog.csdn.net/article/details/149414229
+                - generic [ref=e2134]:
+                  - emphasis [ref=e2135]: Claude
+                  - emphasis [ref=e2136]: Code
+                  - text: 如何集成到VS
+                  - emphasis [ref=e2137]: Code
+                  - text: 、PyCharm IDE及
+                  - emphasis [ref=e2138]: 使用
+                  - emphasis [ref=e2139]: 技巧
+              - generic [ref=e2140]:
+                - link "测试开发技术" [ref=e2142] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/sdoa0806
+                  - generic [ref=e2143]: 测试开发技术
+                - generic [ref=e2145]: "5947"
+            - link "是由 Anthropic 公司推出的一款基于AI 编程神器：Claude Code 安装与国内免费使用（保姆级教程）默认支持从终端直接操作，允许开发者通过自然语言指令进行对话，显著提升开发效率。但命令行的这种交互方式的 AI 编程工具对于新手或者非科班技术人员来说，还是有些难度。Claude Code 除了默认的命令行交互方式外，还支持与流行的集成开发环境 (IDE) 无缝集成。这种集成使得我们可以直接在 主流的 IDE 编辑器 中使用的功能。将接入 IDE，为开发者提供了一种全新的编程体验。" [ref=e2147] [cursor=pointer]:
+              - /url: https://aidev.blog.csdn.net/article/details/149414229
+              - generic [ref=e2148]:
+                - text: 是由 Anthropic 公司推出的一款基于AI 编程神器：
+                - emphasis [ref=e2149]: Claude
+                - emphasis [ref=e2150]: Code
+                - text: 安装与国内免费
+                - emphasis [ref=e2151]: 使用
+                - text: （保姆级
+                - emphasis [ref=e2152]: 教程
+                - text: ）默认支持从终端直接操作，允许开发者通过自然语言指令进行对话，显著提升开发效率。但命令行的这种交互方式的 AI 编程工具对于新手或者非科班技术人员来说，还是有些难度。
+                - emphasis [ref=e2153]: Claude
+                - emphasis [ref=e2154]: Code
+                - text: 除了默认的命令行交互方式外，还支持与流行的集成开发环境
+                - emphasis [ref=e2155]: (
+                - text: IDE) 无缝集成。这种集成使得我们可以直接在 主流的 IDE 编辑器 中
+                - emphasis [ref=e2156]: 使用
+                - text: 的功能。将接入 IDE，为开发者提供了一种全新的编程体验。
+          - generic [ref=e2158]:
+            - generic [ref=e2159]:
+              - link "蒙特卡洛风光场景并通过削减法聚类法得到几个典型场景（包含Matlab代码和Python代码实现）" [ref=e2161] [cursor=pointer]:
+                - /url: https://download.csdn.net/download/weixin_46039719/92863312
+                - generic [ref=e2162]: 蒙特卡洛风光场景并通过削减法聚类法得到几个典型场景（包含Matlab代码和Python代码实现）
+              - generic [ref=e2165]: 05-11
+            - link "内容概要：本文系统阐述了利用蒙特卡洛方法生成风能与太阳能出力的随机场景，并通过场景削减与聚类算法提取典型场景的技术流程，旨在有效降低新能源出力不确定性对电力系统优化调度的影响。文中详细介绍了概率分布建模、风光出力场景的随机模拟、冗余场景的削减以及基于欧式距离的聚类分析等关键步骤，并提供了完整的Matlab和Python代码实现，便于用户复现与应用。该方法最终输出若干代表性典型场景，可广泛应用于微电网规划、储能系统配置、电力市场出清及综合能源系统优化调度等研究领域。; 适合人群：具备电力系统、可再生能源或优化调度背景，熟悉Matlab/Python编程语言，从事相关领域科研工作的研究生、高校教师及工程技术人员。; 使用场景及目标：①解决风光发电出力的强随机性与间歇性问题，为含高比例新能源的电力系统提供可靠的输入边界条件；②掌握蒙特卡洛模拟与场景削减聚类的完整技术链条，提升在不确定性建模方面的研究能力；③将典型场景应用于微电网能量管理、储能优化配置、电力系统随机规划与鲁棒调度等实际工程项目与学术研究中。; 阅读建议：建议结合所提供的代码逐模块运行与调试，深入理解场景生成的概率模型设定、削减算法的阈值选择及聚类过程中的相似性度量方法，重点关注算法参数对最终典型场景数量与代表性的影晌，并可进一步拓展至负荷、电价等其他不确定性因素的场景建模应用。" [ref=e2167] [cursor=pointer]:
+              - /url: https://download.csdn.net/download/weixin_46039719/92863312
+              - generic [ref=e2168]:
+                - text: 内容概要：本文系统阐述了利用蒙特卡洛方法生成风能与太阳能出力的随机场景，并通过场景削减与聚类算法提取典型场景的技术流程，旨在有效降低新能源出力不确定性对电力系统优化调度的影响。文中详细介绍了概率分布建模、风光出力场景的随机模拟、冗余场景的削减以及基于欧式距离的聚类分析等关键步骤，并提供了完整的Matlab和Python代码实现，便于用户复现与应用。该方法最终输出若干代表性典型场景，可广泛应用于微电网规划、储能系统配置、电力市场出清及综合能源系统优化调度等研究领域。; 适合人群：具备电力系统、可再生能源或优化调度背景，熟悉Matlab/Python编程语言，从事相关领域科研工作的研究生、高校教师及工程技术人员。;
+                - emphasis [ref=e2169]: 使用
+                - text: 场景及目标：①解决风光发电出力的强随机性与间歇性问题，为含高比例新能源的电力系统提供可靠的输入边界条件；②掌握蒙特卡洛模拟与场景削减聚类的完整技术链条，提升在不确定性建模方面的研究能力；③将典型场景应用于微电网能量管理、储能优化配置、电力系统随机规划与鲁棒调度等实际工程项目与学术研究中。; 阅读建议：建议结合所提供的代码逐模块运行与调试，深入理解场景生成的概率模型设定、削减算法的阈值选择及聚类过程中的相似性度量方法，重点关注算法参数对最终典型场景数量与代表性的影晌，并可进一步拓展至负荷、电价等其他不确定性因素的场景建模应用。
+          - generic [ref=e2171]:
+            - generic [ref=e2172]:
+              - link "1979-2024年 高精度中国逐日径流量数据 tif" [ref=e2174] [cursor=pointer]:
+                - /url: https://download.csdn.net/download/2401_84585615/92863251
+                - generic [ref=e2175]: 1979-2024年 高精度中国逐日径流量数据 tif
+              - generic [ref=e2178]: 05-11
+            - link "该数据集生成基于气象再分析数据驱动的网格化每日水文时间序列，作为全球洪水预警系统（GloFAS）的核心产品。该数据通过使用ERA5气象再分析数据强制开源LISFLOOD水文模型生成，数据插值至GloFAS分辨率并以24小时时间步长输出。两种不同的ERA5强迫数据导致产生两类水文数据：中间型采用ERA5实时数据（ERA5T）每日更新，综合型使用综合ERA5再分析数据每月更新。 所有GloFAS和EFAS数据集隶属于哥白尼应急管理服务（CEMS）的洪水预报操作体系，由欧盟委员会联合研究中心负责管理、技术实施和发展。这些水文数据集不仅支持洪水监测和预警，还为应急响应、风险管理及气候影响评估提供科学依据。ERA5T数据因其快速获取的优势，使系统具备近实时的洪水监测能力，而综合型数据则通过更高质量的再分析资料确保长期水文模拟的准确性与一致性。 在数据处理过程中，LISFLOOD模型结合地形、土地利用和水系分布等地理信息，提升水文过程的模拟精度。随着数据更新频率的提高与模型不断优化，GloFAS在全球范围内的洪水预警能力逐步增强，能够覆盖偏远地区及缺乏实测数据的流域，为国际灾害防控提供关键支持。 数据名称：高精度中国逐日径流量数据 数据格式：TIF/Excel 空间分布：0.05° 空间范围：全国 时间范围：1979-2024 时间尺度：逐日 所含变量：河流径流量栅格 变量单位：立方米/秒" [ref=e2180] [cursor=pointer]:
+              - /url: https://download.csdn.net/download/2401_84585615/92863251
+              - generic [ref=e2181]:
+                - text: 该数据集生成基于气象再分析数据驱动的网格化每日水文时间序列，作为全球洪水预警系统（GloFAS）的核心产品。该数据通过
+                - emphasis [ref=e2182]: 使用
+                - text: ERA5气象再分析数据强制开源LISFLOOD水文模型生成，数据插值至GloFAS分辨率并以24小时时间步长输出。两种不同的ERA5强迫数据导致产生两类水文数据：中间型采用ERA5实时数据（ERA5T）每日更新，综合型
+                - emphasis [ref=e2183]: 使用
+                - text: 综合ERA5再分析数据每月更新。 所有GloFAS和EFAS数据集隶属于哥白尼应急管理服务（CEMS）的洪水预报操作体系，由欧盟委员会联合研究中心负责管理、技术实施和发展。这些水文数据集不仅支持洪水监测和预警，还为应急响应、风险管理及气候影响评估提供科学依据。ERA5T数据因其快速获取的优势，使系统具备近实时的洪水监测能力，而综合型数据则通过更高质量的再分析资料确保长期水文模拟的准确性与一致性。 在数据处理过程中，LISFLOOD模型结合地形、土地利用和水系分布等地理信息，提升水文过程的模拟精度。随着数据更新频率的提高与模型不断优化，GloFAS在全球范围内的洪水预警能力逐步增强，能够覆盖偏远地区及缺乏实测数据的流域，为国际灾害防控提供关键支持。 数据名称：高精度中国逐日径流量数据 数据格式：TIF/Excel 空间分布：0
+                - emphasis [ref=e2184]: .
+                - text: 05° 空间范围：全国 时间范围：1979-2024 时间尺度：逐日 所含变量：河流径流量栅格 变量单位：立方米/秒
+          - generic [ref=e2186]:
+            - generic [ref=e2187]:
+              - link "SPECTRA染色封片工作站招标参数.docx" [ref=e2189] [cursor=pointer]:
+                - /url: https://download.csdn.net/download/lyh199544/92863818
+                - generic [ref=e2190]:
+                  - text: SPECTRA染色封片工作站招标参数
+                  - emphasis [ref=e2191]: .
+                  - text: docx
+              - generic [ref=e2194]: 05-11
+            - link "SPECTRA染色封片工作站招标参数.docx" [ref=e2196] [cursor=pointer]:
+              - /url: https://download.csdn.net/download/lyh199544/92863818
+              - generic [ref=e2197]:
+                - text: SPECTRA染色封片工作站招标参数
+                - emphasis [ref=e2198]: .
+                - text: docx
+          - generic [ref=e2200]:
+            - generic [ref=e2201]:
+              - link "2014 京东双十二电商数据集（6列，1048575条记录）CSV" [ref=e2203] [cursor=pointer]:
+                - /url: https://download.csdn.net/download/s1t16/92863167
+                - generic [ref=e2204]:
+                  - text: 2014 京东双十
+                  - emphasis [ref=e2205]: 二
+                  - text: 电商数据集（6列，1048575条记录）CSV
+              - generic [ref=e2208]: 05-11
+            - link "包含字段：用户ID、商品ID、行为类型、用户地理哈希、商品类别、时间。" [ref=e2210] [cursor=pointer]:
+              - /url: https://download.csdn.net/download/s1t16/92863167
+              - generic [ref=e2211]: 包含字段：用户ID、商品ID、行为类型、用户地理哈希、商品类别、时间。
+          - generic [ref=e2213]:
+            - generic [ref=e2214]:
+              - link "状态估计【KF、DKF、SMDKF 、CI 、ICF、HCMCI】离散时间线性系统的基于共识的分布式滤波器的稳定性与最优性分析（Matlab代码实现） 最新发布" [ref=e2216] [cursor=pointer]:
+                - /url: https://download.csdn.net/download/Yan_she_He/92864698
+                - generic [ref=e2217]:
+                  - text: 状态估计【KF、DKF、S
+                  - emphasis [ref=e2218]: MD
+                  - text: KF 、CI 、ICF、HCMCI】离散时间线性系统的基于共识的分布式滤波器的稳定性与最优性分析（Matlab代码实现）
+                - generic [ref=e2219]: 最新发布
+              - generic [ref=e2222]: 05-11
+            - link "内容概要：本文系统研究了离散时间线性系统中基于共识的分布式滤波器的稳定性与最优性问题，重点分析了KF、DKF、SMDKF、CI、ICF、HCMCI等多种滤波算法在多智能体系统状态估计中的理论性质与实现机制。研究深入探讨了各算法在信息融合策略、一致性更新规则、网络拓扑依赖性等方面的差异，结合Matlab代码实现了算法仿真与性能对比，验证了其在复杂动态环境下的收敛性、鲁棒性与估计精度，为分布式状态估计提供了理论支撑与实践工具。; 适合人群：具备控制理论、信号处理及多智能体系统基础知识，熟悉Matlab编程，从事自动化、电力系统、机器人或传感器网络等相关领域的研究生、科研人员及工程技术人员。; 使用场景及目标：①应用于多微电网、无人机集群、智能交通等分布式系统的状态估计任务；②为高可靠性、去中心化系统提供滤波算法选型与优化设计依据；③服务于学术研究中的算法复现、性能评估与工程原型开发。; 阅读建议：建议结合所提供的Matlab代码进行仿真实践，重点关注不同滤波器在一致性融合机制与网络通信结构中的实现细节，同时配合相关理论文献深入理解其稳定性证明与最优性推导过程，以实现理论分析与数值实验的深度融合。" [ref=e2224] [cursor=pointer]:
+              - /url: https://download.csdn.net/download/Yan_she_He/92864698
+              - generic [ref=e2225]:
+                - text: 内容概要：本文系统研究了离散时间线性系统中基于共识的分布式滤波器的稳定性与最优性问题，重点分析了KF、DKF、S
+                - emphasis [ref=e2226]: MD
+                - text: KF、CI、ICF、HCMCI等多种滤波算法在多智能体系统状态估计中的理论性质与实现机制。研究深入探讨了各算法在信息融合策略、一致性更新规则、网络拓扑依赖性等方面的差异，结合Matlab代码实现了算法仿真与性能对比，验证了其在复杂动态环境下的收敛性、鲁棒性与估计精度，为分布式状态估计提供了理论支撑与实践工具。; 适合人群：具备控制理论、信号处理及多智能体系统基础知识，熟悉Matlab编程，从事自动化、电力系统、机器人或传感器网络等相关领域的研究生、科研人员及工程技术人员。;
+                - emphasis [ref=e2227]: 使用
+                - text: 场景及目标：①应用于多微电网、无人机集群、智能交通等分布式系统的状态估计任务；②为高可靠性、去中心化系统提供滤波算法选型与优化设计依据；③服务于学术研究中的算法复现、性能评估与工程原型开发。; 阅读建议：建议结合所提供的Matlab代码进行仿真实践，重点关注不同滤波器在一致性融合机制与网络通信结构中的实现细节，同时配合相关理论文献深入理解其稳定性证明与最优性推导过程，以实现理论分析与数值实验的深度融合。
+          - generic [ref=e2229]:
+            - generic [ref=e2230]:
+              - link "C语言完数求解-下载即用.zip" [ref=e2232] [cursor=pointer]:
+                - /url: https://download.csdn.net/download/2604_95968905/92864054
+                - generic [ref=e2233]:
+                  - text: C语言完数求解-下载即用
+                  - emphasis [ref=e2234]: .
+                  - text: zip
+              - generic [ref=e2237]: 05-11
+            - link "源码链接： https://pan.quark.cn/s/a4b39357ea24 Linux程序设计学习代码" [ref=e2239] [cursor=pointer]:
+              - /url: https://download.csdn.net/download/2604_95968905/92864054
+              - generic [ref=e2240]:
+                - text: 源码链接： https://pan
+                - emphasis [ref=e2241]: .
+                - text: quark
+                - emphasis [ref=e2242]: .
+                - text: cn/s/a4b39357ea24 Linux程序设计学习代码
+          - generic [ref=e2244]:
+            - generic [ref=e2245]:
+              - link "盐穴储氢安全监测预警平台解决方案.pptx" [ref=e2247] [cursor=pointer]:
+                - /url: https://download.csdn.net/download/qq_26752779/92863981
+                - generic [ref=e2248]:
+                  - text: 盐穴储氢安全监测预警平台解决方案
+                  - emphasis [ref=e2249]: .
+                  - text: pptx
+              - generic [ref=e2252]: 05-11
+            - link "盐穴储氢安全监测预警平台解决方案.pptx" [ref=e2254] [cursor=pointer]:
+              - /url: https://download.csdn.net/download/qq_26752779/92863981
+              - generic [ref=e2255]:
+                - text: 盐穴储氢安全监测预警平台解决方案
+                - emphasis [ref=e2256]: .
+                - text: pptx
+          - generic [ref=e2258]:
+            - generic [ref=e2259]:
+              - link "ASTER实用拖机软件-下载即用.zip" [ref=e2261] [cursor=pointer]:
+                - /url: https://download.csdn.net/download/2604_95968905/92863181
+                - generic [ref=e2262]:
+                  - text: ASTER实用拖机软件-下载即用
+                  - emphasis [ref=e2263]: .
+                  - text: zip
+              - generic [ref=e2266]: 05-11
+            - link "下载代码方式：https://pan.quark.cn/s/a4b39357ea24 Uppercomputer-20200727 关于 由于上个版本 2021年6月27日推送的出现修改EF后 出现无法修改参数 现在紧急推送 请各位下载最新版本 现在已经推送大数据Web网页看板支持手机与电脑端预览 后端未实现 需要自己部署在IIS 修改SQL路径等操作 小白请止步！ ！ 具体部署方法后面我出出一期视频现在先全面实现Web网页后端数据交互与软件之间的关系 关于本软件其他软件访问上位机通讯基本完成代码在服务器端项目 近期添加了一个比较重要的版本运行开发人员对本软件进行界面设计 不再是固定界面后期会添加上不在软件运行时控件编辑开发人员可在IDE写好代码运行 添加发那科机器人内部协议可直接访问 机器人内部输入输出 寄存器等 后期会添加一些机器人专用控件 本软件说明 本软件适用于工业自动化作为上位机对下位设备进行监控与控制使用简易通过拖拽控件修改参数实现对设备的监控 。 但是需要二次开发 因为不是每个上位机项目都合适 此框架好处就是不用理会软件通讯PLC等设备的协议与链接 只要开发者 对bool 操作的控件 实现了 Buttonbase接口 就可以读写固定PLC设备 文本类型 实现TextBoxbase 接口 就可以读写固定PLC设备 每个控件的刷新状态都在 自定义Uppercomputer20200727.控件重做.控件类基文件夹下 bool类型是：Buttonbase 文本类型是：TextBox_base 。 后续会持续添加控件实现多元化,更贴合，更方便，更快捷的设计理念目前支持简单常用的控件-支持三菱PLC--MC协议(3E帧)--西门子S7协议MODBUS TCP协..." [ref=e2268] [cursor=pointer]:
+              - /url: https://download.csdn.net/download/2604_95968905/92863181
+              - generic [ref=e2269]:
+                - text: 下载代码方式：https://pan
+                - emphasis [ref=e2270]: .
+                - text: quark
+                - emphasis [ref=e2271]: .
+                - text: cn/s/a4b39357ea24 Uppercomputer-20200727 关于 由于上个版本 2021年6月27日推送的出现修改EF后 出现无法修改参数 现在紧急推送 请各位下载最新版本 现在已经推送大数据Web网页看板支持手机与电脑端预览 后端未实现 需要自己部署在IIS 修改SQL路径等操作 小白请止步！ ！ 具体部署方法后面我出出一期视频现在先全面实现Web网页后端数据交互与软件之间的关系 关于本软件其他软件访问上位机通讯基本完成代码在服务器端项目 近期添加了一个比较重要的版本运行开发人员对本软件进行界面设计 不再是固定界面后期会添加上不在软件运行时控件编辑开发人员可在IDE写好代码运行 添加发那科机器人内部协议可直接访问 机器人内部输入输出 寄存器等 后期会添加一些机器人专用控件 本软件说明 本软件适用于工业自动化作为上位机对下位设备进行监控与控制
+                - emphasis [ref=e2272]: 使用
+                - text: 简易通过拖拽控件修改参数实现对设备的监控 。 但是需要
+                - emphasis [ref=e2273]: 二
+                - text: 次开发 因为不是每个上位机项目都合适 此框架好处就是不用理会软件通讯PLC等设备的协议与链接 只要开发者 对bool 操作的控件 实现了 Buttonbase接口 就可以读写固定PLC设备 文本类型 实现TextBoxbase 接口 就可以读写固定PLC设备 每个控件的刷新状态都在 自定义Uppercomputer20200727
+                - emphasis [ref=e2274]: .
+                - text: 控件重做
+                - emphasis [ref=e2275]: .
+                - text: 控件类基文件夹下 bool类型是：Buttonbase 文本类型是：TextBox_base 。 后续会持续添加控件实现多元化,更贴合，更方便，更快捷的设计理念目前支持简单常用的控件-支持三菱PLC--MC协议
+                - emphasis [ref=e2276]: (
+                - text: 3E帧)--西门子S7协议MODBUS TCP协
+                - emphasis [ref=e2277]: .
+                - emphasis [ref=e2278]: .
+                - emphasis [ref=e2279]: .
+        - generic [ref=e2282]:
+          - list [ref=e2283]:
+            - listitem [ref=e2284]:
+              - link "关于我们" [ref=e2285] [cursor=pointer]:
+                - /url: //www.csdn.net/company/index.html#about
+            - listitem [ref=e2286]:
+              - link "招贤纳士" [ref=e2287] [cursor=pointer]:
+                - /url: //www.csdn.net/company/index.html#recruit
+            - listitem [ref=e2288]:
+              - link "商务合作" [ref=e2289] [cursor=pointer]:
+                - /url: https://fsc-p05.txscrm.com/T8PN8SFII7W
+            - listitem [ref=e2290]:
+              - link "寻求报道" [ref=e2291] [cursor=pointer]:
+                - /url: //marketing.csdn.net/questions/Q2202181748074189855
+            - listitem [ref=e2292]:
+              - generic [ref=e2293]: 400-660-0108
+            - listitem [ref=e2294]:
+              - link "kefu@csdn.net" [ref=e2295] [cursor=pointer]:
+                - /url: mailto:webmaster@csdn.net
+            - listitem [ref=e2296]:
+              - link "在线客服" [ref=e2297] [cursor=pointer]:
+                - /url: https://csdn.s2.udesk.cn/im_client/?web_plugin_id=29181
+            - listitem [ref=e2298]: 工作时间 8:30-22:00
+          - list [ref=e2299]:
+            - listitem [ref=e2300]:
+              - link "公安备案号11010502030143" [ref=e2301] [cursor=pointer]:
+                - /url: http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=11010502030143
+            - listitem [ref=e2302]:
+              - link "京ICP备19004658号" [ref=e2303] [cursor=pointer]:
+                - /url: http://beian.miit.gov.cn/publish/query/indexFirst.action
+            - listitem [ref=e2304]:
+              - link "京网文〔2020〕1039-165号" [ref=e2305] [cursor=pointer]:
+                - /url: https://csdnimg.cn/release/live_fe/culture_license.png
+            - listitem [ref=e2306]:
+              - link "经营性网站备案信息" [ref=e2307] [cursor=pointer]:
+                - /url: https://csdnimg.cn/cdn/content-toolbar/csdn-ICP.png
+            - listitem [ref=e2308]:
+              - link "北京互联网违法和不良信息举报中心" [ref=e2309] [cursor=pointer]:
+                - /url: http://www.bjjubao.org/
+            - listitem [ref=e2310]:
+              - link "家长监护" [ref=e2311] [cursor=pointer]:
+                - /url: https://download.csdn.net/tutelage/home
+            - listitem [ref=e2312]:
+              - link "网络110报警服务" [ref=e2313] [cursor=pointer]:
+                - /url: https://cyberpolice.mps.gov.cn/
+            - listitem [ref=e2314]:
+              - link "中国互联网举报中心" [ref=e2315] [cursor=pointer]:
+                - /url: http://www.12377.cn/
+            - listitem [ref=e2316]:
+              - link "Chrome商店下载" [ref=e2317] [cursor=pointer]:
+                - /url: https://chrome.google.com/webstore/detail/csdn%E5%BC%80%E5%8F%91%E8%80%85%E5%8A%A9%E6%89%8B/kfkdboecolemdjodhmhmcibjocfopejo?hl=zh-CN
+            - listitem [ref=e2318]:
+              - link "账号管理规范" [ref=e2319] [cursor=pointer]:
+                - /url: https://blog.csdn.net/blogdevteam/article/details/126135357
+            - listitem [ref=e2320]:
+              - link "版权与免责声明" [ref=e2321] [cursor=pointer]:
+                - /url: https://www.csdn.net/company/index.html#statement
+            - listitem [ref=e2322]:
+              - link "版权申诉" [ref=e2323] [cursor=pointer]:
+                - /url: https://blog.csdn.net/blogdevteam/article/details/90369522
+            - listitem [ref=e2324]:
+              - link "出版物许可证" [ref=e2325] [cursor=pointer]:
+                - /url: https://img-home.csdnimg.cn/images/20250103023206.png
+            - listitem [ref=e2326]:
+              - link "营业执照" [ref=e2327] [cursor=pointer]:
+                - /url: https://img-home.csdnimg.cn/images/20250103023201.png
+            - listitem [ref=e2328]: ©1999-2026北京创新乐知网络技术有限公司
+      - complementary [ref=e2329]:
+        - generic [ref=e2330]:
+          - generic [ref=e2331]:
+            - link [ref=e2333] [cursor=pointer]:
+              - /url: https://blog.csdn.net/qq_20236937
+              - img [ref=e2334]
+            - generic [ref=e2335]:
+              - link "Slow菜鸟" [ref=e2337] [cursor=pointer]:
+                - /url: https://blog.csdn.net/qq_20236937
+                - generic [ref=e2338]: Slow菜鸟
+              - generic [ref=e2339]:
+                - paragraph [ref=e2340]:
+                  - text: 博客等级
+                  - img [ref=e2341]
+                - generic "已加入 CSDN 12年" [ref=e2342]: 码龄12年
+          - generic [ref=e2343]:
+            - link "301 原创" [ref=e2345] [cursor=pointer]:
+              - /url: https://blog.csdn.net/qq_20236937
+              - definition [ref=e2346]: "301"
+              - term [ref=e2347]: 原创
+            - generic "4585" [ref=e2348]:
+              - definition [ref=e2349]: "4585"
+              - term [ref=e2350]: 点赞
+            - generic "7039" [ref=e2351]:
+              - definition [ref=e2352]: "7039"
+              - term [ref=e2353]: 收藏
+            - generic "1472" [ref=e2354]:
+              - definition [ref=e2355]: "1472"
+              - term [ref=e2356]: 粉丝
+          - generic [ref=e2357]:
+            - generic [ref=e2359] [cursor=pointer]: 关注
+            - link "私信" [ref=e2361] [cursor=pointer]:
+              - /url: https://im.csdn.net/chat/qq_20236937
+        - generic [ref=e2362]:
+          - generic [ref=e2363]:
+            - link [ref=e2836] [cursor=pointer]:
+              - /url: https://mp.csdn.net/vip?utm_source=902253762
+            - link [ref=e2365] [cursor=pointer]:
+              - /url: "https://taotoken.net/?utm_source=tt_blog_20a10 "
+            - link [ref=e2367] [cursor=pointer]:
+              - /url: https://mp.csdn.net/vip?utm_source=902253762
+            - link [ref=e2838] [cursor=pointer]:
+              - /url: "https://taotoken.net/?utm_source=tt_blog_20a10 "
+          - generic [ref=e2839]:
+            - button "Go to slide 1" [ref=e2840] [cursor=pointer]
+            - button "Go to slide 2" [ref=e2841] [cursor=pointer]
+          - button "Previous slide" [ref=e2842] [cursor=pointer]
+          - button "Next slide" [ref=e2843] [cursor=pointer]
+        - generic [ref=e2372]:
+          - generic [ref=e2373]:
+            - link "万维广告联盟" [ref=e2374] [cursor=pointer]:
+              - /url: https://wwads.cn/click/bundle?code=ZjFoPCNYcRk0zEAbEHK4LNvDuOuAJh
+              - img "万维广告联盟" [ref=e2375]
+            - generic [ref=e2376]:
+              - link "📊 开源免费的 BI 工具。仅需 5 分钟，数据变大屏。众多精美可视化大屏模板等你来选。" [ref=e2377] [cursor=pointer]:
+                - /url: https://wwads.cn/click/bundle?code=ZjFoPCNYcRk0zEAbEHK4LNvDuOuAJh
+              - link "广告" [ref=e2378] [cursor=pointer]:
+                - /url: https://wwads.cn/?utm_source=property-175&utm_medium=footer
+                - img [ref=e2379]
+                - generic [ref=e2380]: 广告
+            - generic "隐藏广告" [ref=e2381] [cursor=pointer]:
+              - img [ref=e2382]
+          - img
+        - generic [ref=e2383]:
+          - heading "TA的精选" [level=3] [ref=e2384]
+          - generic [ref=e2385]:
+            - list [ref=e2386]:
+              - listitem [ref=e2387]:
+                - link "新 Spring Cloud 教程（二） | 搭建SpringCloudAlibaba（新）" [ref=e2388] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/article/details/161060011
+                - paragraph [ref=e2389]: 260 阅读
+              - listitem [ref=e2390]:
+                - link "新 Skill 学习篇（十）| 编排框架 · 五大编排框架 · 全方位决策指南" [ref=e2391] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/article/details/160925343
+                - paragraph [ref=e2392]: 406 阅读
+              - listitem [ref=e2393]:
+                - link "热 SVN 下载与安装（超简单）！！！" [ref=e2394] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/article/details/118958965
+                - paragraph [ref=e2395]: 123974 阅读
+              - listitem [ref=e2396]:
+                - link "热 全面详解Maven的配置文件settings.xml" [ref=e2397] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/article/details/135913803
+                - paragraph [ref=e2398]: 40463 阅读
+              - listitem [ref=e2399]:
+                - link "热 全面详解Maven的配置文件pom.xml（含常用plugin）" [ref=e2400] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/article/details/135893883
+                - paragraph [ref=e2401]: 36143 阅读
+            - paragraph [ref=e2402]:
+              - link "查看更多" [ref=e2403] [cursor=pointer]:
+                - /url: https://blog.csdn.net/qq_20236937?type=blog
+        - generic [ref=e2404]:
+          - heading "大家在看" [level=3] [ref=e2405]
+          - list [ref=e2407]:
+            - listitem [ref=e2408]:
+              - link "Web3钱包开发：使用Ethers.js集成MetaMask 538" [ref=e2409] [cursor=pointer]:
+                - /url: https://blog.csdn.net/qq_40635035/article/details/161060330
+            - listitem [ref=e2410]:
+              - link "ACM/ICPC 算法竞赛模板与速查手册（C++17）" [ref=e2411] [cursor=pointer]:
+                - /url: https://blog.csdn.net/2301_78135224/article/details/161091123
+            - listitem [ref=e2412]:
+              - link "【PI_电源环路】快速掌握用PSM3750评估电源环路稳定性" [ref=e2413] [cursor=pointer]:
+                - /url: https://blog.csdn.net/2601_95491777/article/details/161091075
+            - listitem [ref=e2414]:
+              - link "2026年八大商家预约小程序：助力效率提升新体验" [ref=e2415] [cursor=pointer]:
+                - /url: https://blog.csdn.net/Dai071728/article/details/161091926
+            - listitem [ref=e2416]:
+              - link "深入 YUV 体系：从人眼生物学到嵌入式图像转换 96" [ref=e2417] [cursor=pointer]:
+                - /url: https://blog.csdn.net/weixin_45481112/article/details/161088391
+        - generic [ref=e2418]:
+          - heading "TA的创作历程" [level=3] [ref=e2419]
+          - generic [ref=e2421]:
+            - generic [ref=e2422]: "2026"
+            - generic [ref=e2423]:
+              - button "Previous slide" [disabled] [ref=e2844] [cursor=pointer]:
+                - img [ref=e2425]
+              - generic [ref=e2428]:
+                - link "05月 27篇" [ref=e2430] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937?type=blog&year=2026&month=05
+                  - generic [ref=e2431]: 05月
+                  - generic [ref=e2432]: 27篇
+                - link "04月 27篇" [ref=e2434] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937?type=blog&year=2026&month=04
+                  - generic [ref=e2435]: 04月
+                  - generic [ref=e2436]: 27篇
+                - link "03月 12篇" [ref=e2438] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937?type=blog&year=2026&month=03
+                  - generic [ref=e2439]: 03月
+                  - generic [ref=e2440]: 12篇
+                - link "02月 4篇" [ref=e2442] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937?type=blog&year=2026&month=02
+                  - generic [ref=e2443]: 02月
+                  - generic [ref=e2444]: 4篇
+                - link "01月 17篇" [ref=e2446] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937?type=blog&year=2026&month=01
+                  - generic [ref=e2447]: 01月
+                  - generic [ref=e2448]: 17篇
+              - button "Next slide" [ref=e2845] [cursor=pointer]:
+                - img [ref=e2450]
+            - generic [ref=e2452]: 历年创作
+            - generic [ref=e2453]:
+              - button "Previous slide" [disabled] [ref=e2846] [cursor=pointer]:
+                - img [ref=e2455]
+              - generic [ref=e2458]:
+                - link "2025年 80篇" [ref=e2460] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937?type=blog&year=2025&month=12
+                - link "2024年 122篇" [ref=e2462] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937?type=blog&year=2024&month=12
+                - link "2023年 27篇" [ref=e2464] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937?type=blog&year=2023&month=12
+                - link "2022年 13篇" [ref=e2466] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937?type=blog&year=2022&month=12
+                - link "2021年 5篇" [ref=e2468] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937?type=blog&year=2021&month=07
+              - button "Next slide" [ref=e2847] [cursor=pointer]:
+                - img [ref=e2470]
+    - complementary [ref=e2849]:
+      - generic [ref=e2850]:
+        - generic [ref=e2852]:
+          - heading "目录" [level=3] [ref=e2853]
+          - list [ref=e2858]:
+            - listitem [ref=e2859]:
+              - link "Claude Code教程（二）| Claude Code的使用技巧" [ref=e2860] [cursor=pointer]:
+                - /url: "#t0"
+            - listitem [ref=e2861]:
+              - link "一、快速入门" [ref=e2862] [cursor=pointer]:
+                - /url: "#t1"
+            - listitem [ref=e2863]:
+              - list [ref=e2864]:
+                - listitem [ref=e2865]:
+                  - link "1.1 安装与认证" [ref=e2866] [cursor=pointer]:
+                    - /url: "#t2"
+                - listitem [ref=e2867]:
+                  - link "1.2 创建 CLAUDE.md 文件" [ref=e2868] [cursor=pointer]:
+                    - /url: "#t3"
+                - listitem [ref=e2869]:
+                  - link "1.3 配置工具权限" [ref=e2870] [cursor=pointer]:
+                    - /url: "#t4"
+                - listitem [ref=e2871]:
+                  - link "1.4 开启免授权模式" [ref=e2872] [cursor=pointer]:
+                    - /url: "#t5"
+            - listitem [ref=e2873]:
+              - link "二、高效提需求" [ref=e2874] [cursor=pointer]:
+                - /url: "#t6"
+            - listitem [ref=e2875]:
+              - list [ref=e2876]:
+                - listitem [ref=e2877]:
+                  - link "2.1 先理解项目再动手" [ref=e2878] [cursor=pointer]:
+                    - /url: "#t7"
+                - listitem [ref=e2879]:
+                  - link "2.2 需求描述要具体" [ref=e2880] [cursor=pointer]:
+                    - /url: "#t8"
+                - listitem [ref=e2881]:
+                  - link "2.3 复杂需求分步执行" [ref=e2882] [cursor=pointer]:
+                    - /url: "#t9"
+            - listitem [ref=e2883]:
+              - link "三、官方推荐工作流" [ref=e2884] [cursor=pointer]:
+                - /url: "#t10"
+            - listitem [ref=e2885]:
+              - list [ref=e2886]:
+                - listitem [ref=e2887]:
+                  - link "3.1 探索 → 计划 → 编码 → 提交" [ref=e2888] [cursor=pointer]:
+                    - /url: "#t11"
+                - listitem [ref=e2889]:
+                  - link "3.2 测试驱动开发（TDD）" [ref=e2890] [cursor=pointer]:
+                    - /url: "#t12"
+                - listitem [ref=e2891]:
+                  - link "3.3 视觉驱动开发" [ref=e2892] [cursor=pointer]:
+                    - /url: "#t13"
+            - listitem [ref=e2893]:
+              - link "四、深度思考模式" [ref=e2894] [cursor=pointer]:
+                - /url: "#t14"
+            - listitem [ref=e2895]:
+              - link "五、实操技巧" [ref=e2896] [cursor=pointer]:
+                - /url: "#t15"
+            - listitem [ref=e2897]:
+              - list [ref=e2898]:
+                - listitem [ref=e2899]:
+                  - link "5.1 发送图片处理" [ref=e2900] [cursor=pointer]:
+                    - /url: "#t16"
+                - listitem [ref=e2901]:
+                  - link "5.2 恢复历史会话" [ref=e2902] [cursor=pointer]:
+                    - /url: "#t17"
+                - listitem [ref=e2903]:
+                  - link "5.3 编辑记忆文件" [ref=e2904] [cursor=pointer]:
+                    - /url: "#t18"
+                - listitem [ref=e2905]:
+                  - link "5.4 上下文管理" [ref=e2906] [cursor=pointer]:
+                    - /url: "#t19"
+            - listitem [ref=e2907]:
+              - link "六、斜杠命令完整参考" [ref=e2908] [cursor=pointer]:
+                - /url: "#t20"
+            - listitem [ref=e2909]:
+              - list [ref=e2910]:
+                - listitem [ref=e2911]:
+                  - link "6.1 核心命令" [ref=e2912] [cursor=pointer]:
+                    - /url: "#t21"
+                - listitem [ref=e2913]:
+                  - link "6.2 会话管理" [ref=e2914] [cursor=pointer]:
+                    - /url: "#t22"
+                - listitem [ref=e2915]:
+                  - link "6.3 模型与费用" [ref=e2916] [cursor=pointer]:
+                    - /url: "#t23"
+                - listitem [ref=e2917]:
+                  - link "6.4 配置与状态" [ref=e2918] [cursor=pointer]:
+                    - /url: "#t24"
+                - listitem [ref=e2919]:
+                  - link "6.5 开发工具" [ref=e2920] [cursor=pointer]:
+                    - /url: "#t25"
+            - listitem [ref=e2921]:
+              - link "七、与工具系统交互" [ref=e2922] [cursor=pointer]:
+                - /url: "#t26"
+            - listitem [ref=e2923]:
+              - list [ref=e2924]:
+                - listitem [ref=e2925]:
+                  - link "7.1 Git 交互" [ref=e2926] [cursor=pointer]:
+                    - /url: "#t27"
+                - listitem [ref=e2927]:
+                  - link "7.2 GitHub 交互" [ref=e2928] [cursor=pointer]:
+                    - /url: "#t28"
+                - listitem [ref=e2929]:
+                  - link "7.3 Linux/Shell 命令助手" [ref=e2930] [cursor=pointer]:
+                    - /url: "#t29"
+                - listitem [ref=e2931]:
+                  - link "7.4 代码库问答" [ref=e2932] [cursor=pointer]:
+                    - /url: "#t30"
+            - listitem [ref=e2933]:
+              - link "八、模型切换与费用" [ref=e2934] [cursor=pointer]:
+                - /url: "#t31"
+            - listitem [ref=e2935]:
+              - list [ref=e2936]:
+                - listitem [ref=e2937]:
+                  - link "8.1 模型切换" [ref=e2938] [cursor=pointer]:
+                    - /url: "#t32"
+                - listitem [ref=e2939]:
+                  - link "8.2 查看消耗" [ref=e2940] [cursor=pointer]:
+                    - /url: "#t33"
+                - listitem [ref=e2941]:
+                  - link "8.3 订阅说明" [ref=e2942] [cursor=pointer]:
+                    - /url: "#t34"
+            - listitem [ref=e2943]:
+              - link "九、自定义命令" [ref=e2944] [cursor=pointer]:
+                - /url: "#t35"
+            - listitem [ref=e2945]:
+              - list [ref=e2946]:
+                - listitem [ref=e2947]:
+                  - link "9.1 命令类型" [ref=e2948] [cursor=pointer]:
+                    - /url: "#t36"
+                - listitem [ref=e2949]:
+                  - link "9.2 创建项目级命令" [ref=e2950] [cursor=pointer]:
+                    - /url: "#t37"
+                - listitem [ref=e2951]:
+                  - link "9.3 创建用户级命令" [ref=e2952] [cursor=pointer]:
+                    - /url: "#t38"
+                - listitem [ref=e2953]:
+                  - link "9.4 高级功能" [ref=e2954] [cursor=pointer]:
+                    - /url: "#t39"
+            - listitem [ref=e2955]:
+              - link "十、快捷键速查" [ref=e2956] [cursor=pointer]:
+                - /url: "#t40"
+            - listitem [ref=e2957]:
+              - link "附录：多 Claude 工作流" [ref=e2958] [cursor=pointer]:
+                - /url: "#t41"
+            - listitem [ref=e2959]:
+              - list [ref=e2960]:
+                - listitem [ref=e2961]:
+                  - link "一个写代码，一个审查" [ref=e2962] [cursor=pointer]:
+                    - /url: "#t42"
+                - listitem [ref=e2963]:
+                  - link "使用 Git Worktrees 并行开发" [ref=e2964] [cursor=pointer]:
+                    - /url: "#t43"
+            - listitem [ref=e2965]:
+              - link "参考资料" [ref=e2966] [cursor=pointer]:
+                - /url: "#t44"
+          - paragraph [ref=e2967] [cursor=pointer]: 展开全部
+        - generic [ref=e2970]:
+          - generic [ref=e2971] [cursor=pointer]:
+            - img [ref=e2972]
+            - generic [ref=e2973]: 新一代人工智能开源社区
+          - generic [ref=e2975]:
+            - generic [ref=e2976]:
+              - img "gift" [ref=e2978]
+              - generic [ref=e2980]:
+                - generic [ref=e2981]: 首次登录/注册领取200万Token
+                - generic [ref=e2982]: 企业级模型推理API服务
+            - generic [ref=e2983]:
+              - generic [ref=e2984]: · 支持以下模型使用 ·
+              - generic [ref=e2985]:
+                - generic [ref=e2986]:
+                  - img "DeepSeek-V3.1-Base" [ref=e2987]
+                  - generic [ref=e2988]: DeepSeek
+                - generic [ref=e2989]:
+                  - img "Kimi-K2-Instruct" [ref=e2990]
+                  - generic [ref=e2991]: Kimi
+                - generic [ref=e2992]:
+                  - img "Qwen-Image" [ref=e2993]
+                  - generic [ref=e2994]: Qwen
+            - generic [ref=e2997] [cursor=pointer]:
+              - generic [ref=e2998]: 限时领取
+              - img [ref=e2999]
+        - generic [ref=e3002]:
+          - generic [ref=e3003]:
+            - link "万维广告联盟" [ref=e3004] [cursor=pointer]:
+              - /url: https://wwads.cn/click/bundle?code=ZjFoPCNYcRk0zEAbEHK4LNvDuOuAJh
+              - img "万维广告联盟" [ref=e3005]
+            - generic [ref=e3006]:
+              - link "📊 开源免费的 BI 工具。仅需 5 分钟，数据变大屏。众多精美可视化大屏模板等你来选。" [ref=e3007] [cursor=pointer]:
+                - /url: https://wwads.cn/click/bundle?code=ZjFoPCNYcRk0zEAbEHK4LNvDuOuAJh
+              - link "广告" [ref=e3008] [cursor=pointer]:
+                - /url: https://wwads.cn/?utm_source=property-175&utm_medium=footer
+                - img [ref=e3009]
+                - generic [ref=e3010]: 广告
+            - generic "隐藏广告" [ref=e3011] [cursor=pointer]:
+              - img [ref=e3012]
+          - img
+        - generic [ref=e3013]:
+          - generic [ref=e3014]:
+            - term [ref=e3015]: 上一篇：
+            - definition [ref=e3016]:
+              - link "2025 IDEA 高效开发必备插件大全" [ref=e3017] [cursor=pointer]:
+                - /url: https://blog.csdn.net/qq_20236937/article/details/154546017
+          - generic [ref=e3018]:
+            - term [ref=e3019]: 下一篇：
+            - definition [ref=e3020]:
+              - link "Claude Code教程（三） | Claude Code中配置GLM-4.6" [ref=e3021] [cursor=pointer]:
+                - /url: https://blog.csdn.net/qq_20236937/article/details/154577837
+        - generic [ref=e3022]:
+          - heading "分类专栏" [level=3] [ref=e3023]
+          - generic [ref=e3024]:
+            - list [ref=e3026]:
+              - listitem [ref=e3027]:
+                - link "Skill 学习篇" [ref=e3028] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_13163310.html
+                  - generic [ref=e3030]: Skill 学习篇
+                - generic [ref=e3031]: 14篇
+              - listitem [ref=e3032]:
+                - link "Java工业级缓存实战系列" [ref=e3033] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_13113598.html
+                  - generic [ref=e3035]: Java工业级缓存实战系列
+                - generic [ref=e3036]: 2篇
+              - listitem [ref=e3037]:
+                - link "Java 项目基础架构" [ref=e3038] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_13099058.html
+                  - generic [ref=e3040]: Java 项目基础架构
+                - generic [ref=e3041]: 6篇
+              - listitem [ref=e3042]:
+                - link "Java学习篇" [ref=e3043] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12820847.html
+                  - generic [ref=e3045]: Java学习篇
+                - generic [ref=e3046]: 1篇
+              - listitem [ref=e3047]:
+                - link "Java开发规范篇" [ref=e3048] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_13094975.html
+                  - generic [ref=e3050]: Java开发规范篇
+                - generic [ref=e3051]: 13篇
+              - listitem [ref=e3052]:
+                - link "Java 开发环境安装指南" [ref=e3053] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_13085976.html
+                  - generic [ref=e3055]: Java 开发环境安装指南
+                - generic [ref=e3056]: 10篇
+              - listitem [ref=e3057]:
+                - link "Java后端常用技术篇" [ref=e3058] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_13085573.html
+                  - generic [ref=e3060]: Java后端常用技术篇
+                - generic [ref=e3061]: 6篇
+              - listitem [ref=e3062]:
+                - link "Java基础学习篇" [ref=e3063] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12754231.html
+                  - generic [ref=e3065]: Java基础学习篇
+                - generic [ref=e3066]: 31篇
+              - listitem [ref=e3067]:
+                - link "SpringBoot学习篇" [ref=e3068] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12733544.html
+                  - generic [ref=e3070]: SpringBoot学习篇
+                - generic [ref=e3071]: 43篇
+              - listitem [ref=e3072]:
+                - link "SpringCloud学习篇" [ref=e3073] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12792799.html
+                  - generic [ref=e3075]: SpringCloud学习篇
+                - generic [ref=e3076]: 5篇
+              - listitem [ref=e3077]:
+                - link "Dubbo学习篇" [ref=e3078] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12810101.html
+                  - generic [ref=e3080]: Dubbo学习篇
+                - generic [ref=e3081]: 2篇
+              - listitem [ref=e3082]:
+                - link "RabbitMQ学习篇" [ref=e3083] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12820852.html
+                  - generic [ref=e3085]: RabbitMQ学习篇
+                - generic [ref=e3086]: 4篇
+              - listitem [ref=e3087]:
+                - link "Elasticsearc学习篇" [ref=e3088] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12809441.html
+                  - generic [ref=e3090]: Elasticsearc学习篇
+                - generic [ref=e3091]: 5篇
+              - listitem [ref=e3092]:
+                - link "MinIO学习篇" [ref=e3093] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_13088613.html
+                  - generic [ref=e3095]: MinIO学习篇
+                - generic [ref=e3096]: 4篇
+              - listitem [ref=e3097]:
+                - link "Java设计模式学习篇" [ref=e3098] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12820842.html
+                  - generic [ref=e3100]: Java设计模式学习篇
+                - generic [ref=e3101]: 6篇
+              - listitem [ref=e3102]:
+                - link "分布式学习篇" [ref=e3103] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12861712.html
+                  - generic [ref=e3105]: 分布式学习篇
+                - generic [ref=e3106]: 3篇
+              - listitem [ref=e3107]:
+                - link "SSM学习篇" [ref=e3108] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12826357.html
+                  - generic [ref=e3110]: SSM学习篇
+                - generic [ref=e3111]: 1篇
+              - listitem [ref=e3112]:
+                - link "java杂谈" [ref=e3113] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12169180.html
+                  - generic [ref=e3115]: java杂谈
+                - generic [ref=e3116]: 9篇
+              - listitem [ref=e3117]:
+                - link "前端学习篇" [ref=e3118] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_11176620.html
+                  - generic [ref=e3120]: 前端学习篇
+                - generic [ref=e3121]: 20篇
+              - listitem [ref=e3122]:
+                - link "Vue学习篇" [ref=e3123] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12915126.html
+                  - generic [ref=e3125]: Vue学习篇
+              - listitem [ref=e3126]:
+                - link "UniApp学习篇" [ref=e3127] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_11766907.html
+                  - generic [ref=e3129]: UniApp学习篇
+              - listitem [ref=e3130]:
+                - link "微信小程序学习篇" [ref=e3131] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12830276.html
+                  - generic [ref=e3133]: 微信小程序学习篇
+                - generic [ref=e3134]: 5篇
+              - listitem [ref=e3135]:
+                - link "数据库学习篇" [ref=e3136] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_9603045.html
+                  - generic [ref=e3138]: 数据库学习篇
+                - generic [ref=e3139]: 7篇
+              - listitem [ref=e3140]:
+                - link "AI编码助手" [ref=e3141] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12831660.html
+                  - generic [ref=e3143]: AI编码助手
+                - generic [ref=e3144]: 8篇
+              - listitem [ref=e3145]:
+                - link "Cursor学习篇" [ref=e3146] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_13082905.html
+                  - generic [ref=e3148]: Cursor学习篇
+                - generic [ref=e3149]: 3篇
+              - listitem [ref=e3150]:
+                - link "Claude Code学习篇" [ref=e3151] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_13082901.html
+                  - generic [ref=e3153]: Claude Code学习篇
+                - generic [ref=e3154]: 14篇
+              - listitem [ref=e3155]:
+                - link "Codex学习篇" [ref=e3156] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_13136630.html
+                  - generic [ref=e3158]: Codex学习篇
+                - generic [ref=e3159]: 13篇
+              - listitem [ref=e3160]:
+                - link "Antigravity学习篇" [ref=e3161] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_13119606.html
+                  - generic [ref=e3163]: Antigravity学习篇
+                - generic [ref=e3164]: 4篇
+              - listitem [ref=e3165]:
+                - link "Kiro学习篇" [ref=e3166] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_13120256.html
+                  - generic [ref=e3168]: Kiro学习篇
+                - generic [ref=e3169]: 5篇
+              - listitem [ref=e3170]:
+                - link "Open Code学习篇" [ref=e3171] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_13118038.html
+                  - generic [ref=e3173]: Open Code学习篇
+                - generic [ref=e3174]: 6篇
+              - listitem [ref=e3175]:
+                - link "OpenClaw(小龙虾)学习篇" [ref=e3176] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_13152775.html
+                  - generic [ref=e3178]: OpenClaw(小龙虾)学习篇
+                - generic [ref=e3179]: 8篇
+              - listitem [ref=e3180]:
+                - link "Dify开发平台" [ref=e3181] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_13034054.html
+                  - generic [ref=e3183]: Dify开发平台
+              - listitem [ref=e3184]:
+                - link "若依管理系统" [ref=e3185] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12682213.html
+                  - generic [ref=e3187]: 若依管理系统
+                - generic [ref=e3188]: 10篇
+              - listitem [ref=e3189]:
+                - link "Docker" [ref=e3190] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12691361.html
+                  - generic [ref=e3192]: Docker
+                - generic [ref=e3193]: 14篇
+              - listitem [ref=e3194]:
+                - link "maven" [ref=e3195] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12572334.html
+                  - generic [ref=e3197]: maven
+                - generic [ref=e3198]: 3篇
+              - listitem [ref=e3199]:
+                - link "Linux" [ref=e3200] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12555808.html
+                  - generic [ref=e3202]: Linux
+                - generic [ref=e3203]: 2篇
+              - listitem [ref=e3204]:
+                - link "nginx" [ref=e3205] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12119144.html
+                  - generic [ref=e3207]: nginx
+                - generic [ref=e3208]: 5篇
+              - listitem [ref=e3209]:
+                - link "部署" [ref=e3210] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_12182471.html
+                  - generic [ref=e3212]: 部署
+                - generic [ref=e3213]: 1篇
+              - listitem [ref=e3214]:
+                - link "新人入职开发环境" [ref=e3215] [cursor=pointer]:
+                  - /url: https://blog.csdn.net/qq_20236937/category_11173676.html
+                  - generic [ref=e3217]: 新人入职开发环境
+                - generic [ref=e3218]: 2篇
+            - paragraph:
+              - generic [ref=e3219] [cursor=pointer]: 展开全部
+  - generic [ref=e2818]:
+    - paragraph [ref=e2819]: 登录后您可以享受以下权益：
+    - list [ref=e2820]:
+      - listitem [ref=e2821]: 免费复制代码
+      - listitem [ref=e2822]: 和博主大V互动
+      - listitem [ref=e2823]: 下载海量资源
+      - listitem [ref=e2824]: 发动态/写文章/加入社区
+    - generic [ref=e2825] [cursor=pointer]: ×
+    - button "立即登录" [ref=e2826] [cursor=pointer]
+  - link [ref=e3220] [cursor=pointer]:
+    - /url: https://ai.csdn.net/chat?utm_source=cknow_pc_blogdetail&spm=1001.2101.3001.10583
+  - text: prev next

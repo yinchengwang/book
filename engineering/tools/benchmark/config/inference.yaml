@@ -1,0 +1,54 @@
+# VectorBench Embedding 模型配置
+
+embedding_models:
+  # Mock 模型（无需依赖）
+  mock:
+    mini-lm-6:
+      dim: 384
+      avg_ms: 8.0
+      description: "Mock MiniLM-L6 (no real inference)"
+    mini-lm-12:
+      dim: 384
+      avg_ms: 15.0
+      description: "Mock MiniLM-L12 (no real inference)"
+    bge-small:
+      dim: 512
+      avg_ms: 5.0
+      description: "Mock BGE-small (no real inference)"
+    bge-base:
+      dim: 768
+      avg_ms: 18.0
+      description: "Mock BGE-base (no real inference)"
+    e5-small:
+      dim: 384
+      avg_ms: 4.5
+      description: "Mock E5-small (no real inference)"
+    e5-base:
+      dim: 768
+      avg_ms: 16.0
+      description: "Mock E5-base (no real inference)"
+
+  # 真实模型（需要 sentence-transformers）
+  real:
+    all-MiniLM-L6-v2:
+      model_id: "sentence-transformers/all-MiniLM-L6-v2"
+      dim: 384
+      max_seq_length: 256
+      description: "MiniLM-L6-v2 (384 dim, fast)"
+
+    bge-small-en:
+      model_id: "BAAI/bge-small-en"
+      dim: 384
+      max_seq_length: 512
+      description: "BGE-small (384 dim, good quality)"
+
+    e5-small:
+      model_id: "intfloat/e5-small"
+      dim: 384
+      max_seq_length: 512
+      description: "E5-small (384 dim, balanced)"
+
+defaults:
+  model: "auto"  # auto/mock:mini-lm-6/real:all-MiniLM-L6-v2
+  batch_size: 32
+  cache_dir: null

@@ -1,0 +1,87 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - heading "🏆 项目验收工作台" [level=1] [ref=e674] [cursor=pointer]
+    - generic [ref=e5]:
+      - button "🏠 首页" [ref=e6] [cursor=pointer]
+      - button "📊 仪表盘" [ref=e7] [cursor=pointer]
+      - button "🏆 项目验收" [ref=e8] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]: 💡
+    - generic [ref=e12]: 💡 设计模式：单例模式的懒汉式(Double-Checked Locking)在C++11之前因为内存重排序问题是不安全的。
+    - generic "关闭" [ref=e13] [cursor=pointer]: ✕
+  - generic [ref=e14]:
+    - generic [ref=e675]:
+      - button "← 返回项目列表" [ref=e676] [cursor=pointer]
+      - generic [ref=e677]: 贪吃蛇 (snake)
+      - button "📤 上传文件夹" [ref=e678] [cursor=pointer]
+      - button "✏️ 在线编辑" [ref=e679] [cursor=pointer]
+    - generic [ref=e680]:
+      - generic [ref=e681]:
+        - generic [ref=e682]:
+          - generic [ref=e683]:
+            - text: 📁 项目文件
+            - generic [ref=e684]: (0个文件)
+          - generic [ref=e685]:
+            - text: 📂 尚未上传代码
+            - text: 点击上方 📤 上传文件夹 选择项目目录
+            - text: 或 ✏️ 在线编辑 手动编写代码
+        - generic [ref=e686]:
+          - button "📤 上传文件夹 (推荐)" [ref=e687] [cursor=pointer]
+          - button "✏️ 在线编辑" [ref=e688] [cursor=pointer]
+          - generic [ref=e689]: 💡 支持 Chrome/Edge 选择整个文件夹，也支持 Firefox 选择文件
+      - generic [ref=e691]:
+        - generic [ref=e692]: 📋 验收清单
+        - generic [ref=e694] [cursor=pointer]:
+          - generic [ref=e695]: ▶
+          - generic [ref=e696]: 游戏核心逻辑
+          - generic [ref=e697]: 0/4
+        - generic [ref=e699] [cursor=pointer]:
+          - generic [ref=e700]: ▶
+          - generic [ref=e701]: 输入控制
+          - generic [ref=e702]: 0/3
+        - generic [ref=e704] [cursor=pointer]:
+          - generic [ref=e705]: ▶
+          - generic [ref=e706]: 难度系统
+          - generic [ref=e707]: 0/3
+        - generic [ref=e709] [cursor=pointer]:
+          - generic [ref=e710]: ▶
+          - generic [ref=e711]: 碰撞检测
+          - generic [ref=e712]: 0/3
+        - generic [ref=e714] [cursor=pointer]:
+          - generic [ref=e715]: ▶
+          - generic [ref=e716]: 代码质量
+          - generic [ref=e717]: 0/3
+        - generic [ref=e719] [cursor=pointer]:
+          - generic [ref=e720]: ▶
+          - generic [ref=e721]: 🔍 代码质量
+          - generic [ref=e722]: 0/2
+    - generic [ref=e723]:
+      - generic [ref=e724]:
+        - generic [ref=e725]:
+          - generic [ref=e726]: 0/25
+          - generic [ref=e727]: 综合评分
+        - generic [ref=e728]:
+          - generic [ref=e729]:
+            - generic [ref=e730]: 游戏核心逻辑
+            - generic [ref=e731]: ☆☆☆☆☆
+            - generic [ref=e732] [cursor=pointer]: ✏️
+          - generic [ref=e733]:
+            - generic [ref=e734]: 输入控制
+            - generic [ref=e735]: ☆☆☆☆☆
+            - generic [ref=e736] [cursor=pointer]: ✏️
+          - generic [ref=e737]:
+            - generic [ref=e738]: 难度系统
+            - generic [ref=e739]: ☆☆☆☆☆
+            - generic [ref=e740] [cursor=pointer]: ✏️
+          - generic [ref=e741]:
+            - generic [ref=e742]: 碰撞检测
+            - generic [ref=e743]: ☆☆☆☆☆
+            - generic [ref=e744] [cursor=pointer]: ✏️
+          - generic [ref=e745]:
+            - generic [ref=e746]: 代码质量
+            - generic [ref=e747]: ☆☆☆☆☆
+            - generic [ref=e748] [cursor=pointer]: ✏️
+        - textbox "📝 项目备注/审查意见..." [ref=e750]
+      - generic [ref=e751]:
+        - button "💾 保存评价" [ref=e752] [cursor=pointer]
+        - button "🏆 返回项目列表" [ref=e753] [cursor=pointer]

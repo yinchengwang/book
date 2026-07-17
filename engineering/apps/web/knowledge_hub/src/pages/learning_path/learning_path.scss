@@ -1,0 +1,618 @@
+/**
+ * 学习路径页面样式 - 项目主风格
+ */
+.path-page {
+  min-height: 100vh;
+  background: transparent;
+  padding: 24px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.path-header {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.path-title {
+  font-size: 28px;
+  font-weight: 800;
+  display: block;
+  background: linear-gradient(135deg, #818cf8, #c084fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.path-subtitle {
+  font-size: 13px;
+  color: var(--text-3);
+  margin-top: 4px;
+  display: block;
+}
+
+/* === 路径选择 === */
+.path-selector {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.path-tab {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &:hover {
+    background: var(--card-bg-hover);
+    border-color: var(--primary);
+  }
+
+  &.active {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.15));
+    border-color: var(--primary);
+  }
+}
+
+.tab-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.tab-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.tab-name {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tab-meta {
+  display: block;
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+/* === 概览 === */
+.path-overview {
+  background: var(--header-gradient);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 14px;
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+.overview-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.overview-icon {
+  font-size: 40px;
+  flex-shrink: 0;
+}
+
+.overview-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.overview-name {
+  display: block;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.overview-desc {
+  display: block;
+  font-size: 12px;
+  color: var(--text-2);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.overview-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.stat-badge {
+  text-align: center;
+  padding: 10px 4px;
+  background: var(--card-bg);
+  border-radius: 10px;
+}
+
+.badge-value {
+  display: block;
+  font-size: 16px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #818cf8, #c084fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.badge-label {
+  display: block;
+  font-size: 10px;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+/* === 进度条 === */
+.progress-section {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.progress-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.progress-percent {
+  font-size: 14px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #818cf8, #c084fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.progress-track {
+  height: 10px;
+  background: var(--card-bg);
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--primary-2));
+  border-radius: 5px;
+  transition: width 0.3s;
+}
+
+.progress-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 8px;
+}
+
+/* === 步骤列表 === */
+.steps-list {
+  margin-bottom: 16px;
+}
+
+.steps-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  display: block;
+  margin-bottom: 10px;
+  padding-left: 4px;
+}
+
+.step-card {
+  display: grid;
+  grid-template-columns: 50px 1fr;
+  gap: 12px;
+  margin-bottom: 10px;
+  position: relative;
+}
+
+.step-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.step-number {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--card-bg);
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-3);
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.step-number.done {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border-color: #10b981;
+  color: #fff;
+}
+
+.step-number.all-done {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  border-color: #f59e0b;
+  color: #fff;
+}
+
+.step-line {
+  flex: 1;
+  width: 2px;
+  background: var(--border);
+  margin-top: 4px;
+  min-height: 30px;
+}
+
+.step-line.done {
+  background: linear-gradient(180deg, #10b981, var(--primary));
+}
+
+.step-content {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  transition: all 0.15s;
+}
+
+.step-card.current .step-content {
+  border-color: var(--primary);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.05));
+}
+
+.step-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.step-header.clickable {
+  cursor: pointer;
+}
+
+.step-title-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.step-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  display: block;
+}
+
+.step-desc {
+  font-size: 12px;
+  color: var(--text-2);
+  margin-top: 4px;
+  line-height: 1.5;
+  display: block;
+}
+
+.step-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.step-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.tag {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+}
+
+.tag.duration {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: rgba(99, 102, 241, 0.3);
+  color: #a5b4fc;
+}
+
+.expand-icon {
+  font-size: 12px;
+  color: var(--text-3);
+  font-weight: 700;
+}
+
+/* === 步骤进度 === */
+.step-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.mini-progress-track {
+  flex: 1;
+  height: 4px;
+  background: var(--card-bg);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.mini-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--primary-2));
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+.mini-progress-text {
+  font-size: 10px;
+  color: var(--text-3);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* === Sub-steps === */
+.substeps-container {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.step-resources {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background: var(--card-bg);
+  border-radius: 8px;
+}
+
+.resources-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-3);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.resources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.resource-item {
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.substeps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.substep {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &:hover {
+    background: var(--card-bg-hover);
+    border-color: var(--primary);
+  }
+
+  &.done {
+    opacity: 0.65;
+    background: rgba(16, 185, 129, 0.08);
+    border-color: rgba(16, 185, 129, 0.25);
+  }
+}
+
+.substep-check {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1.5px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.substep-check.checked {
+  background: linear-gradient(135deg, #10b981, #059669);
+  border-color: #10b981;
+}
+
+.substep-type {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+
+  text {
+    color: #fff;
+  }
+}
+
+.substep-title {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.substep-hours {
+  font-size: 10px;
+  color: var(--text-3);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.step-actions {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.action-btn.continue {
+  width: 100%;
+  padding: 10px;
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  color: #fff;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* === 控制按钮 === */
+.path-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.control-btn {
+  padding: 12px 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  &.reset {
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #fbbf24;
+  }
+}
+
+/* === 重置弹窗 === */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+
+.modal-content {
+  background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg-1) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 400px;
+  width: 100%;
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  display: block;
+  margin-bottom: 8px;
+}
+
+.modal-text {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.6;
+  display: block;
+  margin-bottom: 16px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.modal-btn {
+  flex: 1;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+
+  &.cancel {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  &.confirm {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    border: none;
+    color: #fff;
+  }
+}
+
+@media (max-width: 640px) {
+  .overview-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

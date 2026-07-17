@@ -1,0 +1,182 @@
+/* 图表组件样式 */
+
+/* 趋势图 */
+.trend-chart-container {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 16px;
+  display: block;
+}
+
+.chart-wrapper {
+  width: 100%;
+}
+
+/* 小程序图表占位 */
+.mp-chart-placeholder {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  height: 100%;
+  padding: 0 10px;
+  box-sizing: border-box;
+}
+
+.mp-chart-placeholder .bar-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+.mp-chart-placeholder .bar-fill {
+  width: 80%;
+  max-width: 30px;
+  border-radius: 4px 4px 0 0;
+  min-height: 4px;
+}
+
+.mp-chart-placeholder .bar-label {
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+/* 热力图 */
+.heatmap-container {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 24px;
+  overflow-x: auto;
+}
+
+.heatmap-wrapper {
+  display: flex;
+  gap: 8px;
+}
+
+.week-labels {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 17px 0 4px 0;
+}
+
+.week-label {
+  font-size: 10px;
+  color: #64748b;
+  height: 12px;
+  line-height: 12px;
+}
+
+.month-labels {
+  position: relative;
+  height: 20px;
+  margin-bottom: 4px;
+  margin-left: 0;
+}
+
+.month-label {
+  position: absolute;
+  font-size: 10px;
+  color: #64748b;
+}
+
+.heatmap-content {
+  flex: 1;
+  overflow-x: auto;
+}
+
+.heatmap-grid {
+  display: flex;
+  flex-direction: row;
+}
+
+.heatmap-week {
+  display: flex;
+  flex-direction: column;
+}
+
+.heatmap-cell {
+  border-radius: 3px;
+  cursor: pointer;
+  position: relative;
+}
+
+.heatmap-cell:hover .cell-tooltip {
+  display: block;
+}
+
+.cell-tooltip {
+  display: none;
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e293b;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  white-space: nowrap;
+  z-index: 10;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+
+.legend-text {
+  font-size: 10px;
+  color: #64748b;
+}
+
+.legend-cell {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+/* 空状态 */
+.chart-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.empty-text {
+  font-size: 16px;
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.empty-hint {
+  font-size: 12px;
+  color: #64748b;
+}

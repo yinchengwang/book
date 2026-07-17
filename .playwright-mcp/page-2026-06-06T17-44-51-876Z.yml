@@ -1,0 +1,35 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - heading "📝 测试中..." [level=1] [ref=e366] [cursor=pointer]
+    - generic [ref=e5]:
+      - button "🏠 首页" [ref=e6] [cursor=pointer]
+      - button "📊 仪表盘" [ref=e7] [cursor=pointer]
+      - button "🏆 项目验收" [ref=e8] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]: 💡
+    - generic [ref=e12]: 💡 设计模式：单例模式的懒汉式(Double-Checked Locking)在C++11之前因为内存重排序问题是不安全的。
+    - generic "关闭" [ref=e13] [cursor=pointer]: ✕
+  - generic [ref=e14]:
+    - generic [ref=e367]:
+      - button "← 退出测试" [ref=e368] [cursor=pointer]
+      - generic [ref=e369]: 第 5/5 题
+      - generic [ref=e370]: ⏱ 02:08
+    - generic [ref=e427]:
+      - generic [ref=e428]:
+        - generic [ref=e429]: 单选题
+        - generic [ref=e430]: 进阶
+      - generic [ref=e431]: 📖 需要确保某些类不能被继承。
+      - generic [ref=e432]: C++11中阻止类被继承的最佳方式是：
+      - generic [ref=e433]:
+        - generic:
+          - generic: A. 将析构函数设为private
+        - generic:
+          - generic: B. 使用final关键字
+        - generic:
+          - generic: C. 使用virtual继承
+        - generic:
+          - generic: D. 将构造函数设为private
+      - generic [ref=e448]:
+        - text: ✅ 回答正确！
+        - text: "📝 `class A final {};` 阻止任何类继承A。C++11之前常用private析构函数+friend工厂函数的方法，但繁琐且容易出错。"
+      - button "查看结果 📊" [ref=e449] [cursor=pointer]

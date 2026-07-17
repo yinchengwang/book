@@ -1,0 +1,17 @@
+{
+  "promptDelete": true,
+  "attachmentFolderPath": "./image",
+  "alwaysUpdateLinks": true,
+  "excludedFiles": [
+    "project/reading-radar/node_modules",
+    "project/reading-radar/node_modules/**",
+    "open_source/**",
+    "third_part/**",
+    "build/**",
+    "*.exe",
+    "**/*.c",
+    "**/*.cpp",
+    "**/*.h"
+  ],
+  "deletedFiles": []
+}

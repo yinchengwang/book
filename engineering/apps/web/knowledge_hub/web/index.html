@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0f0f23" />
+    <meta name="description" content="Reading Radar 2.0 - 学习追踪平台" />
+    <title>Reading Radar · 学习雷达</title>
+    <style>
+      html, body, #root { height: 100%; margin: 0; }
+      body {
+        background: radial-gradient(ellipse at top left, #1a1a3e 0%, #0f0f23 40%, #050510 100%);
+        font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+        color: #fff;
+      }
+      /* Splash - 仅在 main.tsx 加载完前显示，加载完立即移除 */
+      #splash {
+        position: fixed; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+        flex-direction: column; gap: 16px;
+        z-index: 9999;
+        pointer-events: none;
+      }
+      #splash-logo {
+        width: 64px; height: 64px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 32px;
+        animation: pulse 1.5s ease-in-out infinite;
+      }
+      #splash-text { color: #94a3b8; font-size: 14px; letter-spacing: 1px; }
+      @keyframes pulse {
+        0%,100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.05); opacity: 0.8; }
+      }
+      /* React 渲染完后立即隐藏 */
+      #root:not(:empty) ~ #splash { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="splash">
+      <div id="splash-logo">📡</div>
+      <div id="splash-text">Reading Radar 2.0</div>
+    </div>
+    <script type="module" src="/main.tsx"></script>
+  </body>
+</html>

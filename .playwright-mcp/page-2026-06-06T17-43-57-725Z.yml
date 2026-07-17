@@ -1,0 +1,28 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - heading "📝 测试中..." [level=1] [ref=e366] [cursor=pointer]
+    - generic [ref=e5]:
+      - button "🏠 首页" [ref=e6] [cursor=pointer]
+      - button "📊 仪表盘" [ref=e7] [cursor=pointer]
+      - button "🏆 项目验收" [ref=e8] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]: 💡
+    - generic [ref=e12]: 💡 设计模式：单例模式的懒汉式(Double-Checked Locking)在C++11之前因为内存重排序问题是不安全的。
+    - generic "关闭" [ref=e13] [cursor=pointer]: ✕
+  - generic [ref=e14]:
+    - generic [ref=e367]:
+      - button "← 退出测试" [ref=e368] [cursor=pointer]
+      - generic [ref=e369]: 第 3/5 题
+      - generic [ref=e370]: ⏱ 01:14
+    - generic [ref=e398]:
+      - generic [ref=e399]:
+        - generic [ref=e400]: 代码纠错
+        - generic [ref=e401]: 基础
+      - generic [ref=e402]: 📖 新人写了这样的析构函数代码。
+      - generic [ref=e403]: 找出以下代码的问题：
+      - generic [ref=e404]: "class Resource { FILE* fp_; public: Resource(const char* path) { fp_ = fopen(path, \"r\"); } ~Resource() { if (fp_) fclose(fp_); } private: Resource(const Resource&) = default; Resource& operator=(const Resource&) = default; };"
+      - textbox "描述你发现的错误并给出修正..." [ref=e405]: 拷贝会导致double free，应禁止拷贝或实现深拷贝
+      - generic [ref=e408]:
+        - text: ✅ 回答正确！
+        - text: 📝 如果编译器生成或使用default的拷贝构造/赋值，两个对象的fp_指向同一FILE*，析构时同一文件被fclose两次——未定义行为。应使用=delete禁止或实现引用计数/深拷贝。
+      - button "下一题 →" [ref=e409] [cursor=pointer]
