@@ -204,7 +204,6 @@
       "Bash(nvm install *)",
       "Bash(nvm version *)",
       "Bash(where node *)",
-      "Bash(git add -A *)",
       "Bash(winget install *)"
     ],
     "additionalDirectories": [
