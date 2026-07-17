@@ -45,6 +45,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 2. **提交纪律**：每次 OPSX 变更里提交代码时，只提交变更相关的代码，不相关的不要混在一起提交
 3. **归档纪律**：变更归档时，只提交变更相关的代码，不相关的不要混在一起提交
 
+## 提交推送纪律
+
+**每次 commit 完成后，必须立即执行 `git push` 到当前分支的远程仓库，不得累积多个 commit 后批量推送。**
+
 ## 项目概述
 
 C/C++ 算法与数据结构练习项目。CMake 3.20+、C11、C++17。无运行时依赖。
