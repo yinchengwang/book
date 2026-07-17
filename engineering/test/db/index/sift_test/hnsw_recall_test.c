@@ -15,7 +15,7 @@
 #include <string.h>
 #include <stdint.h>
 
-#include <db/index/vector_index/faiss_hnsw/faiss_hnsw.h>
+#include <db/index/vector_index/hnsw/faiss_hnsw.h>
 #include <algo-prod/distance/distance.h>
 
 /* 读取头文件获取 count 和 dims */
@@ -197,30 +197,18 @@ int main(int argc, char *argv[]) {
 
     /* 插入向量 */
     printf("插入 %d 个向量...\n", n_base);
-    int added = faiss_hnsw_index_add(index, n_base, base);
-    printf("DEBUG: faiss_hnsw_index_add 返回值 %d，期望值 %d\n", added, n_base);
-    if (added < 0) {
-        fprintf(stderr, "插入向量失败：返回负数 %d\n", added);
+    int ret = faiss_hnsw_index_add(index, n_base, base);
+    if (ret != 0) {
+        fprintf(stderr, "插入向量失败: %d\n", ret);
         faiss_hnsw_index_drop(index);
         free(base);
         free(query);
         free(gt);
         return 1;
-    } else if (added != n_base) {
-        fprintf(stderr, "插入数量不匹配：实际 %d，期望 %d\n", added, n_base);
-        faiss_hnsw_index_drop(index);
-        free(base);
-        free(query);
-        free(gt);
-        return 1;
-    } else {
-        printf("插入成功：%d 个向量\n", added);
     }
 
     printf("索引构建完成，总向量数: %d，入口点: %d，最大层: %d\n\n",
-           faiss_hnsw_index_size(index),
-           faiss_hnsw_index_entry_point(index),
-           faiss_hnsw_index_max_level(index));
+           index->n_total, index->entry_pointer, index->max_level);
 
     /* 测试不同 ef_search 值的召回率 */
     printf("----------------------------------------\n");

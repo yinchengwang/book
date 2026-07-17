@@ -148,7 +148,6 @@ end   = offsets[no] + cum_nneighbor[layer_no + 1];
 | `faiss_hnsw_minimax_heap.c` | MinimaxHeap 实现 |
 | `faiss_hnsw_visited_table.c` | VisitedTable 实现 |
 | `faiss_hnsw_quantize.c` | 量化相关辅助函数 |
-| `faiss_hnsw_stubs.c` | 占位实现（未完成功能） |
 
 ## API 接口
 
