@@ -120,10 +120,13 @@ typedef struct scan_key_s {
 /**
  * @brief 扫描方向
  */
+#ifndef ScanDirectionDefined
+#define ScanDirectionDefined
 typedef enum {
     FORWARD_SCAN = 0,     /**< 正向扫描 */
     BACKWARD_SCAN = 1,    /**< 反向扫描 */
 } ScanDirection;
+#endif
 
 /**
  * @brief 扫描描述符（不透明类型）

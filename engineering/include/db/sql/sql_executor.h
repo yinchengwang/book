@@ -280,15 +280,25 @@ typedef struct VectorScanState_s {
     float **results;            /**< 结果向量 */
     float *distances;           /**< 距离 */
     int nresults;               /**< 结果数 */
-    void *index;               /**< 索引 */
+    void *index;               /**< 索引句柄 */
+    int distance_metric;        /**< 距离度量：0=L2, 1=IP, 2=COSINE */
+    int ef;                     /**< HNSW ef 搜索参数（复用） */
+    int nprobe;                 /**< IVF 搜索探针数（复用） */
 } VectorScanState;
 
 /** HNSW 扫描状态 */
 typedef struct HnswScanState_s {
     VectorScanState vss;
     int ef;                     /**< 搜索参数 */
-    int m;                      /**< 构建参数 */
+    int m;                      /**< HNSW M 连接数 */
 } HnswScanState;
+
+/** IVF 扫描状态 */
+typedef struct IvfScanState_s {
+    VectorScanState vss;
+    int nprobe;                 /**< IVF 搜索探针数 */
+    int nlist;                  /**< IVF 聚类数 */
+} IvfScanState;
 
 /** 连接状态 */
 typedef struct JoinState_s {
