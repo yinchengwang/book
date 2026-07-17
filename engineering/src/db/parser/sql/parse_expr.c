@@ -14,6 +14,9 @@
 #include <stdio.h>
 #include <strings.h>  /* strcasecmp */
 
+/* makefuncs.h 中已声明 makeBoolExpr，parse_expr.c 不重复定义 */
+/* makeBoolExpr 完全由 makefuncs.c 提供 */
+
 /* NIL 常量（空列表） */
 #define NIL ((List *)NULL)
 
@@ -742,16 +745,7 @@ OpExpr *makeOpExpr(Oid opno, Oid opresulttype, List *args, int location) {
 }
 
 /**
- * @brief 创建 BoolExpr 节点
+ * @brief 创建 BoolExpr 节点（委托至 makefuncs.c 实现）
  */
-BoolExpr *makeBoolExpr(BoolType boolop, List *args) {
-    BoolExpr *bexpr = (BoolExpr *)calloc(1, sizeof(BoolExpr));
+extern BoolExpr *makeBoolExpr(BoolType boolop, List *args);
 
-    if (bexpr) {
-        bexpr->type = T_BoolExpr;
-        bexpr->boolop = boolop;
-        bexpr->args = args;
-    }
-
-    return bexpr;
-}

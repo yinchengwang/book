@@ -487,7 +487,7 @@ Query *transformDeleteStmt(ParseState *pstate, DeleteStmt *stmt);
 Query *transformCreateStmt(ParseState *pstate, CreateStmt *stmt);
 Query *transformDropStmt(ParseState *pstate, DropStmt *stmt);
 
-/* 表达式分析 */
+/* 表达式分析 — 实现在 parse_expr.c 中 */
 Node *transformExpr(ParseState *pstate, Node *expr, ParseExprKind exprKind);
 Node *transformColumnRef(ParseState *pstate, ColumnRef *cref);
 Node *transformConst(ParseState *pstate, A_Const *aconst);

@@ -11,4 +11,6 @@ target_link_libraries(integration_test
         storage_backend_common
         algo-prod
         db_utils
+        faiss_hnsw
+        hnsw
 )

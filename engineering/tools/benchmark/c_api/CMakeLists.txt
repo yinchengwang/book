@@ -22,14 +22,17 @@ include_directories(
 )
 
 # ========== 查找已构建的静态库 ==========
+# 从 CMake 当前二进制目录推断（实际构建在 c:/code/book/build/engineering）
 set(LIB_SEARCH_PATHS
-    ${BUILD_DIR}/lib
-    ${BUILD_DIR}/src/db/index/vector_index
-    ${BUILD_DIR}
+    ${CMAKE_BINARY_DIR}/lib
+    ${CMAKE_BINARY_DIR}/src/db/index/vector_index
+    ${CMAKE_BINARY_DIR}/src/db/index/vector_index/faiss_hnsw
+    ${CMAKE_BINARY_DIR}
 )
 
 find_library(VECTOR_INDEX_LIB NAMES vector_index PATHS ${LIB_SEARCH_PATHS} NO_DEFAULT_PATH)
 find_library(ALGO_PROD_LIB NAMES algo-prod PATHS ${LIB_SEARCH_PATHS} NO_DEFAULT_PATH)
+find_library(FAISS_HNSW_LIB NAMES faiss_hnsw PATHS ${LIB_SEARCH_PATHS} NO_DEFAULT_PATH)
 
 if(NOT VECTOR_INDEX_LIB)
     message(WARNING "vector_index 静态库未找到，HNSW API 将不可用")
@@ -43,6 +46,9 @@ if(VECTOR_INDEX_LIB)
 endif()
 if(ALGO_PROD_LIB)
     target_link_libraries(vector_index_c_api PRIVATE ${ALGO_PROD_LIB})
+endif()
+if(FAISS_HNSW_LIB)
+    target_link_libraries(vector_index_c_api PRIVATE ${FAISS_HNSW_LIB})
 endif()
 
 if(WIN32)

@@ -76,10 +76,8 @@ foreach(subdir buffer page lock catalog wal rel mm kv vector)
     endif()
 endforeach()
 
-# vector_engine_lib 是静态库，单独处理
-if(TARGET vector_engine_lib)
-    target_link_libraries(vector_engine_lib PUBLIC algo-prod db_utils)
-endif()
+# vector_engine_lib 是静态库别名（指向 vector_persist），已在 vector/CMakeLists.txt 中定义
+# 这里跳过 target_link_libraries，避免修改 ALIAS 目标
 
 # Hilbert 索引库是静态库，需要链接
 if(TARGET index_hilbert)

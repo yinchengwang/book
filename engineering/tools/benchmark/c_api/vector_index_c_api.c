@@ -8,7 +8,7 @@
  */
 
 #include "vector_index_c_api.h"
-#include <db/index/vector_index/faiss_hnsw/faiss_hnsw.h>
+#include <db/index/vector_index/hnsw/faiss_hnsw.h>
 #include <db/index/vector_index/delete/vector_delete_bitmap.h>
 
 #include <stdlib.h>
@@ -24,7 +24,7 @@ typedef struct hnsw_context {
 } hnsw_context_t;
 
 void* hnsw_create(int32_t dim, int32_t M, int32_t ef_construction, int32_t metric) {
-    distance_metric_t dist_metric = (metric == 0) ? DISTANCE_L2 : DISTANCE_IP;
+    distance_metric_t dist_metric = (metric == 0) ? DISTANCE_METRIC_L2_SQUARED : DISTANCE_METRIC_INNER_PRODUCT;
     faiss_hnsw_t *index = faiss_hnsw_index_create(M, dim, ef_construction, dist_metric, QUANTIZATION_TYPE_NONE);
     if (index == NULL) return NULL;
 

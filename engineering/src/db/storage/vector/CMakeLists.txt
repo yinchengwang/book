@@ -18,6 +18,11 @@ set(VECTOR_PERSIST_SOURCES
 
 add_library(vector_persist STATIC ${VECTOR_PERSIST_SOURCES})
 
+# vector_engine_lib 别名（供 test/db/storage 等模块链接）
+if(NOT TARGET vector_engine_lib)
+    add_library(vector_engine_lib ALIAS vector_persist)
+endif()
+
 target_include_directories(vector_persist PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include
     ${ENGINEERING_SOURCE_DIR}/src

@@ -359,6 +359,13 @@ BoolExpr *makeBoolExpr(BoolType boolop, List *args) {
 }
 
 /**
+ * @brief makeBoolExpr 别名（供 parse_expr.c 委托调用，避免多重定义）
+ */
+BoolExpr *makefuncs_makeBoolExpr(BoolType boolop, List *args) {
+    return makeBoolExpr(boolop, args);
+}
+
+/**
  * @brief 创建整数常量
  */
 A_Const *makeIntConst(int val) {

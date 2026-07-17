@@ -624,8 +624,8 @@ TEST_F(VectorQueryTest, PlanCache) {
     vector_query_plan_destroy(plan);
 }
 
-// 主函数
-int main(int argc, char **argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
-}
+// 主函数（由 gtest_main 提供，注释掉避免与 multimodal_test.cpp 的 main 冲突）
+// int main(int argc, char **argv) {
+//     ::testing::InitGoogleTest(&argc, argv);
+//     return RUN_ALL_TESTS();
+// }

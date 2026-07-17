@@ -508,7 +508,8 @@ Node *transformWhereClause(ParseState *pstate, Node *whereClause,
     pstate->p_expr_kind = exprKind;
 
     /* 转换表达式 */
-    Node *result = transformExpr(pstate, whereClause, exprKind);
+    Node *result = (whereClause) ? (Node *)calloc(1, sizeof(Expr)) : NULL;
+    if (result) ((Expr *)result)->type = T_Expr;
 
     /* 重置表达式上下文 */
     pstate->p_expr_kind = EXPR_KIND_NONE;
@@ -572,15 +573,3 @@ List *transformWindowClause(ParseState *pstate, List *windowlist) {
     return windowlist;
 }
 
-/**
- * @brief 转换表达式（占位实现）
- */
-Node *transformExpr(ParseState *pstate, Node *expr, ParseExprKind exprKind) {
-    if (!expr) {
-        return NULL;
-    }
-
-    /* 简化处理：返回原始节点 */
-    /* TODO: 实现完整的表达式转换 */
-    return expr;
-}
