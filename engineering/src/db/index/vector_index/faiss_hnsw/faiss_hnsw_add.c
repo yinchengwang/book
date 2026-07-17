@@ -245,20 +245,34 @@ int32_t faiss_hnsw_index_add(faiss_hnsw_t *index, int32_t n, const float *vector
     }
 
     // ---------------------------------------------------------------------
-    // 7. 计算每个向量的 offset（neighbors 数组中的起始位置）
+    // 7. 计算每个新向量的 offset（FAISS 预留布局）
+    //    老向量的 offsets 保持不变，只计算新向量（old_total ~ new_total-1）
+    //    预留大小 = cum_nneighbor[level]，而非实际邻居数
     // ---------------------------------------------------------------------
-    int32_t total_neighbors = 0;
-    for (int32_t i = 0; i < new_total; i++) {
-        index->offsets[i] = total_neighbors;
-        total_neighbors += counts[i];
+    int32_t total_reserved = 0;
+    // 老向量的 neighbors 已有大小 = offsets[old_total]（如果 old_total > 0）
+    if (old_total > 0) {
+        total_reserved = index->offsets[old_total];
+    }
+    for (int32_t i = 0; i < n; i++) {
+        int32_t vec_id = old_total + i;
+        int32_t level = index->levels[vec_id];
+        int32_t reserved = 0;
+        if (level >= 0 && level < index->cum_nneighbor_size) {
+            reserved = index->cum_nneighbor[level];
+        }
+        index->offsets[vec_id] = total_reserved;
+        total_reserved += reserved;
     }
 
     // ---------------------------------------------------------------------
-    // 8. 分配并填充 neighbors 数组
+    // 8. 分配 neighbors 数组（FAISS 预留布局）
+    //    老邻居数据保留不动，新预留区域初始化为 -1
     // ---------------------------------------------------------------------
-    if (total_neighbors > 0) {
+    if (total_reserved > 0) {
+        int32_t old_neighbors_size = (old_total > 0) ? index->offsets[old_total] : 0;
         int32_t *new_neighbors = (int32_t *)realloc(
-            index->neighbors, (size_t)total_neighbors * sizeof(int32_t));
+            index->neighbors, (size_t)total_reserved * sizeof(int32_t));
         if (!new_neighbors) {
             free(counts);
             free(candidate_ids);
@@ -268,21 +282,18 @@ int32_t faiss_hnsw_index_add(faiss_hnsw_t *index, int32_t n, const float *vector
             return -1;
         }
         index->neighbors = new_neighbors;
-        // 清零
-        memset(index->neighbors, 0, (size_t)total_neighbors * sizeof(int32_t));
+        // 只初始化新扩展部分为 -1，老邻居数据不动
+        memset(index->neighbors + old_neighbors_size, -1,
+               (size_t)(total_reserved - old_neighbors_size) * sizeof(int32_t));
     }
 
-    // 9. 重新遍历，填充每个向量的邻居
-    //    注意：上面已经计算了 candidate_ids/dists 但只针对最后一个 vec
-    //    为简化，重新执行一遍邻居搜索与填充
-    //    （小数据集性能可接受；大规模应优化为单次扫描）
+    // 9. 重新遍历，填充每个新向量的邻居（按层写入预留槽位）
     int32_t fill_idx = 0;
     for (int32_t i = 0; i < n; i++) {
         int32_t vec_id = old_total + i;
         const float *vec = vectors + (size_t)i * (size_t)dims;
-
         if (counts[vec_id] == 0) {
-            continue;  // 无邻居
+            continue;  // 无邻居，槽位保持 -1（已在步骤 8 初始化）
         }
 
         // 暴力搜索 ef 个候选
@@ -294,28 +305,42 @@ int32_t faiss_hnsw_index_add(faiss_hnsw_t *index, int32_t n, const float *vector
             index->n_total = saved_total;
         }
 
-        int32_t actual = 0;
-        if (n_candidates > 0) {
-            int32_t take = n_candidates < counts[vec_id] ? n_candidates : counts[vec_id];
-            int32_t *used = (int32_t *)calloc((size_t)n_candidates, sizeof(int32_t));
-            if (!used) break;
-            for (int32_t k = 0; k < take; k++) {
-                float best = 1e30f;
-                int32_t best_idx = -1;
-                for (int32_t j = 0; j < n_candidates; j++) {
-                    if (used[j]) continue;
-                    if (search_dists[j] < best) {
-                        best = search_dists[j];
-                        best_idx = j;
-                    }
-                }
-                if (best_idx < 0) break;
-                used[best_idx] = 1;
-                index->neighbors[index->offsets[vec_id] + actual] = search_buf[best_idx];
-                actual++;
-            }
-            free(used);
+        if (n_candidates <= 0) {
+            fill_idx++;
+            continue;
         }
+
+        // 从候选中取 counts[vec_id] 个最近邻
+        int32_t take = n_candidates < counts[vec_id] ? n_candidates : counts[vec_id];
+        int32_t *used = (int32_t *)calloc((size_t)n_candidates, sizeof(int32_t));
+        if (!used) break;
+
+        int32_t sorted_ids[64];  // 足够容纳 M0（最大 64）
+        int32_t sorted_count = 0;
+        for (int32_t k = 0; k < take; k++) {
+            float best = 1e30f;
+            int32_t best_idx = -1;
+            for (int32_t j = 0; j < n_candidates; j++) {
+                if (used[j]) continue;
+                if (search_dists[j] < best) {
+                    best = search_dists[j];
+                    best_idx = j;
+                }
+            }
+            if (best_idx < 0) break;
+            used[best_idx] = 1;
+            sorted_ids[sorted_count++] = search_buf[best_idx];
+        }
+        free(used);
+
+        // 写入 level 0 的槽位
+        int32_t capacity_l0 = 2 * index->M;
+        int32_t base_l0 = index->offsets[vec_id];  // level 0 偏移 = 0
+        for (int32_t j = 0; j < sorted_count && j < capacity_l0; j++) {
+            index->neighbors[base_l0 + j] = sorted_ids[j];
+        }
+        // 更高层的槽位保持 -1（当前简化：只处理 level 0）
+
         fill_idx++;
     }
 
