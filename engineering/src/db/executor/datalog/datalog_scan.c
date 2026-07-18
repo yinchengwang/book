@@ -63,6 +63,7 @@ typedef struct datalog_scan_internal_s {
     uint32_t            current_index;  /**< 当前索引 */
     bool                done;           /**< 是否完成 */
     bool                evaluated;      /**< 是否已求值 */
+    int                 max_iter;       /**< 最大迭代次数（0=默认1000） */
 } datalog_scan_internal_t;
 
 /* ========================================================================
@@ -291,11 +292,14 @@ static void match_body_recursive(datalog_rule_t *rule, uint32_t atom_idx,
  * @param rule_set 规则集合
  * @param edb      外延数据库（输入事实）
  * @param idb      内涵数据库（输出，推导结果）
+ * @param max_iter 最大迭代次数（0 表示使用默认值 1000）
+ * @param num_results 输出推导结果数量
  * @return 推导出的事实数组，调用者负责释放
  */
 static datalog_fact_t *semi_naive_evaluate(datalog_rule_set_t *rule_set,
                                             datalog_fact_set_t *edb,
                                             datalog_fact_set_t *idb,
+                                            int max_iter,
                                             uint32_t *num_results)
 {
     *num_results = 0;
@@ -317,7 +321,7 @@ static datalog_fact_t *semi_naive_evaluate(datalog_rule_set_t *rule_set,
     }
 
     /* 迭代直到不动点 */
-    int max_iterations = 1000;  /* 防止无限循环 */
+    int max_iterations = (max_iter > 0) ? max_iter : 1000;  /* 默认 1000，防止无限循环 */
     while (delta->num_facts > 0 && max_iterations-- > 0) {
         datalog_fact_set_t *new_facts = fact_set_create(32);
         if (new_facts == NULL) {
@@ -388,7 +392,7 @@ static datalog_fact_t *semi_naive_evaluate(datalog_rule_set_t *rule_set,
  * ======================================================================== */
 
 DatalogScanState *exec_datalog_scan_init(PlanState *parent,
-    void *rule_set, void *edb, void *idb)
+    void *rule_set, void *edb, void *idb, int max_iter)
 {
     DatalogScanState *state = (DatalogScanState *)calloc(1, sizeof(DatalogScanState));
     if (state == NULL) return NULL;
@@ -402,6 +406,7 @@ DatalogScanState *exec_datalog_scan_init(PlanState *parent,
     state->rule_set = rule_set;
     state->edb = edb;
     state->idb = idb;
+    state->max_iter = max_iter;
 
     /* 分配内部状态 */
     datalog_scan_internal_t *internal = (datalog_scan_internal_t *)calloc(
@@ -418,6 +423,8 @@ DatalogScanState *exec_datalog_scan_init(PlanState *parent,
     internal->current_index = 0;
     internal->done = false;
     internal->evaluated = false;
+    internal->max_iter = max_iter;
+    internal->max_iter = max_iter;
     state->ps.state = internal;
 
     return state;
@@ -435,6 +442,7 @@ TupleTableSlot *exec_datalog_scan_next(DatalogScanState *state)
         internal->evaluated = true;
         internal->current_facts = semi_naive_evaluate(
             internal->rule_set, internal->edb, internal->idb,
+            internal->max_iter,
             &internal->num_results);
 
         if (internal->current_facts == NULL || internal->num_results == 0) {

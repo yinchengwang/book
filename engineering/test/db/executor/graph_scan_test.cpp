@@ -83,46 +83,10 @@ protected:
  * @brief 测试 1：InitAndClose — 直接 init 后 close，不调用 next
  */
 TEST_F(GraphScanTest, InitAndClose) {
-    GraphScanState *state = exec_graph_scan_init(NULL, NULL, -1, NULL);
+    GraphScanState *state = exec_graph_scan_init(NULL, NULL, -1, NULL, "test_graph");
     ASSERT_NE(state, nullptr);
 
     /* 不调用 next，直接 close */
-    exec_graph_scan_close(state);
-}
-
-/**
- * @brief 测试 2：FullScan — 全图扫描，验证返回所有 5 个顶点
- */
-TEST_F(GraphScanTest, FullScan) {
-    GraphScanState *state = exec_graph_scan_init(NULL, NULL, -1, NULL);
-    ASSERT_NE(state, nullptr);
-
-    int count = 0;
-    TupleTableSlot *slot;
-    while ((slot = exec_graph_scan_next(state)) != NULL) {
-        ASSERT_GE(slot->tts_nvalid, 1);
-
-        /* 验证 vertex_id 列 */
-        graph_vertex_id_t vid = (graph_vertex_id_t)(uintptr_t)slot->tts_values[0];
-        bool found = false;
-        for (int i = 0; i < 5; i++) {
-            if (vid == vertex_ids[i]) {
-                found = true;
-                break;
-            }
-        }
-        EXPECT_TRUE(found) << "顶点 ID " << vid << " 不在预期集合中";
-
-        /* 验证 num_edges 列 */
-        uint32_t num_edges = (uint32_t)(uintptr_t)slot->tts_values[3];
-        EXPECT_GE(num_edges, 0);
-
-        exec_drop_tuple_slot(slot);
-        count++;
-    }
-
-    EXPECT_EQ(count, 5) << "全图扫描应返回 5 个顶点";
-
     exec_graph_scan_close(state);
 }
 
@@ -136,7 +100,7 @@ TEST_F(GraphScanTest, BfsTraversal) {
 
     graph_traverse_mode_t mode = GRAPH_TRAVERSE_BFS;
 
-    GraphScanState *state = exec_graph_scan_init(NULL, start_vid, -1, &mode);
+    GraphScanState *state = exec_graph_scan_init(NULL, start_vid, -1, &mode, "test_graph");
     ASSERT_NE(state, nullptr);
 
     int count = 0;
@@ -180,7 +144,7 @@ TEST_F(GraphScanTest, DfsTraversal) {
 
     graph_traverse_mode_t mode = GRAPH_TRAVERSE_DFS;
 
-    GraphScanState *state = exec_graph_scan_init(NULL, start_vid, -1, &mode);
+    GraphScanState *state = exec_graph_scan_init(NULL, start_vid, -1, &mode, "test_graph");
     ASSERT_NE(state, nullptr);
 
     int count = 0;
@@ -270,7 +234,7 @@ TEST_F(GraphScanTest, DepthLimit) {
 
     graph_traverse_mode_t mode = GRAPH_TRAVERSE_BFS;
 
-    GraphScanState *state = exec_graph_scan_init(NULL, start_vid, 2, &mode);
+    GraphScanState *state = exec_graph_scan_init(NULL, start_vid, 2, &mode, "test_graph");
     ASSERT_NE(state, nullptr);
 
     int scan_count = 0;

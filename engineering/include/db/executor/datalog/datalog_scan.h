@@ -18,9 +18,14 @@ extern "C" {
 
 /**
  * @brief 初始化 Datalog 扫描
+ * @param parent 父 PlanState
+ * @param rule_set 规则集合
+ * @param edb 外延数据库（已知事实）
+ * @param idb 内涵数据库（推导结果，可复用的缓冲）
+ * @param max_iter 最大迭代次数（0 表示使用默认值 1000）
  */
 DatalogScanState *exec_datalog_scan_init(PlanState *parent,
-    void *rule_set, void *edb, void *idb);
+    void *rule_set, void *edb, void *idb, int max_iter);
 
 /**
  * @brief 执行 Datalog 扫描，返回下一行

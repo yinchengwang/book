@@ -6,6 +6,9 @@
  * 支持流-流连接（stream-stream）和流-表连接（stream-table）。
  * 对于左流中的每条记录，在右流中查找时间戳在 [ts - interval, ts + interval] 范围内的记录。
  * 返回 4 列：left_timestamp (int64), left_value (double), right_timestamp (int64), right_value (double)
+ *
+ * 优化：右流数据按时间戳排序后使用二分查找定位时间窗口起始位置，
+ * 将原始嵌套循环 O(n*m) 优化为 O(n*log m + k)，其中 k 为匹配记录数。
  */
 #include "db/executor/stream/stream_join.h"
 #include "db/stream_engine.h"
@@ -26,6 +29,7 @@ typedef struct stream_join_internal_s {
     int join_type;                       /**< 连接类型：0=stream-stream, 1=stream-table */
     bool done;                           /**< 是否已完成 */
     bool queried;                        /**< 是否已执行查询 */
+    bool left_changed;                   /**< 左记录是否已变化（触发二分查找重新定位） */
     char *left_name;                     /**< 左流名称 */
     char *right_name;                    /**< 右流名称 */
 } stream_join_internal_t;
@@ -60,6 +64,7 @@ StreamJoinState *exec_stream_join_init(PlanState *parent,
     internal->right_count = 0;
     internal->interval = state->interval;
     internal->join_type = state->join_type;
+    internal->left_changed = false;
     internal->left_name = strdup("stream_left");
     internal->right_name = strdup("stream_right");
 
@@ -176,66 +181,94 @@ TupleTableSlot *exec_stream_join_next(StreamJoinState *state)
         }
         internal->right_count = right_out;
 
+        /* 按时间戳排序右流，启用二分查找 */
+        if (internal->right_count > 1) {
+            /* 简单插入排序（数据量不大时足够） */
+            for (uint32_t i = 1; i < internal->right_count; i++) {
+                stream_record_t key = internal->right_buffer[i];
+                int64_t j = (int64_t)i - 1;
+                while (j >= 0 && internal->right_buffer[j].timestamp > key.timestamp) {
+                    internal->right_buffer[j + 1] = internal->right_buffer[j];
+                    j--;
+                }
+                internal->right_buffer[j + 1] = key;
+            }
+        }
+
         internal->queried = true;
         internal->left_index = 0;
         internal->right_index = 0;
     }
 
-    /* 嵌套循环连接：对左流每条记录，在右流中查找匹配记录 */
+    /* 对左流每条记录，在右流中用二分查找定位时间窗口起始位置 */
     while (internal->left_index < internal->left_count) {
         stream_record_t *left_rec = &internal->left_buffer[internal->left_index];
+        int64_t left_ts = left_rec->timestamp;
+        int64_t window_start = left_ts - internal->interval;
+        int64_t window_end = left_ts + internal->interval;
 
-        /* 从当前右索引开始查找匹配 */
-        while (internal->right_index < internal->right_count) {
-            stream_record_t *right_rec = &internal->right_buffer[internal->right_index];
-
-            /* 检查时间戳是否在 [ts - interval, ts + interval] 范围内 */
-            int64_t left_ts = left_rec->timestamp;
-            int64_t right_ts = right_rec->timestamp;
-            int64_t diff = right_ts - left_ts;
-            if (diff < 0) diff = -diff;
-
-            if (diff <= internal->interval) {
-                internal->right_index++;
-
-                /* 创建并填充元组槽 */
-                ExecTupleDesc *desc = exec_make_tuple_desc(4);
-                if (desc == NULL) return NULL;
-
-                TupleTableSlot *slot = exec_make_tuple_slot(desc);
-                if (slot == NULL) {
-                    exec_drop_tuple_desc(desc);
-                    return NULL;
+        /* 首次处理此左记录时，二分查找定位起始位置 */
+        if (internal->right_index == 0 || internal->left_changed) {
+            /* 二分查找第一个 >= window_start 的位置 */
+            int lo = 0, hi = (int)internal->right_count;
+            while (lo < hi) {
+                int mid = lo + (hi - lo) / 2;
+                if (internal->right_buffer[mid].timestamp < window_start) {
+                    lo = mid + 1;
+                } else {
+                    hi = mid;
                 }
-
-                /* 填充左流值 */
-                slot->tts_values[0] = (void *)(uintptr_t)left_rec->timestamp;
-                slot->tts_isnull[0] = false;
-
-                uint64_t left_val_bits;
-                memcpy(&left_val_bits, &left_rec->value, sizeof(double));
-                slot->tts_values[1] = (void *)(uintptr_t)left_val_bits;
-                slot->tts_isnull[1] = false;
-
-                /* 填充右流值 */
-                slot->tts_values[2] = (void *)(uintptr_t)right_rec->timestamp;
-                slot->tts_isnull[2] = false;
-
-                uint64_t right_val_bits;
-                memcpy(&right_val_bits, &right_rec->value, sizeof(double));
-                slot->tts_values[3] = (void *)(uintptr_t)right_val_bits;
-                slot->tts_isnull[3] = false;
-
-                slot->tts_nvalid = 4;
-
-                return slot;
             }
-            internal->right_index++;
+            internal->right_index = (uint32_t)lo;
+            internal->left_changed = false;
         }
 
-        /* 移动到左流下一条记录，重置右索引 */
+        /* 从起始位置顺序扫描匹配（已时间序，超出 window_end 即终止） */
+        while (internal->right_index < internal->right_count) {
+            stream_record_t *right_rec = &internal->right_buffer[internal->right_index];
+            int64_t right_ts = right_rec->timestamp;
+
+            /* 超出时间窗口上限 */
+            if (right_ts > window_end) break;
+
+            internal->right_index++;
+
+            /* 创建并填充元组槽 */
+            ExecTupleDesc *desc = exec_make_tuple_desc(4);
+            if (desc == NULL) return NULL;
+
+            TupleTableSlot *slot = exec_make_tuple_slot(desc);
+            if (slot == NULL) {
+                exec_drop_tuple_desc(desc);
+                return NULL;
+            }
+
+            /* 填充左流值 */
+            slot->tts_values[0] = (void *)(uintptr_t)left_rec->timestamp;
+            slot->tts_isnull[0] = false;
+
+            uint64_t left_val_bits;
+            memcpy(&left_val_bits, &left_rec->value, sizeof(double));
+            slot->tts_values[1] = (void *)(uintptr_t)left_val_bits;
+            slot->tts_isnull[1] = false;
+
+            /* 填充右流值 */
+            slot->tts_values[2] = (void *)(uintptr_t)right_rec->timestamp;
+            slot->tts_isnull[2] = false;
+
+            uint64_t right_val_bits;
+            memcpy(&right_val_bits, &right_rec->value, sizeof(double));
+            slot->tts_values[3] = (void *)(uintptr_t)right_val_bits;
+            slot->tts_isnull[3] = false;
+
+            slot->tts_nvalid = 4;
+
+            return slot;
+        }
+
+        /* 移动到左流下一条记录 */
         internal->left_index++;
-        internal->right_index = 0;
+        internal->left_changed = true;
     }
 
     internal->done = true;

@@ -181,7 +181,7 @@ protected:
 /* ---- 1. InitAndClose ---- */
 TEST_F(DatalogScanTest, InitAndClose)
 {
-    DatalogScanState *state = exec_datalog_scan_init(nullptr, nullptr, nullptr, nullptr);
+    DatalogScanState *state = exec_datalog_scan_init(nullptr, nullptr, nullptr, nullptr, 0);
     EXPECT_NE(state, nullptr);
 
     /* next 应在无数据时返回 NULL */
@@ -219,7 +219,7 @@ TEST_F(DatalogScanTest, SimpleRule)
     test_fact_set_t *idb = create_fact_set(nullptr, 0);
 
     DatalogScanState *state = exec_datalog_scan_init(
-        nullptr, &rule_set, edb, idb);
+        nullptr, &rule_set, edb, idb, 0);
     EXPECT_NE(state, nullptr);
 
     /* 收集所有结果 */
@@ -292,7 +292,7 @@ TEST_F(DatalogScanTest, TransitiveRule)
     test_fact_set_t *idb = create_fact_set(nullptr, 0);
 
     DatalogScanState *state = exec_datalog_scan_init(
-        nullptr, &rule_set, edb, idb);
+        nullptr, &rule_set, edb, idb, 0);
     EXPECT_NE(state, nullptr);
 
     /* 预期推导结果：ancestor(1,2), ancestor(2,3), ancestor(3,4),
@@ -366,7 +366,7 @@ TEST_F(DatalogScanTest, MultipleRules)
     test_fact_set_t *idb = create_fact_set(nullptr, 0);
 
     DatalogScanState *state = exec_datalog_scan_init(
-        nullptr, &rule_set, edb, idb);
+        nullptr, &rule_set, edb, idb, 0);
     EXPECT_NE(state, nullptr);
 
     /* sibling: (2,3) 和 (3,2) 共享 parent(1,2) 和 parent(1,3) */
@@ -405,7 +405,7 @@ TEST_F(DatalogScanTest, EmptyEDB)
     test_fact_set_t *idb = create_fact_set(nullptr, 0);
 
     DatalogScanState *state = exec_datalog_scan_init(
-        nullptr, &rule_set, edb, idb);
+        nullptr, &rule_set, edb, idb, 0);
     EXPECT_NE(state, nullptr);
 
     TupleTableSlot *slot = exec_datalog_scan_next(state);
@@ -441,7 +441,7 @@ TEST_F(DatalogScanTest, NoMatchingRule)
     test_fact_set_t *idb = create_fact_set(nullptr, 0);
 
     DatalogScanState *state = exec_datalog_scan_init(
-        nullptr, &rule_set, edb, idb);
+        nullptr, &rule_set, edb, idb, 0);
     EXPECT_NE(state, nullptr);
 
     TupleTableSlot *slot = exec_datalog_scan_next(state);

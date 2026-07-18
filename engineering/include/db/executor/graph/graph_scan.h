@@ -23,9 +23,15 @@ typedef struct GraphScanState_s {
 
 /**
  * @brief 初始化图扫描
+ * @param parent 父 PlanState
+ * @param start_vertex 起始顶点（全图扫描传 NULL）
+ * @param max_depth 最大遍历深度（-1 表示不限）
+ * @param traversal_pattern 遍历模式（BFS/DFS）
+ * @param collection_name 图集合名称（传 NULL 时使用默认值）
  */
 GraphScanState *exec_graph_scan_init(PlanState *parent,
-    void *start_vertex, int max_depth, void *traversal_pattern);
+    void *start_vertex, int max_depth, void *traversal_pattern,
+    const char *collection_name);
 
 /**
  * @brief 执行图扫描，返回下一行

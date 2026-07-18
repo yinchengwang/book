@@ -312,6 +312,7 @@ typedef struct DatalogScanState_s {
     void *rule_set;
     void *edb;
     void *idb;
+    int   max_iter;   /**< 最大迭代次数 */
 } DatalogScanState;
 
 /** Yang 扫描状态（与 executor/yang/yang_scan.h 一致） */

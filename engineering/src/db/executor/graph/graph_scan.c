@@ -53,7 +53,8 @@ static int collect_vertex_callback(graph_vertex_id_t vid, void *data) {
 }
 
 GraphScanState *exec_graph_scan_init(PlanState *parent,
-    void *start_vertex, int max_depth, void *traversal_pattern)
+    void *start_vertex, int max_depth, void *traversal_pattern,
+    const char *collection_name)
 {
     GraphScanState *state = (GraphScanState *)calloc(1, sizeof(GraphScanState));
     if (state == NULL) return NULL;
@@ -79,7 +80,8 @@ GraphScanState *exec_graph_scan_init(PlanState *parent,
     internal->current_index = 0;
     internal->all_vertices = NULL;
     internal->num_vertices = 0;
-    internal->collection_name = strdup("test_graph");
+    /* 集合名：优先使用参数，否则使用默认值 */
+    internal->collection_name = collection_name ? strdup(collection_name) : strdup("default_graph");
     internal->max_depth = max_depth;
     internal->is_full_scan = (start_vertex == NULL);
 
