@@ -26,11 +26,25 @@
       <div class="detail-summary" v-if="item.summary">
         <h3>摘要</h3>
         <p>{{ item.summary }}</p>
+        <button
+          class="btn btn-ghost btn-sm"
+          @click="translateSummary"
+          :disabled="summaryTranslating"
+        >
+          {{ summaryTranslating ? '翻译中...' : (summaryTranslated ? '原文' : '翻译') }}
+        </button>
       </div>
 
       <div class="detail-raw" v-if="item.raw_content">
         <h3>原文内容</h3>
         <p>{{ item.raw_content }}</p>
+        <button
+          class="btn btn-ghost btn-sm"
+          @click="translateRaw"
+          :disabled="rawTranslating"
+        >
+          {{ rawTranslating ? '翻译中...' : (rawTranslated ? '原文' : '翻译') }}
+        </button>
       </div>
 
       <div class="detail-tags" v-if="item.tags?.length">
@@ -58,6 +72,56 @@ import { api, type Item } from '../api/client'
 
 const route = useRoute()
 const item = ref<Item | null>(null)
+
+// 翻译状态
+const summaryTranslated = ref(false)
+const summaryTranslating = ref(false)
+const originalSummary = ref('')
+const originalRaw = ref('')
+const rawTranslated = ref(false)
+const rawTranslating = ref(false)
+
+// 翻译摘要
+async function translateSummary() {
+  if (summaryTranslated.value) {
+    // 切换回原文
+    item.value!.summary = originalSummary.value
+    summaryTranslated.value = false
+    return
+  }
+  summaryTranslating.value = true
+  try {
+    if (!originalSummary.value) originalSummary.value = item.value!.summary
+    const resp = await api.translate(item.value!.summary)
+    item.value!.summary = resp.translated_text
+    summaryTranslated.value = true
+  } catch (e) {
+    console.error('翻译失败:', e)
+  } finally {
+    summaryTranslating.value = false
+  }
+}
+
+// 翻译原文内容
+async function translateRaw() {
+  if (rawTranslated.value) {
+    // 切换回原文
+    item.value!.raw_content = originalRaw.value
+    rawTranslated.value = false
+    return
+  }
+  rawTranslating.value = true
+  try {
+    if (!originalRaw.value) originalRaw.value = item.value!.raw_content
+    const resp = await api.translate(item.value!.raw_content)
+    item.value!.raw_content = resp.translated_text
+    rawTranslated.value = true
+  } catch (e) {
+    console.error('翻译失败:', e)
+  } finally {
+    rawTranslating.value = false
+  }
+}
 
 const SOURCE_LABELS: Record<string, string> = {
   arxiv: 'arXiv',
