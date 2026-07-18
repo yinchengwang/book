@@ -57,8 +57,8 @@ add_subdirectory(mm)
 
 add_subdirectory(kv)
 add_subdirectory(vector)
+add_subdirectory(spatial)
 # spatial/ts/yang 模块暂时禁用 - 存在编译问题，待修复
-# add_subdirectory(spatial)
 # add_subdirectory(ts)
 # add_subdirectory(yang)
 

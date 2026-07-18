@@ -4,6 +4,7 @@
  */
 
 #include "db/storage/spatial/spatial_quadtree.h"
+#include "db/storage/spatial/rtree.h"
 #include "log.h"
 #include <stdlib.h>
 #include <string.h>
@@ -14,18 +15,14 @@
  * 工具函数
  * ======================================================================== */
 
-static bool bbox_contains_bbox(const bbox_t *outer, const bbox_t *inner) {
+static bool bbox_contains_bbox_internal(const bbox_t *outer, const bbox_t *inner) {
     return inner->min_x >= outer->min_x && inner->max_x <= outer->max_x &&
            inner->min_y >= outer->min_y && inner->max_y <= outer->max_y;
 }
 
-static bool bbox_intersects(const bbox_t *a, const bbox_t *b) {
+static bool bbox_intersects_internal(const bbox_t *a, const bbox_t *b) {
     return !(a->max_x < b->min_x || a->min_x > b->max_x ||
              a->max_y < b->min_y || a->min_y > b->max_y);
-}
-
-static double bbox_area(const bbox_t *bbox) {
-    return (bbox->max_x - bbox->min_x) * (bbox->max_y - bbox->min_y);
 }
 
 static double point_distance(const point_t *p, const bbox_t *bbox) {
@@ -80,7 +77,7 @@ static void node_destroy(QuadTreeNode *node) {
 static int node_insert(QuadTreeNode *node, uint64_t id, const bbox_t *bbox,
                        uint32_t depth, uint32_t max_depth, uint32_t max_capacity) {
     /* 检查是否在边界内 */
-    if (!bbox_intersects(&node->boundary, bbox)) {
+    if (!bbox_intersects_internal(&node->boundary, bbox)) {
         return -1;
     }
 
@@ -130,7 +127,7 @@ static int node_insert(QuadTreeNode *node, uint64_t id, const bbox_t *bbox,
 
 static void node_search(QuadTreeNode *node, const bbox_t *query,
                        uint64_t **ids, size_t *count, size_t *capacity) {
-    if (!node || !bbox_intersects(&node->boundary, query)) return;
+    if (!node || !bbox_intersects_internal(&node->boundary, query)) return;
 
     if (node->is_leaf) {
         for (size_t i = 0; i < node->num_objects; i++) {
@@ -294,10 +291,10 @@ void quadtree_result_free(QuadTreeResult *result) {
     free(result);
 }
 
-void quadtree_stats(QuadTree *tree, rtree_stats_t *stats) {
+void quadtree_stats(QuadTree *tree, storage_stats_t *stats) {
     if (!tree || !stats) return;
-    memset(stats, 0, sizeof(rtree_stats_t));
-    stats->num_items = tree->num_objects;
+    memset(stats, 0, sizeof(storage_stats_t));
+    stats->num_objects = tree->num_objects;
 }
 
 int quadtree_save(QuadTree *tree, const char *path) {

@@ -113,7 +113,7 @@ void quadtree_result_free(QuadTreeResult *result);
 /**
  * @brief 获取 QuadTree 统计信息
  */
-void quadtree_stats(QuadTree *tree, rtree_stats_t *stats);
+void quadtree_stats(QuadTree *tree, storage_stats_t *stats);
 
 /**
  * @brief 保存 QuadTree 到文件

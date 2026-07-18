@@ -288,7 +288,7 @@ char *spatial_wkt_serialize_precision(const SpatialGeometry *geom, int precision
     if (precision >= 0) {
         snprintf(fmt, sizeof(fmt), " %%.%df", precision);
     } else {
-        snprintf(fmt, sizeof(fmt), " %.10g");
+        snprintf(fmt, sizeof(fmt), " %%.10g");
     }
 
     char *p = buf;
@@ -325,7 +325,6 @@ char *spatial_wkt_serialize_precision(const SpatialGeometry *geom, int precision
     *p++ = ')';
     *p = '\0';
 
-    if (out_len) *out_len = p - buf;
     return strdup(buf);
 }
 
@@ -376,7 +375,11 @@ double spatial_distance_point_polygon(const SpatialCoord *p, const SpatialPolygo
         return 0;
     }
 
-    return spatial_distance_point_line(p, &poly->exterior->points);
+    /* 构造临时线段用于距离计算 */
+    SpatialLine tmp_line;
+    tmp_line.points = poly->exterior->points;
+    tmp_line.num_points = poly->exterior->num_points;
+    return spatial_distance_point_line(p, &tmp_line);
 }
 
 double spatial_distance(const SpatialGeometry *a, const SpatialGeometry *b) {
