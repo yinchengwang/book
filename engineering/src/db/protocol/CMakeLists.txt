@@ -1,4 +1,11 @@
 # protocol 模块：非 SQL 协议层
-# 每个协议实现独立编译单元，后续 Phase 逐步添加
+file(GLOB_RECURSE PROTOCOL_SOURCE_FILES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.c")
 
-# 本模块目前为骨架，后续每个协议实现会在此添加
+if(PROTOCOL_SOURCE_FILES)
+    add_library(db_protocol STATIC ${PROTOCOL_SOURCE_FILES})
+    target_include_directories(db_protocol PUBLIC
+        ${ENGINEERING_SOURCE_DIR}/include
+        ${ENGINEERING_SOURCE_DIR}/include/db
+        ${ENGINEERING_SOURCE_DIR}/include/db/protocol
+    )
+endif()

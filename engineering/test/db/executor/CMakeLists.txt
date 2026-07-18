@@ -24,5 +24,25 @@ if(BUILD_TESTING)
     )
     add_test(NAME vector_scan_test COMMAND test_vector_scan)
 
+    # KV 扫描算子测试
+    add_executable(test_kv_scan
+        ${ENGINEERING_SOURCE_DIR}/test/db/executor/kv_scan_test.cpp
+    )
+    target_include_directories(test_kv_scan PRIVATE
+        ${ENGINEERING_SOURCE_DIR}/include
+        ${ENGINEERING_SOURCE_DIR}/include/db
+        ${ENGINEERING_SOURCE_DIR}/include/db/executor
+        ${ENGINEERING_SOURCE_DIR}/include/db/storage
+        ${THIRD_PART_DIR}/googletest/googletest/include
+        ${THIRD_PART_DIR}/googletest/googlemock/include
+    )
+    target_link_libraries(test_kv_scan PRIVATE
+        db_kv_engine
+        project_includes
+        gtest
+        gtest_main
+    )
+    add_test(NAME kv_scan_test COMMAND test_kv_scan)
+
     # RAG 执行器测试 - 测试已集成到 src/db/executor/CMakeLists.txt
 endif()
