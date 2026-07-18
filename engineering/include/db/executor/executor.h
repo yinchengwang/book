@@ -11,7 +11,7 @@
 #include "db/sql/executor.h"        /* 执行器入口（execMain 等价） */
 #include "db/sql/sql_executor.h"    /* Volcono 执行器主接口 */
 #include "db/sql/expr.h"            /* 表达式求值 */
-#include "db/sql/execnodes.h"       /* 执行节点类型 */
+#include "db/sql/nodes/execnodes.h" /* 执行节点类型 */
 
 #ifdef __cplusplus
 extern "C" {

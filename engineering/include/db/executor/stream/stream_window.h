@@ -13,13 +13,7 @@
 extern "C" {
 #endif
 
-/** 流窗口状态 */
-typedef struct StreamWindowState_s {
-    PlanState ps;           /**< 基类 PlanState */
-    int64_t   window_size;  /**< 窗口大小（毫秒） */
-    int64_t   slide;        /**< 滑动步长（毫秒） */
-    int       window_type;  /**< 窗口类型：0=tumbling, 1=sliding, 2=session */
-} StreamWindowState;
+/* StreamWindowState 已在 sql_executor.h 中定义，这里直接使用 */
 
 /**
  * @brief 初始化流窗口

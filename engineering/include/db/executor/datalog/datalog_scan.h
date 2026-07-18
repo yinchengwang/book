@@ -3,23 +3,18 @@
  * @brief Datalog 扫描算子接口
  *
  * Datalog 扫描算子实现半朴素求值，实现将在 Phase 8 完成。
+ *
+ * 注意：DatalogScanState 类型已在 sql_executor.h 中定义，
+ * 本文件仅提供算子函数声明，避免类型重定义。
  */
 #ifndef DB_EXECUTOR_DATALOG_SCAN_H
 #define DB_EXECUTOR_DATALOG_SCAN_H
 
-#include "db/sql/sql_executor.h"  /* PlanState, TupleTableSlot */
+#include "db/sql/sql_executor.h"  /* PlanState, TupleTableSlot, DatalogScanState */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/** Datalog 扫描状态 */
-typedef struct DatalogScanState_s {
-    PlanState ps;           /**< 基类 PlanState */
-    void     *rule_set;     /**< 规则集合 */
-    void     *edb;          /**< 外延数据库（事实） */
-    void     *idb;          /**< 内涵数据库（推导结果） */
-} DatalogScanState;
 
 /**
  * @brief 初始化 Datalog 扫描

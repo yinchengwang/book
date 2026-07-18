@@ -13,13 +13,7 @@
 extern "C" {
 #endif
 
-/** 流聚合状态 */
-typedef struct StreamAggState_s {
-    PlanState ps;           /**< 基类 PlanState */
-    int       agg_type;     /**< 聚合类型：0=AVG, 1=MAX, 2=MIN, 3=SUM, 4=COUNT */
-    int64_t   window_size;  /**< 窗口大小（毫秒） */
-    void     *acc_state;    /**< 累积状态 */
-} StreamAggState;
+/* StreamAggState 已在 sql_executor.h 中定义，这里直接使用 */
 
 /**
  * @brief 初始化流聚合

@@ -41,7 +41,7 @@ typedef enum DocAggType_e {
 typedef struct DocTermBucket_s {
     char *term;               /**< 词条值 */
     int64_t doc_count;        /**< 文档数量 */
-    double占比;               /**< 占比 */
+    double percent;              /**< 占比 */
 } DocTermBucket;
 
 /** 词条聚合结果 */

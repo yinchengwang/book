@@ -123,7 +123,7 @@ static int kv_page_find(const page_t *page,
 
     while (offset < free_space) {
         iter++;
-        if (iter > 50) {
+        if (iter > 5000) {
             /* 安全检查 */
             return -1;
         }
@@ -455,11 +455,26 @@ kv_result_t kv_get(kv_t *db,
         return KV_INVALID;
     }
 
-    /* 检查 TTL 是否过期 */
+    /* 检查 TTL 是否过期 — 直接操作，避免递归 */
     kv_ttl_mgr_t *ttl_mgr = (kv_ttl_mgr_t *)db->ttl_mgr;
+    bool expired = false;
     if (ttl_mgr && kv_ttl_is_expired(ttl_mgr, key, key_len)) {
-        /* 键已过期，删除它 */
-        kv_delete(db, key, key_len);
+        expired = true;
+    }
+
+    if (expired) {
+        /* 直接从页面删除过期键，不调用 kv_delete（避免递归） */
+        page_id_t data_page_id = kv_get_data_page_id(db);
+        page_t *page = buffer_get_page(db->pool, data_page_id);
+        if (page) {
+            uint16_t offset;
+            if (kv_page_find(page, key, key_len, &offset) == 0) {
+                buffer_unpin_page(db->pool, data_page_id);
+                kv_page_delete(db->pool, data_page_id, offset);
+            } else {
+                buffer_unpin_page(db->pool, data_page_id);
+            }
+        }
         /* 从 TTL 管理器中移除条目 */
         kv_ttl_delete(ttl_mgr, key, key_len);
         return KV_NOT_FOUND;

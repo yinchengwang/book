@@ -13,13 +13,7 @@
 extern "C" {
 #endif
 
-/** 流扫描状态 */
-typedef struct StreamScanState_s {
-    PlanState ps;           /**< 基类 PlanState */
-    void     *stream_oid;   /**< 流表 OID */
-    int64_t   watermark;    /**< 水位线时间戳 */
-    int       batch_size;   /**< 批处理大小 */
-} StreamScanState;
+/* StreamScanState 已在 sql_executor.h 中定义，这里直接使用 */
 
 /**
  * @brief 初始化流扫描

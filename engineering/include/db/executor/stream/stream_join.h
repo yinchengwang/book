@@ -13,12 +13,7 @@
 extern "C" {
 #endif
 
-/** 流连接状态 */
-typedef struct StreamJoinState_s {
-    PlanState ps;           /**< 基类 PlanState */
-    int64_t   interval;     /**< 连接时间窗口（毫秒） */
-    int       join_type;    /**< 连接类型：0=stream-stream, 1=stream-table */
-} StreamJoinState;
+/* StreamJoinState 已在 sql_executor.h 中定义，这里直接使用 */
 
 /**
  * @brief 初始化流连接

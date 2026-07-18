@@ -39,7 +39,7 @@ static int read_line(resp_parser_t *parser, const char **out_line, int *out_len)
 static int read_integer_line(resp_parser_t *parser, int64_t *out) {
     const char *line;
     int len;
-    if (read_line(parser, &line, len) != 0) return -1;
+    if (read_line(parser, &line, &len) != 0) return -1;
 
     char buf[32];
     int copy_len = len < 31 ? len : 31;

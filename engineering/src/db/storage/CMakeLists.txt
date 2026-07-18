@@ -57,10 +57,12 @@ add_subdirectory(mm)
 
 add_subdirectory(kv)
 add_subdirectory(vector)
+add_subdirectory(graph)
 add_subdirectory(spatial)
-# spatial/ts/yang 模块暂时禁用 - 存在编译问题，待修复
+# doc/ts/yang 模块需手动启用
+# add_subdirectory(doc)
 # add_subdirectory(ts)
-# add_subdirectory(yang)
+add_subdirectory(yang)
 
 # ========================================================================
 # 组合 db_storage 主库
@@ -70,7 +72,7 @@ add_subdirectory(spatial)
 set(DB_STORAGE_OBJECTS "")
 
 # 条件收集 OBJECT 库
-foreach(subdir buffer page lock catalog wal rel mm kv vector)
+foreach(subdir buffer page lock catalog wal rel mm kv vector graph yang)
     if(TARGET storage_${subdir})
         list(APPEND DB_STORAGE_OBJECTS $<TARGET_OBJECTS:storage_${subdir}>)
     endif()

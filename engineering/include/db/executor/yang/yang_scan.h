@@ -2,23 +2,18 @@
  * @file yang_scan.h
  * @brief Yang 路径扫描算子接口
  *
- * Yang 路径扫描算子直接调用 yang_engine，实现将在 Phase 9 完成。
+ * Yang 路径扫描算子直接调用 yang_engine。
+ * 注意：YangScanState 类型已在 sql_executor.h 中定义，
+ * 本文件仅提供算子函数声明，避免类型重定义。
  */
 #ifndef DB_EXECUTOR_YANG_SCAN_H
 #define DB_EXECUTOR_YANG_SCAN_H
 
-#include "db/sql/sql_executor.h"  /* PlanState, TupleTableSlot */
+#include "db/sql/sql_executor.h"  /* PlanState, TupleTableSlot, YangScanState */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/** Yang 扫描状态 */
-typedef struct YangScanState_s {
-    PlanState ps;           /**< 基类 PlanState */
-    void     *yang_path;    /**< Yang Path 表达式 */
-    void     *xpath_filter; /**< XPath 过滤条件 */
-} YangScanState;
 
 /**
  * @brief 初始化 Yang 扫描

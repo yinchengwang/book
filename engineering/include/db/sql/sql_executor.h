@@ -45,6 +45,12 @@ typedef enum ExecutorType_e {
     EXEC_GRAPH_SCAN,        /**< 图扫描 */
     EXEC_DOCUMENT_SCAN,     /**< 文档扫描 */
     EXEC_SPATIAL_SCAN,      /**< 空间扫描 */
+    EXEC_DATALOG_SCAN,      /**< Datalog 扫描 */
+    EXEC_YANG_SCAN,         /**< Yang 扫描 */
+    EXEC_STREAM_SCAN,       /**< 流扫描 */
+    EXEC_STREAM_WINDOW,     /**< 流窗口 */
+    EXEC_STREAM_JOIN,       /**< 流连接 */
+    EXEC_STREAM_AGG,        /**< 流聚合 */
 
     /* 连接算子 */
     EXEC_NESTLOOP,          /**< 嵌套循环连接 */
@@ -299,6 +305,52 @@ typedef struct IvfScanState_s {
     int nprobe;                 /**< IVF 搜索探针数 */
     int nlist;                  /**< IVF 聚类数 */
 } IvfScanState;
+
+/** Datalog 扫描状态（与 executor/datalog/datalog_scan.h 一致） */
+typedef struct DatalogScanState_s {
+    PlanState ps;
+    void *rule_set;
+    void *edb;
+    void *idb;
+} DatalogScanState;
+
+/** Yang 扫描状态（与 executor/yang/yang_scan.h 一致） */
+typedef struct YangScanState_s {
+    PlanState ps;
+    void *yang_path;
+    void *xpath_filter;
+} YangScanState;
+
+/** 流扫描状态 */
+typedef struct StreamScanState_s {
+    PlanState ps;
+    void *stream_oid;
+    int64_t watermark;
+    int batch_size;
+} StreamScanState;
+
+/** 流窗口状态 */
+typedef struct StreamWindowState_s {
+    PlanState ps;
+    int64_t window_size;
+    int64_t slide;
+    int window_type;
+} StreamWindowState;
+
+/** 流连接状态 */
+typedef struct StreamJoinState_s {
+    PlanState ps;
+    int64_t interval;
+    int join_type;
+} StreamJoinState;
+
+/** 流聚合状态 */
+typedef struct StreamAggState_s {
+    PlanState ps;
+    int agg_type;
+    int64_t window_size;
+    void *acc_state;
+} StreamAggState;
 
 /** 连接状态 */
 typedef struct JoinState_s {

@@ -339,11 +339,11 @@ int64_t kv_ttl_get_remaining(kv_ttl_mgr_t *mgr, const void *key, size_t key_len)
 }
 
 bool kv_ttl_is_expired(kv_ttl_mgr_t *mgr, const void *key, size_t key_len) {
-    if (!mgr || !key) return true;
+    if (!mgr || !key) return false;
 
     int64_t idx = kv_ttl_find_index(mgr, key, key_len);
     if (idx < 0) {
-        return true;  /* 键不存在视为已过期 */
+        return false;  /* 键不在 TTL 表中 => 没有过期信息，视为未过期 */
     }
 
     int64_t expire_at_ms = mgr->entries[idx].expire_at_ms;
