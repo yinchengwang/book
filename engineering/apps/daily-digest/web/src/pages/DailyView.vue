@@ -31,9 +31,10 @@
       <span>加载中...</span>
     </div>
 
-    <!-- 分页 -->
+    // 分页
     <Pagination
       v-model="page"
+      v-model:size="pageSize"
       :total="total"
       :size="pageSize"
     />
@@ -60,7 +61,7 @@ const CATEGORY_CONFIG = [
 const items = ref<Item[]>([])
 const total = ref(0)
 const page = ref(1)
-const pageSize = 20
+const pageSize = ref(10) // 响应式每页条数，默认 10
 const loading = ref(false)
 const activeCategory = ref('')
 
@@ -73,7 +74,7 @@ async function loadItems() {
     const resp = await api.getDaily(
       activeCategory.value || undefined,
       page.value,
-      pageSize
+      pageSize.value // 使用 ref 的 .value
     )
     items.value = resp.items
     total.value = resp.total
@@ -96,6 +97,12 @@ watch([activeCategory, page], () => {
   loadItems()
 })
 
+// 监听每页条数变化：重置到第 1 页并重新加载
+watch(pageSize, () => {
+  page.value = 1
+  loadItems()
+})
+
 onMounted(() => {
   loadItems()
 })
@@ -109,7 +116,10 @@ onMounted(() => {
 .item-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3, 12px);
+  gap: var(--space-5, 20px);
+  border-left: 2px dashed var(--color-border, #E2E5EC);
+  padding-left: var(--space-4, 16px);
+  margin-left: var(--space-2, 8px);
 }
 
 .empty-state {
