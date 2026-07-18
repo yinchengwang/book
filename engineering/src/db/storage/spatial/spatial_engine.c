@@ -15,7 +15,23 @@
 #ifdef _WIN32
     #include <direct.h>
     #include <errno.h>
-    #define mkdir(path) _mkdir(path)
+    /* 带父目录创建的 mkdir：递归创建中间目录 */
+    static int mkdir_recursive(const char *path) {
+        char tmp[512];
+        snprintf(tmp, sizeof(tmp), "%s", path);
+        /* 跳过盘符 "C:" */
+        char *p = tmp + 3;
+        while (*p) {
+            if (*p == '/' || *p == '\\') {
+                *p = '\0';
+                _mkdir(tmp);
+                *p = '/';
+            }
+            p++;
+        }
+        return _mkdir(tmp);
+    }
+    #define mkdir(path) mkdir_recursive(path)
 #else
     #include <sys/stat.h>
     #include <unistd.h>
