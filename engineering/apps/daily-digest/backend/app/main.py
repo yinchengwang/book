@@ -4,7 +4,7 @@ from app.config import settings
 from app.routers import (
     daily_router, search_router, history_router,
     auth_router, subscriptions_router, collections_router,
-    trigger_router, stats_router,
+    trigger_router, stats_router, translate_router,
 )
 from app.scheduler import start_scheduler, stop_scheduler
 import logging
@@ -36,6 +36,7 @@ app.include_router(subscriptions_router)
 app.include_router(collections_router)
 app.include_router(trigger_router)
 app.include_router(stats_router)
+app.include_router(translate_router)
 
 
 @app.get("/health")

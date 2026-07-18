@@ -6,6 +6,7 @@ from app.routers.subscriptions import router as subscriptions_router
 from app.routers.collections import router as collections_router
 from app.routers.trigger import router as trigger_router
 from app.routers.stats import router as stats_router
+from app.routers.translate import router as translate_router
 
 __all__ = [
     "daily_router",
@@ -16,4 +17,5 @@ __all__ = [
     "collections_router",
     "trigger_router",
     "stats_router",
+    "translate_router",
 ]
