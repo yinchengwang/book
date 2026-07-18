@@ -52,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, type Item } from '../api/client'
 
@@ -77,8 +77,15 @@ const CATEGORY_LABELS: Record<string, string> = {
   other: '其他',
 }
 
-const sourceLabel = SOURCE_LABELS[item.value?.source || ''] || item.value?.source || ''
-const categoryLabel = CATEGORY_LABELS[item.value?.category || ''] || item.value?.category || ''
+const sourceLabel = computed(() => {
+  const src = item.value?.source || ''
+  return SOURCE_LABELS[src] || src
+})
+
+const categoryLabel = computed(() => {
+  const cat = item.value?.category || ''
+  return CATEGORY_LABELS[cat] || cat
+})
 
 onMounted(async () => {
   try {

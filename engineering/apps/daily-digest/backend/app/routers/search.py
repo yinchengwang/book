@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/v1/search", tags=["搜索"])
 
 @router.get("", response_model=ItemList)
 def search(
-    q: str = Query("", description="搜索关键词"),
+    q: str = Query(..., min_length=1, description="搜索关键词（至少 1 个字符）"),
     category: Optional[str] = Query(None, description="分类筛选"),
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
@@ -27,7 +27,6 @@ def search(
                 Item.title.ilike(keyword),
                 Item.summary.ilike(keyword),
                 Item.raw_content.ilike(keyword),
-                Item.tags.ilike(keyword),
             )
         )
 

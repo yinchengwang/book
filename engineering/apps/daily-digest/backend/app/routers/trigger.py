@@ -50,7 +50,7 @@ async def trigger_refresh():
                     summary=item.summary,
                     raw_content=item.raw_content,
                     category=category,
-                    tags=str(tags),
+                    tags=tags,  # JSON 列，直接传数组
                     score=score,
                     published=item.published,
                     source_weight=item.source_weight,

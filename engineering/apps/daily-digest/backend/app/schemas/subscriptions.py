@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
 
 
@@ -20,7 +20,7 @@ class SubscriptionResponse(BaseModel):
     id: int
     user_id: int
     category: str
-    keywords: str  # JSON 字符串
+    keywords: Any  # JSON 字段，可能返回 list 或 str
     weight: int
     created_at: datetime
 

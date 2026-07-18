@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     # 聚合配置
     fetch_timeout: int = 30
     max_items_per_source: int = 50
+    max_items_per_day: int = 200
 
     # 推送配置
     push_hour: int = 8

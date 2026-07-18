@@ -68,7 +68,7 @@ async def daily_aggregate_job():
                     summary=item.summary,
                     raw_content=item.raw_content,
                     category=category,
-                    tags=json.dumps(tags, ensure_ascii=False),
+                    tags=tags,  # JSON 列，直接传数组
                     score=score,
                     published=item.published,
                     source_weight=item.source_weight,

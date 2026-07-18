@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
 
 
@@ -22,6 +22,7 @@ class ItemCreate(ItemBase):
 
 class ItemResponse(ItemBase):
     id: int
+    tags: Any  # JSON 字段可能返回为 list 或 str，兼容处理
     created_at: datetime
 
     model_config = {"from_attributes": True}

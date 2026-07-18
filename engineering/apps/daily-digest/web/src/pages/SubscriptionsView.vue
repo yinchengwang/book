@@ -60,8 +60,6 @@ function categoryLabel(key: string): string {
 
 async function loadSubscriptions() {
   try {
-    subscriptions.value = await api.getCollections(1) as any
-    // 使用 api 中的每日接口获取订阅 — 简化版直接用 fetch
     const resp = await fetch('/api/v1/subscriptions?user_id=1')
     if (resp.ok) {
       subscriptions.value = await resp.json()
