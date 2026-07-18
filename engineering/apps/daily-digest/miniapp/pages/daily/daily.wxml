@@ -1,0 +1,29 @@
+<view class="daily-page">
+  <view class="daily-header">
+    <text class="daily-title">每日速览</text>
+    <text class="daily-date">{{dateStr}}</text>
+  </view>
+
+  <category-tabs
+    tabs="{{categoryTabs}}"
+    active-category="{{activeCategory}}"
+    bind:change="onCategoryChange"
+  />
+
+  <view wx:if="{{loading}}" class="loading-state">
+    <text>加载中...</text>
+  </view>
+
+  <view wx:elif="{{items.length}}" class="item-list">
+    <item-card
+      wx:for="{{items}}"
+      wx:key="id"
+      item="{{item}}"
+    />
+  </view>
+
+  <view wx:else class="empty-state">
+    <text>今日暂无更新</text>
+    <text class="empty-hint">数据聚合将在每天 08:00 自动执行</text>
+  </view>
+</view>

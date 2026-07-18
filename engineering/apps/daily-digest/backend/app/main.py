@@ -1,5 +1,12 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
+from app.routers import (
+    daily_router, search_router, history_router,
+    auth_router, subscriptions_router, collections_router,
+    trigger_router, stats_router,
+)
+from app.scheduler import start_scheduler, stop_scheduler
 import logging
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
@@ -11,7 +18,38 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# CORS 中间件 — 允许前端 dev server 跨域访问
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 注册路由
+app.include_router(daily_router)
+app.include_router(search_router)
+app.include_router(history_router)
+app.include_router(auth_router)
+app.include_router(subscriptions_router)
+app.include_router(collections_router)
+app.include_router(trigger_router)
+app.include_router(stats_router)
+
 
 @app.get("/health")
 def health():
     return {"status": "ok", "version": "0.1.0"}
+
+
+@app.on_event("startup")
+async def startup():
+    logger.info("DailyDigest API 启动中...")
+    start_scheduler()
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    logger.info("DailyDigest API 关闭中...")
+    stop_scheduler()

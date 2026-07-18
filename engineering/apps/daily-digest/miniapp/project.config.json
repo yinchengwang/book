@@ -1,0 +1,14 @@
+{
+  "description": "DailyDigest 微信小程序",
+  "packOptions": { "ignore": [] },
+  "setting": {
+    "bundle": false,
+    "userConfirmedBundleSwitch": false,
+    "urlCheck": true,
+    "scopeDataCheck": false
+  },
+  "compileType": "miniprogram",
+  "libVersion": "3.3.4",
+  "projectname": "daily-digest",
+  "condition": {}
+}

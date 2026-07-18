@@ -1,0 +1,8 @@
+{
+  "usingComponents": {
+    "item-card": "../../components/item-card/item-card",
+    "category-tabs": "../../components/category-tabs/category-tabs"
+  },
+  "enablePullDownRefresh": true,
+  "backgroundColor": "#F8F9FA"
+}

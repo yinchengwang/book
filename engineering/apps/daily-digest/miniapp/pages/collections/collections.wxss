@@ -1,0 +1,42 @@
+.collections-page { padding: 16px; }
+.page-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1A1A2E;
+  display: block;
+  margin-bottom: 24px;
+}
+.collection-list { margin-bottom: 24px; }
+.collection-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #FFFFFF;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.collection-name { font-size: 15px; font-weight: 600; display: block; }
+.collection-count { font-size: 12px; color: #9CA3AF; display: block; margin-top: 4px; }
+.empty-state { text-align: center; padding: 48px 16px; color: #5A6178; }
+.create-section { display: flex; gap: 12px; }
+.create-input {
+  flex: 1;
+  height: 40px;
+  padding: 0 16px;
+  font-size: 15px;
+  background: #FFFFFF;
+  border: 1px solid #E2E5EC;
+  border-radius: 8px;
+}
+.create-btn {
+  height: 40px;
+  padding: 0 20px;
+  color: #FFFFFF;
+  background: #2D7FF9;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 40px;
+}

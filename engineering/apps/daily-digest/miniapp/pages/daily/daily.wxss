@@ -1,0 +1,18 @@
+.daily-page { padding: 16px; }
+.daily-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.daily-title { font-size: 24px; font-weight: 700; color: #1A1A2E; }
+.daily-date { font-size: 13px; color: #9CA3AF; }
+.item-list { margin-top: 8px; }
+.loading-state, .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 16px;
+  color: #5A6178;
+}
+.empty-hint { font-size: 13px; color: #9CA3AF; margin-top: 8px; }

@@ -29,15 +29,15 @@ def upgrade() -> None:
         sa.Column("summary", sa.Text(), server_default=""),
         sa.Column("raw_content", sa.Text(), server_default=""),
         sa.Column("category", sa.String(32), server_default="other", index=True),
-        sa.Column("tags", sa.Text(), server_default="[]"),
+        sa.Column("tags", sa.JSON(), server_default="[]"),
         sa.Column("score", sa.Float(), server_default="0.0"),
         sa.Column("published", sa.TIMESTAMP(), nullable=True),
         sa.Column("source_weight", sa.Integer(), server_default="0"),
         sa.Column("created_at", sa.TIMESTAMP(), server_default=sa.func.now()),
         sa.Column("is_push", sa.Boolean(), server_default="false"),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("source", "source_id", name="uq_item_source_id"),
     )
-    op.create_index("ix_items_source_source_id", "items", ["source", "source_id"], unique=True)
 
     # users — 用户
     op.create_table(
@@ -55,9 +55,9 @@ def upgrade() -> None:
     op.create_table(
         "subscriptions",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id"), nullable=False),
+        sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("category", sa.String(32), nullable=False),
-        sa.Column("keywords", sa.Text(), server_default="[]"),
+        sa.Column("keywords", sa.JSON(), server_default="[]"),
         sa.Column("weight", sa.Integer(), server_default="0"),
         sa.Column("created_at", sa.TIMESTAMP(), server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("id"),
@@ -68,8 +68,8 @@ def upgrade() -> None:
     op.create_table(
         "user_actions",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id"), nullable=False),
-        sa.Column("item_id", sa.Integer(), sa.ForeignKey("items.id"), nullable=False),
+        sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("item_id", sa.Integer(), sa.ForeignKey("items.id", ondelete="CASCADE"), nullable=False),
         sa.Column("action", sa.String(16), nullable=False),
         sa.Column("created_at", sa.TIMESTAMP(), server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("id"),
@@ -81,7 +81,7 @@ def upgrade() -> None:
     op.create_table(
         "collections",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id"), nullable=False),
+        sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("name", sa.String(64), nullable=False),
         sa.Column("description", sa.Text(), server_default=""),
         sa.Column("created_at", sa.TIMESTAMP(), server_default=sa.func.now()),

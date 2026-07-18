@@ -1,0 +1,43 @@
+.mine-page { padding: 16px; }
+.page-title { font-size: 24px; font-weight: 700; color: #1A1A2E; display: block; margin-bottom: 24px; }
+.menu-list {
+  background: #FFFFFF;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.menu-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  font-size: 15px;
+  border-bottom: 1px solid #F3F4F6;
+}
+.menu-item:last-child { border-bottom: none; }
+.menu-arrow { font-size: 18px; color: #9CA3AF; }
+.settings-section {
+  background: #FFFFFF;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.section-title { font-size: 15px; font-weight: 600; display: block; margin-bottom: 16px; }
+.theme-options { display: flex; gap: 8px; }
+.theme-btn {
+  flex: 1;
+  text-align: center;
+  padding: 10px;
+  font-size: 13px;
+  color: #5A6178;
+  background: #F3F4F6;
+  border: 2px solid transparent;
+  border-radius: 8px;
+}
+.theme-btn.active {
+  color: #2D7FF9;
+  border-color: #2D7FF9;
+  background: rgba(45,127,249,0.08);
+}
+.about-section { text-align: center; padding: 20px; }
+.about-text { font-size: 13px; color: #9CA3AF; }

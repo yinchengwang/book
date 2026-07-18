@@ -9,7 +9,7 @@ class Collection(Base):
     __tablename__ = "collections"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(64), nullable=False)
     description = Column(Text, default="")
     created_at = Column(TIMESTAMP, default=datetime.utcnow)

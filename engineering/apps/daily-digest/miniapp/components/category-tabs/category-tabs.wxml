@@ -1,0 +1,12 @@
+<scroll-view class="category-tabs" scroll-x enhanced show-scrollbar="{{false}}">
+  <view
+    wx:for="{{tabs}}"
+    wx:key="key"
+    class="tab {{activeCategory === item.key ? 'active' : ''}}"
+    data-key="{{item.key}}"
+    bindtap="onChange"
+  >
+    <text>{{item.label}}</text>
+    <text class="tab-count" wx:if="{{item.count !== undefined}}">{{item.count}}</text>
+  </view>
+</scroll-view>

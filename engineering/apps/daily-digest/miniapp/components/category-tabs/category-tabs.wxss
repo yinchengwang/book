@@ -1,0 +1,23 @@
+.category-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 12px 0;
+  white-space: nowrap;
+}
+.tab {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 16px;
+  font-size: 13px;
+  color: #5A6178;
+  background: #FFFFFF;
+  border: 1px solid #E2E5EC;
+  border-radius: 999px;
+  margin-right: 8px;
+}
+.tab.active {
+  color: #FFFFFF;
+  background: #2D7FF9;
+  border-color: #2D7FF9;
+}
+.tab-count { font-size: 10px; margin-left: 3px; opacity: 0.8; }
