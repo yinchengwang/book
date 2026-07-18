@@ -111,4 +111,11 @@ export const api = {
   getStats() {
     return request<any>('/stats')
   },
+
+  translate(text: string) {
+    return request<{ translated_text: string }>('/translate', {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    })
+  },
 }
