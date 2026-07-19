@@ -19,7 +19,7 @@ add_library(db_parser_sql_simplified STATIC ${SQL_PARSER_SIMPLIFIED_SOURCES})
 target_include_directories(db_parser_sql_simplified PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include
 )
-target_link_libraries(db_parser_sql_simplified PRIVATE project_includes)
+target_link_libraries(db_parser_sql_simplified PRIVATE project_includes db_core)
 
 # 查找 Flex（可选）
 find_program(FLEX_EXECUTABLE flex)

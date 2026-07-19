@@ -59,6 +59,8 @@ set(_test_targets
     vector_reranker_test
     test_fault_inject
     test_fuzz_page
+    test_fuzz_sql
+    test_fuzz_wal
     test_storage_kv_crash
     test_storage_heap_crash
     test_storage_btree_crash
