@@ -109,3 +109,6 @@
 [submodule "reference/open-source/key_value/nats"]
 	path = reference/open-source/key_value/nats
 	url = https://github.com/nats-io/nats-server.git
+[submodule "reference/open-source/key_value/etcd"]
+	path = reference/open-source/key_value/etcd
+	url = https://github.com/etcd-io/etcd.git
