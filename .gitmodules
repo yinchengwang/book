@@ -97,3 +97,6 @@
 [submodule "reference/open-source/relational/stonedb"]
 	path = reference/open-source/relational/stonedb
 	url = https://github.com/stoneatom/stonedb.git
+[submodule "reference/open-source/vector/lancedb"]
+	path = reference/open-source/vector/lancedb
+	url = https://github.com/lancedb/lancedb.git
