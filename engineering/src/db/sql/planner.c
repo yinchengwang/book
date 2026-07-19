@@ -564,6 +564,7 @@ static PhysPlan *logical_to_physical(PlannerContext *ctx, LogicalPlan *logical) 
     plan->node_id = logical->node_id;
     plan->rows = logical->rows;
     plan->width = logical->width;
+    /* 注意：targetlist 和 qual 是浅拷贝，所有权仍归 LogicalPlan */
     plan->targetlist = logical->targetlist;
     plan->qual = logical->qual;
 
@@ -576,6 +577,10 @@ static PhysPlan *logical_to_physical(PlannerContext *ctx, LogicalPlan *logical) 
     if (logical->right) {
         plan->righttree = list_append(plan->righttree, logical_to_physical(ctx, logical->right));
     }
+
+    /* 注意：targetlist 和 qual 所有权转移给物理计划 */
+    /* 逻辑计划释放时不再释放它们（指针已转移，但原逻辑计划持有副本，
+     * 需在 planner_plan 中处理，而非在此处） */
 
     /* 根据逻辑算子类型选择物理算子并计算代价 */
     CostParams *params = &g_default_cost_params;
@@ -1570,11 +1575,12 @@ static void free_logical_plan_recursive(LogicalPlan *plan) {
         plan->right = NULL;
     }
 
-    /* 释放 qual */
-    if (plan->qual) {
-        free(plan->qual);
-        plan->qual = NULL;
-    }
+    /* 注意：不释放 qual 和 targetlist，因为这些字段的所有权已转移
+     * 给物理计划（在 logical_to_physical 中浅拷贝）。如果此处释放，
+     * 后续 planner_free_physical_plan 中会再次释放导致 double-free。
+     * 物理计划释放函数 free_physical_plan_recursive 负责释放它们。 */
+    plan->qual = NULL;
+    plan->targetlist = NULL;
 
     free(plan);
 }
