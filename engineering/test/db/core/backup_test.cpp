@@ -7,10 +7,18 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <sys/stat.h>
+
+#ifdef _WIN32
+#include <direct.h>
+#define MKDIR(p) _mkdir(p)
+#else
+#define MKDIR(p) mkdir(p, 0755)
+#endif
 
 extern "C" {
 #include "db/backup.h"
-#include "db/kv_engine.h"
+#include "db/kv.h"
 }
 
 class BackupTest : public ::testing::Test {
@@ -20,16 +28,16 @@ protected:
     std::string backup_dir;
 
     void SetUp() override {
-        test_dir = "./test-results/backup_test";
+        test_dir = "test-results/backup_test";
         backup_dir = test_dir + "/backup";
         db_path = test_dir + "/test_kv.db";
 
-        system(("rm -rf " + test_dir).c_str());
-        system(("mkdir -p " + test_dir).c_str());
+        system(("rmdir /s /q " + test_dir + " 2>nul").c_str());
+        MKDIR(test_dir.c_str());
     }
 
     void TearDown() override {
-        system(("rm -rf " + test_dir).c_str());
+        system(("rmdir /s /q " + test_dir + " 2>nul").c_str());
     }
 };
 
@@ -58,19 +66,19 @@ TEST_F(BackupTest, BackupRestoreBasic) {
     db = kv_open(db_path.c_str());
     ASSERT_NE(db, nullptr);
 
-    char *val = NULL;
+    void *val = NULL;
     size_t val_len = 0;
-    ASSERT_EQ(kv_get(db, "key1", 4, (void**)&val, &val_len), KV_OK);
+    ASSERT_EQ(kv_get(db, "key1", 4, &val, &val_len), KV_OK);
     ASSERT_EQ(val_len, 6);
-    ASSERT_STREQ(val, "value1");
+    ASSERT_STREQ((const char*)val, "value1");
     free(val);
 
-    ASSERT_EQ(kv_get(db, "key2", 4, (void**)&val, &val_len), KV_OK);
-    ASSERT_STREQ(val, "value2");
+    ASSERT_EQ(kv_get(db, "key2", 4, &val, &val_len), KV_OK);
+    ASSERT_STREQ((const char*)val, "value2");
     free(val);
 
-    ASSERT_EQ(kv_get(db, "key3", 4, (void**)&val, &val_len), KV_OK);
-    ASSERT_STREQ(val, "value3");
+    ASSERT_EQ(kv_get(db, "key3", 4, &val, &val_len), KV_OK);
+    ASSERT_STREQ((const char*)val, "value3");
     free(val);
 
     kv_close(db);

@@ -2,52 +2,52 @@
 	path = third_part/googletest
 	url = https://github.com/google/googletest.git
 [submodule "reference/open-source/faiss"]
-	path = reference/open-source/faiss
+	path = reference/open-source/vector/faiss
 	url = https://github.com/facebookresearch/faiss.git
 [submodule "reference/open-source/redis"]
-	path = reference/open-source/redis
+	path = reference/open-source/key_value/redis
 	url = https://github.com/redis/redis.git
 [submodule "reference/open-source/postgres"]
-	path = reference/open-source/postgres
+	path = reference/open-source/relational/postgres
 	url = https://github.com/postgres/postgres.git
 [submodule "reference/open-source/pgvector"]
-	path = reference/open-source/pgvector
+	path = reference/open-source/vector/pgvector
 	url = https://github.com/pgvector/pgvector.git
 [submodule "reference/open-source/sqlite3"]
-	path = reference/open-source/sqlite3
+	path = reference/open-source/relational/sqlite3
 	url = https://github.com/sqlite/sqlite.git
 [submodule "reference/open-source/elasticsearch"]
-	path = reference/open-source/elasticsearch
+	path = reference/open-source/search_engine/elasticsearch
 	url = https://github.com/elastic/elasticsearch.git
 [submodule "reference/open-source/chroma"]
-	path = reference/open-source/chroma
+	path = reference/open-source/vector/chroma
 	url = https://github.com/chroma-core/chroma.git
 [submodule "reference/open-source/milvus"]
-	path = reference/open-source/milvus
+	path = reference/open-source/vector/milvus
 	url = https://github.com/milvus-io/milvus.git
 [submodule "reference/open-source/ann-benchmarks"]
-	path = reference/open-source/ann-benchmarks
+	path = reference/open-source/benchmark/ann-benchmarks
 	url = https://github.com/erikbern/ann-benchmarks.git
 [submodule "reference/open-source/neo4j"]
-	path = reference/open-source/neo4j
+	path = reference/open-source/graph/neo4j
 	url = https://github.com/neo4j/neo4j.git
 [submodule "reference/open-source/openGauss"]
-	path = reference/open-source/openGauss
+	path = reference/open-source/relational/openGauss
 	url = https://github.com/opengauss/openGauss-server.git
 [submodule "reference/open-source/mysql"]
-	path = reference/open-source/mysql
+	path = reference/open-source/relational/mysql
 	url = https://github.com/mysql/mysql-server.git
 [submodule "reference/open-source/surrealdb"]
-	path = reference/open-source/surrealdb
+	path = reference/open-source/multi_model/surrealdb
 	url = https://github.com/surrealdb/surrealdb.git
 [submodule "reference/open-source/meilisearch"]
-	path = reference/open-source/meilisearch
+	path = reference/open-source/search_engine/meilisearch
 	url = https://github.com/meilisearch/meilisearch.git
 [submodule "reference/open-source/qdrant"]
 	path = reference/open-source/qdrant
 	url = https://github.com/qdrant/qdrant.git
 [submodule "reference/open-source/paradedb"]
-	path = reference/open-source/paradedb
+	path = reference/open-source/search_engine/paradedb
 	url = https://github.com/paradedb/paradedb.git
 [submodule "reference/open-source/turso"]
 	path = reference/open-source/turso
@@ -56,32 +56,32 @@
 	path = reference/open-source/dolt
 	url = https://github.com/dolthub/dolt.git
 [submodule "reference/open-source/ferretdb"]
-	path = reference/open-source/ferretdb
+	path = reference/open-source/document/ferretdb
 	url = https://github.com/FerretDB/FerretDB.git
 [submodule "reference/open-source/weaviate"]
-	path = reference/open-source/weaviate
+	path = reference/open-source/vector/weaviate
 	url = https://github.com/weaviate/weaviate.git
 [submodule "reference/open-source/greptimedb"]
-	path = reference/open-source/greptimedb
+	path = reference/open-source/time_series/greptimedb
 	url = https://github.com/GreptimeTeam/greptimedb.git
 [submodule "reference/open-source/nocodb"]
-	path = reference/open-source/nocodb
+	path = reference/open-source/document/nocodb
 	url = https://github.com/nocodb/nocodb.git
 [submodule "reference/open-source/bytebase"]
 	path = reference/open-source/bytebase
 	url = https://github.com/bytebase/bytebase.git
 [submodule "reference/open-source/appwrite"]
-	path = reference/open-source/appwrite
+	path = reference/open-source/document/appwrite
 	url = https://github.com/appwrite/appwrite.git
 [submodule "reference/open-source/tidb"]
-	path = reference/open-source/tidb
+	path = reference/open-source/relational/tidb
 	url = https://github.com/pingcap/tidb.git
 [submodule "reference/open-source/cockroach"]
-	path = reference/open-source/cockroach
+	path = reference/open-source/relational/cockroach
 	url = https://github.com/cockroachdb/cockroach.git
 [submodule "reference/open-source/dragonfly"]
-	path = reference/open-source/dragonfly
+	path = reference/open-source/key_value/dragonfly
 	url = https://github.com/dragonflydb/dragonfly.git
 [submodule "reference/open-source/timescaledb"]
-	path = reference/open-source/timescaledb
+	path = reference/open-source/time_series/timescaledb
 	url = https://github.com/timescale/timescaledb.git

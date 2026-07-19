@@ -249,21 +249,42 @@ int db_backup_meta(const char *backup_dir, backup_meta_t *meta) {
 
     char line[256];
     while (fgets(line, sizeof(line), fm)) {
+        /* 去掉行尾的 \r\n 或 \n */
+        size_t len = strlen(line);
+        while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r')) {
+            line[--len] = '\0';
+        }
+
+        /* 跳过空行 */
+        if (len == 0) continue;
+
         char key[64], sval[256];
         int ival;
         long lval;
-        if (sscanf(line, "    \"%63[^\"]\": \"%255[^\"]\",", key, sval) == 2) {
+
+        /* 尝试匹配字符串值："key": "value", */
+        if (sscanf(line, "    \"%63[^\"]\": \"%255[^\"]\"%*[,]", key, sval) >= 2) {
             if (strcmp(key, "db_name") == 0) strncpy(meta->db_name, sval, sizeof(meta->db_name) - 1);
             if (strcmp(key, "created_at") == 0) strncpy(meta->created_at, sval, sizeof(meta->created_at) - 1);
             if (strcmp(key, "engine_version") == 0) strncpy(meta->engine_version, sval, sizeof(meta->engine_version) - 1);
-        } else if (sscanf(line, "    \"%63[^\"]\": %d,", key, &ival) == 2) {
+            continue;
+        }
+
+        /* 匹配整数或长整数 */
+        if (sscanf(line, "    \"%63[^\"]\": %d,", key, &ival) == 2) {
             if (strcmp(key, "version") == 0) meta->version = (uint32_t)ival;
-            if (strcmp(key, "db_version") == 0) meta->db_version = (uint32_t)ival;
-            if (strcmp(key, "db_checksum") == 0) meta->db_checksum = (uint32_t)ival;
-            if (strcmp(key, "wal_checksum") == 0) meta->wal_checksum = (uint32_t)ival;
-        } else if (sscanf(line, "    \"%63[^\"]\": %ld,", key, &lval) == 2) {
+            else if (strcmp(key, "db_version") == 0) meta->db_version = (uint32_t)ival;
+            else if (strcmp(key, "db_checksum") == 0) meta->db_checksum = (uint32_t)ival;
+            else if (strcmp(key, "wal_checksum") == 0) meta->wal_checksum = (uint32_t)ival;
+            else if (strcmp(key, "db_size") == 0) meta->db_size = (uint64_t)ival;
+            else if (strcmp(key, "wal_size") == 0) meta->wal_size = (uint64_t)ival;
+            continue;
+        }
+
+        /* 匹配无逗号的最后一个字段 */
+        if (sscanf(line, "    \"%63[^\"]\": %ld", key, &lval) == 2) {
             if (strcmp(key, "db_size") == 0) meta->db_size = (uint64_t)lval;
-            if (strcmp(key, "wal_size") == 0) meta->wal_size = (uint64_t)lval;
+            else if (strcmp(key, "wal_size") == 0) meta->wal_size = (uint64_t)lval;
         }
     }
     fclose(fm);
