@@ -121,3 +121,6 @@
 [submodule "reference/open-source/search_engine/zincsearch"]
 	path = reference/open-source/search_engine/zincsearch
 	url = https://github.com/zinclabs/zincsearch.git
+[submodule "reference/open-source/graph/dgraph"]
+	path = reference/open-source/graph/dgraph
+	url = https://github.com/dgraph-io/dgraph.git
