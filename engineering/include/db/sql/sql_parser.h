@@ -161,6 +161,14 @@ typedef enum SqlTokenType_e {
     TOKEN_USER,
     TOKEN_ROLE,
     /* TOKEN_INTO 已在前面定义，此处移除 */
+
+    /* ALTER TABLE 相关 */
+    TOKEN_ADD,
+    TOKEN_COLUMN,
+    TOKEN_DATA,
+    TOKEN_RENAME,
+    TOKEN_TYPE_KW,
+
     TOKEN_DATABASE,
     TOKEN_SCHEMA,
     TOKEN_CATALOG,
@@ -653,6 +661,35 @@ typedef struct SqlDropTableStmt_s {
     int location;
 } SqlDropTableStmt;
 
+/** ALTER TABLE 操作类型 */
+typedef enum AlterTableOp_e {
+    AT_AddColumn = 1,       /**< ADD COLUMN */
+    AT_DropColumn = 2,      /**< DROP COLUMN */
+    AT_AlterColumnType = 3, /**< ALTER COLUMN TYPE */
+    AT_RenameColumn = 4     /**< RENAME COLUMN */
+} AlterTableOp;
+
+/** ALTER TABLE 子命令 */
+typedef struct AlterTableCmd_s {
+    SqlAstType type;
+    AlterTableOp subtype;          /**< 子类型 */
+    char *name;                    /**< 列名 */
+    char *new_name;                /**< 新列名（RENAME） */
+    char *type_name;               /**< 新类型名（ALTER TYPE） */
+    char *default_expr;            /**< 默认值表达式（ADD） */
+    bool not_null;                 /**< NOT NULL（ADD） */
+    int location;
+} AlterTableCmd;
+
+/** ALTER TABLE 语句 */
+typedef struct AlterTableStmt_s {
+    SqlAstType type;
+    char *relation;                /**< 表名 */
+    int num_cmds;                  /**< 命令数量 */
+    AlterTableCmd **cmds;          /**< 命令数组 */
+    int location;
+} AlterTableStmt;
+
 /** 事务语句 */
 typedef struct SqlTransactionStmt_s {
     SqlAstType type;
@@ -697,6 +734,7 @@ typedef struct SqlNode_s {
         SqlAExpr aexpr;
         SqlFuncCall func;
         SqlList list;
+        AlterTableStmt alter;
     } node;
 } SqlNode;
 

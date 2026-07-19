@@ -192,7 +192,14 @@ static const SqlKeyword g_keywords[] = {
     {"REFRESH", TOKEN_REFRESH, 7},
     {"COMPLETE", TOKEN_COMPLETE, 8},
     {"FAST", TOKEN_FAST, 4},
-    {"CONCURRENTLY", TOKEN_CONCURRENTLY, 11}
+    {"CONCURRENTLY", TOKEN_CONCURRENTLY, 11},
+
+    /* ALTER TABLE */
+    {"ADD", TOKEN_ADD, 3},
+    {"COLUMN", TOKEN_COLUMN, 6},
+    {"DATA", TOKEN_DATA, 4},
+    {"RENAME", TOKEN_RENAME, 6},
+    {"TYPE", TOKEN_TYPE_KW, 4}
 };
 
 #define KEYWORD_COUNT (sizeof(g_keywords) / sizeof(g_keywords[0]))
@@ -880,6 +887,11 @@ const char *sql_token_name(SqlTokenType type)
         case TOKEN_COMPLETE: return "COMPLETE";
         case TOKEN_FAST: return "FAST";
         case TOKEN_CONCURRENTLY: return "CONCURRENTLY";
+        case TOKEN_ADD: return "ADD";
+        case TOKEN_COLUMN: return "COLUMN";
+        case TOKEN_DATA: return "DATA";
+        case TOKEN_RENAME: return "RENAME";
+        case TOKEN_TYPE_KW: return "TYPE";
         /* 操作符 */
         case TOKEN_PLUS: return "+";
         case TOKEN_MINUS: return "-";
@@ -1867,6 +1879,224 @@ static void *parse_drop_table(SqlParser *parser)
 }
 
 /**
+ * @brief 解析 ALTER TABLE 语句
+ *
+ * 支持以下语法：
+ *   ALTER TABLE <name> ADD [COLUMN] <col> <type> [NOT NULL] [DEFAULT <expr>]
+ *   ALTER TABLE <name> DROP [COLUMN] <col>
+ *   ALTER TABLE <name> ALTER [COLUMN] <col> [SET DATA] TYPE <type>
+ *   ALTER TABLE <name> RENAME [COLUMN] <old> TO <new>
+ *   批量操作：逗号分隔多个命令
+ */
+static void *parse_alter_table(SqlParser *parser)
+{
+    AlterTableStmt *stmt = (AlterTableStmt *)calloc(1, sizeof(AlterTableStmt));
+    stmt->type = AST_AlterTableStmt;
+    stmt->location = parser_peek(parser).location;
+
+    /* 表名 */
+    SqlToken token = parser_peek(parser);
+    if (token.type != TOKEN_IDENTIFIER) {
+        parser_error(parser, "需要表名");
+        free(stmt);
+        return NULL;
+    }
+    stmt->relation = strdup(parser->tokens[parser->pos].value);
+    parser_next(parser);
+
+    /* 解析命令列表（单条或批量逗号分隔） */
+    AlterTableCmd **cmds = NULL;
+    int num_cmds = 0, cap_cmds = 0;
+
+    while (1) {
+        token = parser_peek(parser);
+        if (token.type == TOKEN_EOF) break;
+
+        AlterTableCmd *cmd = (AlterTableCmd *)calloc(1, sizeof(AlterTableCmd));
+        cmd->type = AST_AlterTableStmt;
+        cmd->location = token.location;
+
+        if (parser_match(parser, TOKEN_ADD)) {
+            parser_next(parser);
+            /* 可选 COLUMN */
+            if (parser_match(parser, TOKEN_COLUMN)) parser_next(parser);
+            cmd->subtype = AT_AddColumn;
+
+            /* 列名 */
+            token = parser_peek(parser);
+            if (token.type != TOKEN_IDENTIFIER) {
+                parser_error(parser, "ADD COLUMN 需要列名");
+                free(cmd);
+                goto alter_error;
+            }
+            cmd->name = strdup(parser->tokens[parser->pos].value);
+            parser_next(parser);
+
+            /* 类型名 */
+            token = parser_peek(parser);
+            if (token.type == TOKEN_IDENTIFIER || token.type >= TOKEN_INT) {
+                cmd->type_name = strdup(parser->tokens[parser->pos].value);
+                parser_next(parser);
+                /* 检查括号修饰（如 VARCHAR(255)） */
+                if (parser_match(parser, TOKEN_LPAREN)) {
+                    parser_next(parser);
+                    token = parser_peek(parser);
+                    if (token.type == TOKEN_INTEGER) parser_next(parser);
+                    if (parser_match(parser, TOKEN_RPAREN)) parser_next(parser);
+                }
+            }
+
+            /* 可选 NOT NULL */
+            if (parser_match(parser, TOKEN_NOT)) {
+                parser_next(parser);
+                if (parser_match(parser, TOKEN_NULL)) {
+                    cmd->not_null = true;
+                    parser_next(parser);
+                }
+            }
+
+            /* 可选 DEFAULT */
+            if (parser_match(parser, TOKEN_DEFAULT)) {
+                parser_next(parser);
+                token = parser_peek(parser);
+                if (token.type == TOKEN_INTEGER || token.type == TOKEN_STRING) {
+                    cmd->default_expr = strdup(parser->tokens[parser->pos].value);
+                    parser_next(parser);
+                }
+            }
+
+        } else if (parser_match(parser, TOKEN_DROP)) {
+            parser_next(parser);
+            /* 可选 COLUMN */
+            if (parser_match(parser, TOKEN_COLUMN)) parser_next(parser);
+            cmd->subtype = AT_DropColumn;
+
+            token = parser_peek(parser);
+            if (token.type != TOKEN_IDENTIFIER) {
+                parser_error(parser, "DROP COLUMN 需要列名");
+                free(cmd);
+                goto alter_error;
+            }
+            cmd->name = strdup(parser->tokens[parser->pos].value);
+            parser_next(parser);
+
+        } else if (parser_match(parser, TOKEN_ALTER)) {
+            parser_next(parser);
+            /* 可选 COLUMN */
+            if (parser_match(parser, TOKEN_COLUMN)) parser_next(parser);
+            cmd->subtype = AT_AlterColumnType;
+
+            token = parser_peek(parser);
+            if (token.type != TOKEN_IDENTIFIER) {
+                parser_error(parser, "ALTER COLUMN 需要列名");
+                free(cmd);
+                goto alter_error;
+            }
+            cmd->name = strdup(parser->tokens[parser->pos].value);
+            parser_next(parser);
+
+            /* 期望 SET DATA TYPE 或 TYPE */
+            if (parser_match(parser, TOKEN_SET)) {
+                parser_next(parser);
+                if (parser_match(parser, TOKEN_DATA)) parser_next(parser);
+                if (!parser_match(parser, TOKEN_TYPE_KW)) {
+                    parser_error(parser, "SET DATA 后需要 TYPE");
+                    free(cmd);
+                    goto alter_error;
+                }
+                parser_next(parser);
+            } else if (parser_match(parser, TOKEN_TYPE_KW)) {
+                parser_next(parser);
+            } else {
+                parser_error(parser, "需要 TYPE 或 SET DATA TYPE");
+                free(cmd);
+                goto alter_error;
+            }
+
+            token = parser_peek(parser);
+            if (token.type != TOKEN_IDENTIFIER && token.type < TOKEN_INT) {
+                parser_error(parser, "需要类型名");
+                free(cmd);
+                goto alter_error;
+            }
+            cmd->type_name = strdup(parser->tokens[parser->pos].value);
+            parser_next(parser);
+
+        } else if (parser_match(parser, TOKEN_RENAME)) {
+            parser_next(parser);
+            /* 可选 COLUMN */
+            if (parser_match(parser, TOKEN_COLUMN)) parser_next(parser);
+            cmd->subtype = AT_RenameColumn;
+
+            token = parser_peek(parser);
+            if (token.type != TOKEN_IDENTIFIER) {
+                parser_error(parser, "RENAME COLUMN 需要列名");
+                free(cmd);
+                goto alter_error;
+            }
+            cmd->name = strdup(parser->tokens[parser->pos].value);
+            parser_next(parser);
+
+            /* 期望 TO */
+            if (!parser_match(parser, TOKEN_TO)) {
+                parser_error(parser, "RENAME 后需要 TO");
+                free(cmd);
+                goto alter_error;
+            }
+            parser_next(parser);
+
+            token = parser_peek(parser);
+            if (token.type != TOKEN_IDENTIFIER) {
+                parser_error(parser, "RENAME TO 需要新列名");
+                free(cmd);
+                goto alter_error;
+            }
+            cmd->new_name = strdup(parser->tokens[parser->pos].value);
+            parser_next(parser);
+
+        } else {
+            char buf[128];
+            snprintf(buf, sizeof(buf), "需要 ADD/DROP/ALTER/RENAME, 当前: '%s'",
+                     token.type == TOKEN_EOF ? "EOF" : (token.lexeme ? token.lexeme : "?"));
+            parser_error(parser, buf);
+            free(cmd);
+            goto alter_error;
+        }
+
+        /* 添加到命令列表 */
+        if (num_cmds >= cap_cmds) {
+            cap_cmds = cap_cmds ? cap_cmds * 2 : 4;
+            cmds = (AlterTableCmd **)realloc(cmds, cap_cmds * sizeof(AlterTableCmd *));
+        }
+        cmds[num_cmds++] = cmd;
+
+        /* 逗号分隔的批量操作 */
+        if (parser_match(parser, TOKEN_COMMA)) {
+            parser_next(parser);
+            continue;
+        }
+        break;
+    }
+
+    stmt->num_cmds = num_cmds;
+    stmt->cmds = cmds;
+    return stmt;
+
+alter_error:
+    for (int i = 0; i < num_cmds; i++) {
+        free(cmds[i]->name);
+        free(cmds[i]->new_name);
+        free(cmds[i]->type_name);
+        free(cmds[i]->default_expr);
+        free(cmds[i]);
+    }
+    free(cmds);
+    free(stmt->relation);
+    free(stmt);
+    return NULL;
+}
+
+/**
  * @brief 解析语句
  */
 static void *parse_stmt(SqlParser *parser)
@@ -1902,6 +2132,13 @@ static void *parse_stmt(SqlParser *parser)
             parser_next(parser);
             if (parser_match(parser, TOKEN_TABLE)) {
                 return parse_drop_table(parser);
+            }
+            return NULL;
+
+        case TOKEN_ALTER:
+            parser_next(parser);
+            if (parser_match(parser, TOKEN_TABLE)) {
+                return parse_alter_table(parser);
             }
             return NULL;
 
@@ -2070,7 +2307,7 @@ void *sql_sem_get_table_columns(void *ctx, const char *schema,
     return NULL;
 }
 
-void sql_parser_set_error_recovery(void *parser, SqlErrorRecoveryMode mode)
+void sql_parser_error_recovery(void *parser, SqlErrorRecoveryMode mode)
 {
     if (parser) {
         ((SqlParser *)parser)->recovery_mode = mode;
