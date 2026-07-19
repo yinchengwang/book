@@ -106,3 +106,6 @@
 [submodule "reference/open-source/key_value/garnet"]
 	path = reference/open-source/key_value/garnet
 	url = https://github.com/microsoft/garnet.git
+[submodule "reference/open-source/key_value/nats"]
+	path = reference/open-source/key_value/nats
+	url = https://github.com/nats-io/nats-server.git
