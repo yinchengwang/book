@@ -26,6 +26,21 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 启用文件夹组织
 
+# ========================================================================
+# 功能特性编译宏
+# ========================================================================
+# FEATURE_SQL：启用 SQL 引擎（解析器+计划器+执行器+Volcano 算子）
+# FEATURE_KV：启用 KV 存储引擎
+# 默认全部开启，如需裁剪可在 cmake 命令行传入 -DFEATURE_SQL=OFF
+option(FEATURE_SQL "Enable SQL engine (parser + planner + executor)" ON)
+option(FEATURE_KV "Enable KV storage engine" ON)
+if(FEATURE_SQL)
+    add_definitions(-DFEATURE_SQL)
+endif()
+if(FEATURE_KV)
+    add_definitions(-DFEATURE_KV)
+endif()
+
 # 定义 ENGINEERING_SOURCE_DIR 宏，供子模块代替 CMAKE_SOURCE_DIR 引用头文件
 # engineering/include/ 下的头文件应在 project_includes 中已覆盖
 # 但部分旧 CMakeLists 直接用 CMAKE_SOURCE_DIR/include/db/...

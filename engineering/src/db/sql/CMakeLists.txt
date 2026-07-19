@@ -4,6 +4,7 @@
 # sql_parser.c 有较多兼容性问题，暂时排除
 # pgwire.c, mmdb_sdk.c, rest_api.c 使用 Unix 特有头文件，在 Windows 上不编译
 
+if(FEATURE_SQL)
 add_library(sql_engine STATIC
     planner.c
     sql_executor.c
@@ -51,3 +52,4 @@ target_link_libraries(sql_engine PRIVATE
 set_target_properties(sql_engine PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
 )
+endif()

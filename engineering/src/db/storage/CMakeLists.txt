@@ -55,7 +55,9 @@ add_subdirectory(mm)
 # 各引擎实现
 # ========================================================================
 
-add_subdirectory(kv)
+if(FEATURE_KV)
+    add_subdirectory(kv)
+endif()
 add_subdirectory(vector)
 add_subdirectory(graph)
 add_subdirectory(spatial)
