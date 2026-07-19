@@ -277,6 +277,9 @@ int spatial_engine_init(const char *data_dir) {
     if (data_dir == NULL) return -1;
     strncpy(g_spatial_engine.data_dir, data_dir, sizeof(g_spatial_engine.data_dir) - 1);
     g_spatial_engine.initialized = true;
+
+    /* Task 2.12: 注册到 storage_ops_t 全局表 */
+    storage_register_engine(MODEL_SPATIAL, &g_spatial_engine_ops);
     return 0;
 }
 

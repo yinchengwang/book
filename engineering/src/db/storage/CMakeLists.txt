@@ -71,8 +71,8 @@ add_subdirectory(yang)
 # 收集所有存在的 OBJECT 库
 set(DB_STORAGE_OBJECTS "")
 
-# 条件收集 OBJECT 库
-foreach(subdir buffer page lock catalog wal rel mm kv vector graph yang)
+# 条件收集 OBJECT 库（Task 2.12 添加 spatial 子模块）
+foreach(subdir buffer page lock catalog wal rel mm kv vector graph spatial yang)
     if(TARGET storage_${subdir})
         list(APPEND DB_STORAGE_OBJECTS $<TARGET_OBJECTS:storage_${subdir}>)
     endif()
@@ -107,10 +107,8 @@ if(DB_STORAGE_OBJECTS)
     if(TARGET vector_engine_lib)
         target_link_libraries(db_storage PUBLIC vector_engine_lib)
     endif()
-    # 链接 Hilbert 索引库（被 spatial 模块使用）
-    if(TARGET index_hilbert)
-        target_link_libraries(db_storage PUBLIC index_hilbert)
-    endif()
+    # 链接 Hilbert 索引库（被 spatial 模块使用，Task 2.12 修复）
+    target_link_libraries(db_storage PUBLIC index_hilbert)
 else()
     # 如果没有 OBJECT 库，创建空库作为占位
     add_library(db_storage STATIC IMPORTED)
