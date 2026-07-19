@@ -133,3 +133,6 @@
 [submodule "reference/open-source/streaming/risingwave"]
 	path = reference/open-source/streaming/risingwave
 	url = https://github.com/risingwavelabs/risingwave.git
+[submodule "reference/open-source/streaming/redpanda"]
+	path = reference/open-source/streaming/redpanda
+	url = https://github.com/redpanda-data/redpanda.git
