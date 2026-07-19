@@ -79,3 +79,6 @@
 [submodule "reference/open-source/cockroach"]
 	path = reference/open-source/cockroach
 	url = https://github.com/cockroachdb/cockroach.git
+[submodule "reference/open-source/dragonfly"]
+	path = reference/open-source/dragonfly
+	url = https://github.com/dragonflydb/dragonfly.git
