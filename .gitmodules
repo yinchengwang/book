@@ -154,3 +154,6 @@
 [submodule "reference/open-source/time_series/questdb"]
 	path = reference/open-source/time_series/questdb
 	url = https://github.com/questdb/questdb.git
+[submodule "reference/open-source/graph/arangodb"]
+	path = reference/open-source/graph/arangodb
+	url = https://github.com/arangodb/arangodb.git
