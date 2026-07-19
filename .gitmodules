@@ -88,3 +88,6 @@
 [submodule "reference/open-source/vector/qdrant"]
 	path = reference/open-source/vector/qdrant
 	url = https://github.com/qdrant/qdrant.git
+[submodule "reference/open-source/relational/duckdb"]
+	path = reference/open-source/relational/duckdb
+	url = https://github.com/duckdb/duckdb.git
