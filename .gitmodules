@@ -145,3 +145,6 @@
 [submodule "reference/open-source/embedded/leveldb"]
 	path = reference/open-source/embedded/leveldb
 	url = https://github.com/google/leveldb.git
+[submodule "reference/open-source/analytical/starrocks"]
+	path = reference/open-source/analytical/starrocks
+	url = https://github.com/StarRocks/starrocks.git
