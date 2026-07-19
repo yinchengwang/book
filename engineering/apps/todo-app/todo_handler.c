@@ -768,6 +768,121 @@ static void handle_task_system_delete(SOCKET client, int64_t id) {
 }
 
 /* ============================================================
+ * 计划 API handler
+ * ============================================================ */
+
+/* plan_to_json 序列化 */
+static cJSON *plan_to_json(const plan_t *plan) {
+    cJSON *j = cJSON_CreateObject();
+    cJSON_AddNumberToObject(j, "id", plan->id);
+    cJSON_AddStringToObject(j, "name", plan->name);
+    cJSON_AddStringToObject(j, "description", plan->description);
+    cJSON_AddNumberToObject(j, "start_date", plan->start_date);
+    cJSON_AddNumberToObject(j, "end_date", plan->end_date);
+    cJSON_AddStringToObject(j, "color", plan->color);
+    cJSON_AddNumberToObject(j, "status", plan->status);
+    cJSON_AddNumberToObject(j, "created_at", plan->created_at);
+    cJSON_AddNumberToObject(j, "updated_at", plan->updated_at);
+    return j;
+}
+
+static void handle_plan_list(SOCKET client) {
+    plan_t *plans = NULL;
+    int count = 0;
+    plan_list(&plans, &count);
+    cJSON *jarr = cJSON_CreateArray();
+    for (int i = 0; i < count; i++)
+        cJSON_AddItemToArray(jarr, plan_to_json(&plans[i]));
+    plan_list_free(plans, count);
+    send_success(client, jarr);
+}
+
+static void handle_plan_get(SOCKET client, int64_t id) {
+    plan_t plan;
+    if (plan_get(id, &plan) != 0) { send_error(client, 2001, "not found"); return; }
+    cJSON *data = plan_to_json(&plan);
+    send_success(client, data);
+}
+
+static void handle_plan_create(SOCKET client, const char *body) {
+    cJSON *j = cJSON_Parse(body);
+    if (!j) { send_error(client, 1002, "invalid JSON format"); return; }
+    plan_t plan;
+    memset(&plan, 0, sizeof(plan));
+    const char *name = cJSON_GetStringValue(cJSON_GetObjectItem(j, "name"));
+    if (!name) { cJSON_Delete(j); send_error(client, 1001, "缺少 name 参数"); return; }
+    strncpy(plan.name, name, PLAN_NAME_MAX - 1);
+    const char *desc = cJSON_GetStringValue(cJSON_GetObjectItem(j, "description"));
+    if (desc) strncpy(plan.description, desc, PLAN_DESC_MAX - 1);
+    const char *color = cJSON_GetStringValue(cJSON_GetObjectItem(j, "color"));
+    if (color) strncpy(plan.color, color, 15); else strcpy(plan.color, "#4A90D9");
+    cJSON *jsd = cJSON_GetObjectItem(j, "start_date");
+    if (jsd) plan.start_date = (int64_t)jsd->valuedouble;
+    cJSON *jed = cJSON_GetObjectItem(j, "end_date");
+    if (jed) plan.end_date = (int64_t)jed->valuedouble;
+    cJSON_Delete(j);
+    int64_t out_id;
+    int ret = plan_create(&plan, &out_id);
+    if (ret != 0) { send_error(client, 9001, "创建计划失败"); return; }
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddNumberToObject(data, "id", out_id);
+    send_success(client, data);
+}
+
+static void handle_plan_update(SOCKET client, int64_t id, const char *body) {
+    plan_t plan;
+    if (plan_get(id, &plan) != 0) { send_error(client, 2001, "not found"); return; }
+    cJSON *j = cJSON_Parse(body);
+    if (!j) { send_error(client, 1002, "invalid JSON format"); return; }
+    const char *name = cJSON_GetStringValue(cJSON_GetObjectItem(j, "name"));
+    if (name) strncpy(plan.name, name, PLAN_NAME_MAX - 1);
+    const char *desc = cJSON_GetStringValue(cJSON_GetObjectItem(j, "description"));
+    if (desc) strncpy(plan.description, desc, PLAN_DESC_MAX - 1);
+    const char *color = cJSON_GetStringValue(cJSON_GetObjectItem(j, "color"));
+    if (color) strncpy(plan.color, color, 15);
+    cJSON *js = cJSON_GetObjectItem(j, "status");
+    if (js) plan.status = js->valueint;
+    cJSON_Delete(j);
+    plan_update(&plan);
+    send_success(client, cJSON_CreateObject());
+}
+
+static void handle_plan_delete(SOCKET client, int64_t id) {
+    if (plan_delete(id) != 0) { send_error(client, 2001, "not found"); return; }
+    send_success(client, cJSON_CreateObject());
+}
+
+static void handle_plan_import_template(SOCKET client, const char *body) {
+    cJSON *j = cJSON_Parse(body);
+    if (!j) { send_error(client, 1002, "invalid JSON format"); return; }
+    cJSON *jtid = cJSON_GetObjectItem(j, "template_id");
+    cJSON *jsd = cJSON_GetObjectItem(j, "start_date");
+    cJSON *jts = cJSON_GetObjectItem(j, "task_system_id");
+    if (!jtid || !jts) { cJSON_Delete(j); send_error(client, 1001, "缺少 template_id 或 task_system_id"); return; }
+    int template_id = jtid->valueint;
+    int64_t start_date = jsd ? (int64_t)jsd->valuedouble : time(NULL);
+    int64_t task_system_id = (int64_t)jts->valuedouble;
+    cJSON_Delete(j);
+    int ret = plan_import_template(template_id, start_date, task_system_id);
+    if (ret != 0) { send_error(client, 9001, "导入模板失败"); return; }
+    send_success(client, cJSON_CreateObject());
+}
+
+static void handle_plan_expand(SOCKET client, int64_t plan_id, const char *body) {
+    cJSON *j = cJSON_Parse(body);
+    if (!j) { send_error(client, 1002, "invalid JSON format"); return; }
+    cJSON *jts = cJSON_GetObjectItem(j, "task_system_id");
+    if (!jts) { cJSON_Delete(j); send_error(client, 1001, "缺少 task_system_id"); return; }
+    int64_t task_system_id = (int64_t)jts->valuedouble;
+    cJSON_Delete(j);
+    int ret = plan_expand_to_todos(plan_id, task_system_id);
+    if (ret < 0) { send_error(client, 9001, "展开计划失败"); return; }
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddNumberToObject(data, "created", ret);
+    send_success(client, data);
+}
+
+/* ============================================================
  * 日历 API
  * ============================================================ */
 static void handle_calendar_day(SOCKET client, const char *query_str) {
@@ -1273,6 +1388,41 @@ static void handle_request(SOCKET client, const char *request) {
     else if (strcmp(path, "/api/stats-dfx/heatmap") == 0 && strcmp(method, "GET") == 0) {
         handle_stats_heatmap(client);
         handled = 1;
+    }
+
+    /* ===== 计划 API ===== */
+    else if (strcmp(path, "/api/plans/import-template") == 0 && strcmp(method, "POST") == 0) {
+        handle_plan_import_template(client, body);
+        handled = 1;
+    }
+    else if (strcmp(path, "/api/plans") == 0) {
+        if (strcmp(method, "GET") == 0) {
+            handle_plan_list(client);
+            handled = 1;
+        } else if (strcmp(method, "POST") == 0) {
+            handle_plan_create(client, body);
+            handled = 1;
+        }
+    }
+    else if (sscanf(path, "/api/plans/%lld/expand", (long long *)&id_a) == 1 && strcmp(method, "POST") == 0) {
+        handle_plan_expand(client, id_a, body);
+        handled = 1;
+    }
+    else if (sscanf(path, "/api/plans/%lld", (long long *)&id_a) == 1) {
+        char expect[128];
+        snprintf(expect, sizeof(expect), "/api/plans/%lld", (long long)id_a);
+        if (strcmp(path, expect) == 0) {
+            if (strcmp(method, "GET") == 0) {
+                handle_plan_get(client, id_a);
+                handled = 1;
+            } else if (strcmp(method, "PATCH") == 0) {
+                handle_plan_update(client, id_a, body);
+                handled = 1;
+            } else if (strcmp(method, "DELETE") == 0) {
+                handle_plan_delete(client, id_a);
+                handled = 1;
+            }
+        }
     }
 
     /* 分组路由 */
