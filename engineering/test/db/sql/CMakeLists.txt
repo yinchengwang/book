@@ -32,6 +32,11 @@ add_executable(test_seqscan test_seqscan.cpp)
 target_include_directories(test_seqscan PRIVATE ${GTEST_INCLUDE_DIRS})
 target_link_libraries(test_seqscan sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
 
+# SeqScan catalog 集成测试（Task 2.1）
+add_executable(test_seqscan_init test_seqscan_init.cpp)
+target_include_directories(test_seqscan_init PRIVATE ${GTEST_INCLUDE_DIRS})
+target_link_libraries(test_seqscan_init sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
+
 # NestLoop 执行器节点测试
 add_executable(test_nestloop test_nestloop.cpp)
 target_include_directories(test_nestloop PRIVATE ${GTEST_INCLUDE_DIRS})
@@ -146,6 +151,7 @@ add_custom_target(test_sql
     COMMAND test_sql_executor
     COMMAND test_indexscan
     COMMAND test_seqscan
+    COMMAND test_seqscan_init
     COMMAND test_nestloop
     COMMAND test_hashagg
     COMMAND test_hashjoin
@@ -164,5 +170,5 @@ add_custom_target(test_sql
     COMMAND test_storage_integration
     COMMAND test_jit_perf
     COMMAND test_e2e_basic
-    DEPENDS test_sql_parser test_sql_planner test_sql_executor test_indexscan test_seqscan test_nestloop test_hashagg test_hashjoin test_parallel test_tuple_queue test_worker_pool test_trigger test_trigger_functions test_partition test_sort test_limit test_modifytable test_ddl test_sql_storage_integration test_storage_integration test_jit_perf test_e2e_basic
+    DEPENDS test_sql_parser test_sql_planner test_sql_executor test_indexscan test_seqscan test_seqscan_init test_nestloop test_hashagg test_hashjoin test_parallel test_tuple_queue test_worker_pool test_trigger test_trigger_functions test_partition test_sort test_limit test_modifytable test_ddl test_sql_storage_integration test_storage_integration test_jit_perf test_e2e_basic
 )
