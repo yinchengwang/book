@@ -20,6 +20,36 @@
 #include "db/sql/nodes/execnodes.h"
 #include "db/sql/expr.h"
 
+/* ========================================================================
+ * Hash 计划节点（从 nodeHash.h 合并而来）
+ * ======================================================================== */
+
+/**
+ * @brief Hash 计划节点（辅助节点，用于 HashJoin 的构建阶段）
+ *
+ * Hash 结构体嵌入 Plan 作为第一个字段，使得 Hash* 可以安全转换为 Plan*。
+ */
+typedef struct Hash {
+    Plan         plan;               /**< 基类：计划节点（必须作为第一个字段） */
+    Oid          hashoperator;       /**< 哈希操作符（等值判断函数 OID） */
+    List        *hashkeys;           /**< 哈希键表达式列表 */
+} Hash;
+
+/* ========================================================================
+ * HashState - Hash 执行状态
+ * ======================================================================== */
+
+/**
+ * @brief Hash 执行状态
+ *
+ * 维护 Hash 节点的运行时状态。
+ */
+typedef struct HashState {
+    PlanState    ps;                 /**< 基类：计划状态 */
+    void        *hashtable;          /**< 哈希表（简化版，后续实现） */
+    int          hashsize;           /**< 哈希表大小 */
+} HashState;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -156,6 +186,32 @@ void ExecEndHashJoin(HashJoinState *node);
  * @param node HashJoinState
  */
 void ExecReScanHashJoin(HashJoinState *node);
+
+/* ========================================================================
+ * Hash 辅助节点 API（从 nodeHash.h 合并而来）
+ * ======================================================================== */
+
+/**
+ * @brief 初始化 Hash 节点
+ *
+ * 分配 HashState 并设置 ExecProcNode 函数指针。
+ *
+ * @param plan   计划节点（实际类型为 Hash*）
+ * @param estate 执行器状态
+ * @param eflags 执行器标志
+ *
+ * @return 初始化后的 HashState（作为 PlanState*）；失败返回 NULL
+ */
+PlanState *ExecInitHash(Plan *plan, EState *estate, int eflags);
+
+/**
+ * @brief 结束 Hash 节点
+ *
+ * 释放 HashState 关联的资源。
+ *
+ * @param node HashState（可为 NULL）
+ */
+void ExecEndHash(HashState *node);
 
 #ifdef __cplusplus
 }

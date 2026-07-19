@@ -5,6 +5,6 @@
 #ifndef DB_EXECUTOR_NODE_HASH_H
 #define DB_EXECUTOR_NODE_HASH_H
 
-#include "db/sql/nodeHash.h"
+#include "db/sql/nodeHashjoin.h"
 
 #endif /* DB_EXECUTOR_NODE_HASH_H */

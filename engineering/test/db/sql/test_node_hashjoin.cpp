@@ -15,7 +15,7 @@
 extern "C" {
 #include "db/sql/executor.h"
 #include "db/sql/nodeHashjoin.h"
-#include "db/sql/nodeHash.h"
+/* Hash 结构体和 API 已合并到 nodeHashjoin.h，无需独立引用 */
 #include "db/sql/nodeSeqscan.h"
 #include "db/sql/nodes/nodetags.h"
 #include "db/sql/nodes/execnodes.h"

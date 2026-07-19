@@ -19,7 +19,7 @@
 #include "db/sql/nodeResult.h"
 #include "db/sql/nodeSeqscan.h"
 #include "db/sql/nodeHashjoin.h"
-#include "db/sql/nodeHash.h"
+/* nodeHash.h 已合并到 nodeHashjoin.h，不再需要独立引用 */
 #include "db/sql/nodeAgg.h"
 #include "db/sql/nodeSort.h"
 #include "db/sql/nodeLimit.h"
