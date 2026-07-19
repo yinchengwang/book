@@ -124,3 +124,6 @@
 [submodule "reference/open-source/graph/dgraph"]
 	path = reference/open-source/graph/dgraph
 	url = https://github.com/dgraph-io/dgraph.git
+[submodule "reference/open-source/graph/nebula"]
+	path = reference/open-source/graph/nebula
+	url = https://github.com/vesoft-inc/nebula.git
