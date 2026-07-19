@@ -265,6 +265,7 @@ static TupleTableSlot *exec_hashjoin_impl(PlanState *pstate) {
     HashJoinState *node = (HashJoinState *)pstate;
     HashJoinHashTable *hashtable;
     PlanState *outer;
+    PlanState *inner;
     TupleTableSlot *outerslot;
     Datum hashkey;
     int hashvalue;
@@ -278,20 +279,34 @@ static TupleTableSlot *exec_hashjoin_impl(PlanState *pstate) {
     /* 获取哈希表和外表 */
     hashtable = (HashJoinHashTable *)node->hashtable;
     outer = node->js.ps.lefttree;
-
-    /* 如果没有哈希表，创建一个 */
-    if (hashtable == NULL) {
-        hashtable = create_hash_table(1024);
-        if (hashtable == NULL) {
-            return NULL;
-        }
-        node->hashtable = hashtable;
-    }
+    inner = node->js.ps.righttree;
 
     /* 如果没有外表，直接返回 NULL */
     if (outer == NULL) {
         return NULL;
     }
+
+    /* Task 2.2: 第一次调用时执行构建阶段，从右子树构建哈希表。
+     * 用 hj_FirstOuterTupleSlot 标记首次调用（Init 时设为 true），
+     * 避免每次迭代都重新构建。*/
+    if (node->hj_FirstOuterTupleSlot) {
+        if (hashtable == NULL) {
+            hashtable = create_hash_table(1024);
+            if (hashtable == NULL) {
+                return NULL;
+            }
+            node->hashtable = hashtable;
+        }
+
+        /* 扫描右子树（内表）构建哈希表 */
+        if (inner != NULL) {
+            exec_hashjoin_build(node);
+        }
+
+        node->hj_FirstOuterTupleSlot = false;
+    }
+
+    hashtable = (HashJoinHashTable *)node->hashtable;
 
     /* 探测阶段：从外表读取元组，查找哈希表 */
     while ((outerslot = ExecProcNode(outer)) != NULL) {

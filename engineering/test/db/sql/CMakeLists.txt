@@ -111,6 +111,11 @@ add_executable(test_hashjoin test_hashjoin.cpp)
 target_include_directories(test_hashjoin PRIVATE ${GTEST_INCLUDE_DIRS})
 target_link_libraries(test_hashjoin sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
 
+# HashJoin 端到端测试（Task 2.2）
+add_executable(test_hashjoin_e2e test_hashjoin_e2e.cpp)
+target_include_directories(test_hashjoin_e2e PRIVATE ${GTEST_INCLUDE_DIRS})
+target_link_libraries(test_hashjoin_e2e sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
+
 # ModifyTable 执行器节点测试
 add_executable(test_modifytable test_modifytable.cpp)
 target_include_directories(test_modifytable PRIVATE ${GTEST_INCLUDE_DIRS})
@@ -155,6 +160,7 @@ add_custom_target(test_sql
     COMMAND test_nestloop
     COMMAND test_hashagg
     COMMAND test_hashjoin
+    COMMAND test_hashjoin_e2e
     COMMAND test_parallel
     COMMAND test_tuple_queue
     COMMAND test_worker_pool
@@ -170,5 +176,5 @@ add_custom_target(test_sql
     COMMAND test_storage_integration
     COMMAND test_jit_perf
     COMMAND test_e2e_basic
-    DEPENDS test_sql_parser test_sql_planner test_sql_executor test_indexscan test_seqscan test_seqscan_init test_nestloop test_hashagg test_hashjoin test_parallel test_tuple_queue test_worker_pool test_trigger test_trigger_functions test_partition test_sort test_limit test_modifytable test_ddl test_sql_storage_integration test_storage_integration test_jit_perf test_e2e_basic
+    DEPENDS test_sql_parser test_sql_planner test_sql_executor test_indexscan test_seqscan test_seqscan_init test_nestloop test_hashagg test_hashjoin test_hashjoin_e2e test_parallel test_tuple_queue test_worker_pool test_trigger test_trigger_functions test_partition test_sort test_limit test_modifytable test_ddl test_sql_storage_integration test_storage_integration test_jit_perf test_e2e_basic
 )
