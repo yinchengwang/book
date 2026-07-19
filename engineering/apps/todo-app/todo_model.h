@@ -55,6 +55,10 @@ typedef struct {
     int64_t task_system_id;           /* 所属任务系统，0=默认 */
 } todo_t;
 
+/* 全局状态（外部文件可访问，用于日历等功能） */
+extern todo_t *g_todos;
+extern int g_todo_count;
+
 /* ============================================================
  * 任务系统结构体（顶层容器，每个系统管理自己的 todo 列表）
  * ============================================================ */
@@ -212,6 +216,13 @@ void todo_db_shutdown(void);
  * @brief 重置数据库状态（用于测试）
  */
 void todo_db_reset(void);
+
+/**
+ * @brief 根据 ID 查找待办事项在数组中的索引
+ * @param id 待办 ID
+ * @return 索引位置（>=0），未找到返回 -1
+ */
+int find_todo_idx(int64_t id);
 
 /* ============================================================
  * Todo CRUD

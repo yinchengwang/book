@@ -1,6 +1,9 @@
 #include "todo_handler.h"
 #include "todo_model.h"
 #include "todo_change.h"
+#include "todo_calendar.h"
+#include "todo_stats.h"
+#include "todo_plan.h"
 #include "cjson/cJSON.h"
 #include <stdlib.h>
 #include <string.h>
@@ -765,6 +768,215 @@ static void handle_task_system_delete(SOCKET client, int64_t id) {
 }
 
 /* ============================================================
+ * 日历 API
+ * ============================================================ */
+static void handle_calendar_day(SOCKET client, const char *query_str) {
+    const char *date_str = get_query_param(query_str, "date");
+    const char *ts_str = get_query_param(query_str, "task_system_id");
+    int64_t date = date_str ? atoll(date_str) : time(NULL);
+    int64_t ts_id = ts_str ? atoll(ts_str) : -1;
+
+    todo_t *todos = NULL;
+    int count = 0;
+    calendar_day_todos(date, ts_id, &todos, &count);
+
+    cJSON *jitems = cJSON_CreateArray();
+    for (int i = 0; i < count; i++) {
+        cJSON *j = todo_to_json(&todos[i]);
+        cJSON_AddItemToArray(jitems, j);
+    }
+    free(todos);
+
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddNumberToObject(data, "date", date);
+    cJSON_AddItemToObject(data, "tasks", jitems);
+    send_success(client, data);
+}
+
+static void handle_calendar_week(SOCKET client, const char *query_str) {
+    const char *date_str = get_query_param(query_str, "date");
+    const char *ts_str = get_query_param(query_str, "task_system_id");
+    int64_t date = date_str ? atoll(date_str) : time(NULL);
+    int64_t ts_id = ts_str ? atoll(ts_str) : -1;
+
+    todo_t *todos = NULL;
+    int count = 0;
+    calendar_week_todos(date, ts_id, &todos, &count);
+
+    cJSON *jitems = cJSON_CreateArray();
+    for (int i = 0; i < count; i++)
+        cJSON_AddItemToArray(jitems, todo_to_json(&todos[i]));
+    free(todos);
+
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddNumberToObject(data, "date", date);
+    cJSON_AddItemToObject(data, "tasks", jitems);
+    send_success(client, data);
+}
+
+static void handle_calendar_month(SOCKET client, const char *query_str) {
+    const char *date_str = get_query_param(query_str, "date");
+    const char *ts_str = get_query_param(query_str, "task_system_id");
+    int64_t date = date_str ? atoll(date_str) : time(NULL);
+    int64_t ts_id = ts_str ? atoll(ts_str) : -1;
+
+    todo_t *todos = NULL;
+    int count = 0;
+    calendar_month_todos(date, ts_id, &todos, &count);
+
+    cJSON *jitems = cJSON_CreateArray();
+    for (int i = 0; i < count; i++)
+        cJSON_AddItemToArray(jitems, todo_to_json(&todos[i]));
+    free(todos);
+
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddNumberToObject(data, "date", date);
+    cJSON_AddItemToObject(data, "tasks", jitems);
+    send_success(client, data);
+}
+
+static void handle_pending_carryover(SOCKET client) {
+    todo_t *todos = NULL;
+    int count = 0;
+    calendar_pending_carryover(&todos, &count);
+
+    cJSON *jitems = cJSON_CreateArray();
+    for (int i = 0; i < count; i++)
+        cJSON_AddItemToArray(jitems, todo_to_json(&todos[i]));
+    free(todos);
+
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddItemToObject(data, "items", jitems);
+    send_success(client, data);
+}
+
+static void handle_carryover_confirm(SOCKET client, const char *body) {
+    cJSON *jarr = cJSON_Parse(body);
+    if (!jarr || !cJSON_IsArray(jarr)) {
+        if (jarr) cJSON_Delete(jarr);
+        send_error(client, 1002, "invalid JSON format, expected array");
+        return;
+    }
+    int count = cJSON_GetArraySize(jarr);
+    carryover_confirm_t *items = (carryover_confirm_t *)calloc(count, sizeof(carryover_confirm_t));
+    int valid = 0;
+    for (int i = 0; i < count; i++) {
+        cJSON *jitem = cJSON_GetArrayItem(jarr, i);
+        if (!jitem) continue;
+        cJSON *jid = cJSON_GetObjectItem(jitem, "todo_id");
+        cJSON *jc = cJSON_GetObjectItem(jitem, "completed");
+        if (!jid) continue;
+        items[valid].todo_id = (int64_t)jid->valuedouble;
+        items[valid].completed = jc ? jc->valueint : 0;
+        valid++;
+    }
+    cJSON_Delete(jarr);
+
+    carryover_report_t report = calendar_confirm_carryover(items, valid);
+    free(items);
+
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddNumberToObject(data, "carried_in_week", report.carried_in_week);
+    cJSON_AddNumberToObject(data, "overflow_to_next_week", report.overflow_to_next_week);
+    cJSON_AddNumberToObject(data, "carried_in_month", report.carried_in_month);
+    send_success(client, data);
+}
+
+static void handle_postpone(SOCKET client, int64_t todo_id, const char *body) {
+    cJSON *j = cJSON_Parse(body);
+    if (!j) { send_error(client, 1002, "invalid JSON format"); return; }
+    cJSON *jdays = cJSON_GetObjectItem(j, "days");
+    int days = jdays ? jdays->valueint : 1;
+    cJSON_Delete(j);
+
+    if (calendar_postpone(todo_id, days) != 0) {
+        send_error(client, 2001, "not found");
+        return;
+    }
+    send_success(client, cJSON_CreateObject());
+}
+
+static void handle_promote(SOCKET client, const char *body) {
+    cJSON *j = cJSON_Parse(body);
+    if (!j) { send_error(client, 1002, "invalid JSON format"); return; }
+    cJSON *js = cJSON_GetObjectItem(j, "scope");
+    int scope = js ? js->valueint : 1;
+    cJSON_Delete(j);
+
+    carryover_report_t report = calendar_promote(scope);
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddNumberToObject(data, "week_promotable", report.week_promotable);
+    cJSON_AddNumberToObject(data, "month_promotable", report.month_promotable);
+    send_success(client, data);
+}
+
+/* ============================================================
+ * DFX 统计 API
+ * ============================================================ */
+static void handle_stats_dfx(SOCKET client) {
+    dfx_stats_t stats;
+    stats_calculate(&stats);
+
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddNumberToObject(data, "total_completed", stats.total_completed);
+    cJSON_AddNumberToObject(data, "on_time_completed", stats.on_time_completed);
+    cJSON_AddNumberToObject(data, "early_completed", stats.early_completed);
+    cJSON_AddNumberToObject(data, "carried_over_count", stats.carried_over_count);
+    cJSON_AddNumberToObject(data, "overdue_count", stats.overdue_count);
+    cJSON_AddNumberToObject(data, "completion_rate", stats.completion_rate);
+    cJSON_AddNumberToObject(data, "streak_days", stats.streak_days);
+    cJSON_AddNumberToObject(data, "avg_early_days", stats.avg_early_days);
+    cJSON_AddNumberToObject(data, "avg_carryover_days", stats.avg_carryover_days);
+    cJSON_AddNumberToObject(data, "plan_health_score", stats.plan_health_score);
+    cJSON_AddNumberToObject(data, "estimation_accuracy", stats.estimation_accuracy);
+    cJSON_AddNumberToObject(data, "hard_task_ratio", stats.hard_task_ratio);
+    cJSON_AddNumberToObject(data, "plan_completion_rate", stats.plan_completion_rate);
+    cJSON_AddNumberToObject(data, "temporary_completion_rate", stats.temporary_completion_rate);
+
+    /* weekly_trend 数组 */
+    cJSON *jtrend = cJSON_CreateArray();
+    for (int i = 0; i < stats.weekly_trend_count; i++) {
+        cJSON *jw = cJSON_CreateObject();
+        cJSON_AddNumberToObject(jw, "week_offset", stats.weekly_trend[i].week_offset);
+        cJSON_AddNumberToObject(jw, "week_start", stats.weekly_trend[i].week_start);
+        cJSON_AddNumberToObject(jw, "week_end", stats.weekly_trend[i].week_end);
+        cJSON_AddNumberToObject(jw, "completed_count", stats.weekly_trend[i].completed_count);
+        cJSON_AddItemToArray(jtrend, jw);
+    }
+    cJSON_AddItemToObject(data, "weekly_trend", jtrend);
+
+    send_success(client, data);
+}
+
+static void handle_stats_heatmap(SOCKET client) {
+    heatmap_data_t heatmap;
+    stats_calculate_heatmap(&heatmap);
+
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddNumberToObject(data, "max_daily_count", heatmap.max_daily_count);
+
+    cJSON *jweeks = cJSON_CreateArray();
+    for (int w = 0; w < heatmap.weeks_count; w++) {
+        cJSON *jweek = cJSON_CreateObject();
+        cJSON_AddNumberToObject(jweek, "week_start", heatmap.weeks[w].week_start);
+
+        cJSON *jdays = cJSON_CreateArray();
+        for (int d = 0; d < 7; d++) {
+            cJSON *jday = cJSON_CreateObject();
+            cJSON_AddNumberToObject(jday, "date", heatmap.weeks[w].days[d].date);
+            cJSON_AddNumberToObject(jday, "completed_count", heatmap.weeks[w].days[d].completed_count);
+            cJSON_AddNumberToObject(jday, "level", heatmap.weeks[w].days[d].level);
+            cJSON_AddItemToArray(jdays, jday);
+        }
+        cJSON_AddItemToObject(jweek, "days", jdays);
+        cJSON_AddItemToArray(jweeks, jweek);
+    }
+    cJSON_AddItemToObject(data, "weeks", jweeks);
+
+    send_success(client, data);
+}
+
+/* ============================================================
  * 静态文件服务
  * ============================================================ */
 static int serve_static_file(SOCKET client, const char *url) {
@@ -1021,6 +1233,46 @@ static void handle_request(SOCKET client, const char *request) {
                 handled = 1;
             }
         }
+    }
+
+    /* ===== 日历 API ===== */
+    else if (strcmp(path, "/api/calendar/day") == 0 && strcmp(method, "GET") == 0) {
+        handle_calendar_day(client, query);
+        handled = 1;
+    }
+    else if (strcmp(path, "/api/calendar/week") == 0 && strcmp(method, "GET") == 0) {
+        handle_calendar_week(client, query);
+        handled = 1;
+    }
+    else if (strcmp(path, "/api/calendar/month") == 0 && strcmp(method, "GET") == 0) {
+        handle_calendar_month(client, query);
+        handled = 1;
+    }
+    else if (strcmp(path, "/api/calendar/pending-carryover") == 0 && strcmp(method, "GET") == 0) {
+        handle_pending_carryover(client);
+        handled = 1;
+    }
+    else if (strcmp(path, "/api/calendar/carryover-confirm") == 0 && strcmp(method, "POST") == 0) {
+        handle_carryover_confirm(client, body);
+        handled = 1;
+    }
+    else if (sscanf(path, "/api/calendar/postpone/%lld", (long long *)&id_a) == 1 && strcmp(method, "POST") == 0) {
+        handle_postpone(client, id_a, body);
+        handled = 1;
+    }
+    else if (strcmp(path, "/api/calendar/promote") == 0 && strcmp(method, "POST") == 0) {
+        handle_promote(client, body);
+        handled = 1;
+    }
+
+    /* ===== DFX 统计 API ===== */
+    else if (strcmp(path, "/api/stats-dfx") == 0 && strcmp(method, "GET") == 0) {
+        handle_stats_dfx(client);
+        handled = 1;
+    }
+    else if (strcmp(path, "/api/stats-dfx/heatmap") == 0 && strcmp(method, "GET") == 0) {
+        handle_stats_heatmap(client);
+        handled = 1;
     }
 
     /* 分组路由 */

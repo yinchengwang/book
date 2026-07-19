@@ -1,6 +1,7 @@
 #include "todo_handler.h"
 #include "todo_model.h"
 #include "todo_migration.h"
+#include "todo_calendar.h"
 #include <stdio.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -35,6 +36,8 @@ int main(int argc, char *argv[]) {
     }
 
     todo_handler_init();
+    calendar_init();
+    calendar_timer_start();  /* 启动后台定时任务 */
 
     /* 注册信号处理 */
     signal(SIGINT, signal_handler);
@@ -52,6 +55,7 @@ int main(int argc, char *argv[]) {
     /* 启动 HTTP 服务器（阻塞） */
     http_server_start(port);
 
+    calendar_shutdown();  /* 服务器停止后清理 */
     todo_db_shutdown();
     return 0;
 }

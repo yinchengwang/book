@@ -8,8 +8,8 @@
 /* ============================================================
  * 全局状态
  * ============================================================ */
-static todo_t           *g_todos = NULL;
-static int              g_todo_count = 0;
+todo_t           *g_todos = NULL;
+int               g_todo_count = 0;
 static int              g_todo_cap = 0;
 
 static checklist_item_t *g_checks = NULL;
@@ -76,7 +76,7 @@ static int64_t now_ts(void) {
     return (int64_t)time(NULL);
 }
 
-static int find_todo_idx(int64_t id) {
+int find_todo_idx(int64_t id) {
     for (int i = 0; i < g_todo_count; i++) {
         if (g_todos[i].id == id) return i;
     }
