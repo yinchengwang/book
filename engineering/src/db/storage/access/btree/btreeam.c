@@ -208,8 +208,13 @@ int btdelete(Relation rel, const void **values, int nkeys, void *heap_ptr) {
 }
 
 int btbuild(Relation rel, void **tuples, int ntuples) {
-    if (!rel || !tuples || ntuples <= 0) {
+    if (!rel) {
         return -1;
+    }
+
+    /* 允许 ntuples=0（空表建索引），此时直接返回成功 */
+    if (!tuples || ntuples <= 0) {
+        return 0;
     }
 
     /* 批量构建索引 */
