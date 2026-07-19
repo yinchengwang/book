@@ -81,6 +81,11 @@ target_link_libraries(test_sort sql_engine db_parser_sql_simplified db_storage p
 # add_executable(test_sql_integration sql_integration.cpp)
 # target_link_libraries(test_sql_integration db_parser db_storage db_utils db_cli_lib project_includes gtest gtest_main)
 
+# DDL 执行测试（依赖简化解析器 + catalog）
+add_executable(test_ddl ddl_test.cpp)
+target_include_directories(test_ddl PRIVATE ${GTEST_INCLUDE_DIRS})
+target_link_libraries(test_ddl db_parser_sql_simplified db_core project_includes gtest gtest_main)
+
 # HashAgg 执行器节点测试
 add_executable(test_hashagg test_hashagg.cpp)
 target_include_directories(test_hashagg PRIVATE ${GTEST_INCLUDE_DIRS})
@@ -139,8 +144,9 @@ add_custom_target(test_sql
     COMMAND test_sort
     COMMAND test_limit
     COMMAND test_modifytable
+    COMMAND test_ddl
     COMMAND test_sql_storage_integration
     COMMAND test_storage_integration
     COMMAND test_jit_perf
-    DEPENDS test_sql_parser test_sql_planner test_sql_executor test_indexscan test_seqscan test_nestloop test_hashagg test_hashjoin test_parallel test_tuple_queue test_worker_pool test_trigger test_trigger_functions test_partition test_sort test_limit test_modifytable test_sql_storage_integration test_storage_integration test_jit_perf
+    DEPENDS test_sql_parser test_sql_planner test_sql_executor test_indexscan test_seqscan test_nestloop test_hashagg test_hashjoin test_parallel test_tuple_queue test_worker_pool test_trigger test_trigger_functions test_partition test_sort test_limit test_modifytable test_ddl test_sql_storage_integration test_storage_integration test_jit_perf
 )
