@@ -94,3 +94,6 @@
 [submodule "reference/open-source/relational/oceanbase"]
 	path = reference/open-source/relational/oceanbase
 	url = https://github.com/oceanbase/oceanbase.git
+[submodule "reference/open-source/relational/stonedb"]
+	path = reference/open-source/relational/stonedb
+	url = https://github.com/stoneatom/stonedb.git
