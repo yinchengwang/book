@@ -127,3 +127,6 @@
 [submodule "reference/open-source/graph/nebula"]
 	path = reference/open-source/graph/nebula
 	url = https://github.com/vesoft-inc/nebula.git
+[submodule "reference/open-source/graph/janusgraph"]
+	path = reference/open-source/graph/janusgraph
+	url = https://github.com/JanusGraph/janusgraph.git
