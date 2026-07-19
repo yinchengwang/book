@@ -219,11 +219,11 @@ int vector_index_get_meta(const char *path, int32_t *dims, int32_t *n_total, int
  * ======================================================================== */
 
 /** 无索引（暴力搜索） */
-#define VECTOR_INDEX_NONE   0
+#define VEC_INDEX_NONE   0
 /** HNSW 索引 */
-#define VECTOR_INDEX_HNSW   1
+#define VEC_INDEX_HNSW   1
 /** IVF-PQ 索引 */
-#define VECTOR_INDEX_IVF_PQ 2
+#define VEC_INDEX_IVF_PQ 2
 
 /* ========================================================================
  * 工具函数

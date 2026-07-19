@@ -116,6 +116,14 @@ target_link_libraries(test_spatial_engine_ops db_storage project_includes gtest 
 add_executable(test_yang_engine_ops test_yang_engine_ops.cpp)
 target_link_libraries(test_yang_engine_ops db_storage project_includes gtest gtest_main)
 
+# 向量引擎空集合建索引测试（Task 2.20）
+add_executable(test_vector_build_empty test_vector_build_empty.cpp)
+target_link_libraries(test_vector_build_empty db_storage project_includes gtest gtest_main)
+
+# 向量引擎 active_index_type 测试（Task 2.21）
+add_executable(test_vector_index_type test_vector_index_type.cpp)
+target_link_libraries(test_vector_index_type db_storage project_includes gtest gtest_main)
+
 # 所有 Storage 测试汇总
 add_custom_target(test_storage_all
     COMMAND test_storage_kv

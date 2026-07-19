@@ -9,6 +9,7 @@
 #include "db/sql/nodes/nodeModifyTable.h"
 #include "db/rel.h"
 #include "db/heapam.h"
+#include "db/tools/stats.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -61,6 +62,9 @@ static TupleTableSlot *exec_modifytable_impl(PlanState *pstate)
                                             NULL /* bistate */);
                         if (result == 0) {
                             ext->mt_inserted++;
+                            /* 更新统计信息 */
+                            StatsCollector *sc = stats_get_collector();
+                            if (sc) stats_update_table_insert(sc, "?", 1);
                         }
                         break;
 
@@ -84,6 +88,9 @@ static TupleTableSlot *exec_modifytable_impl(PlanState *pstate)
                                                 0   /* lockmode */);
                             if (result == 0) {
                                 ext->mt_updated++;
+                                /* 更新统计信息 */
+                                StatsCollector *sc = stats_get_collector();
+                                if (sc) stats_update_table_update(sc, "?", 1);
                             }
                         }
                         break;
@@ -105,6 +112,9 @@ static TupleTableSlot *exec_modifytable_impl(PlanState *pstate)
                                                 false /* wait */);
                             if (result == 0) {
                                 ext->mt_deleted++;
+                                /* 更新统计信息 */
+                                StatsCollector *sc = stats_get_collector();
+                                if (sc) stats_update_table_delete(sc, "?", 1);
                             }
                         }
                         break;

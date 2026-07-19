@@ -46,6 +46,7 @@ target_include_directories(sql_engine PUBLIC
 target_link_libraries(sql_engine PRIVATE
     db_parser_sql_simplified
     db_storage
+    db_tools_stats
 )
 
 # 设置输出目录

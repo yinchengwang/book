@@ -233,46 +233,29 @@ git add engineering/src/db/sql/CMakeLists.txt
 git commit -m "refactor: 删除 optimizer.c（全 TODO 占位）"
 ```
 
-### Task 1.5：删除 executor/graph/traverse.c 中 4 个死函数
+### Task 1.5：[CANCELLED] 删除 executor/graph/traverse.c 中 4 个死函数（**误判，不是死代码**）
+
+**状态**：**已取消**（2026-07-19）
+
+**取消原因**：
+
+之前误判 graph_bfs、graph_dfs、graph_dijkstra、graph_pagerank、graph_shortest_path 是死代码，实际上它们被以下测试引用：
+- `engineering/test/db/executor/test_graph.cpp` — graph_bfs、graph_dfs
+- `engineering/test/db/executor/graph_scan_test.cpp` — graph_shortest_path、graph_dijkstra
+
+这些是图遍历算法的真实实现，服务于图引擎测试套件，是**活跃代码**而非死代码。
 
 **Files:**
-- Modify: `engineering/src/db/executor/graph/traverse/traverse.c`（删除 4 个函数，保留 graph_traverser_*）
-- Test: 验证编译通过
-
-**原因**：`graph_bfs`、`graph_dfs`、`graph_dijkstra`、`graph_pagerank`、`graph_shortest_path` 零调用方。保留 `graph_traverser_*`（被 graph_scan.c 使用）。
+- ~~Modify: `engineering/src/db/executor/graph/traverse/traverse.c`~~（取消）
+- ~~Test: 验证编译通过~~（取消）
 
 **步骤**：
 
-- [ ] **Step 1：定位死函数**
+- [x] ~~Step 1：定位死函数~~（取消：发现它们被测试引用）
+- [x] ~~Step 2：删除 4 个死函数~~（取消）
+- [x] ~~Step 3-5：编译、测试、提交~~（取消）
 
-```bash
-grep -n "^size_t graph_bfs\|^size_t graph_dfs\|^double graph_dijkstra\|^int graph_pagerank\|^int graph_shortest_path" engineering/src/db/executor/graph/traverse/traverse.c
-```
-
-- [ ] **Step 2：删除 4 个死函数**
-
-使用 Edit 工具删除 `graph_bfs`、`graph_dfs`、`graph_dijkstra`、`graph_pagerank`、`graph_shortest_path` 的完整函数定义（包括注释和空行）。
-
-- [ ] **Step 3：编译验证**
-
-```bash
-cmake -S engineering -B build/engineering
-ninja -j4 -C build/engineering
-# 预期：编译成功
-```
-
-- [ ] **Step 4：测试验证**
-
-```bash
-ctest --test-dir build/engineering --output-on-failure
-```
-
-- [ ] **Step 5：提交**
-
-```bash
-git add engineering/src/db/executor/graph/traverse/traverse.c
-git commit -m "refactor: 删除 traverse.c 中 4 个死函数（graph_bfs/dfs/dijkstra/pagerank）"
-```
+**替代行动**：保留文件不变，仅更新本文档与 spec 文档记录决策。
 
 ### Task 1.6：合并 nodeHash.c 到 nodeHashjoin.c
 

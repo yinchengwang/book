@@ -229,7 +229,7 @@ static void *vector_engine_table_open(const char *name, AccessMode mode) {
     db->ivf_pq_nlist = 0;
     db->ivf_pq_nprobe = 64;
 
-    db->active_index_type = VECTOR_INDEX_NONE;
+    db->active_index_type = VEC_INDEX_NONE;
 
     /* 初始化 HNSW 索引字段 */
     db->hnsw_index = NULL;
@@ -780,7 +780,7 @@ int vector_engine_build_index(void *rel, int m, int ef_construction) {
 
     if (db->num_vectors == 0) {
         LOG_WARN("向量数量为 0，跳过索引构建（空集合合法）");
-        if (db) db->active_index_type = VECTOR_INDEX_NONE;
+        if (db) db->active_index_type = VEC_INDEX_NONE;
         return 0;
     }
 
@@ -866,7 +866,7 @@ int vector_engine_build_index(void *rel, int m, int ef_construction) {
     }
 
     db->index_built = true;
-    db->active_index_type = VECTOR_INDEX_HNSW;
+    db->active_index_type = VEC_INDEX_HNSW;
     LOG_INFO("HNSW 索引构建完成，插入向量数: %d", inserted);
 
     return 0;
@@ -1727,7 +1727,7 @@ int vector_engine_enable_ivf_pq(void *rel, int nlist, int nprobe) {
     }
 
     db->use_ivf_pq = true;
-    db->active_index_type = VECTOR_INDEX_IVF_PQ;
+    db->active_index_type = VEC_INDEX_IVF_PQ;
     db->ivf_pq_nlist = nlist;
     db->ivf_pq_nprobe = (nprobe > 0) ? nprobe : (nlist / 10);
     if (db->ivf_pq_nprobe < 1) db->ivf_pq_nprobe = 1;
@@ -2023,12 +2023,12 @@ int vector_engine_auto_select_index(void *rel, float target_qps, float target_re
 
     /* 根据决策启用相应索引 */
     switch (decision.index_type) {
-    case VECTOR_INDEX_HNSW:
+    case VEC_INDEX_HNSW:
         LOG_INFO("启用 HNSW 索引: m=%d, ef=%d", decision.param1, decision.param2);
         /* TODO: 调用 HNSW 构建 */
         return 0;
 
-    case VECTOR_INDEX_IVF_PQ:
+    case VEC_INDEX_IVF_PQ:
         LOG_INFO("启用 IVF-PQ 索引: nlist=%d, nprobe=%d",
                  decision.param1, decision.param2);
         return vector_engine_enable_ivf_pq(rel, decision.param1, decision.param2);
