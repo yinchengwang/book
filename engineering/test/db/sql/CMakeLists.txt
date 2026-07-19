@@ -37,10 +37,10 @@ add_executable(test_agg_e2e test_agg_e2e.cpp)
 target_include_directories(test_agg_e2e PRIVATE ${GTEST_INCLUDE_DIRS})
 target_link_libraries(test_agg_e2e sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
 
-# Sort 端到端测试（Task 2.5）
-add_executable(test_sort_e2e test_sort_e2e.cpp)
-target_include_directories(test_sort_e2e PRIVATE ${GTEST_INCLUDE_DIRS})
-target_link_libraries(test_sort_e2e sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
+# Limit 端到端测试（Task 2.6）
+add_executable(test_limit_e2e test_limit_e2e.cpp)
+target_include_directories(test_limit_e2e PRIVATE ${GTEST_INCLUDE_DIRS})
+target_link_libraries(test_limit_e2e sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
 
 # NestLoop 执行器节点测试
 add_executable(test_nestloop test_nestloop.cpp)
@@ -183,11 +183,12 @@ add_custom_target(test_sql
     COMMAND test_sort
     COMMAND test_sort_e2e
     COMMAND test_limit
+    COMMAND test_limit_e2e
     COMMAND test_modifytable
     COMMAND test_ddl
     COMMAND test_sql_storage_integration
     COMMAND test_storage_integration
     COMMAND test_jit_perf
     COMMAND test_e2e_basic
-    DEPENDS test_sql_parser test_sql_planner test_sql_executor test_agg_e2e test_indexscan test_seqscan test_seqscan_init test_nestloop test_nestloop_e2e test_hashagg test_hashjoin test_hashjoin_e2e test_parallel test_tuple_queue test_worker_pool test_trigger test_trigger_functions test_partition test_sort test_sort_e2e test_limit test_modifytable test_ddl test_sql_storage_integration test_storage_integration test_jit_perf test_e2e_basic
+    DEPENDS test_sql_parser test_sql_planner test_sql_executor test_agg_e2e test_indexscan test_seqscan test_seqscan_init test_nestloop test_nestloop_e2e test_hashagg test_hashjoin test_hashjoin_e2e test_parallel test_tuple_queue test_worker_pool test_trigger test_trigger_functions test_partition test_sort test_sort_e2e test_limit test_limit_e2e test_modifytable test_ddl test_sql_storage_integration test_storage_integration test_jit_perf test_e2e_basic
 )

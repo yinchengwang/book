@@ -42,15 +42,50 @@
  */
 static TupleTableSlot *exec_limit_impl(PlanState *pstate) {
     LimitState *node = (LimitState *)pstate;
+    PlanState *child;
+    TupleTableSlot *slot;
 
-    /* 框架版本：简化实现 */
-    /* TODO: 实现限制逻辑 */
-    /* 1. 从子节点拉取元组 */
-    /* 2. 跳过 OFFSET 个 */
-    /* 3. 返回 LIMIT 个 */
+    /* 参数检查 */
+    if (node == NULL) {
+        return NULL;
+    }
 
-    (void)node;
-    return NULL;
+    child = node->ps.lefttree;
+
+    /* Task 2.6: 实现 LIMIT/OFFSET 真实逻辑
+     * 1. 如果超过 LIMIT，返回 NULL（提前终止）
+     * 2. 否则从子节点拉取元组
+     * 3. 跳过 OFFSET 个元组
+     * 4. 返回 LIMIT 个内的元组 */
+
+    /* 检查是否已达到 LIMIT */
+    if (!node->noCount && node->limitCount >= 0 && node->position >= (int64_t)node->limitCount) {
+        return NULL;
+    }
+
+    /* 跳过 OFFSET 个元组 */
+    while (node->position < node->limitOffset) {
+        if (child == NULL || child->ExecProcNode == NULL) {
+            return NULL;
+        }
+        slot = child->ExecProcNode(child);
+        if (slot == NULL) {
+            return NULL;  /* 子节点耗尽 */
+        }
+        node->position++;
+    }
+
+    /* 从子节点拉取元组 */
+    if (child == NULL || child->ExecProcNode == NULL) {
+        return NULL;
+    }
+    slot = child->ExecProcNode(child);
+    if (slot == NULL) {
+        return NULL;
+    }
+
+    node->position++;
+    return slot;
 }
 
 /* ========================================================================
