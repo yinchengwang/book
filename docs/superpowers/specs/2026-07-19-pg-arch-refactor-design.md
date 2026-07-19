@@ -175,7 +175,7 @@ EXEC_GRAPH_SCAN,     /**< 图遍历 */
 
 - `parser/sql/sql_parse_one` 产出 `sql_node_t*`
 - `planner_logical_plan` 已经支持 `sql_node_t*` 作为输入（自动类型判断：如果是 SQL_NODE_* 走简化路径，如果是 T_SelectStmt 走 Bison 路径）
-- **`parse_analyze.c` 是 Bison 套的遗产，无任何调用方**，是死代码——不需要"修复兼容"，**直接删除**
+- **`parse_analyze.c` + `parse_expr.c` 不是死代码**——被 `engineering/test/db/parser/test_parser_sql.cpp` 调用（`transformSelectStmt`、`makeVar`、`makeConst` 等），它们服务于 Bison 风格的解析+语义分析测试套件，**保留**
 - 端到端贯通的真实路径：`sql_parse_one → planner_plan → PhysPlan → PlanState → ExecutorRun → 元组`
 
 ### 3.3.1 优化器双路径（planner.c vs optimizer.c）→ 重写为单一优化器
@@ -566,8 +566,7 @@ void db_result_free(db_result_t *res);
 | 模块 | 实装度 | 决策 |
 |---|---|---|
 | `sql_executor.c` (674 行) | 15 个 `exec_xxx` 函数**100% 是桩实现**（全部 `return NULL`） | ❌ **整体删除** |
-| `parse_analyze.c` (575 行) | 零调用方 | ❌ **删除** |
-| `parse_expr.c` (751 行) | 死代码 | ❌ **删除** |
+| `parse_analyze.c` (575 行) + `parse_expr.c` (751 行) | 不是死代码——被 `test_parser_sql.cpp` 调用（transformSelectStmt、makeVar 等），是 Bison 套测试基础设施 | ✅ **保留** |
 | `sql/sql_parser.c` (2318 行) | CMake 注释，零调用 | ❌ **删除** |
 | `sql/sql_driver.c` (300 行) | 死代码 | ❌ **删除** |
 | `optimizer.c` (360 行) | 8 处 TODO，函数体几乎全是"递归→TODO→return" | ❌ **删除**（接口合并到 planner.c） |
@@ -593,7 +592,7 @@ void db_result_free(db_result_t *res);
 | 任务 | 工程量 |
 |---|---|
 | 删除 sql_executor.c (674 行) | 1 小时 |
-| 删除 parse_analyze.c + parse_expr.c (1326 行) | 1 小时 |
+| ~~删除 parse_analyze.c + parse_expr.c (1326 行)~~ **取消**——它们不是死代码，是 Bison 套测试基础设施 | — |
 | 删除 sql/sql_parser.c + sql/sql_driver.c (2618 行) | 1 小时 |
 | 删除 optimizer.c (360 行) | 1 小时 |
 | 删除 executor/graph/traverse.c 4 个死函数 (~400 行) | 1 小时 |

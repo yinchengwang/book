@@ -21,7 +21,7 @@
 - **编译验证**：每个 Task 完成后 `ninja -j4` 全量编译通过 + 所有现有测试通过
 - **OpenSpec 纪律**：只提交与变更相关的代码（不混提交）
 - **现有模块保留**：catalog、buffer pool、WAL、MVCC、heap AM、btree AM、多模态引擎（vector/graph/spatial/doc/ts/yang）全部保留
-- **删除清单（无价值代码）**：sql_executor.c（674 行全桩）、optimizer.c（360 行全 TODO）、parse_analyze.c + parse_expr.c（1326 行死代码）、sql/sql_parser.c + sql/sql_driver.c（2618 行死代码）、executor/graph/traverse.c 中 4 个死函数（~400 行）
+- **删除清单（无价值代码）**：sql_executor.c（674 行全桩）、optimizer.c（360 行全 TODO）、~~parse_analyze.c + parse_expr.c（1326 行死代码）~~ **取消**：它们是 Bison 套测试基础设施（被 test_parser_sql.cpp 调用）、sql/sql_parser.c + sql/sql_driver.c（2618 行死代码）、executor/graph/traverse.c 中 4 个死函数（~400 行）
 - **重写清单**：nodeHash.c（152 行骨架）合并到 nodeHashjoin.c，nodeIndexscan.c::exec_index_scan（小写）改名为 ExecIndexScan
 
 ---
@@ -96,57 +96,39 @@ git add engineering/src/db/sql/CMakeLists.txt
 git commit -m "refactor: 删除 sql_executor.c（全桩实现，无价值代码）"
 ```
 
-### Task 1.2：删除 parse_analyze.c + parse_expr.c（死代码）
+### Task 1.2：[CANCELLED] 删除 parse_analyze.c + parse_expr.c（**误判，不是死代码**）
+
+**状态**：~~CANCELLED~~ **已取消**（2026-07-19）
+
+**取消原因**：
+
+之前误判 parse_analyze.c 和 parse_expr.c 是死代码，实际上它们被 `engineering/test/db/parser/test_parser_sql.cpp` 调用：
+- `transformSelectStmt`（test_parser_sql.cpp:344）
+- `makeVar`、`makeConst`（test_parser_sql.cpp:433, 447）
+- 其他 `transformXxxStmt` 工具函数
+
+它们服务于 Bison 风格的解析+语义分析测试套件，是**测试基础设施**而非死代码。删除会导致 Bison 套测试无法编译。
+
+**决策**：保留 parse_analyze.c + parse_expr.c，作为 Bison 套测试基础设施。
 
 **Files:**
-- Delete: `engineering/src/db/parser/sql/parse_analyze.c`
-- Delete: `engineering/src/db/parser/sql/parse_expr.c`
-- Modify: `engineering/src/db/parser/sql/CMakeLists.txt`（移除两个文件的引用）
-- Test: 验证编译通过 + 测试通过
+- ~~Delete: `engineering/src/db/parser/sql/parse_analyze.c`~~
+- ~~Delete: `engineering/src/db/parser/sql/parse_expr.c`~~
+- ~~Modify: `engineering/src/db/parser/sql/CMakeLists.txt`~~
+- ~~Test: 验证编译通过 + 测试通过~~
 
-**原因**：parse_analyze.c 和 parse_expr.c 是 Bison 套遗留，零调用方（之前已通过 grep 验证）。
+**修订原因**：grep `transformSelectStmt|makeVar|makeConst|transformInsertStmt` 在 `engineering/test/db/parser/test_parser_sql.cpp` 中找到 4 处引用，说明它们是活跃的测试基础设施。
 
 **步骤**：
 
-- [ ] **Step 1：验证无调用方**
+- [x] ~~Step 1：验证无调用方~~（取消：发现它们被 test_parser_sql.cpp 调用）
+- [x] ~~Step 2：删除两个文件~~（取消）
+- [x] ~~Step 3：从 CMakeLists.txt 移除~~（取消）
+- [x] ~~Step 4：编译验证~~（取消）
+- [x] ~~Step 5：测试验证~~（取消）
+- [x] ~~Step 6：提交~~（取消）
 
-```bash
-grep -rln "parse_analyze\b" engineering/src/ engineering/test/ 2>/dev/null | grep -v "parse_analyze.c$"
-grep -rln "parse_expr\b" engineering/src/ engineering/test/ 2>/dev/null | grep -v "parse_expr.c$"
-# 预期：无输出（除了 CMakeLists.txt 中的源文件列表）
-```
-
-- [ ] **Step 2：删除两个文件**
-
-```bash
-git rm engineering/src/db/parser/sql/parse_analyze.c engineering/src/db/parser/sql/parse_expr.c
-```
-
-- [ ] **Step 3：从 CMakeLists.txt 移除**
-
-编辑 `engineering/src/db/parser/sql/CMakeLists.txt`，从 `SQL_PARSER_SIMPLIFIED_SOURCES` 列表中删除 `parse_analyze.c` 和 `parse_expr.c`。
-
-- [ ] **Step 4：编译验证**
-
-```bash
-cmake -S engineering -B build/engineering
-ninja -j4 -C build/engineering
-# 预期：编译成功
-```
-
-- [ ] **Step 5：测试验证**
-
-```bash
-ctest --test-dir build/engineering --output-on-failure
-# 预期：所有测试通过
-```
-
-- [ ] **Step 6：提交**
-
-```bash
-git add engineering/src/db/parser/sql/CMakeLists.txt
-git commit -m "refactor: 删除 parse_analyze.c + parse_expr.c（死代码）"
-```
+**替代行动**：保留文件不变，仅更新本文档与 spec 文档记录决策。
 
 ### Task 1.3：删除 sql/sql_parser.c + sql/sql_driver.c（死代码）
 
@@ -1014,7 +996,7 @@ git commit -am "feat: 引入 IndexAmRoutine 框架"
 |---|---|
 | 走 PG 架构 + 注册表插件化 | Task 2.16-2.18 + 2.21-2.22 |
 | 删除 sql_executor.c 全桩 | Task 1.1 |
-| 删除 parse_analyze.c | Task 1.2 |
+| ~~删除 parse_analyze.c~~ | ~~Task 1.2~~ **取消**：parse_analyze/parse_expr 是 Bison 套测试基础设施，保留 |
 | 删除 sql/sql_parser.c + driver | Task 1.3 |
 | 删除 optimizer.c | Task 1.4 |
 | 删除 traverse.c 死函数 | Task 1.5 |
@@ -1048,3 +1030,20 @@ git commit -am "feat: 引入 IndexAmRoutine 框架"
 - `storage_ops_t` 已在 `storage_engine.h` 定义，Task 2.11-2.15 直接使用 → ✅ 一致
 - `catalog_init/catalog_create_table/catalog_shutdown` 在 catalog.h 定义 → ✅ 一致
 - `IndexInfo` 和 `Datum` 引用需要在 amapi.h 中定义或在引入时实现 → 后续 Task 可能需要补充这些类型定义
+
+## 修改决策记录
+
+### 2026-07-19：Task 1.2 取消（parse_analyze/parse_expr 不是死代码）
+
+**变更**：将 `### Task 1.2：删除 parse_analyze.c + parse_expr.c` 标记为 `[CANCELLED]`，不再执行删除操作。
+
+**触发原因**：通过 grep 验证发现，`engineering/test/db/parser/test_parser_sql.cpp` 调用了 `transformSelectStmt`、`makeVar`、`makeConst` 等函数，parse_analyze.c + parse_expr.c 是 Bison 套测试基础设施，而非死代码。
+
+**联动修改**：
+1. `docs/superpowers/specs/2026-07-19-pg-arch-refactor-design.md` 第 178 行的"澄清记录"已从"死代码——直接删除"改为"保留"
+2. spec 章节 10 的表格中 parse_analyze.c / parse_expr.c 行已合并为一行，标注 ✅ **保留**
+3. spec 章节 11 第一档方案中删除条目已改为 ~~删除~~ **取消**
+4. plan 顶部"删除清单"已删除 parse_analyze/parse_expr 条目
+5. plan Self-Review 表中 `删除 parse_analyze.c | Task 1.2` 已改为取消标注
+
+**影响**：Phase 1 死代码清理任务数从 7 个减为 6 个，剩余：sql_executor.c、sql/sql_parser.c + sql/sql_driver.c、optimizer.c、executor/graph/traverse.c 死函数、nodeHash.c 合并、nodeIndexscan.c 改名。
