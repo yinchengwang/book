@@ -118,3 +118,6 @@
 [submodule "reference/open-source/search_engine/tantivy"]
 	path = reference/open-source/search_engine/tantivy
 	url = https://github.com/quickwit-oss/tantivy.git
+[submodule "reference/open-source/search_engine/zincsearch"]
+	path = reference/open-source/search_engine/zincsearch
+	url = https://github.com/zinclabs/zincsearch.git
