@@ -43,3 +43,33 @@
 [submodule "reference/open-source/meilisearch"]
 	path = reference/open-source/meilisearch
 	url = https://github.com/meilisearch/meilisearch.git
+[submodule "reference/open-source/qdrant"]
+	path = reference/open-source/qdrant
+	url = https://github.com/qdrant/qdrant.git
+[submodule "reference/open-source/paradedb"]
+	path = reference/open-source/paradedb
+	url = https://github.com/paradedb/paradedb.git
+[submodule "reference/open-source/turso"]
+	path = reference/open-source/turso
+	url = https://github.com/tursodatabase/turso.git
+[submodule "reference/open-source/dolt"]
+	path = reference/open-source/dolt
+	url = https://github.com/dolthub/dolt.git
+[submodule "reference/open-source/ferretdb"]
+	path = reference/open-source/ferretdb
+	url = https://github.com/FerretDB/FerretDB.git
+[submodule "reference/open-source/weaviate"]
+	path = reference/open-source/weaviate
+	url = https://github.com/weaviate/weaviate.git
+[submodule "reference/open-source/greptimedb"]
+	path = reference/open-source/greptimedb
+	url = https://github.com/GreptimeTeam/greptimedb.git
+[submodule "reference/open-source/nocodb"]
+	path = reference/open-source/nocodb
+	url = https://github.com/nocodb/nocodb.git
+[submodule "reference/open-source/bytebase"]
+	path = reference/open-source/bytebase
+	url = https://github.com/bytebase/bytebase.git
+[submodule "reference/open-source/appwrite"]
+	path = reference/open-source/appwrite
+	url = https://github.com/appwrite/appwrite.git
