@@ -50,10 +50,10 @@
 	path = reference/open-source/search_engine/paradedb
 	url = https://github.com/paradedb/paradedb.git
 [submodule "reference/open-source/turso"]
-	path = reference/open-source/turso
+	path = reference/open-source/edge/turso
 	url = https://github.com/tursodatabase/turso.git
 [submodule "reference/open-source/dolt"]
-	path = reference/open-source/dolt
+	path = reference/open-source/versioned/dolt
 	url = https://github.com/dolthub/dolt.git
 [submodule "reference/open-source/ferretdb"]
 	path = reference/open-source/document/ferretdb
@@ -68,7 +68,7 @@
 	path = reference/open-source/document/nocodb
 	url = https://github.com/nocodb/nocodb.git
 [submodule "reference/open-source/bytebase"]
-	path = reference/open-source/bytebase
+	path = reference/open-source/devops/bytebase
 	url = https://github.com/bytebase/bytebase.git
 [submodule "reference/open-source/appwrite"]
 	path = reference/open-source/document/appwrite
@@ -85,3 +85,6 @@
 [submodule "reference/open-source/timescaledb"]
 	path = reference/open-source/time_series/timescaledb
 	url = https://github.com/timescale/timescaledb.git
+[submodule "reference/open-source/vector/qdrant"]
+	path = reference/open-source/vector/qdrant
+	url = https://github.com/qdrant/qdrant.git
