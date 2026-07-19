@@ -572,7 +572,7 @@ void executor_cancel(void *exec);
 /**
  * @brief 执行索引扫描（实现位于 nodeIndexscan.c）
  */
-TupleTableSlot *exec_index_scan(IndexScanState *node);
+TupleTableSlot *ExecIndexScan(IndexScanState *node);
 
 /* ========================================================================
  * 表达式求值（已迁移到 executor 框架）

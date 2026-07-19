@@ -343,7 +343,7 @@ TEST(ExecOpsTest, IndexScanOps) {
     IndexScanState idx_node;
     memset(&idx_node, 0, sizeof(idx_node));
 
-    TupleTableSlot *slot = exec_index_scan(&idx_node);
+    TupleTableSlot *slot = ExecIndexScan(&idx_node);
     EXPECT_EQ(slot, nullptr);
 }
 

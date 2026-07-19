@@ -106,7 +106,7 @@ IndexScanState *ExecInitIndexScan(IndexScanPlan *node, void *estate, int eflags)
  * @param node IndexScanState 指针
  * @return TupleTableSlot 指针，没有更多元组时返回 NULL
  */
-TupleTableSlot *exec_index_scan(IndexScanState *node);
+TupleTableSlot *ExecIndexScan(IndexScanState *node);
 
 /**
  * @brief 结束 IndexScan 执行

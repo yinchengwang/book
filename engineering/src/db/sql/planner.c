@@ -1235,7 +1235,7 @@ static TupleTableSlot *(*get_exec_func(PhysicalOpType type))(PlanState *) {
         case PHYS_SEQ_SCAN:
             return ExecSeqScan;
         case PHYS_INDEX_SCAN:
-            return (TupleTableSlot *(*)(PlanState *))exec_index_scan;
+            return (TupleTableSlot *(*)(PlanState *))ExecIndexScan;
         case PHYS_NESTLOOP:
             return ExecNestLoop;
         case PHYS_HASHJOIN:

@@ -82,7 +82,7 @@ TEST(IndexScanTest, ScanEmpty) {
     IndexScanState *state = ExecInitIndexScan(&plan, NULL, 0);
     if (state != NULL) {
         /* 无有效 Relation 时，执行应返回 NULL */
-        TupleTableSlot *slot = exec_index_scan(state);
+        TupleTableSlot *slot = ExecIndexScan(state);
         EXPECT_EQ(slot, nullptr);
 
         ExecEndIndexScan(state);
@@ -203,7 +203,7 @@ TEST(IndexScanTest, Statistics) {
             EXPECT_EQ(ext->iss_index_entries, 0);
 
             /* 执行扫描（无实际数据） */
-            exec_index_scan(state);
+            ExecIndexScan(state);
 
             /* 统计应保持为 0 */
             EXPECT_EQ(ext->iss_tuples_scanned, 0);

@@ -121,7 +121,7 @@ IndexScanState *ExecInitIndexScan(IndexScanPlan *node, void *estate, int eflags)
     scanstate->ss.ps.state = ext_state;  /* 通过 state 指针关联扩展状态 */
 
     /* 设置执行函数指针 */
-    scanstate->ss.ps.exec_proc = (TupleTableSlot *(*)(PlanState *))exec_index_scan;
+    scanstate->ss.ps.exec_proc = (TupleTableSlot *(*)(PlanState *))ExecIndexScan;
 
     /* 复制计划和目标列表 */
     ext_state->iss_targetlist = node->targetlist;
@@ -189,7 +189,7 @@ IndexScanState *ExecInitIndexScan(IndexScanPlan *node, void *estate, int eflags)
 /**
  * @brief 执行 IndexScan 迭代
  */
-TupleTableSlot *exec_index_scan(IndexScanState *node)
+TupleTableSlot *ExecIndexScan(IndexScanState *node)
 {
     IndexScanExtState *ext_state;
     TupleTableSlot *slot;
