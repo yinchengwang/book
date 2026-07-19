@@ -287,52 +287,12 @@ TEST(TupleStoreTest, Basic) {
     EXPECT_EQ(slot, nullptr);
 }
 
-/**
- * @brief 测试表达式求值
- */
-TEST(EvalTest, Basic) {
-    int isnull = 0;
-    void *result = eval_expr(NULL, NULL, &isnull);
-    EXPECT_EQ(result, nullptr);
-    EXPECT_EQ(isnull, 1);
-}
-
-/**
- * @brief 测试常量表达式求值
- */
-TEST(EvalTest, ConstExpr) {
-    ExprContext *ctx = exec_create_expr_context();
-    ASSERT_NE(ctx, nullptr);
-
-    void *result = eval_const_expr(NULL, ctx);
-    EXPECT_EQ(result, nullptr);
-
-    exec_destroy_expr_context(ctx);
-}
-
-/**
- * @brief 测试函数求值
- */
-TEST(EvalTest, Func) {
-    void *result = eval_func(NULL, NULL, 0, NULL);
-    EXPECT_EQ(result, nullptr);
-}
-
-/**
- * @brief 测试聚合求值
- */
-TEST(EvalTest, Agg) {
-    void *result = eval_agg(NULL, NULL, 0, false);
-    EXPECT_EQ(result, nullptr);
-}
-
-/**
- * @brief 测试窗口函数求值
- */
-TEST(EvalTest, WindowFunc) {
-    void *result = eval_window_func(NULL, NULL, 0, NULL);
-    EXPECT_EQ(result, nullptr);
-}
+/* Task 1.1 重构说明：
+ * 原测试 EvalTest.Basic/ConstExpr/Func/Agg/WindowFunc
+ * 仅验证 eval_expr/eval_const_expr/eval_func/eval_agg/eval_window_func
+ * 桩函数返回 NULL。这些桩函数已删除（实际求值由 executor 框架
+ * 通过 PlanState->ExecProcNode 调度），相应测试已删除。
+ * 保留 eval_case/eval_in/eval_nulltest/eval_bool_expr 的桩测试。 */
 
 /**
  * @brief 测试 CASE 表达式求值
@@ -371,120 +331,19 @@ TEST(EvalTest, BoolExpr) {
     EXPECT_TRUE(result);  /* 简化实现返回 true */
 }
 
+/* Task 1.1 重构说明：
+ * 原测试 ScanOps/JoinOps/AggOps/ModifyOps/ChangeOps/ResultOps
+ * 仅验证桩函数返回 NULL，桩函数已删除，相应测试已迁移到
+ * nodeXxx.c 的真实实现测试中。此处仅保留 index_scan 桩测试。 */
+
 /**
- * @brief 测试扫描执行函数（桩实现）
+ * @brief 测试索引扫描执行函数（真实实现位于 nodeIndexscan.c）
  */
-TEST(ExecOpsTest, ScanOps) {
-    SeqScanState seq_node;
-    memset(&seq_node, 0, sizeof(seq_node));
-
-    TupleTableSlot *slot = exec_seq_scan(&seq_node);
-    EXPECT_EQ(slot, nullptr);
-
+TEST(ExecOpsTest, IndexScanOps) {
     IndexScanState idx_node;
     memset(&idx_node, 0, sizeof(idx_node));
 
-    slot = exec_index_scan(&idx_node);
-    EXPECT_EQ(slot, nullptr);
-
-    VectorScanState vec_node;
-    memset(&vec_node, 0, sizeof(vec_node));
-
-    slot = exec_vector_scan(&vec_node);
-    EXPECT_EQ(slot, nullptr);
-
-    HnswScanState hnsw_node;
-    memset(&hnsw_node, 0, sizeof(hnsw_node));
-
-    slot = exec_hnsw_scan(&hnsw_node);
-    EXPECT_EQ(slot, nullptr);
-}
-
-/**
- * @brief 测试连接执行函数（桩实现）
- */
-TEST(ExecOpsTest, JoinOps) {
-    NestLoopState nl_node;
-    memset(&nl_node, 0, sizeof(nl_node));
-
-    TupleTableSlot *slot = exec_nestloop(&nl_node);
-    EXPECT_EQ(slot, nullptr);
-
-    HashJoinState hj_node;
-    memset(&hj_node, 0, sizeof(hj_node));
-
-    slot = exec_hashjoin(&hj_node);
-    EXPECT_EQ(slot, nullptr);
-}
-
-/**
- * @brief 测试聚合执行函数（桩实现）
- */
-TEST(ExecOpsTest, AggOps) {
-    AggState agg_node;
-    memset(&agg_node, 0, sizeof(agg_node));
-
-    TupleTableSlot *slot = exec_hash_agg(&agg_node);
-    EXPECT_EQ(slot, nullptr);
-
-    slot = exec_sort_agg(&agg_node);
-    EXPECT_EQ(slot, nullptr);
-}
-
-/**
- * @brief 测试修饰算子执行函数（桩实现）
- */
-TEST(ExecOpsTest, ModifyOps) {
-    SortState sort_node;
-    memset(&sort_node, 0, sizeof(sort_node));
-
-    TupleTableSlot *slot = exec_sort(&sort_node);
-    EXPECT_EQ(slot, nullptr);
-
-    ProjectState proj_node;
-    memset(&proj_node, 0, sizeof(proj_node));
-
-    slot = exec_project(&proj_node);
-    EXPECT_EQ(slot, nullptr);
-
-    FilterState filter_node;
-    memset(&filter_node, 0, sizeof(filter_node));
-
-    slot = exec_filter(&filter_node);
-    EXPECT_EQ(slot, nullptr);
-
-    LimitState limit_node;
-    memset(&limit_node, 0, sizeof(limit_node));
-
-    slot = exec_limit(&limit_node);
-    EXPECT_EQ(slot, nullptr);
-}
-
-/**
- * @brief 测试修改算子执行函数（桩实现）
- */
-TEST(ExecOpsTest, ChangeOps) {
-    ModifyTableState mod_node;
-    memset(&mod_node, 0, sizeof(mod_node));
-
-    TupleTableSlot *slot = exec_insert(&mod_node);
-    EXPECT_EQ(slot, nullptr);
-
-    slot = exec_update(&mod_node);
-    EXPECT_EQ(slot, nullptr);
-
-    slot = exec_delete(&mod_node);
-    EXPECT_EQ(slot, nullptr);
-}
-
-/**
- * @brief 测试结果算子执行函数（桩实现）
- */
-TEST(ExecOpsTest, ResultOps) {
-    ResultState result_node;
-    memset(&result_node, 0, sizeof(result_node));
-
-    TupleTableSlot *slot = exec_result(&result_node);
+    TupleTableSlot *slot = exec_index_scan(&idx_node);
     EXPECT_EQ(slot, nullptr);
 }
 

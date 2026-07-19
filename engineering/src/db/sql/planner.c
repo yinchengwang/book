@@ -15,6 +15,23 @@
 #include "db/parser/sql/makefuncs.h"  /* 引入 list_free */
 #include "db/sql/sql_executor.h"      /* 引入 PlanState 定义 */
 
+/* Task 1.1: 前向声明 nodeXxx.c 中的真实 ExecXxx 函数。
+ * 直接 #include 那些头文件会引入 Plan/Relation/EState 等大量
+ * 依赖并触发头文件循环，planner.c 只需要函数指针，不需要
+ * 它们的完整结构定义。链接器会在最终链接时解析符号。 */
+extern TupleTableSlot *ExecSeqScan(PlanState *pstate);
+extern TupleTableSlot *ExecNestLoop(PlanState *pstate);
+extern TupleTableSlot *ExecHashJoin(PlanState *pstate);
+extern TupleTableSlot *ExecSort(PlanState *pstate);
+extern TupleTableSlot *ExecLimit(PlanState *pstate);
+extern TupleTableSlot *ExecModifyTable(PlanState *pstate);
+extern TupleTableSlot *ExecHashAgg(PlanState *pstate);
+extern TupleTableSlot *ExecAgg(PlanState *pstate);
+/* 注：ExecResult / exec_vector_scan_next / exec_hnsw_scan_next
+ * 当前不在 sql_engine 静态库的链接图内（这些源文件尚未纳入
+ * CMakeLists 构建范围），暂时将 PHYS_RESULT/PHYS_VECTOR_SCAN/
+ * PHYS_HNSW_SCAN 三种物理算子映射为 NULL，由调用方兜底。*/
+
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -1209,37 +1226,42 @@ void planner_free_physical_plan(PhysPlan *plan) {
 
 /**
  * @brief 根据物理算子类型获取执行函数
+ *
+ * Task 1.1 重构：将 sql_executor.c 中的桩函数（exec_seq_scan 等）
+ * 替换为 nodeXxx.c 中的真实 ExecXxx 实现。
  */
 static TupleTableSlot *(*get_exec_func(PhysicalOpType type))(PlanState *) {
     switch (type) {
         case PHYS_SEQ_SCAN:
-            return (TupleTableSlot *(*)(PlanState *))exec_seq_scan;
+            return ExecSeqScan;
         case PHYS_INDEX_SCAN:
             return (TupleTableSlot *(*)(PlanState *))exec_index_scan;
         case PHYS_NESTLOOP:
-            return (TupleTableSlot *(*)(PlanState *))exec_nestloop;
+            return ExecNestLoop;
         case PHYS_HASHJOIN:
-            return (TupleTableSlot *(*)(PlanState *))exec_hashjoin;
+            return ExecHashJoin;
         case PHYS_SORT:
-            return (TupleTableSlot *(*)(PlanState *))exec_sort;
+            return ExecSort;
         case PHYS_LIMIT:
-            return (TupleTableSlot *(*)(PlanState *))exec_limit;
+            return ExecLimit;
         case PHYS_INSERT:
-            return (TupleTableSlot *(*)(PlanState *))exec_insert;
         case PHYS_UPDATE:
-            return (TupleTableSlot *(*)(PlanState *))exec_update;
         case PHYS_DELETE:
-            return (TupleTableSlot *(*)(PlanState *))exec_delete;
+            /* INSERT/UPDATE/DELETE 统一由 ExecModifyTable 处理 */
+            return ExecModifyTable;
         case PHYS_RESULT:
-            return (TupleTableSlot *(*)(PlanState *))exec_result;
+            /* ExecResult 暂未链接到 sql_engine，返回 NULL */
+            return NULL;
         case PHYS_HASHAGG:
-            return (TupleTableSlot *(*)(PlanState *))exec_hash_agg;
+            return ExecHashAgg;
         case PHYS_SORTAGG:
-            return (TupleTableSlot *(*)(PlanState *))exec_sort_agg;
+            /* SortAgg 与 HashAgg 共享 ExecAgg 入口，节点内按策略分支 */
+            return ExecAgg;
         case PHYS_VECTOR_SCAN:
-            return (TupleTableSlot *(*)(PlanState *))exec_vector_scan;
         case PHYS_HNSW_SCAN:
-            return (TupleTableSlot *(*)(PlanState *))exec_hnsw_scan;
+            /* 向量/HNSW 扫描源文件尚未纳入 CMakeLists 构建，
+             * 暂时返回 NULL，由调用方兜底 */
+            return NULL;
         default:
             return NULL;
     }

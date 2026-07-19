@@ -556,123 +556,33 @@ void executor_finish(void *exec);
 void executor_cancel(void *exec);
 
 /* ========================================================================
- * 算子执行函数
+ * 算子执行函数（已迁移到 nodeXxx.c 中真实实现）
+ *
+ * 原桩函数（exec_seq_scan, exec_vector_scan, exec_hnsw_scan,
+ * exec_nestloop, exec_hashjoin, exec_hash_agg, exec_sort_agg,
+ * exec_sort, exec_project, exec_filter, exec_limit,
+ * exec_insert, exec_update, exec_delete, exec_result）
+ * 已删除，参见：
+ *   - nodeSeqscan.h / nodeIndexscan.h / nodes/nodeNestloop.h
+ *   - nodeHashjoin.h / nodeSort.h / nodeHashagg.h
+ *   - nodeLimit.h / nodeModifyTable.h / nodeResult.h
+ *   - nodeProjectSet.h
  * ======================================================================== */
 
 /**
- * @brief 执行顺序扫描
- */
-TupleTableSlot *exec_seq_scan(SeqScanState *node);
-
-/**
- * @brief 执行索引扫描
+ * @brief 执行索引扫描（实现位于 nodeIndexscan.c）
  */
 TupleTableSlot *exec_index_scan(IndexScanState *node);
 
-/**
- * @brief 执行向量扫描
- */
-TupleTableSlot *exec_vector_scan(VectorScanState *node);
-
-/**
- * @brief 执行 HNSW 扫描
- */
-TupleTableSlot *exec_hnsw_scan(HnswScanState *node);
-
-/**
- * @brief 执行嵌套循环连接
- */
-TupleTableSlot *exec_nestloop(NestLoopState *node);
-
-/**
- * @brief 执行 Hash 连接
- */
-TupleTableSlot *exec_hashjoin(HashJoinState *node);
-
-/**
- * @brief 执行 Hash 聚合
- */
-TupleTableSlot *exec_hash_agg(AggState *node);
-
-/**
- * @brief 执行排序聚合
- */
-TupleTableSlot *exec_sort_agg(AggState *node);
-
-/**
- * @brief 执行排序
- */
-TupleTableSlot *exec_sort(SortState *node);
-
-/**
- * @brief 执行投影
- */
-TupleTableSlot *exec_project(ProjectState *node);
-
-/**
- * @brief 执行过滤
- */
-TupleTableSlot *exec_filter(FilterState *node);
-
-/**
- * @brief 执行 LIMIT
- */
-TupleTableSlot *exec_limit(LimitState *node);
-
-/**
- * @brief 执行插入
- */
-TupleTableSlot *exec_insert(ModifyTableState *node);
-
-/**
- * @brief 执行更新
- */
-TupleTableSlot *exec_update(ModifyTableState *node);
-
-/**
- * @brief 执行删除
- */
-TupleTableSlot *exec_delete(ModifyTableState *node);
-
-/**
- * @brief 执行结果
- */
-TupleTableSlot *exec_result(ResultState *node);
-
 /* ========================================================================
- * 表达式求值
+ * 表达式求值（已迁移到 executor 框架）
+ *
+ * 原桩函数（eval_expr, eval_const_expr, eval_func, eval_agg,
+ * eval_window_func）已删除，框架中表达式求值由 executor.c
+ * 通过 PlanState->ExecProcNode 调度。
  * ======================================================================== */
 
-/* 类型前向声明 */
-typedef struct Expr_s Expr;
-
-/* Expr 和 CaseExpr 类型已在 parsenodes.h 中定义 */
-
-/**
- * @brief 求值表达式
- */
-void *eval_expr(void *expr, ExprContext *ctx, int *isnull);
-
-/**
- * @brief 求值常量表达式
- */
-void *eval_const_expr(void *expr, ExprContext *ctx);
-
-/**
- * @brief 求值函数
- */
-void *eval_func(void *func, void **args, int nargs, ExprContext *ctx);
-
-/**
- * @brief 求值聚合函数
- */
-void *eval_agg(void *agg, void **args, int nargs, bool isdistinct);
-
-/**
- * @brief 求值窗口函数
- */
-void *eval_window_func(void *wfunc, void **args, int nargs,
-                      void *winctx);
+/* 表达式相关辅助函数（保留） */
 
 /**
  * @brief 求值 CASE 表达式
