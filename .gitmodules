@@ -145,9 +145,6 @@
 [submodule "reference/open-source/embedded/leveldb"]
 	path = reference/open-source/embedded/leveldb
 	url = https://github.com/google/leveldb.git
-[submodule "reference/open-source/analytical/starrocks"]
-	path = reference/open-source/analytical/starrocks
-	url = https://github.com/StarRocks/starrocks.git
 [submodule "reference/open-source/analytical/druid"]
 	path = reference/open-source/analytical/druid
 	url = https://github.com/apache/druid.git
@@ -160,3 +157,6 @@
 [submodule "reference/open-source/analytical/clickhouse"]
 	path = reference/open-source/analytical/clickhouse
 	url = https://github.com/ClickHouse/ClickHouse.git
+[submodule "reference/open-source/analytical/starrocks"]
+	path = reference/open-source/analytical/starrocks
+	url = https://github.com/StarRocks/starrocks.git

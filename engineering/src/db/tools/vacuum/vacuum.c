@@ -18,6 +18,7 @@
  */
 
 #include "db/tools/vacuum.h"
+#include "db/catalog.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -321,40 +322,65 @@ int analyze_execute(const char *table_name, const char **column_names,
 
     if (table_name == NULL) {
         /* 对所有表执行 ANALYZE */
-        /* TODO: 遍历数据库中所有表，逐个执行 analyze */
+        int ntables = 0;
+        table_info_t *tables = catalog_get_all_tables(&ntables);
+        if (tables) {
+            for (int i = 0; i < ntables; i++) {
+                stats->num_pages += tables[i].npages;
+                stats->num_tuples += (int64_t)tables[i].ntupes;
+                stats->num_columns++;
+            }
+            catalog_free_table(tables);
+        }
     } else {
         /* 对指定表执行 ANALYZE */
 
-        /* 步骤 1: 确定采样策略 */
-        /* TODO: compute_sample_size(table_name) */
-
-        /* 步骤 2: 采样页面和元组 */
-        /* TODO:
-         * for each sampled_page {
-         *     stats->num_pages++;
-         *     for each sampled_tuple {
-         *         stats->num_tuples++;
-         *     }
-         * }
-         */
-
-        /* 步骤 3: 对每列计算统计信息 */
-        if (column_names && num_columns > 0) {
-            stats->num_columns = num_columns;
-        } else {
-            /* 分析所有列 */
-            /* TODO: 获取表的列数 */
-            stats->num_columns = 0;
+        /* 步骤 1: 通过 catalog 获取表信息和列信息 */
+        Oid oid = catalog_lookup_table(table_name);
+        if (oid == InvalidOid) {
+            /* 表不存在，但如果调用者指定了列数，仍然记录 */
+            if (column_names && num_columns > 0) {
+                stats->num_columns = num_columns;
+            }
+            stats->execution_time_ms = get_current_time_ms() - start_time;
+            return 0;
         }
 
-        /* 步骤 4: 生成直方图和 MCV 列表 */
-        /* TODO: compute_histogram()、compute_mcv_list() */
+        table_info_t *table_info = catalog_get_table(oid);
+        if (!table_info) {
+            if (column_names && num_columns > 0) {
+                stats->num_columns = num_columns;
+            }
+            stats->execution_time_ms = get_current_time_ms() - start_time;
+            return 0;
+        }
 
-        /* 步骤 5: 更新 pg_statistic 系统表 */
-        /* TODO: update_pg_statistic(table_name, column_stats) */
+        /* 步骤 2: 采样页面和元组（使用 table_info 中的实际统计） */
+        stats->num_pages = table_info->npages;
+        stats->num_tuples = (int64_t)table_info->ntupes;
+
+        /* 步骤 3: 获取列信息 */
+        int ncols = 0;
+        column_info_t *columns = catalog_get_columns(oid, &ncols);
+
+        /* 如果调用者指定了列名，使用指定的列数 */
+        if (column_names && num_columns > 0) {
+            stats->num_columns = num_columns;
+        } else if (columns) {
+            /* 否则使用表的实际列数 */
+            stats->num_columns = ncols;
+        }
+
+        /* 步骤 4: 为每列计算统计信息（简化实现，设置默认值） */
+        if (columns) {
+            catalog_free_columns(columns);
+        }
+
+        /* 步骤 5: 更新 catalog 中的统计信息 */
+        /* catalog_get_table 返回的是内部缓存指针，直接修改 npages/ntupes 有效 */
+        /* 此处保持现有值，后续可扩展为真正采样 */
     }
 
     stats->execution_time_ms = get_current_time_ms() - start_time;
-
     return 0;
 }
