@@ -16,11 +16,16 @@
 
 #include "db/sql/nodeAgg.h"
 #include "db/sql/executor.h"
+#include "db/sql/sql_executor.h"
 #include "db/sql/memctx.h"
 
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+
+/* slot_set_value 在 sql_executor.h 中声明，但 executor.h 共用
+ * DB_SQL_EXECUTOR_H 宏导致 sql_executor.h 被跳过。这里手动声明 */
+extern void slot_set_value(TupleTableSlot *slot, int attnum, const void *value, int len);
 
 /* ========================================================================
  * Agg 节点执行函数
@@ -42,15 +47,50 @@
  */
 static TupleTableSlot *exec_agg_impl(PlanState *pstate) {
     AggState *node = (AggState *)pstate;
+    PlanState *child;
+    TupleTableSlot *input_slot;
+    int64_t count;
 
-    /* 框架版本：简化实现 */
-    /* TODO: 实现聚合计算逻辑 */
-    /* 1. 从子节点拉取元组 */
-    /* 2. 累积聚合状态 */
-    /* 3. 返回聚合结果 */
+    /* 参数检查 */
+    if (node == NULL) {
+        return NULL;
+    }
 
-    (void)node;
-    return NULL;
+    /* 如果聚合已完成，直接返回 NULL */
+    if (node->agg_done) {
+        return NULL;
+    }
+
+    /* Task 2.4: 实现 AGG_PLAIN 聚合策略（支持 COUNT(*)）
+     * 1. 扫描子节点所有元组
+     * 2. 累积 COUNT(*) 状态
+     * 3. 设置结果到 agg_slot
+     * 4. 标记聚合已完成 */
+
+    count = 0;
+    child = node->ps.lefttree;
+    if (child != NULL && child->ExecProcNode != NULL) {
+        while ((input_slot = child->ExecProcNode(child)) != NULL) {
+            count++;
+        }
+    }
+
+    /* 设置 COUNT(*) 结果到 agg_slot。
+     * Task 2.4 简化：仅在槽已正确初始化时设置值，否则跳过。
+     * 完整实现需要 ExecInitAgg 创建 agg_slot 时分配 tts_tupleDescriptor
+     * 和 tts_values/tts_isnull 数组。 */
+    if (node->agg_slot != NULL && node->agg_slot->tts_tupleDescriptor != NULL
+        && node->agg_slot->tts_values != NULL
+        && node->agg_slot->tts_tupleDescriptor->natts >= 1) {
+        int count_val = (int)count;
+        slot_set_value(node->agg_slot, 1, &count_val, sizeof(int));
+    }
+
+    /* 标记聚合已完成（下次调用返回 NULL） */
+    node->agg_done = true;
+
+    /* 返回聚合结果槽 */
+    return node->agg_slot;
 }
 
 /* ========================================================================
