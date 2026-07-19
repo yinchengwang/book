@@ -1,21 +1,79 @@
 /**
  * @file pgwire.c
  * @brief PostgreSQL Wire Protocol 实现
+ *
+ * Task 3.6: Windows 兼容层
+ *   - Windows 使用 Winsock2（<winsock2.h> + <ws2tcpip.h>）
+ *   - POSIX 使用 Berkeley socket（<sys/socket.h> + <arpa/inet.h> + <unistd.h>）
+ *   - 统一抽象 close() 接口；fcntl 通过宏映射
  */
 
 #include "db/sql/pgwire.h"
 
-#include <arpa/inet.h>
 #include <ctype.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <netinet/in.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+/* Windows 平台：使用 Winsock2 */
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+
+/* POSIX 兼容垫片 */
+typedef int socklen_t;
+#ifndef EWOULDBLOCK
+#define EWOULDBLOCK WSAEWOULDBLOCK
+#endif
+#ifndef EAGAIN
+#define EAGAIN WSAEWOULDBLOCK
+#endif
+
+#define close(fd) closesocket((SOCKET)(fd))
+#define read(fd, buf, len) recv((SOCKET)(fd), (buf), (len), 0)
+#define write(fd, buf, len) send((SOCKET)(fd), (buf), (len), 0)
+
+/* strndup 在 Windows 上缺失 */
+static inline char *strndup(const char *s, size_t n)
+{
+    size_t len = strnlen(s, n);
+    char *copy = (char *)malloc(len + 1);
+    if (copy) {
+        memcpy(copy, s, len);
+        copy[len] = '\0';
+    }
+    return copy;
+}
+
+/* htobe64 / be64toh 在 Windows 上缺失，使用内联实现 */
+static inline uint64_t htobe64(uint64_t x) {
+    union { uint32_t w[2]; uint64_t d; } u;
+    u.d = x;
+    uint32_t t = htonl(u.w[1]);
+    u.w[1] = htonl(u.w[0]);
+    u.w[0] = t;
+    return u.d;
+}
+static inline uint64_t be64toh(uint64_t x) {
+    union { uint32_t w[2]; uint64_t d; } u;
+    u.d = x;
+    uint32_t t = ntohl(u.w[1]);
+    u.w[1] = ntohl(u.w[0]);
+    u.w[0] = t;
+    return u.d;
+}
+
+#else
+/* POSIX 平台：使用 Berkeley socket */
+#include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 /* ========================================================================
  * 类型信息表
@@ -1034,6 +1092,10 @@ int pgwire_encode_text(int oid, const char *value, char *buf, int buflen)
 
 int pgwire_set_nonblocking(int fd, bool nonblocking)
 {
+#ifdef _WIN32
+    u_long mode = nonblocking ? 1 : 0;
+    return ioctlsocket((SOCKET)fd, FIONBIO, &mode) == 0 ? 0 : -1;
+#else
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags < 0) {
         return -1;
@@ -1046,6 +1108,7 @@ int pgwire_set_nonblocking(int fd, bool nonblocking)
     }
 
     return fcntl(fd, F_SETFL, flags);
+#endif
 }
 
 int pgwire_read_full(int fd, void *buf, int len)
@@ -1174,8 +1237,8 @@ int pgwire_server_start(PgwireServer *server)
         return -1;
     }
 
-    int opt = 1;
-    setsockopt(server->listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    const char opt = 1;
+    setsockopt(server->listen_fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
 
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
@@ -1264,8 +1327,8 @@ int pgwire_conn_process(PgwireConn *conn)
                     char query[8192];
                     pgwire_read_query(conn, query, sizeof(query));
 
-                    /* 发送空查询响应 */
-                    write_byte(conn, PGWIRE_MSG_EMPTY_QUERY_RESPONSE);
+                    /* 发送空查询响应：使用 PGWIRE_MSG_EMPTY_QUERY 类型 */
+                    write_byte(conn, PGWIRE_MSG_EMPTY_QUERY);
                     write_int32(conn, 4);
 
                     /* 发送就绪状态 */
@@ -1274,10 +1337,6 @@ int pgwire_conn_process(PgwireConn *conn)
                 break;
 
             case PGWIRE_MSG_TERMINATE:
-                conn->state = PGWIRE_CONN_IDLE;
-                return -1;
-
-            case 'X':  /* Terminate */
                 conn->state = PGWIRE_CONN_IDLE;
                 return -1;
 

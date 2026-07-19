@@ -2,7 +2,7 @@
 
 # 使用普通 add_library 而不是 glob 模式，以便精确控制源文件
 # sql_parser.c 有较多兼容性问题，暂时排除
-# pgwire.c, mmdb_sdk.c, rest_api.c 使用 Unix 特有头文件，在 Windows 上不编译
+# mmdb_sdk.c, rest_api.c 使用 Unix 特有头文件，在 Windows 上不编译
 
 if(FEATURE_SQL)
 add_library(sql_engine STATIC
@@ -34,6 +34,7 @@ add_library(sql_engine STATIC
     tuple_queue.c
     worker_pool.c
     jit.c
+    pgwire.c
 )
 
 # 添加头文件搜索路径
@@ -48,6 +49,11 @@ target_link_libraries(sql_engine PRIVATE
     db_storage
     db_tools_stats
 )
+
+# pgwire.c 需要 Winsock2（在 Windows 上）
+if(WIN32)
+    target_link_libraries(sql_engine PRIVATE ws2_32)
+endif()
 
 # 设置输出目录
 set_target_properties(sql_engine PROPERTIES

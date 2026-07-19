@@ -236,7 +236,6 @@ typedef enum PgTypeOid_e {
     PGTYPE_BPCHARARRAY   = 1014,
     PGTYPE_VARCHARARRAY  = 1015,
     PGTYPE_INT2VECTORARRAY = 1006,
-    PGTYPE_TIMESTAMPTZ   = 1184,
     PGTYPE_INTERVAL      = 1186,
     PGTYPE_LSEG          = 601,
     PGTYPE_POINT         = 600,
@@ -248,6 +247,7 @@ typedef enum PgTypeOid_e {
     PGTYPE_TIMESTAMPTZARRAY = 1185,
     PGTYPE_TIMESTAMP     = 1114,
     PGTYPE_TIMESTAMPTZ   = 1184,
+    PGTYPE_VARCHAR       = 1043,
 
     /* 自定义类型 */
     PGTYPE_VECTOR_F32    = 2000,
