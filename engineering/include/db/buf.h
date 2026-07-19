@@ -40,6 +40,7 @@ typedef uint32_t BufferState;
 #define BM_IO_COMPLETED    0x00000010  /**< 读取完成 */
 #define BM_WRITING         0x00000020  /**< 正在写入 */
 #define BM_JUST_DIRTIED    0x00000040  /**< 刚刚标记为脏 */
+#define BM_CORRUPTED       0x00000080  /**< 页面数据损坏（校验和不通过） */
 
 /* ============================================================
  * 前向声明

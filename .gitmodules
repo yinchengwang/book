@@ -37,3 +37,9 @@
 [submodule "reference/open-source/mysql"]
 	path = reference/open-source/mysql
 	url = https://github.com/mysql/mysql-server.git
+[submodule "reference/open-source/surrealdb"]
+	path = reference/open-source/surrealdb
+	url = https://github.com/surrealdb/surrealdb.git
+[submodule "reference/open-source/meilisearch"]
+	path = reference/open-source/meilisearch
+	url = https://github.com/meilisearch/meilisearch.git

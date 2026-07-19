@@ -28,3 +28,7 @@ target_link_libraries(multimodal_test
 
 # 链接 db_core 库
 target_link_libraries(guc PRIVATE db_core)
+
+# === A3: 故障注入测试 ===
+add_executable(test_fault_inject fault_inject_test.cpp)
+target_link_libraries(test_fault_inject db_core project_includes gtest gtest_main)

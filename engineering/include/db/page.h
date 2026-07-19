@@ -125,6 +125,16 @@ void page_set_checksum(page_t *page);
 bool page_verify_checksum(const page_t *page);
 
 /**
+ * @brief 计算指定大小字节数组的校验和
+ * @param bytes 字节数组
+ * @param page_size 页面大小（字节数）
+ * @return 校验和值
+ *
+ * 用于 Buffer Pool 场景：Bufread 使用 BUF_PAGE_SIZE (8192) 而非 sizeof(page_t) (65536)
+ */
+uint16_t page_calc_checksum_bytes(const uint8_t *bytes, size_t page_size);
+
+/**
  * @brief 获取页面类型名称
  * @param type 页面类型
  * @return 类型名称字符串

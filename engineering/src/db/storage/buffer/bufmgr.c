@@ -30,6 +30,8 @@
 #include "db/buf.h"
 #include "db/kv.h"
 #include "db/lock.h"
+#include "db/page.h"       /* page_verify_checksum, page_set_checksum */
+#include "db/guc.h"        /* guc_get_bool */
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -660,6 +662,33 @@ BufferDesc *buf_read(uint32_t relfilenode, BlockNumber blocknum, int access_mode
      */
     buffer_pool->reads++;
 
+    /* [A1.1] 校验和验证：从磁盘加载的页面需验证校验和
+     * Buffer Pool 使用 BUF_PAGE_SIZE (8192) 作为页面大小，
+     * 校验和计算也基于此大小，而非 sizeof(page_t) (65536)。
+     */
+    {
+        page_t *pg = (page_t *)buffer_pool->buffers[buf_id];
+        uint16_t saved = pg->header.checksum;
+        uint16_t expected = page_calc_checksum_bytes((const uint8_t *)pg, BUF_PAGE_SIZE);
+        if (saved != expected) {
+            bool *ignore_failure = guc_get_bool("ignore_checksum_failure");
+            if (ignore_failure && *ignore_failure) {
+                /* 配置忽略校验和失败，仅记录日志 */
+                fprintf(stderr, "[WARN] checksum verification failed for "
+                        "relfilenode=%u blocknum=%u (ignored)\n",
+                        relfilenode, blocknum);
+            } else {
+                /* 校验和失败，标记为损坏 */
+                fprintf(stderr, "[ERROR] checksum verification failed for "
+                        "relfilenode=%u blocknum=%u\n",
+                        relfilenode, blocknum);
+                buf->state |= BM_CORRUPTED;
+                buf_unpin(buf);
+                return NULL;
+            }
+        }
+    }
+
     return buf;
 }
 
@@ -686,6 +715,14 @@ BufferDesc *buf_new(uint32_t relfilenode) {
 
     /* 清空页面数据 */
     memset(buffer_pool->buffers[buf_id], 0, BUF_PAGE_SIZE);
+
+    /* [A1.4] 新页面设置初始校验和
+     * 使用 BUF_PAGE_SIZE 计算校验和，与 buf_read 校验和验证一致。
+     */
+    {
+        page_t *pg = (page_t *)buffer_pool->buffers[buf_id];
+        pg->header.checksum = page_calc_checksum_bytes((const uint8_t *)pg, BUF_PAGE_SIZE);
+    }
 
     return buf;
 }
@@ -723,6 +760,14 @@ BufferDesc *buf_new_temp(void) {
 
     /* 清空页面数据 */
     memset(buffer_pool->buffers[buf_id], 0, BUF_PAGE_SIZE);
+
+    /* [A1.4] 新页面设置初始校验和
+     * 使用 BUF_PAGE_SIZE 计算校验和，与 buf_read 校验和验证一致。
+     */
+    {
+        page_t *pg = (page_t *)buffer_pool->buffers[buf_id];
+        pg->header.checksum = page_calc_checksum_bytes((const uint8_t *)pg, BUF_PAGE_SIZE);
+    }
 
     return buf;
 }
@@ -875,6 +920,14 @@ int buf_write(BufferDesc *buf) {
 
     if (!(buf->state & BM_VALID)) {
         return 0;
+    }
+
+    /* [A1.2] 刷盘前设置校验和
+     * 使用 BUF_PAGE_SIZE 计算校验和，与 buf_read 校验和验证一致。
+     */
+    {
+        page_t *pg = (page_t *)buffer_pool->buffers[buf->buf_id];
+        pg->header.checksum = page_calc_checksum_bytes((const uint8_t *)pg, BUF_PAGE_SIZE);
     }
 
     /* 写入到持久存储

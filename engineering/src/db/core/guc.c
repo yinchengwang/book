@@ -322,6 +322,10 @@ int guc_init(const char *data_dir) {
     register_int("port", 5432, 1, 65535,
                  "监听端口");
 
+    /* [A1.3] 校验和参数 */
+    register_bool("ignore_checksum_failure", false,
+                  "校验和失败时是否忽略并继续");
+
     return 0;
 }
 

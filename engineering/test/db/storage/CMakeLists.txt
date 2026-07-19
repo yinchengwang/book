@@ -92,6 +92,18 @@ add_test(NAME test_vector_wal COMMAND test_vector_wal WORKING_DIRECTORY ${CMAKE_
 
 # Hilbert 索引测试 (已在第 47-49 行定义)
 
+# === A1: Buffer Pool 校验和验证测试 ===
+add_executable(test_storage_buf buf_test.cpp)
+target_link_libraries(test_storage_buf db_storage project_includes gtest gtest_main)
+
+# === A2: Crash recovery tests (DISABLED - need WAL integration) ===
+add_executable(test_storage_kv_crash kv_crash_test.cpp)
+target_link_libraries(test_storage_kv_crash db_storage project_includes gtest gtest_main)
+add_executable(test_storage_heap_crash heap_crash_test.cpp)
+target_link_libraries(test_storage_heap_crash db_storage project_includes gtest gtest_main)
+add_executable(test_storage_btree_crash btree_crash_test.cpp)
+target_link_libraries(test_storage_btree_crash db_storage project_includes gtest gtest_main)
+
 # 所有 Storage 测试汇总
 add_custom_target(test_storage_all
     COMMAND test_storage_kv

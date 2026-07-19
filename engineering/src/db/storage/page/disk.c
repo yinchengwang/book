@@ -6,6 +6,7 @@
  */
 
 #include "db/disk.h"
+#include "db/fault_inject.h"
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -277,6 +278,11 @@ size_t disk_get_page_size(const db_file_t *file) {
 page_t *disk_read_page(db_file_t *file, page_id_t page_id) {
     if (!file || page_id >= file->page_count) return NULL;
 
+    /* [A3.3] 故障注入：模拟磁盘读取失败 */
+    if (fault_should_fail(FAULT_POINT_READ_PAGE)) {
+        return NULL;
+    }
+
     page_t *page = (page_t *)malloc(file->page_size);
     if (!page) return NULL;
 
@@ -293,6 +299,11 @@ page_t *disk_read_page(db_file_t *file, page_id_t page_id) {
 
 int disk_write_page(db_file_t *file, page_id_t page_id, const page_t *page) {
     if (!file || !page || page_id >= file->page_count) return -1;
+
+    /* [A3.3] 故障注入：模拟磁盘写入失败 */
+    if (fault_should_fail(FAULT_POINT_WRITE_PAGE)) {
+        return -1;
+    }
 
     off_t offset = (off_t)page_id * file->page_size;
     ssize_t n = file_pwrite(file->fd, page, file->page_size, offset);

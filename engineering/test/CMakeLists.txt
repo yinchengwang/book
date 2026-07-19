@@ -16,6 +16,7 @@ add_subdirectory(kbase)            # kbase 知识库测试
 add_subdirectory(db/consensus)   # Raft 共识模块测试（Phase11）
 add_subdirectory(db/index/vector_index)  # 向量索引测试（S7 修复 algo → algo-prod 后重启）
 add_subdirectory(apps)            # 独立应用测试（游戏、工具等）
+add_subdirectory(fuzz)            # 模糊测试（A4）
 
 # 创建一个聚合测试目标
 add_custom_target(all_tests
@@ -50,11 +51,17 @@ set(_test_targets
     test_storage_kv_ttl
     test_storage_main
     test_storage_wal
+    test_storage_buf
     test_vector_api
     test_vector_persist
     test_vector_query
     vector_delete_test
     vector_reranker_test
+    test_fault_inject
+    test_fuzz_page
+    test_storage_kv_crash
+    test_storage_heap_crash
+    test_storage_btree_crash
 )
 
 foreach(_t IN LISTS _test_targets)
