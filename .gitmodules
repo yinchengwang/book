@@ -76,3 +76,6 @@
 [submodule "reference/open-source/tidb"]
 	path = reference/open-source/tidb
 	url = https://github.com/pingcap/tidb.git
+[submodule "reference/open-source/cockroach"]
+	path = reference/open-source/cockroach
+	url = https://github.com/cockroachdb/cockroach.git
