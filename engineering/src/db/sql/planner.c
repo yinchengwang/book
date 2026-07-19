@@ -15,6 +15,11 @@
 #include "db/parser/sql/makefuncs.h"  /* 引入 list_free */
 #include "db/sql/sql_executor.h"      /* 引入 PlanState 定义 */
 
+/* Task 3.2/3.3: 前向声明 catalog API（避免 Oid typedef 重定义冲突）
+ * sql_types.h 定义 Oid 为 uint64_t，而 catalog.h 定义为 uint32_t。
+ * 这里直接声明所需函数，返回 void* 并强制转换，避免头文件冲突。 */
+extern void *catalog_get_table(Oid table_oid);
+
 /* Task 1.1: 前向声明 nodeXxx.c 中的真实 ExecXxx 函数。
  * 直接 #include 那些头文件会引入 Plan/Relation/EState 等大量
  * 依赖并触发头文件循环，planner.c 只需要函数指针，不需要
@@ -775,6 +780,9 @@ void planner_set_cost_params(PlannerContext *ctx, const CostParams *params) {
 
 /**
  * @brief 计算顺序扫描代价
+ *
+ * Task 3.3: 使用真实统计信息（从 planner_get_table_stats 获取），
+ * 而非硬编码计算页面数。通过 PhysScan.scan_relid 获取表 OID。
  */
 void cost_seqscan(PhysScan *node, PlannerContext *root,
                   double rows, int width) {
@@ -784,9 +792,22 @@ void cost_seqscan(PhysScan *node, PlannerContext *root,
 
     CostParams *params = &g_default_cost_params;
 
-    /* 代价 = 顺序 I/O 代价 + CPU 代价 */
-    double pages = rows * width / 8192.0;  /* 假设页面大小 8KB */
-    if (pages < 1.0) pages = 1.0;
+    /* 获取真实页面数（从 catalog 统计信息） */
+    double pages = 1.0;  /* 默认至少 1 页 */
+    if (root && node->scan_relid != 0) {
+        TableStats *stats = planner_get_table_stats(root, node->scan_relid);
+        if (stats && stats->relpages > 0) {
+            pages = (double)stats->relpages;
+        } else {
+            /* 回退到估计值 */
+            pages = rows * width / 8192.0;
+            if (pages < 1.0) pages = 1.0;
+        }
+    } else {
+        /* 无 scan_relid 时，使用估计值 */
+        pages = rows * width / 8192.0;
+        if (pages < 1.0) pages = 1.0;
+    }
 
     node->type = PHYS_SEQ_SCAN;
 
@@ -1207,25 +1228,58 @@ LogicalPlan *planner_add_vector_index_scan(PlannerContext *ctx, LogicalPlan *pla
 
 /**
  * @brief 获取表统计信息
+ *
+ * Task 3.2: 从 catalog 读取真实统计信息，而非硬编码默认值。
+ * 如果 catalog 未初始化或表不存在，回退到默认值。
  */
 TableStats *planner_get_table_stats(PlannerContext *ctx, int relid) {
     if (!ctx) {
         return NULL;
     }
 
-    /* 简化实现：返回默认统计信息 */
-    static TableStats stats = {
-        .nrows = 10000.0,
-        .nbytes = 819200.0,
-        .density = 1.0,
-        .ndistinct = 100,
-        .ndistinct_ratio = 0.1,
-        .null_frac = 0.0,
-        .width = 100.0,
-        .relpages = 100,
-        .reltuples = 10000,
-        .correlation = 1.0
-    };
+    static TableStats stats;
+    memset(&stats, 0, sizeof(stats));
+
+    /* 默认值 */
+    stats.nrows = 10000.0;
+    stats.nbytes = 819200.0;
+    stats.density = 1.0;
+    stats.ndistinct = 100;
+    stats.ndistinct_ratio = 0.1;
+    stats.null_frac = 0.0;
+    stats.width = 100.0;
+    stats.relpages = 100;
+    stats.reltuples = 10000;
+    stats.correlation = 1.0;
+
+    /* 尝试从 catalog 获取真实统计信息 */
+    if (relid != 0) {  /* relid == 0 表示无效表 */
+        /* catalog_get_table 声明在 catelog.h 中，但 Oid 类型不同。
+         * 这里通过前向声明 void* 来使用，避免 typedef 冲突。 */
+        struct table_info_s {
+            uint32_t oid;
+            char     name[64];
+            uint32_t namespace_oid;
+            uint32_t type_oid;
+            char     relkind;
+            int16_t  natts;
+            uint32_t filenode;
+            uint32_t tablespace;
+            int32_t  npages;
+            float    ntupes;
+            uint32_t owner;
+            char     persistence;
+            int16_t  nchecks;
+            int      has_index;
+            int      has_pkey;
+        };
+        struct table_info_s *info = (struct table_info_s *)catalog_get_table((uint32_t)relid);
+        if (info) {
+            stats.relpages = info->npages;
+            stats.reltuples = (int)info->ntupes;
+            stats.nrows = (double)info->ntupes;
+        }
+    }
 
     return &stats;
 }
