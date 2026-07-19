@@ -347,6 +347,9 @@ int yang_engine_init(const char *data_dir) {
     if (data_dir == NULL) return -1;
     strncpy(g_yang_engine.data_dir, data_dir, sizeof(g_yang_engine.data_dir) - 1);
     g_yang_engine.initialized = true;
+
+    /* Task 2.15: 注册到 storage_ops_t 全局表 */
+    storage_register_engine(MODEL_TREE, &g_yang_engine_ops);
     return 0;
 }
 

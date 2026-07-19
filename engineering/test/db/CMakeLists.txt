@@ -20,6 +20,7 @@ add_subdirectory(benchmark)
 add_subdirectory(tools)
 add_subdirectory(index)
 add_subdirectory(bgworker)
+add_subdirectory(access)
 
 # 订阅/对账/老化模块测试
 add_executable(test_sla sla_test.cpp)

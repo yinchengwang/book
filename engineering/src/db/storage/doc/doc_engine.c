@@ -312,6 +312,9 @@ int doc_engine_init(const char *data_dir) {
     if (data_dir == NULL) return -1;
     strncpy(g_doc_engine.data_dir, data_dir, sizeof(g_doc_engine.data_dir) - 1);
     g_doc_engine.initialized = true;
+
+    /* Task 2.13: 注册到 storage_ops_t 全局表 */
+    storage_register_engine(MODEL_DOCUMENT, &g_doc_engine_ops);
     return 0;
 }
 

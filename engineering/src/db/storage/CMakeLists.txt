@@ -59,7 +59,9 @@ add_subdirectory(kv)
 add_subdirectory(vector)
 add_subdirectory(graph)
 add_subdirectory(spatial)
-# doc/ts/yang 模块需手动启用
+# doc 模块存在实现 bug（doc_agg 缺字段、doc_vector 缺 hnsw.h、doc_nested 缺 num_children）
+# ts 模块缺头文件（ts_columnar.h、ts_continuous_agg.h 等）
+# 留待 Task 2.22+ 修复后启用
 # add_subdirectory(doc)
 # add_subdirectory(ts)
 add_subdirectory(yang)

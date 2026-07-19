@@ -112,6 +112,10 @@ target_link_libraries(test_graph_engine_ops db_storage project_includes gtest gt
 add_executable(test_spatial_engine_ops test_spatial_engine_ops.cpp)
 target_link_libraries(test_spatial_engine_ops db_storage project_includes gtest gtest_main)
 
+# Yang 树引擎 storage_ops_t 接入测试（Task 2.15）
+add_executable(test_yang_engine_ops test_yang_engine_ops.cpp)
+target_link_libraries(test_yang_engine_ops db_storage project_includes gtest gtest_main)
+
 # 所有 Storage 测试汇总
 add_custom_target(test_storage_all
     COMMAND test_storage_kv
@@ -123,4 +127,5 @@ add_custom_target(test_storage_all
     COMMAND test_hilbert
     COMMAND test_graph_engine_ops
     COMMAND test_spatial_engine_ops
+    COMMAND test_yang_engine_ops
 )
