@@ -358,6 +358,10 @@ int graph_engine_init(const char *data_dir) {
     if (data_dir == NULL) return -1;
     strncpy(g_graph_engine.data_dir, data_dir, sizeof(g_graph_engine.data_dir) - 1);
     g_graph_engine.initialized = true;
+
+    /* Task 2.11: 将图引擎注册到 storage_ops_t 全局表，
+     * 让 storage_get_engine(MODEL_GRAPH) 可发现本引擎。 */
+    storage_register_engine(MODEL_GRAPH, &g_graph_engine_ops);
     return 0;
 }
 
