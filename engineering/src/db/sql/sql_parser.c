@@ -25,10 +25,6 @@ typedef struct SqlParser_s {
 static void *parse_expression(void *parser);
 static void *parse_select(void *parser);
 
-/* ========================================================================
- * 关键字表
- * ======================================================================== */
-
 static const SqlKeyword g_keywords[] = {
     /* DML */
     {"SELECT", TOKEN_SELECT, 6},
@@ -938,14 +934,16 @@ const char *sql_token_name(SqlTokenType type)
  * ======================================================================== */
 
 /** 解析器状态 */
-typedef struct SqlParser_s {
+typedef struct SqlParserState_s {
     SqlLexer lexer;
     SqlToken current;
     bool has_current;
     char error_msg[256];
     int error_location;
     SqlErrorRecoveryMode recovery_mode;
-} SqlParser;
+} SqlParserState;
+
+#define SqlParser SqlParserState
 
 /**
  * @brief 创建解析器

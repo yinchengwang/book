@@ -10,6 +10,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#include <string.h>
+#define strcasecmp _stricmp
+#endif
+
 /* 类型名称 → type_oid 映射（简化版） */
 static Oid type_name_to_oid(const char *type_name) {
     if (!type_name) return 0;
@@ -26,7 +31,7 @@ static Oid type_name_to_oid(const char *type_name) {
 
 int exec_alter_table(AlterTableStmt *stmt, void *db) {
     if (!stmt || !stmt->relation) {
-        log_error("exec_alter_table: 参数无效");
+        LOG_ERROR("exec_alter_table: 参数无效");
         return -1;
     }
 
@@ -35,7 +40,7 @@ int exec_alter_table(AlterTableStmt *stmt, void *db) {
     /* 1. 查找表 */
     Oid table_oid = catalog_lookup_table(stmt->relation);
     if (table_oid == InvalidOid) {
-        log_error("表不存在: %s", stmt->relation);
+        LOG_ERROR("表不存在: %s", stmt->relation);
         return -1;
     }
 
@@ -47,7 +52,7 @@ int exec_alter_table(AlterTableStmt *stmt, void *db) {
         switch (cmd->subtype) {
             case AT_AddColumn: {
                 if (!cmd->name) {
-                    log_error("ADD COLUMN: 缺少列名");
+                    LOG_ERROR("ADD COLUMN: 缺少列名");
                     return -1;
                 }
                 column_def_t col_def;
@@ -58,36 +63,36 @@ int exec_alter_table(AlterTableStmt *stmt, void *db) {
                 col_def.has_default = (cmd->default_expr != NULL);
 
                 if (catalog_add_column(table_oid, &col_def) != CATALOG_SUCCESS) {
-                    log_error("ADD COLUMN 失败: '%s'", cmd->name);
+                    LOG_ERROR("ADD COLUMN 失败: '%s'", cmd->name);
                     return -1;
                 }
-                log_info("ADD COLUMN %s 到 %s", cmd->name, stmt->relation);
+                LOG_INFO("ADD COLUMN %s 到 %s", cmd->name, stmt->relation);
                 break;
             }
 
             case AT_DropColumn: {
                 if (!cmd->name) {
-                    log_error("DROP COLUMN: 缺少列名");
+                    LOG_ERROR("DROP COLUMN: 缺少列名");
                     return -1;
                 }
                 if (catalog_drop_column(table_oid, cmd->name) != CATALOG_SUCCESS) {
-                    log_error("DROP COLUMN 失败: '%s'", cmd->name);
+                    LOG_ERROR("DROP COLUMN 失败: '%s'", cmd->name);
                     return -1;
                 }
-                log_info("DROP COLUMN %s 从 %s", cmd->name, stmt->relation);
+                LOG_INFO("DROP COLUMN %s 从 %s", cmd->name, stmt->relation);
                 break;
             }
 
             case AT_AlterColumnType: {
                 if (!cmd->name || !cmd->type_name) {
-                    log_error("ALTER COLUMN TYPE: 缺少列名或类型");
+                    LOG_ERROR("ALTER COLUMN TYPE: 缺少列名或类型");
                     return -1;
                 }
                 /* 获取现有列信息 */
                 int ncols = 0;
                 column_info_t *cols = catalog_get_columns(table_oid, &ncols);
                 if (!cols) {
-                    log_error("ALTER COLUMN TYPE: 无法获取列信息");
+                    LOG_ERROR("ALTER COLUMN TYPE: 无法获取列信息");
                     return -1;
                 }
 
@@ -108,16 +113,16 @@ int exec_alter_table(AlterTableStmt *stmt, void *db) {
                 catalog_free_columns(cols);
 
                 if (!found) {
-                    log_error("ALTER COLUMN TYPE: 列 '%s' 不存在", cmd->name);
+                    LOG_ERROR("ALTER COLUMN TYPE: 列 '%s' 不存在", cmd->name);
                     return -1;
                 }
-                log_info("ALTER COLUMN TYPE %s -> %s 在 %s", cmd->name, cmd->type_name, stmt->relation);
+                LOG_INFO("ALTER COLUMN TYPE %s -> %s 在 %s", cmd->name, cmd->type_name, stmt->relation);
                 break;
             }
 
             case AT_RenameColumn: {
                 if (!cmd->name || !cmd->new_name) {
-                    log_error("RENAME COLUMN: 缺少列名");
+                    LOG_ERROR("RENAME COLUMN: 缺少列名");
                     return -1;
                 }
                 /* Catalog 没有直接的 rename_column API */
@@ -125,7 +130,7 @@ int exec_alter_table(AlterTableStmt *stmt, void *db) {
                 int ncols = 0;
                 column_info_t *cols = catalog_get_columns(table_oid, &ncols);
                 if (!cols) {
-                    log_error("RENAME COLUMN: 无法获取列信息");
+                    LOG_ERROR("RENAME COLUMN: 无法获取列信息");
                     return -1;
                 }
 
@@ -140,16 +145,16 @@ int exec_alter_table(AlterTableStmt *stmt, void *db) {
                 catalog_free_columns(cols);
 
                 if (!found) {
-                    log_error("RENAME COLUMN: 列 '%s' 不存在", cmd->name);
+                    LOG_ERROR("RENAME COLUMN: 列 '%s' 不存在", cmd->name);
                     return -1;
                 }
-                log_warn("RENAME COLUMN %s -> %s 在 %s (内存更新，持久化需要 catalog_rename_column API)",
+                LOG_WARN("RENAME COLUMN %s -> %s 在 %s (内存更新，持久化需要 catalog_rename_column API)",
                          cmd->name, cmd->new_name, stmt->relation);
                 break;
             }
 
             default:
-                log_error("未知的 ALTER 操作: %d", cmd->subtype);
+                LOG_ERROR("未知的 ALTER 操作: %d", cmd->subtype);
                 return -1;
         }
     }

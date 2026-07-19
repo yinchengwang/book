@@ -81,10 +81,15 @@ target_link_libraries(test_sort sql_engine db_parser_sql_simplified db_storage p
 # add_executable(test_sql_integration sql_integration.cpp)
 # target_link_libraries(test_sql_integration db_parser db_storage db_utils db_cli_lib project_includes gtest gtest_main)
 
-# DDL 执行测试（依赖简化解析器 + catalog）
+# DDL 执行器库（仅 DDL 执行器，测试手动构造 AST）
+add_library(db_sql_ddl STATIC ${ENGINEERING_SOURCE_DIR}/src/db/sql/sql_ddl.c)
+target_include_directories(db_sql_ddl PUBLIC ${ENGINEERING_SOURCE_DIR}/include)
+target_link_libraries(db_sql_ddl PUBLIC db_storage project_includes)
+
+# DDL 执行测试（手动构造 AlterTableStmt 测试执行器）
 add_executable(test_ddl ddl_test.cpp)
 target_include_directories(test_ddl PRIVATE ${GTEST_INCLUDE_DIRS})
-target_link_libraries(test_ddl db_parser_sql_simplified db_core project_includes gtest gtest_main)
+target_link_libraries(test_ddl db_sql_ddl db_storage project_includes gtest gtest_main)
 
 # HashAgg 执行器节点测试
 add_executable(test_hashagg test_hashagg.cpp)
