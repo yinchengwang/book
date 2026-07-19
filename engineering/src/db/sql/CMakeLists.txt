@@ -16,7 +16,6 @@ add_library(sql_engine STATIC
     expr_interp.c
     executor.c
     cost.c
-    optimizer.c
     parallel.c
     nodeResult.c
     nodeHash.c
