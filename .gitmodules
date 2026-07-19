@@ -130,3 +130,6 @@
 [submodule "reference/open-source/graph/janusgraph"]
 	path = reference/open-source/graph/janusgraph
 	url = https://github.com/JanusGraph/janusgraph.git
+[submodule "reference/open-source/streaming/risingwave"]
+	path = reference/open-source/streaming/risingwave
+	url = https://github.com/risingwavelabs/risingwave.git
