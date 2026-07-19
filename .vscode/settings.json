@@ -1,4 +1,22 @@
 {
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "C_Cpp.autocomplete": "disabled",
+    "C_Cpp.errorSquiggles": "disabled",
+    "clangd.path": "C:\\Users\\yinch\\AppData\\Roaming\\Code\\User\\globalStorage\\llvm-vs-code-extensions.vscode-clangd\\install\\22.1.6\\clangd_22.1.6\\bin\\clangd.exe",
+    "clangd.arguments": [
+        "--compile-commands-dir=C:\\code\\book\\build\\engineering",
+        "--background-index",
+        "--clang-tidy",
+        "--header-insertion=iwyu",
+        "--completion-style=detailed",
+        "--pch-storage=memory",
+        "-j=4"
+    ],
+    "clangd.fallbackFlags": [
+        "-std=c11",
+        "-I${workspaceFolder}/engineering/include",
+        "-I${workspaceFolder}/third_part/googletest/googletest/include"
+    ],
     "launch": {
 
         "configurations": [],

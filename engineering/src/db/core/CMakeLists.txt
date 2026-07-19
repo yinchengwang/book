@@ -1,4 +1,4 @@
-# core 模块：核心基础设施（errors, log, guc, initdb, pg_ctl, db_server, structured_log）
+# core 模块：核心基础设施（errors, log, guc, initdb, pg_ctl, db_server, structured_log, backup）
 add_library(db_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/errors.c
     ${CMAKE_CURRENT_SOURCE_DIR}/log.c
@@ -13,6 +13,7 @@ add_library(db_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/query_filter.c
     ${CMAKE_CURRENT_SOURCE_DIR}/query_fusion.c
     ${CMAKE_CURRENT_SOURCE_DIR}/fault_inject.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/backup.c
 )
 target_include_directories(db_core PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include

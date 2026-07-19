@@ -37,6 +37,7 @@ if(BUILD_TESTING)
         ${THIRD_PART_DIR}/googletest/googlemock/include
     )
     target_link_libraries(test_kv_scan PRIVATE
+        db_executor
         db_storage
         project_includes
         gtest
@@ -98,26 +99,28 @@ if(BUILD_TESTING)
 
     # 文档扫描算子测试
     # 注意：doc_engine 默认禁用，测试需要手动启用 doc 模块
-    add_executable(test_doc_scan
-        ${ENGINEERING_SOURCE_DIR}/test/db/executor/doc_scan_test.cpp
-    )
-    target_include_directories(test_doc_scan PRIVATE
-        ${ENGINEERING_SOURCE_DIR}/include
-        ${ENGINEERING_SOURCE_DIR}/include/db
-        ${ENGINEERING_SOURCE_DIR}/include/db/executor
-        ${ENGINEERING_SOURCE_DIR}/include/db/executor/doc
-        ${ENGINEERING_SOURCE_DIR}/include/db/storage
-        ${THIRD_PART_DIR}/googletest/googletest/include
-        ${THIRD_PART_DIR}/googletest/googlemock/include
-    )
-    target_link_libraries(test_doc_scan PRIVATE
-        db_executor
-        db_core
-        project_includes
-        gtest
-        gtest_main
-    )
-    add_test(NAME doc_scan_test COMMAND test_doc_scan)
+    if(TARGET storage_doc)
+        add_executable(test_doc_scan
+            ${ENGINEERING_SOURCE_DIR}/test/db/executor/doc_scan_test.cpp
+        )
+        target_include_directories(test_doc_scan PRIVATE
+            ${ENGINEERING_SOURCE_DIR}/include
+            ${ENGINEERING_SOURCE_DIR}/include/db
+            ${ENGINEERING_SOURCE_DIR}/include/db/executor
+            ${ENGINEERING_SOURCE_DIR}/include/db/executor/doc
+            ${ENGINEERING_SOURCE_DIR}/include/db/storage
+            ${THIRD_PART_DIR}/googletest/googletest/include
+            ${THIRD_PART_DIR}/googletest/googlemock/include
+        )
+        target_link_libraries(test_doc_scan PRIVATE
+            db_executor
+            db_core
+            project_includes
+            gtest
+            gtest_main
+        )
+        add_test(NAME doc_scan_test COMMAND test_doc_scan)
+    endif()
 
     # 图扫描算子测试
     add_executable(test_graph_scan

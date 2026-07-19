@@ -454,7 +454,7 @@ typedef struct SqlFuncCall_s {
 typedef struct SqlTypeCast_s {
     SqlAstType type;
     void *expr;                  /**< 被转换表达式 */
-    char *typename;              /**< 目标类型名 */
+    char *type_name;               /**< 目标类型名 */
     int location;
 } SqlTypeCast;
 
@@ -630,7 +630,7 @@ typedef struct SqlCreateTableStmt_s {
 typedef struct SqlColumnDef_s {
     SqlAstType type;
     char *colname;               /**< 列名 */
-    char *typename;              /**< 类型名 */
+    char *type_name;               /**< 类型名 */
     void *raw_default;          /**< 默认值表达式 */
     bool is_not_null;
     bool is_primary_key;
@@ -728,7 +728,7 @@ typedef struct SqlNode_s {
         SqlSelectStmt select;
         SqlInsertStmt insert;
         SqlUpdateStmt update;
-        SqlDeleteStmt delete;
+        SqlDeleteStmt del_stmt;
         SqlColumnRef column;
         SqlConst constant;
         SqlAExpr aexpr;
