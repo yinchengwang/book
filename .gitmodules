@@ -115,3 +115,6 @@
 [submodule "reference/open-source/time_series/victoria_metrics"]
 	path = reference/open-source/time_series/victoria_metrics
 	url = https://github.com/VictoriaMetrics/VictoriaMetrics.git
+[submodule "reference/open-source/search_engine/tantivy"]
+	path = reference/open-source/search_engine/tantivy
+	url = https://github.com/quickwit-oss/tantivy.git
