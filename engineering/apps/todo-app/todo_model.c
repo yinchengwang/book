@@ -24,6 +24,21 @@ static comment_t        *g_comments = NULL;
 static int              g_comment_count = 0;
 static int              g_comment_cap = 0;
 
+static task_system_t   *g_task_systems = NULL;
+static int              g_ts_count = 0;
+static int              g_ts_cap = 0;
+static int64_t          g_next_ts_id = 1;
+
+static plan_t          *g_plans = NULL;
+static int              g_plan_count = 0;
+static int              g_plan_cap = 0;
+static int64_t          g_next_plan_id = 1;
+
+static plan_item_t     *g_plan_items = NULL;
+static int              g_pi_count = 0;
+static int              g_pi_cap = 0;
+static int64_t          g_next_pi_id = 1;
+
 static int64_t          g_next_todo_id = 1;
 static int64_t          g_next_check_id = 1;
 static int64_t          g_next_group_id = 1;
@@ -50,6 +65,9 @@ static int              g_modified = 0;
 #define ENSURE_CHECK_CAP(n) ENSURE_CAP(g_checks, g_check_cap, n, checklist_item_t, 16)
 #define ENSURE_GROUP_CAP(n) ENSURE_CAP(g_groups, g_group_cap, n, group_t, 8)
 #define ENSURE_COMM_CAP(n)  ENSURE_CAP(g_comments, g_comment_cap, n, comment_t, 16)
+#define ENSURE_TS_CAP(n)    ENSURE_CAP(g_task_systems, g_ts_cap, n, task_system_t, 8)
+#define ENSURE_PLAN_CAP(n)  ENSURE_CAP(g_plans, g_plan_cap, n, plan_t, 8)
+#define ENSURE_PI_CAP(n)    ENSURE_CAP(g_plan_items, g_pi_cap, n, plan_item_t, 16)
 
 /* ============================================================
  * 工具函数
@@ -82,6 +100,27 @@ static int find_group_idx(int64_t id) {
 static int find_comment_idx(int64_t id) {
     for (int i = 0; i < g_comment_count; i++) {
         if (g_comments[i].id == id) return i;
+    }
+    return -1;
+}
+
+static int find_ts_idx(int64_t id) {
+    for (int i = 0; i < g_ts_count; i++) {
+        if (g_task_systems[i].id == id) return i;
+    }
+    return -1;
+}
+
+static int find_plan_idx(int64_t id) {
+    for (int i = 0; i < g_plan_count; i++) {
+        if (g_plans[i].id == id) return i;
+    }
+    return -1;
+}
+
+static int find_pi_idx(int64_t id) {
+    for (int i = 0; i < g_pi_count; i++) {
+        if (g_plan_items[i].id == id) return i;
     }
     return -1;
 }
@@ -158,6 +197,59 @@ static cJSON *comments_to_json(void) {
     return arr;
 }
 
+static cJSON *task_systems_to_json(void) {
+    cJSON *arr = cJSON_CreateArray();
+    for (int i = 0; i < g_ts_count; i++) {
+        cJSON *o = cJSON_CreateObject();
+        cJSON_AddNumberToObject(o, "id", g_task_systems[i].id);
+        cJSON_AddStringToObject(o, "name", g_task_systems[i].name);
+        cJSON_AddStringToObject(o, "description", g_task_systems[i].description);
+        cJSON_AddStringToObject(o, "color", g_task_systems[i].color);
+        cJSON_AddNumberToObject(o, "sort_order", g_task_systems[i].sort_order);
+        cJSON_AddNumberToObject(o, "created_at", g_task_systems[i].created_at);
+        cJSON_AddItemToArray(arr, o);
+    }
+    return arr;
+}
+
+static cJSON *plans_to_json(void) {
+    cJSON *arr = cJSON_CreateArray();
+    for (int i = 0; i < g_plan_count; i++) {
+        cJSON *o = cJSON_CreateObject();
+        cJSON_AddNumberToObject(o, "id", g_plans[i].id);
+        cJSON_AddStringToObject(o, "name", g_plans[i].name);
+        cJSON_AddStringToObject(o, "description", g_plans[i].description);
+        cJSON_AddNumberToObject(o, "start_date", g_plans[i].start_date);
+        cJSON_AddNumberToObject(o, "end_date", g_plans[i].end_date);
+        cJSON_AddStringToObject(o, "color", g_plans[i].color);
+        cJSON_AddNumberToObject(o, "status", g_plans[i].status);
+        cJSON_AddNumberToObject(o, "created_at", g_plans[i].created_at);
+        cJSON_AddNumberToObject(o, "updated_at", g_plans[i].updated_at);
+        cJSON_AddItemToArray(arr, o);
+    }
+    return arr;
+}
+
+static cJSON *plan_items_to_json(void) {
+    cJSON *arr = cJSON_CreateArray();
+    for (int i = 0; i < g_pi_count; i++) {
+        cJSON *o = cJSON_CreateObject();
+        cJSON_AddNumberToObject(o, "id", g_plan_items[i].id);
+        cJSON_AddNumberToObject(o, "plan_id", g_plan_items[i].plan_id);
+        cJSON_AddNumberToObject(o, "parent_id", g_plan_items[i].parent_id);
+        cJSON_AddStringToObject(o, "title", g_plan_items[i].title);
+        cJSON_AddNumberToObject(o, "item_type", g_plan_items[i].item_type);
+        cJSON_AddNumberToObject(o, "planned_date", g_plan_items[i].planned_date);
+        cJSON_AddNumberToObject(o, "estimated_minutes", g_plan_items[i].estimated_minutes);
+        cJSON_AddNumberToObject(o, "order_index", g_plan_items[i].order_index);
+        cJSON_AddNumberToObject(o, "completion_rule", g_plan_items[i].completion_rule);
+        cJSON_AddNumberToObject(o, "todo_id", g_plan_items[i].todo_id);
+        cJSON_AddNumberToObject(o, "actual_minutes", g_plan_items[i].actual_minutes);
+        cJSON_AddItemToArray(arr, o);
+    }
+    return arr;
+}
+
 static int persist_now(void) {
     if (!g_db_path[0]) return 0;
 
@@ -166,10 +258,16 @@ static int persist_now(void) {
     cJSON_AddNumberToObject(root, "next_check_id", g_next_check_id);
     cJSON_AddNumberToObject(root, "next_group_id", g_next_group_id);
     cJSON_AddNumberToObject(root, "next_comment_id", g_next_comment_id);
+    cJSON_AddNumberToObject(root, "next_ts_id", g_next_ts_id);
+    cJSON_AddNumberToObject(root, "next_plan_id", g_next_plan_id);
+    cJSON_AddNumberToObject(root, "next_pi_id", g_next_pi_id);
     cJSON_AddItemToObject(root, "todos", todos_to_json());
     cJSON_AddItemToObject(root, "checklist", checks_to_json());
     cJSON_AddItemToObject(root, "groups", groups_to_json());
     cJSON_AddItemToObject(root, "comments", comments_to_json());
+    cJSON_AddItemToObject(root, "task_systems", task_systems_to_json());
+    cJSON_AddItemToObject(root, "plans", plans_to_json());
+    cJSON_AddItemToObject(root, "plan_items", plan_items_to_json());
 
     char *out = cJSON_Print(root);
     cJSON_Delete(root);
@@ -259,6 +357,31 @@ static void parse_todo(cJSON *o) {
     cJSON *jua = cJSON_GetObjectItem(o, "updated_at");
     it->updated_at = jua ? (int64_t)jua->valuedouble : 0;
 
+    /* 解析新增字段 */
+    cJSON *jtodo_type = cJSON_GetObjectItem(o, "todo_type");
+    it->todo_type = jtodo_type ? (int)jtodo_type->valuedouble : 0;
+
+    cJSON *jorig_date = cJSON_GetObjectItem(o, "original_date");
+    it->original_date = jorig_date ? (int64_t)jorig_date->valuedouble : 0;
+
+    cJSON *jcarryover = cJSON_GetObjectItem(o, "carryover_count");
+    it->carryover_count = jcarryover ? (int)jcarryover->valuedouble : 0;
+
+    cJSON *jplan_id = cJSON_GetObjectItem(o, "plan_id");
+    it->plan_id = jplan_id ? (int64_t)jplan_id->valuedouble : 0;
+
+    cJSON *jplan_item_id = cJSON_GetObjectItem(o, "plan_item_id");
+    it->plan_item_id = jplan_item_id ? (int64_t)jplan_item_id->valuedouble : 0;
+
+    cJSON *jcompleted_at = cJSON_GetObjectItem(o, "completed_at");
+    it->completed_at = jcompleted_at ? (int64_t)jcompleted_at->valuedouble : 0;
+
+    cJSON *jpostpone = cJSON_GetObjectItem(o, "postpone_until");
+    it->postpone_until = jpostpone ? (int64_t)jpostpone->valuedouble : 0;
+
+    cJSON *jtask_sys_id = cJSON_GetObjectItem(o, "task_system_id");
+    it->task_system_id = jtask_sys_id ? (int64_t)jtask_sys_id->valuedouble : 0;
+
     g_todo_count++;
 }
 
@@ -340,6 +463,122 @@ static void parse_comment(cJSON *o) {
     g_comment_count++;
 }
 
+static void parse_task_system(cJSON *o) {
+    ENSURE_TS_CAP(g_ts_count + 1);
+    task_system_t *ts = &g_task_systems[g_ts_count];
+    memset(ts, 0, sizeof(*ts));
+
+    cJSON *jid = cJSON_GetObjectItem(o, "id");
+    ts->id = jid ? (int64_t)jid->valuedouble : 0;
+
+    cJSON *jname = cJSON_GetObjectItem(o, "name");
+    if (jname && cJSON_IsString(jname)) {
+        strncpy(ts->name, jname->valuestring, TASK_SYSTEM_NAME_MAX - 1);
+    }
+
+    cJSON *jdesc = cJSON_GetObjectItem(o, "description");
+    if (jdesc && cJSON_IsString(jdesc)) {
+        strncpy(ts->description, jdesc->valuestring, 1023);
+    }
+
+    cJSON *jcolor = cJSON_GetObjectItem(o, "color");
+    if (jcolor && cJSON_IsString(jcolor)) {
+        strncpy(ts->color, jcolor->valuestring, 15);
+    }
+
+    cJSON *jso = cJSON_GetObjectItem(o, "sort_order");
+    ts->sort_order = jso ? (int)jso->valuedouble : 0;
+
+    cJSON *jca = cJSON_GetObjectItem(o, "created_at");
+    ts->created_at = jca ? (int64_t)jca->valuedouble : 0;
+
+    g_ts_count++;
+}
+
+static void parse_plan(cJSON *o) {
+    ENSURE_PLAN_CAP(g_plan_count + 1);
+    plan_t *p = &g_plans[g_plan_count];
+    memset(p, 0, sizeof(*p));
+
+    cJSON *jid = cJSON_GetObjectItem(o, "id");
+    p->id = jid ? (int64_t)jid->valuedouble : 0;
+
+    cJSON *jname = cJSON_GetObjectItem(o, "name");
+    if (jname && cJSON_IsString(jname)) {
+        strncpy(p->name, jname->valuestring, PLAN_NAME_MAX - 1);
+    }
+
+    cJSON *jdesc = cJSON_GetObjectItem(o, "description");
+    if (jdesc && cJSON_IsString(jdesc)) {
+        strncpy(p->description, jdesc->valuestring, PLAN_DESC_MAX - 1);
+    }
+
+    cJSON *jstart = cJSON_GetObjectItem(o, "start_date");
+    p->start_date = jstart ? (int64_t)jstart->valuedouble : 0;
+
+    cJSON *jend = cJSON_GetObjectItem(o, "end_date");
+    p->end_date = jend ? (int64_t)jend->valuedouble : 0;
+
+    cJSON *jcolor = cJSON_GetObjectItem(o, "color");
+    if (jcolor && cJSON_IsString(jcolor)) {
+        strncpy(p->color, jcolor->valuestring, 15);
+    }
+
+    cJSON *jstatus = cJSON_GetObjectItem(o, "status");
+    p->status = jstatus ? (int)jstatus->valuedouble : 0;
+
+    cJSON *jca = cJSON_GetObjectItem(o, "created_at");
+    p->created_at = jca ? (int64_t)jca->valuedouble : 0;
+
+    cJSON *jua = cJSON_GetObjectItem(o, "updated_at");
+    p->updated_at = jua ? (int64_t)jua->valuedouble : 0;
+
+    g_plan_count++;
+}
+
+static void parse_plan_item(cJSON *o) {
+    ENSURE_PI_CAP(g_pi_count + 1);
+    plan_item_t *pi = &g_plan_items[g_pi_count];
+    memset(pi, 0, sizeof(*pi));
+
+    cJSON *jid = cJSON_GetObjectItem(o, "id");
+    pi->id = jid ? (int64_t)jid->valuedouble : 0;
+
+    cJSON *jplan_id = cJSON_GetObjectItem(o, "plan_id");
+    pi->plan_id = jplan_id ? (int64_t)jplan_id->valuedouble : 0;
+
+    cJSON *jparent = cJSON_GetObjectItem(o, "parent_id");
+    pi->parent_id = jparent ? (int64_t)jparent->valuedouble : 0;
+
+    cJSON *jtitle = cJSON_GetObjectItem(o, "title");
+    if (jtitle && cJSON_IsString(jtitle)) {
+        strncpy(pi->title, jtitle->valuestring, ITEM_TITLE_MAX - 1);
+    }
+
+    cJSON *jtype = cJSON_GetObjectItem(o, "item_type");
+    pi->item_type = jtype ? (int)jtype->valuedouble : 0;
+
+    cJSON *jpdate = cJSON_GetObjectItem(o, "planned_date");
+    pi->planned_date = jpdate ? (int64_t)jpdate->valuedouble : 0;
+
+    cJSON *jest = cJSON_GetObjectItem(o, "estimated_minutes");
+    pi->estimated_minutes = jest ? (int)jest->valuedouble : 0;
+
+    cJSON *jorder = cJSON_GetObjectItem(o, "order_index");
+    pi->order_index = jorder ? (int)jorder->valuedouble : 0;
+
+    cJSON *jrule = cJSON_GetObjectItem(o, "completion_rule");
+    pi->completion_rule = jrule ? (int)jrule->valuedouble : 0;
+
+    cJSON *jtodo_id = cJSON_GetObjectItem(o, "todo_id");
+    pi->todo_id = jtodo_id ? (int64_t)jtodo_id->valuedouble : 0;
+
+    cJSON *jactual = cJSON_GetObjectItem(o, "actual_minutes");
+    pi->actual_minutes = jactual ? (int)jactual->valuedouble : 0;
+
+    g_pi_count++;
+}
+
 /* ============================================================
  * 数据库生命周期
  * ============================================================ */
@@ -381,6 +620,15 @@ int todo_db_load(const char *db_path) {
     jnext = cJSON_GetObjectItem(root, "next_comment_id");
     g_next_comment_id = jnext ? (int64_t)jnext->valuedouble : 1;
 
+    jnext = cJSON_GetObjectItem(root, "next_ts_id");
+    g_next_ts_id = jnext ? (int64_t)jnext->valuedouble : 1;
+
+    jnext = cJSON_GetObjectItem(root, "next_plan_id");
+    g_next_plan_id = jnext ? (int64_t)jnext->valuedouble : 1;
+
+    jnext = cJSON_GetObjectItem(root, "next_pi_id");
+    g_next_pi_id = jnext ? (int64_t)jnext->valuedouble : 1;
+
     /* 读取 todos */
     cJSON *jtodos = cJSON_GetObjectItem(root, "todos");
     if (jtodos && cJSON_IsArray(jtodos)) {
@@ -417,6 +665,42 @@ int todo_db_load(const char *db_path) {
         }
     }
 
+    /* 读取 task_systems */
+    cJSON *jts = cJSON_GetObjectItem(root, "task_systems");
+    if (jts && cJSON_IsArray(jts)) {
+        int n = cJSON_GetArraySize(jts);
+        for (int i = 0; i < n; i++) {
+            parse_task_system(cJSON_GetArrayItem(jts, i));
+        }
+    }
+
+    /* 读取 plans */
+    cJSON *jplans = cJSON_GetObjectItem(root, "plans");
+    if (jplans && cJSON_IsArray(jplans)) {
+        int n = cJSON_GetArraySize(jplans);
+        for (int i = 0; i < n; i++) {
+            parse_plan(cJSON_GetArrayItem(jplans, i));
+        }
+    }
+
+    /* 读取 plan_items */
+    cJSON *jpitems = cJSON_GetObjectItem(root, "plan_items");
+    if (jpitems && cJSON_IsArray(jpitems)) {
+        int n = cJSON_GetArraySize(jpitems);
+        for (int i = 0; i < n; i++) {
+            parse_plan_item(cJSON_GetArrayItem(jpitems, i));
+        }
+    }
+
+    /* 确保存在默认任务系统 */
+    if (g_ts_count == 0) {
+        task_system_t def_ts;
+        memset(&def_ts, 0, sizeof(def_ts));
+        strncpy(def_ts.name, "默认任务系统", TASK_SYSTEM_NAME_MAX - 1);
+        strncpy(def_ts.color, "#4A90D9", 15);
+        task_system_create(&def_ts, NULL);
+    }
+
     cJSON_Delete(root);
     return 0;
 }
@@ -432,10 +716,16 @@ void todo_db_shutdown(void) {
     free(g_checks);   g_checks = NULL;
     free(g_groups);   g_groups = NULL;
     free(g_comments); g_comments = NULL;
+    free(g_task_systems); g_task_systems = NULL;
+    free(g_plans);       g_plans = NULL;
+    free(g_plan_items);  g_plan_items = NULL;
     g_todo_count = g_todo_cap = 0;
     g_check_count = g_check_cap = 0;
     g_group_count = g_group_cap = 0;
     g_comment_count = g_comment_cap = 0;
+    g_ts_count = g_ts_cap = 0;
+    g_plan_count = g_plan_cap = 0;
+    g_pi_count = g_pi_cap = 0;
 }
 
 void todo_db_reset(void) {
@@ -444,14 +734,23 @@ void todo_db_reset(void) {
     free(g_checks);   g_checks = NULL;
     free(g_groups);   g_groups = NULL;
     free(g_comments); g_comments = NULL;
+    free(g_task_systems); g_task_systems = NULL;
+    free(g_plans);       g_plans = NULL;
+    free(g_plan_items);  g_plan_items = NULL;
     g_todo_count = g_todo_cap = 0;
     g_check_count = g_check_cap = 0;
     g_group_count = g_group_cap = 0;
     g_comment_count = g_comment_cap = 0;
+    g_ts_count = g_ts_cap = 0;
+    g_plan_count = g_plan_cap = 0;
+    g_pi_count = g_pi_cap = 0;
     g_next_todo_id = 1;
     g_next_check_id = 1;
     g_next_group_id = 1;
     g_next_comment_id = 1;
+    g_next_ts_id = 1;
+    g_next_plan_id = 1;
+    g_next_pi_id = 1;
     g_db_path[0] = '\0';
     g_modified = 0;
 }
@@ -506,6 +805,14 @@ int todo_create(const todo_t *todo, int64_t *out_id) {
     it->due_date = todo->due_date;
     it->group_id = todo->group_id;
     it->sort_order = todo->sort_order;
+    it->todo_type = todo->todo_type;
+    it->original_date = todo->original_date;
+    it->carryover_count = todo->carryover_count;
+    it->plan_id = todo->plan_id;
+    it->plan_item_id = todo->plan_item_id;
+    it->completed_at = todo->completed_at;
+    it->postpone_until = todo->postpone_until;
+    it->task_system_id = todo->task_system_id;
     it->created_at = now_ts();
     it->updated_at = it->created_at;
 
@@ -535,6 +842,14 @@ int todo_update(const todo_t *todo) {
     it->due_date = todo->due_date;
     it->group_id = todo->group_id;
     it->sort_order = todo->sort_order;
+    it->todo_type = todo->todo_type;
+    it->original_date = todo->original_date;
+    it->carryover_count = todo->carryover_count;
+    it->plan_id = todo->plan_id;
+    it->plan_item_id = todo->plan_item_id;
+    it->completed_at = todo->completed_at;
+    it->postpone_until = todo->postpone_until;
+    it->task_system_id = todo->task_system_id;
     it->updated_at = now_ts();
     todo_db_save();
     return 0;
@@ -901,4 +1216,255 @@ int comment_delete(int64_t comment_id) {
     g_comment_count--;
     todo_db_save();
     return 0;
+}
+
+/* ============================================================
+ * 任务系统 CRUD
+ * ============================================================ */
+int task_system_create(const task_system_t *ts, int64_t *out_id) {
+    ENSURE_TS_CAP(g_ts_count + 1);
+    task_system_t *t = &g_task_systems[g_ts_count];
+    memset(t, 0, sizeof(*t));
+    t->id = g_next_ts_id++;
+
+    strncpy(t->name, ts->name, TASK_SYSTEM_NAME_MAX - 1);
+    strncpy(t->description, ts->description, 1023);
+    if (ts->color[0])
+        strncpy(t->color, ts->color, 15);
+    else
+        strcpy(t->color, "#4A90D9");
+    t->sort_order = ts->sort_order;
+    t->created_at = now_ts();
+
+    g_ts_count++;
+    if (out_id) *out_id = t->id;
+    todo_db_save();
+    return 0;
+}
+
+int task_system_get(int64_t id, task_system_t *ts) {
+    int idx = find_ts_idx(id);
+    if (idx < 0) return -1;
+    if (ts) *ts = g_task_systems[idx];
+    return 0;
+}
+
+int task_system_update(const task_system_t *ts) {
+    int idx = find_ts_idx(ts->id);
+    if (idx < 0) return -1;
+    task_system_t *t = &g_task_systems[idx];
+
+    strncpy(t->name, ts->name, TASK_SYSTEM_NAME_MAX - 1);
+    strncpy(t->description, ts->description, 1023);
+    strncpy(t->color, ts->color, 15);
+    t->sort_order = ts->sort_order;
+    todo_db_save();
+    return 0;
+}
+
+int task_system_delete(int64_t id) {
+    int idx = find_ts_idx(id);
+    if (idx < 0) return -1;
+
+    /* 将该系统的待办置为默认系统 */
+    for (int i = 0; i < g_todo_count; i++) {
+        if (g_todos[i].task_system_id == id) {
+            g_todos[i].task_system_id = 1; /* 默认系统 */
+        }
+    }
+
+    for (int i = idx; i < g_ts_count - 1; i++) {
+        g_task_systems[i] = g_task_systems[i+1];
+    }
+    g_ts_count--;
+    todo_db_save();
+    return 0;
+}
+
+int task_system_list(task_system_t **systems, int *count) {
+    task_system_t *list = malloc(g_ts_count * sizeof(task_system_t));
+    if (!list) return -1;
+    for (int i = 0; i < g_ts_count; i++) {
+        list[i] = g_task_systems[i];
+    }
+    *systems = list;
+    *count = g_ts_count;
+    return 0;
+}
+
+void task_system_list_free(task_system_t *systems, int count) {
+    (void)count;
+    if (systems) free(systems);
+}
+
+/* ============================================================
+ * 学习计划 CRUD
+ * ============================================================ */
+int plan_create(const plan_t *plan, int64_t *out_id) {
+    ENSURE_PLAN_CAP(g_plan_count + 1);
+    plan_t *p = &g_plans[g_plan_count];
+    memset(p, 0, sizeof(*p));
+    p->id = g_next_plan_id++;
+
+    strncpy(p->name, plan->name, PLAN_NAME_MAX - 1);
+    strncpy(p->description, plan->description, PLAN_DESC_MAX - 1);
+    p->start_date = plan->start_date;
+    p->end_date = plan->end_date;
+    if (plan->color[0])
+        strncpy(p->color, plan->color, 15);
+    else
+        strcpy(p->color, "#4A90D9");
+    p->status = plan->status;
+    p->created_at = now_ts();
+    p->updated_at = p->created_at;
+
+    g_plan_count++;
+    if (out_id) *out_id = p->id;
+    todo_db_save();
+    return 0;
+}
+
+int plan_get(int64_t id, plan_t *plan) {
+    int idx = find_plan_idx(id);
+    if (idx < 0) return -1;
+    if (plan) *plan = g_plans[idx];
+    return 0;
+}
+
+int plan_update(const plan_t *plan) {
+    int idx = find_plan_idx(plan->id);
+    if (idx < 0) return -1;
+    plan_t *p = &g_plans[idx];
+
+    strncpy(p->name, plan->name, PLAN_NAME_MAX - 1);
+    strncpy(p->description, plan->description, PLAN_DESC_MAX - 1);
+    p->start_date = plan->start_date;
+    p->end_date = plan->end_date;
+    strncpy(p->color, plan->color, 15);
+    p->status = plan->status;
+    p->updated_at = now_ts();
+    todo_db_save();
+    return 0;
+}
+
+int plan_delete(int64_t id) {
+    int idx = find_plan_idx(id);
+    if (idx < 0) return -1;
+
+    /* 删除关联的 plan_item */
+    int j = 0;
+    for (int i = 0; i < g_pi_count; i++) {
+        if (g_plan_items[i].plan_id != id) {
+            g_plan_items[j++] = g_plan_items[i];
+        }
+    }
+    g_pi_count = j;
+
+    /* 删除计划 */
+    for (int i = idx; i < g_plan_count - 1; i++) {
+        g_plans[i] = g_plans[i+1];
+    }
+    g_plan_count--;
+    todo_db_save();
+    return 0;
+}
+
+int plan_list(plan_t **plans, int *count) {
+    plan_t *list = malloc(g_plan_count * sizeof(plan_t));
+    if (!list) return -1;
+    for (int i = 0; i < g_plan_count; i++) {
+        list[i] = g_plans[i];
+    }
+    *plans = list;
+    *count = g_plan_count;
+    return 0;
+}
+
+void plan_list_free(plan_t *plans, int count) {
+    (void)count;
+    if (plans) free(plans);
+}
+
+/* ============================================================
+ * 计划项 CRUD
+ * ============================================================ */
+int plan_item_create(const plan_item_t *item, int64_t *out_id) {
+    ENSURE_PI_CAP(g_pi_count + 1);
+    plan_item_t *pi = &g_plan_items[g_pi_count];
+    memset(pi, 0, sizeof(*pi));
+    pi->id = g_next_pi_id++;
+
+    pi->plan_id = item->plan_id;
+    pi->parent_id = item->parent_id;
+    strncpy(pi->title, item->title, ITEM_TITLE_MAX - 1);
+    pi->item_type = item->item_type;
+    pi->planned_date = item->planned_date;
+    pi->estimated_minutes = item->estimated_minutes;
+    pi->order_index = item->order_index;
+    pi->completion_rule = item->completion_rule;
+    pi->todo_id = item->todo_id;
+    pi->actual_minutes = item->actual_minutes;
+
+    g_pi_count++;
+    if (out_id) *out_id = pi->id;
+    todo_db_save();
+    return 0;
+}
+
+int plan_item_get(int64_t id, plan_item_t *item) {
+    int idx = find_pi_idx(id);
+    if (idx < 0) return -1;
+    if (item) *item = g_plan_items[idx];
+    return 0;
+}
+
+int plan_item_update(const plan_item_t *item) {
+    int idx = find_pi_idx(item->id);
+    if (idx < 0) return -1;
+    plan_item_t *pi = &g_plan_items[idx];
+
+    pi->plan_id = item->plan_id;
+    pi->parent_id = item->parent_id;
+    strncpy(pi->title, item->title, ITEM_TITLE_MAX - 1);
+    pi->item_type = item->item_type;
+    pi->planned_date = item->planned_date;
+    pi->estimated_minutes = item->estimated_minutes;
+    pi->order_index = item->order_index;
+    pi->completion_rule = item->completion_rule;
+    pi->todo_id = item->todo_id;
+    pi->actual_minutes = item->actual_minutes;
+    todo_db_save();
+    return 0;
+}
+
+int plan_item_delete(int64_t id) {
+    int idx = find_pi_idx(id);
+    if (idx < 0) return -1;
+    for (int i = idx; i < g_pi_count - 1; i++) {
+        g_plan_items[i] = g_plan_items[i+1];
+    }
+    g_pi_count--;
+    todo_db_save();
+    return 0;
+}
+
+int plan_item_list_by_plan(int64_t plan_id, plan_item_t **items, int *count) {
+    plan_item_t *list = NULL;
+    int cnt = 0, cap = 0;
+    for (int i = 0; i < g_pi_count; i++) {
+        if (g_plan_items[i].plan_id != plan_id) continue;
+        if (cnt >= cap) {
+            cap = cap ? cap * 2 : 8;
+            list = realloc(list, cap * sizeof(plan_item_t));
+        }
+        list[cnt++] = g_plan_items[i];
+    }
+    *items = list;
+    *count = cnt;
+    return 0;
+}
+
+void plan_item_list_free(plan_item_t *items, int count) {
+    (void)count;
+    if (items) free(items);
 }

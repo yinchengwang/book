@@ -44,7 +44,63 @@ typedef struct {
     int     sort_order;                 /* 排序序号 */
     int64_t created_at;
     int64_t updated_at;
+    /* ----- 新增字段 ----- */
+    int     todo_type;                /* 0=普通 1=每日 2=每周 3=每月 */
+    int64_t original_date;            /* 初始排定日期 */
+    int     carryover_count;          /* 累计顺延次数 */
+    int64_t plan_id;                  /* 所属学习计划 */
+    int64_t plan_item_id;             /* 所属计划项 */
+    int64_t completed_at;             /* 完成时间，0=未完成 */
+    int64_t postpone_until;           /* 主动延后到的目标日期 */
+    int64_t task_system_id;           /* 所属任务系统，0=默认 */
 } todo_t;
+
+/* ============================================================
+ * 任务系统结构体（顶层容器，每个系统管理自己的 todo 列表）
+ * ============================================================ */
+#define TASK_SYSTEM_NAME_MAX 64
+
+typedef struct {
+    int64_t id;
+    char    name[TASK_SYSTEM_NAME_MAX];
+    char    description[1024];
+    char    color[16];
+    int     sort_order;
+    int64_t created_at;
+} task_system_t;
+
+/* ============================================================
+ * 学习计划结构体
+ * ============================================================ */
+#define PLAN_NAME_MAX    128
+#define PLAN_DESC_MAX    4096
+#define ITEM_TITLE_MAX   256
+
+typedef struct {
+    int64_t id;
+    char    name[PLAN_NAME_MAX];
+    char    description[PLAN_DESC_MAX];
+    int64_t start_date;
+    int64_t end_date;
+    char    color[16];
+    int     status;          /* 0=进行中 1=已完成 2=已暂停 */
+    int64_t created_at;
+    int64_t updated_at;
+} plan_t;
+
+typedef struct {
+    int64_t id;
+    int64_t plan_id;
+    int64_t parent_id;       /* 0=根 */
+    char    title[ITEM_TITLE_MAX];
+    int     item_type;       /* 1=阶段 2=模块 3=具体任务 */
+    int64_t planned_date;
+    int     estimated_minutes;
+    int     order_index;
+    int     completion_rule; /* 1=按日 2=按周 3=按月 */
+    int64_t todo_id;         /* 展开后关联的 todo */
+    int     actual_minutes;  /* 实际耗时 */
+} plan_item_t;
 
 /* ============================================================
  * 待办清单项结构体
@@ -340,6 +396,36 @@ void comment_list_free(comment_t *comments, int count);
  * @return 0 成功
  */
 int comment_delete(int64_t comment_id);
+
+/* ============================================================
+ * 任务系统 CRUD
+ * ============================================================ */
+int task_system_create(const task_system_t *ts, int64_t *out_id);
+int task_system_get(int64_t id, task_system_t *ts);
+int task_system_update(const task_system_t *ts);
+int task_system_delete(int64_t id);
+int task_system_list(task_system_t **systems, int *count);
+void task_system_list_free(task_system_t *systems, int count);
+
+/* ============================================================
+ * 学习计划 CRUD
+ * ============================================================ */
+int plan_create(const plan_t *plan, int64_t *out_id);
+int plan_get(int64_t id, plan_t *plan);
+int plan_update(const plan_t *plan);
+int plan_delete(int64_t id);
+int plan_list(plan_t **plans, int *count);
+void plan_list_free(plan_t *plans, int count);
+
+/* ============================================================
+ * 计划项 CRUD（树形结构，自动按 parent_id 组织）
+ * ============================================================ */
+int plan_item_create(const plan_item_t *item, int64_t *out_id);
+int plan_item_get(int64_t id, plan_item_t *item);
+int plan_item_update(const plan_item_t *item);
+int plan_item_delete(int64_t id);
+int plan_item_list_by_plan(int64_t plan_id, plan_item_t **items, int *count);
+void plan_item_list_free(plan_item_t *items, int count);
 
 #ifdef __cplusplus
 }

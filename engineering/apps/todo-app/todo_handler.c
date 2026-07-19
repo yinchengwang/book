@@ -114,6 +114,17 @@ static cJSON *group_to_json(const group_t *group) {
     return j;
 }
 
+static cJSON *task_system_to_json(const task_system_t *ts) {
+    cJSON *j = cJSON_CreateObject();
+    cJSON_AddNumberToObject(j, "id", ts->id);
+    cJSON_AddStringToObject(j, "name", ts->name);
+    cJSON_AddStringToObject(j, "description", ts->description);
+    cJSON_AddStringToObject(j, "color", ts->color);
+    cJSON_AddNumberToObject(j, "sort_order", ts->sort_order);
+    cJSON_AddNumberToObject(j, "created_at", ts->created_at);
+    return j;
+}
+
 static cJSON *comment_to_json(const comment_t *comment) {
     cJSON *j = cJSON_CreateObject();
     cJSON_AddNumberToObject(j, "id", comment->id);
@@ -694,6 +705,66 @@ static void handle_group_delete(SOCKET client, int64_t id) {
 }
 
 /* ============================================================
+ * 任务系统 CRUD
+ * ============================================================ */
+static void handle_task_system_list(SOCKET client) {
+    task_system_t *systems = NULL;
+    int count = 0;
+    task_system_list(&systems, &count);
+    cJSON *jarr = cJSON_CreateArray();
+    for (int i = 0; i < count; i++)
+        cJSON_AddItemToArray(jarr, task_system_to_json(&systems[i]));
+    task_system_list_free(systems, count);
+    send_success(client, jarr);
+}
+
+static void handle_task_system_create(SOCKET client, const char *body) {
+    cJSON *j = cJSON_Parse(body);
+    if (!j) { send_error(client, 1002, "invalid JSON format"); return; }
+    task_system_t ts;
+    memset(&ts, 0, sizeof(ts));
+    const char *name = cJSON_GetStringValue(cJSON_GetObjectItem(j, "name"));
+    if (!name) { cJSON_Delete(j); send_error(client, 1001, "缺少 name 参数"); return; }
+    strncpy(ts.name, name, TASK_SYSTEM_NAME_MAX - 1);
+    const char *desc = cJSON_GetStringValue(cJSON_GetObjectItem(j, "description"));
+    if (desc) strncpy(ts.description, desc, 1023);
+    const char *color = cJSON_GetStringValue(cJSON_GetObjectItem(j, "color"));
+    if (color) strncpy(ts.color, color, 15); else strcpy(ts.color, "#4A90D9");
+    cJSON *so = cJSON_GetObjectItem(j, "sort_order");
+    ts.sort_order = so ? so->valueint : 0;
+    int64_t out_id;
+    int ret = task_system_create(&ts, &out_id);
+    cJSON_Delete(j);
+    if (ret != 0) { send_error(client, 9001, "创建任务系统失败"); return; }
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddNumberToObject(data, "id", out_id);
+    send_success(client, data);
+}
+
+static void handle_task_system_update(SOCKET client, int64_t id, const char *body) {
+    task_system_t ts;
+    if (task_system_get(id, &ts) != 0) { send_error(client, 2001, "not found"); return; }
+    cJSON *j = cJSON_Parse(body);
+    if (!j) { send_error(client, 1002, "invalid JSON format"); return; }
+    const char *name = cJSON_GetStringValue(cJSON_GetObjectItem(j, "name"));
+    if (name) strncpy(ts.name, name, TASK_SYSTEM_NAME_MAX - 1);
+    const char *desc = cJSON_GetStringValue(cJSON_GetObjectItem(j, "description"));
+    if (desc) strncpy(ts.description, desc, 1023);
+    const char *color = cJSON_GetStringValue(cJSON_GetObjectItem(j, "color"));
+    if (color) strncpy(ts.color, color, 15);
+    cJSON *so = cJSON_GetObjectItem(j, "sort_order");
+    if (so) ts.sort_order = so->valueint;
+    cJSON_Delete(j);
+    task_system_update(&ts);
+    send_success(client, cJSON_CreateObject());
+}
+
+static void handle_task_system_delete(SOCKET client, int64_t id) {
+    if (task_system_delete(id) != 0) { send_error(client, 2001, "not found"); return; }
+    send_success(client, cJSON_CreateObject());
+}
+
+/* ============================================================
  * 静态文件服务
  * ============================================================ */
 static int serve_static_file(SOCKET client, const char *url) {
@@ -922,6 +993,32 @@ static void handle_request(SOCKET client, const char *request) {
                     handle_comment_delete(client, id_a, id_b);
                     handled = 1;
                 }
+            }
+        }
+    }
+
+    /* 任务系统路由 */
+    /* GET/POST /api/task-systems */
+    else if (strcmp(path, "/api/task-systems") == 0) {
+        if (strcmp(method, "GET") == 0) {
+            handle_task_system_list(client);
+            handled = 1;
+        } else if (strcmp(method, "POST") == 0) {
+            handle_task_system_create(client, body);
+            handled = 1;
+        }
+    }
+    /* PATCH/DELETE /api/task-systems/:id */
+    else if (sscanf(path, "/api/task-systems/%lld", (long long *)&id_a) == 1) {
+        char expect[128];
+        snprintf(expect, sizeof(expect), "/api/task-systems/%lld", (long long)id_a);
+        if (strcmp(path, expect) == 0) {
+            if (strcmp(method, "PATCH") == 0) {
+                handle_task_system_update(client, id_a, body);
+                handled = 1;
+            } else if (strcmp(method, "DELETE") == 0) {
+                handle_task_system_delete(client, id_a);
+                handled = 1;
             }
         }
     }
