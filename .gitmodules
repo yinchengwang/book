@@ -112,3 +112,6 @@
 [submodule "reference/open-source/key_value/etcd"]
 	path = reference/open-source/key_value/etcd
 	url = https://github.com/etcd-io/etcd.git
+[submodule "reference/open-source/time_series/victoria_metrics"]
+	path = reference/open-source/time_series/victoria_metrics
+	url = https://github.com/VictoriaMetrics/VictoriaMetrics.git
