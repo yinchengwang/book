@@ -34,4 +34,5 @@ target_link_libraries(vector_persist PUBLIC
     db_core
     algo-prod
     vector_index
+    db_storage
 )

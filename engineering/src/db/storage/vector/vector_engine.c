@@ -777,8 +777,8 @@ int vector_engine_build_index(void *rel, int m, int ef_construction) {
     vector_engine_db_t *db = (vector_engine_db_t *)rel;
 
     if (db->num_vectors == 0) {
-        LOG_WARN("向量数量为 0，无法构建索引");
-        return -1;
+        LOG_WARN("向量数量为 0，跳过索引构建（空集合合法）");
+        return 0;
     }
 
     /* 如果已有索引，先释放 */
