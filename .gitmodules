@@ -157,3 +157,6 @@
 [submodule "reference/open-source/graph/arangodb"]
 	path = reference/open-source/graph/arangodb
 	url = https://github.com/arangodb/arangodb.git
+[submodule "reference/open-source/analytical/clickhouse"]
+	path = reference/open-source/analytical/clickhouse
+	url = https://github.com/ClickHouse/ClickHouse.git
