@@ -103,3 +103,6 @@
 [submodule "reference/open-source/vector/vald"]
 	path = reference/open-source/vector/vald
 	url = https://github.com/vdaas/vald.git
+[submodule "reference/open-source/key_value/garnet"]
+	path = reference/open-source/key_value/garnet
+	url = https://github.com/microsoft/garnet.git
