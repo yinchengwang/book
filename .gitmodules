@@ -148,3 +148,6 @@
 [submodule "reference/open-source/analytical/starrocks"]
 	path = reference/open-source/analytical/starrocks
 	url = https://github.com/StarRocks/starrocks.git
+[submodule "reference/open-source/analytical/druid"]
+	path = reference/open-source/analytical/druid
+	url = https://github.com/apache/druid.git
