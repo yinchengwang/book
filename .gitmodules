@@ -100,3 +100,6 @@
 [submodule "reference/open-source/vector/lancedb"]
 	path = reference/open-source/vector/lancedb
 	url = https://github.com/lancedb/lancedb.git
+[submodule "reference/open-source/vector/vald"]
+	path = reference/open-source/vector/vald
+	url = https://github.com/vdaas/vald.git
