@@ -139,3 +139,6 @@
 [submodule "reference/open-source/embedded/badger"]
 	path = reference/open-source/embedded/badger
 	url = https://github.com/dgraph-io/badger.git
+[submodule "reference/open-source/embedded/rocksdb"]
+	path = reference/open-source/embedded/rocksdb
+	url = https://github.com/facebook/rocksdb.git
