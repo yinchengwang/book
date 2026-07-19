@@ -214,6 +214,146 @@ static List *list_append(List *l, void *data) {
  * ============================================================ */
 
 /**
+ * @brief 辅助：将 sql_node_t 的列列表转换为 LogicalPlan 的 targetList
+ *
+ * 遍历 sql_node_t 的 columns 节点列表，为每个列名创建 TargetEntry。
+ * 如果 columns 为 NULL 或列名为 "*"，返回 NULL 表示所有列。
+ */
+static List *convert_column_list(sql_node_t *columns) {
+    if (!columns) return NULL;
+
+    /* 处理 SELECT *：列列为 NULL 或单列名 "*" */
+    if (columns->type == SQL_NODE_COLUMN_REF &&
+        columns->u.column_ref.name &&
+        strcmp(columns->u.column_ref.name, "*") == 0) {
+        return NULL;
+    }
+
+    /* 处理列列表（解析器使用 SQL_NODE_EXPR_LIST 存储列列表） */
+    if (columns->type == SQL_NODE_EXPR_LIST) {
+        List *list = NULL;
+        for (size_t i = 0; i < columns->u.list.count; i++) {
+            sql_node_t *col = columns->u.list.items[i];
+            if (col && col->type == SQL_NODE_COLUMN_REF && col->u.column_ref.name) {
+                /* 创建 TargetEntry */
+                TargetEntry *te = (TargetEntry *)calloc(1, sizeof(TargetEntry));
+                if (!te) continue;
+                te->resno = (int)(i + 1);
+                te->resname = col->u.column_ref.name;  /* 浅拷贝，不释放 */
+                te->resjunk = false;
+
+                /* 创建 Var 表达式 */
+                Expr *var = (Expr *)calloc(1, sizeof(Expr));
+                if (var) {
+                    var->type = EXPR_VAR;
+                    var->expr_type = EXPR_VAR;
+                    var->val.var.varattno = (int)(i + 1);
+                    te->expr = var;
+                }
+
+                list = list_append(list, te);
+            }
+        }
+        return list;
+    }
+
+    /* 单列引用 */
+    if (columns->type == SQL_NODE_COLUMN_REF && columns->u.column_ref.name) {
+        TargetEntry *te = (TargetEntry *)calloc(1, sizeof(TargetEntry));
+        if (te) {
+            te->resno = 1;
+            te->resname = columns->u.column_ref.name;
+            te->resjunk = false;
+            Expr *var = (Expr *)calloc(1, sizeof(Expr));
+            if (var) {
+                var->type = EXPR_VAR;
+                var->expr_type = EXPR_VAR;
+                var->val.var.varattno = 1;
+                te->expr = var;
+            }
+            return list_append(NULL, te);
+        }
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief 辅助：将 sql_node_t 的 WHERE 条件递归转换为 Planner Expr
+ *
+ * 支持：
+ *   - SQL_NODE_BINARY_OP → EXPR_OP（比较表达式）
+ *   - SQL_NODE_LOGICAL_OP → EXPR_BOOL_AND/OR/NOT
+ *   - SQL_NODE_COLUMN_REF → EXPR_VAR
+ *   - SQL_NODE_CONSTANT → EXPR_CONST（整型/字符串常量）
+ */
+static Expr *convert_where_expr(sql_node_t *node) {
+    if (!node) return NULL;
+
+    Expr *expr = (Expr *)calloc(1, sizeof(Expr));
+    if (!expr) return NULL;
+
+    switch (node->type) {
+        case SQL_NODE_BINARY_OP: {
+            /* 比较表达式：left OP right */
+            expr->type = EXPR_OP;
+            expr->expr_type = EXPR_OP;
+            expr->val.op.lexpr = convert_where_expr(node->u.binary_op.left);
+            expr->val.op.rexpr = convert_where_expr(node->u.binary_op.right);
+            break;
+        }
+
+        case SQL_NODE_LOGICAL_OP: {
+            /* AND/OR/NOT */
+            if (node->u.logical_op.op == 2) {  /* NOT */
+                expr->type = EXPR_BOOL_NOT;
+                expr->expr_type = EXPR_BOOL_NOT;
+                expr->val.op.lexpr = convert_where_expr(node->u.logical_op.expr);
+            } else if (node->u.logical_op.op == 1) {  /* OR */
+                expr->type = EXPR_BOOL_OR;
+                expr->expr_type = EXPR_BOOL_OR;
+                expr->val.op.lexpr = convert_where_expr(node->u.logical_op.left);
+                expr->val.op.rexpr = convert_where_expr(node->u.logical_op.right);
+            } else {  /* AND */
+                expr->type = EXPR_BOOL_AND;
+                expr->expr_type = EXPR_BOOL_AND;
+                expr->val.op.lexpr = convert_where_expr(node->u.logical_op.left);
+                expr->val.op.rexpr = convert_where_expr(node->u.logical_op.right);
+            }
+            break;
+        }
+
+        case SQL_NODE_COLUMN_REF: {
+            /* 列引用 */
+            expr->type = EXPR_VAR;
+            expr->expr_type = EXPR_VAR;
+            expr->val.var.varattno = 1;  /* 简化：当前只支持单表 */
+            expr->val.var.varno = 1;
+            break;
+        }
+
+        case SQL_NODE_CONSTANT: {
+            /* 常量值 */
+            expr->type = EXPR_CONST;
+            expr->expr_type = EXPR_CONST;
+            if (node->u.constant.type == SQL_TYPE_INT) {
+                expr->val.const_val.value = node->u.constant.int_value;
+            } else if (node->u.constant.type == SQL_TYPE_TEXT ||
+                       node->u.constant.type == SQL_TYPE_VARCHAR) {
+                expr->val.const_val.value = 0;
+            }
+            break;
+        }
+
+        default:
+            free(expr);
+            return NULL;
+    }
+
+    return expr;
+}
+
+/**
  * @brief 从 sql_node_t (简化解析器) 转换
  */
 static LogicalPlan *node_to_logical(PlannerContext *ctx, sql_node_t *node) {
@@ -233,20 +373,22 @@ static LogicalPlan *node_to_logical(PlannerContext *ctx, sql_node_t *node) {
             plan->left = NULL;
             plan->right = NULL;
 
-            /* 设置表名 */
+            /* 设置表名（通过 extra 字段简单传递） */
             if (node->u.select.table_name) {
-                plan->qual = NULL;  /* WHERE 条件在下面处理 */
+                /* 当前 LOGICAL_SCAN 没有 rel_name 字段，
+                 * 后续扩展可在此处添加。这里先保持对齐。 */
             }
 
-            /* 处理 WHERE 条件 */
-            if (node->u.select.where_cond) {
-                Expr *pred = (Expr *)calloc(1, sizeof(Expr));
-                if (pred) {
-                    pred->expr_type = EXPR_OP;
-                    /* 简化的谓词处理 */
-                    (void)pred;
-                }
+            /* 转换 targetlist */
+            if (node->u.select.columns) {
+                plan->targetlist = convert_column_list(node->u.select.columns);
             }
+
+            /* 转换 WHERE 条件 */
+            if (node->u.select.where_cond) {
+                plan->qual = convert_where_expr(node->u.select.where_cond);
+            }
+
             break;
         }
 
