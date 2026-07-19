@@ -193,6 +193,7 @@ target_link_libraries(test_vacuum
         project_includes
         GTest::gtest_main
         db_tools_vacuum
+        db_storage
 )
 set_target_properties(test_vacuum PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -218,4 +219,21 @@ set_target_properties(test_reindex PROPERTIES
 gtest_discover_tests(test_reindex
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     PROPERTIES LABELS "test_reindex"
+)
+
+# StatsCollector 更新接口测试（Task 3.4）
+add_executable(test_stats_update test_stats_update.cpp)
+target_link_libraries(test_stats_update
+    PRIVATE
+        project_includes
+        GTest::gtest_main
+        db_tools_stats
+)
+set_target_properties(test_stats_update PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    FOLDER "Tests"
+)
+gtest_discover_tests(test_stats_update
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    PROPERTIES LABELS "test_stats_update"
 )

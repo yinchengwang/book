@@ -124,3 +124,91 @@ void stats_reset(StatsCollector *sc)
     }
     sc->index_count = 0;
 }
+
+/* ================================================================
+ * 全局收集器（Task 3.4）
+ * ================================================================ */
+
+/** 全局统计收集器句柄 */
+static StatsCollector *g_stats_collector = NULL;
+
+void stats_set_collector(StatsCollector *sc)
+{
+    g_stats_collector = sc;
+}
+
+StatsCollector *stats_get_collector(void)
+{
+    return g_stats_collector;
+}
+
+/* ================================================================
+ * 统计更新 API（Task 3.4）
+ * ================================================================ */
+
+/** 根据表名查找或创建表条目 */
+static TableEntry *stats_find_or_create_table(StatsCollector *sc, const char *table_name)
+{
+    if (!sc || !table_name) return NULL;
+
+    /* 查找现有条目 */
+    for (int i = 0; i < sc->table_count; i++) {
+        if (sc->tables[i].active && strcmp(sc->tables[i].name, table_name) == 0) {
+            return &sc->tables[i];
+        }
+    }
+
+    /* 创建新条目 */
+    if (sc->table_count >= MAX_TABLES) return NULL;
+
+    TableEntry *entry = &sc->tables[sc->table_count];
+    entry->active = true;
+    strncpy(entry->name, table_name, sizeof(entry->name) - 1);
+    entry->name[sizeof(entry->name) - 1] = '\0';
+    memset(&entry->stats, 0, sizeof(entry->stats));
+    strncpy(entry->stats.relname, table_name, sizeof(entry->stats.relname) - 1);
+    sc->table_count++;
+
+    return entry;
+}
+
+int stats_update_table_insert(StatsCollector *sc, const char *table_name, int64_t delta)
+{
+    TableEntry *entry = stats_find_or_create_table(sc, table_name);
+    if (!entry) return -1;
+
+    entry->stats.n_tup_ins += delta;
+    sc->db_stats.tup_inserted += delta;
+    return 0;
+}
+
+int stats_update_table_update(StatsCollector *sc, const char *table_name, int64_t delta)
+{
+    TableEntry *entry = stats_find_or_create_table(sc, table_name);
+    if (!entry) return -1;
+
+    entry->stats.n_tup_upd += delta;
+    sc->db_stats.tup_updated += delta;
+    return 0;
+}
+
+int stats_update_table_delete(StatsCollector *sc, const char *table_name, int64_t delta)
+{
+    TableEntry *entry = stats_find_or_create_table(sc, table_name);
+    if (!entry) return -1;
+
+    entry->stats.n_tup_del += delta;
+    sc->db_stats.tup_deleted += delta;
+    return 0;
+}
+
+int stats_update_table_tuples(StatsCollector *sc, const char *table_name,
+                               int64_t n_live_tup, int64_t n_dead_tup)
+{
+    TableEntry *entry = stats_find_or_create_table(sc, table_name);
+    if (!entry) return -1;
+
+    entry->stats.n_live_tup = n_live_tup;
+    entry->stats.n_dead_tup = n_dead_tup;
+    return 0;
+}

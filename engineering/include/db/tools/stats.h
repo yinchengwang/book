@@ -120,6 +120,60 @@ int stats_get_indexes(StatsCollector *sc, const char *index_name,
 void stats_reset(StatsCollector *sc);
 
 /* ─────────────────────────────────────────────────────────────────
+ * 统计更新 API（Task 3.4）
+ * ───────────────────────────────────────────────────────────────── */
+
+/**
+ * @brief 设置全局统计收集器
+ * @param sc 收集器句柄
+ */
+void stats_set_collector(StatsCollector *sc);
+
+/**
+ * @brief 获取全局统计收集器
+ * @return 收集器句柄，NULL 表示未设置
+ */
+StatsCollector *stats_get_collector(void);
+
+/**
+ * @brief 更新表插入计数
+ * @param sc 收集器句柄
+ * @param table_name 表名
+ * @param delta 插入行数
+ * @return 0 成功，-1 失败（表不存在于统计表）
+ */
+int stats_update_table_insert(StatsCollector *sc, const char *table_name, int64_t delta);
+
+/**
+ * @brief 更新表更新计数
+ * @param sc 收集器句柄
+ * @param table_name 表名
+ * @param delta 更新行数
+ * @return 0 成功，-1 失败
+ */
+int stats_update_table_update(StatsCollector *sc, const char *table_name, int64_t delta);
+
+/**
+ * @brief 更新表删除计数
+ * @param sc 收集器句柄
+ * @param table_name 表名
+ * @param delta 删除行数
+ * @return 0 成功，-1 失败
+ */
+int stats_update_table_delete(StatsCollector *sc, const char *table_name, int64_t delta);
+
+/**
+ * @brief 更新表元组数（活/死元组）
+ * @param sc 收集器句柄
+ * @param table_name 表名
+ * @param n_live_tup 活元组数
+ * @param n_dead_tup 死元组数
+ * @return 0 成功，-1 失败
+ */
+int stats_update_table_tuples(StatsCollector *sc, const char *table_name,
+                               int64_t n_live_tup, int64_t n_dead_tup);
+
+/* ─────────────────────────────────────────────────────────────────
  * 统计视图 API
  * ───────────────────────────────────────────────────────────────── */
 
