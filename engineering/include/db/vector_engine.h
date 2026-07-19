@@ -93,6 +93,9 @@ typedef struct vector_engine_db_s {
     void *wal;                 /**< WAL 句柄（vector_wal_t*） */
     bool use_wal;              /**< 是否启用 WAL */
     uint32_t segment_id;       /**< WAL 段 ID */
+
+    /* 当前激活的索引类型 */
+    int active_index_type;     /**< 0=无, 1=HNSW, 2=IVF-PQ */
 } vector_engine_db_t;
 
 /* ========================================================================
@@ -210,6 +213,17 @@ bool vector_index_is_valid(const char *path);
  * @return 0 成功，-1 失败
  */
 int vector_index_get_meta(const char *path, int32_t *dims, int32_t *n_total, int32_t *metric);
+
+/* ========================================================================
+ * 索引类型常量
+ * ======================================================================== */
+
+/** 无索引（暴力搜索） */
+#define VECTOR_INDEX_NONE   0
+/** HNSW 索引 */
+#define VECTOR_INDEX_HNSW   1
+/** IVF-PQ 索引 */
+#define VECTOR_INDEX_IVF_PQ 2
 
 /* ========================================================================
  * 工具函数

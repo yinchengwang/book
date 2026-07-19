@@ -229,6 +229,8 @@ static void *vector_engine_table_open(const char *name, AccessMode mode) {
     db->ivf_pq_nlist = 0;
     db->ivf_pq_nprobe = 64;
 
+    db->active_index_type = VECTOR_INDEX_NONE;
+
     /* 初始化 HNSW 索引字段 */
     db->hnsw_index = NULL;
     db->index_built = false;
@@ -778,6 +780,7 @@ int vector_engine_build_index(void *rel, int m, int ef_construction) {
 
     if (db->num_vectors == 0) {
         LOG_WARN("向量数量为 0，跳过索引构建（空集合合法）");
+        if (db) db->active_index_type = VECTOR_INDEX_NONE;
         return 0;
     }
 
@@ -863,6 +866,7 @@ int vector_engine_build_index(void *rel, int m, int ef_construction) {
     }
 
     db->index_built = true;
+    db->active_index_type = VECTOR_INDEX_HNSW;
     LOG_INFO("HNSW 索引构建完成，插入向量数: %d", inserted);
 
     return 0;
@@ -1723,6 +1727,7 @@ int vector_engine_enable_ivf_pq(void *rel, int nlist, int nprobe) {
     }
 
     db->use_ivf_pq = true;
+    db->active_index_type = VECTOR_INDEX_IVF_PQ;
     db->ivf_pq_nlist = nlist;
     db->ivf_pq_nprobe = (nprobe > 0) ? nprobe : (nlist / 10);
     if (db->ivf_pq_nprobe < 1) db->ivf_pq_nprobe = 1;
