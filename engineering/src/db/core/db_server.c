@@ -1,9 +1,13 @@
 /**
  * @file db_server.c
- * @brief 数据库服务器实现 - 简化版 PostgreSQL wire 协议
+ * @brief 数据库服务器实现 - 委托给 pgwire.c（Task 3.7）
+ *
+ * 保留 db_server.h 的外部 API 不变（server_start, server_stop 等），
+ * 内部实现委托给 pgwire.c 库。
  */
 
 #include "db/db_server.h"
+#include "db/sql/pgwire.h"
 #include "db/log.h"
 #include "db/errors.h"
 #include "db/guc.h"
@@ -31,317 +35,146 @@ typedef int socklen_t;
  * 静态变量
  * ============================================================ */
 
-static int g_server_socket = -1;
+/** pgwire 服务器实例 */
+static PgwireServer *g_pgwire_server = NULL;
+
+/** 监听线程（Windows 用 HANDLE，POSIX 用 pthread_t） */
+#ifdef _WIN32
+static HANDLE g_listen_thread = NULL;
+#else
+static pthread_t g_listen_thread;
+#endif
+
 static bool g_running = false;
-static const char *g_data_dir = NULL;
 
 /* ============================================================
- * Socket 初始化
- * ============================================================ */
-
-#ifdef _WIN32
-static int socket_init(void) {
-    WSADATA wsa_data;
-    return WSAStartup(MAKEWORD(2, 2), &wsa_data);
-}
-#else
-static int socket_init(void) { return 0; }
-#endif
-
-/* ============================================================
- * PostgreSQL Wire 协议处理（简化版）
+ * SQL 执行回调
  * ============================================================ */
 
 /**
- * @brief 发送 ReadyForQuery 消息
+ * @brief pgwire 的 SQL 执行回调
+ *
+ * 将 pgwire 收到的 SQL 查询转发到实际的 SQL 执行器。
+ * 当前为简化实现：返回空结果集。
  */
-static void send_ready(int fd) {
-    char msg[] = {'I', 0, 0, 0, 5};  /* ReadyForQuery + 'I' */
-    send(fd, msg, 5, 0);
-}
-
-/**
- * @brief 发送简单查询响应
- */
-static void send_simple_query_response(int fd, const char *result) {
-    /* RowDescription */
-    char rowdesc[24] = {
-        'T', 0, 0, 0, 20,  /* type + length */
-        0, 1,               /* num fields */
-        0, 0, 0, 0,         /* field name */
-        0, 0, 0, 0,         /* table OID */
-        0, 0,               /* column ID */
-        0, 0, 0, 0xFF,      /* data type OID (text) */
-        0, 0, 0, 0x10,      /* data size */
-        0, 0                 /* format (text) */
-    };
-    send(fd, rowdesc, 21, 0);
-
-    /* DataRow */
-    char datarow[11] = {
-        'D', 0, 0, 0, 11,   /* type + length */
-        0, 1,               /* num columns */
-        0, 0, 0, 0, 0,     /* column length = 0 (NULL) */
-        0, 0, 0, 0, 5       /* "hello" */
-    };
-    send(fd, datarow, 14, 0);
-
-    send_ready(fd);
-}
-
-/**
- * @brief 发送错误响应
- */
-static void send_error_response(int fd, const char *error) {
-    char msg[256];
-    size_t error_len = strlen(error);
-    size_t total_len = error_len + 8;
-
-    if (total_len > sizeof(msg)) {
-        total_len = sizeof(msg);
-        error_len = total_len - 8 - 1;  /* 留 1 字节终止符 */
-    }
-
-    msg[0] = 'E';  /* ErrorResponse */
-    msg[1] = 0;
-    msg[2] = 0;
-    msg[3] = (char)(total_len & 0xFF);
-    msg[4] = 'S';  /* severity */
-    msg[5] = 0;
-    msg[6] = 'C';
-    msg[7] = '0';
-    msg[8] = '0';
-    msg[9] = '0';
-    msg[10] = 'M';  /* message */
-    int i = 11;
-    strncpy(&msg[i], error, error_len);
-    i += (int)error_len;
-    msg[i++] = 0;  /* end of message */
-    msg[i++] = 0;  /* end of messages */
-
-    send(fd, msg, i, 0);
-    send_ready(fd);
-}
-
-/**
- * @brief 处理 StartupMessage
- */
-static int handle_startup(int fd, const char *buf, int len) {
-    /* 跳过长度和协议版本 */
-    const char *p = buf + 8;
-
-    char database[64] = {0};
-    char user[64] = {0};
-
-    while (p < buf + len && *p != 0) {
-        char *key = (char *)p;
-        p += strlen(key) + 1;
-        if (p >= buf + len) break;
-
-        char *value = (char *)p;
-        p += strlen(value) + 1;
-
-        if (strcmp(key, "database") == 0) {
-            strncpy(database, value, sizeof(database) - 1);
-        } else if (strcmp(key, "user") == 0) {
-            strncpy(user, value, sizeof(user) - 1);
-        }
-    }
-
-    LOG_INFO("连接: user=%s database=%s", user, database);
-
-    /* 发送 AuthenticationOk */
-    char auth_ok[9] = {
-        'R', 0, 0, 0, 8,  /* type + length */
-        0, 0, 0, 0         /* AuthenticationOk */
-    };
-    send(fd, auth_ok, 8, 0);
-
-    send_ready(fd);
-    return 0;
-}
-
-/**
- * @brief 处理查询
- */
-static int handle_query(int fd, const char *sql, int len) {
-    char *query = malloc(len + 1);
-    memcpy(query, sql, len);
-    query[len] = 0;
-
+static int exec_sql_callback(PgwireSession *session, const char *query,
+                             void **result)
+{
+    (void)session;
+    (void)result;
     LOG_INFO("执行 SQL: %s", query);
-
-    /* 这里可以调用实际的 SQL 执行器 */
-    /* 目前返回空结果集 */
-    send_ready(fd);
-
-    free(query);
     return 0;
 }
 
-/**
- * @brief 处理单个连接
- */
-void server_handle_connection(int fd) {
-    char buf[BUFFER_SIZE];
-    int buf_len = 0;
+/* ============================================================
+ * 认证回调
+ * ============================================================ */
 
-    LOG_INFO("处理连接 (fd=%d)", fd);
-
-    while (g_running) {
-        int n = recv(fd, buf + buf_len, BUFFER_SIZE - buf_len - 1, 0);
-        if (n <= 0) {
-            break;
-        }
-        buf_len += n;
-        buf[buf_len] = 0;
-
-        /* 处理接收到的消息 */
-        char *p = buf;
-        while (p < buf + buf_len) {
-            char type = p[0];
-
-            if (type == 'Q') {  /* Query */
-                int len = *(int *)(p + 1);
-                handle_query(fd, p + 5, len - 5);
-                p += 4 + len;
-            } else if (type == 'X') {  /* Terminate */
-                LOG_INFO("客户端断开连接");
-                close(fd);
-                return;
-            } else if (p[0] == 0 && p[1] == 0) {  /* StartupMessage */
-                int len = *(int *)(p + 1);
-                handle_startup(fd, p, len);
-                p += 4 + len;
-            } else {
-                /* 未知消息类型，忽略 */
-                break;
-            }
-        }
-
-        /* 移动缓冲区剩余数据 */
-        if (p < buf + buf_len) {
-            memmove(buf, p, buf + buf_len - p);
-            buf_len = buf + buf_len - p;
-        } else {
-            buf_len = 0;
-        }
-    }
-
-    close(fd);
+static int auth_callback(PgwireConn *conn, const char *user,
+                         const char *password)
+{
+    (void)conn;
+    (void)password;
+    LOG_INFO("认证: user=%s", user);
+    return 0;  /* 信任所有连接 */
 }
 
 /* ============================================================
- * 服务器主循环
+ * 参数回调
  * ============================================================ */
 
-static void *accept_thread(void *arg) {
-    (void)arg;
-    struct sockaddr_in client_addr;
-    socklen_t addr_len = sizeof(client_addr);
-
-    LOG_INFO("服务器监听线程启动");
-
-    while (g_running) {
-        int client_fd = accept(g_server_socket, (struct sockaddr *)&client_addr, &addr_len);
-        if (client_fd < 0) {
-            if (g_running) {
-                LOG_ERROR("accept 失败: %d", client_fd);
-            }
-            break;
-        }
-
-        LOG_INFO("收到连接: %s:%d",
-                 inet_ntoa(client_addr.sin_addr),
-                 ntohs(client_addr.sin_port));
-
-        /* 在新线程中处理连接 */
-#ifdef _WIN32
-        HANDLE thread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)server_handle_connection,
-                                     (LPVOID)client_fd, 0, NULL);
-        if (thread) CloseHandle(thread);
-#else
-        pthread_t thread;
-        pthread_create(&thread, NULL, server_handle_connection, (void *)(long)client_fd);
-        pthread_detach(thread);
-#endif
-    }
-
-    return NULL;
+static const char *param_callback(PgwireSession *session, const char *name)
+{
+    (void)session;
+    if (strcmp(name, "server_version") == 0) return "16.0 (self-made)";
+    if (strcmp(name, "server_encoding") == 0) return "UTF8";
+    if (strcmp(name, "client_encoding") == 0) return "UTF8";
+    if (strcmp(name, "DateStyle") == 0) return "ISO";
+    return "";
 }
 
 /* ============================================================
  * 公共 API
  * ============================================================ */
 
-int server_start(int port, const char *data_dir) {
-    struct sockaddr_in addr;
+int server_start(int port, const char *data_dir)
+{
+    if (g_running) {
+        LOG_WARN("服务器已在运行");
+        return 0;
+    }
 
-    if (socket_init() != 0) {
-        LOG_ERROR("Socket 初始化失败");
+    /* 创建 pgwire 服务器配置 */
+    PgwireServerConfig config;
+    memset(&config, 0, sizeof(config));
+    config.port = port;
+    config.max_connections = MAX_CONNECTIONS;
+
+    /* 创建 pgwire 服务器 */
+    g_pgwire_server = pgwire_server_create(&config);
+    if (!g_pgwire_server) {
+        LOG_ERROR("创建 pgwire 服务器失败");
         return -1;
     }
 
-    g_server_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (g_server_socket < 0) {
-        LOG_ERROR("创建 socket 失败");
-        return -1;
-    }
+    /* 设置回调 */
+    pgwire_server_set_auth_callback(g_pgwire_server, auth_callback);
+    pgwire_server_set_exec_callback(g_pgwire_server, exec_sql_callback);
+    pgwire_server_set_param_callback(g_pgwire_server, param_callback);
 
-    int opt = 1;
-    setsockopt(g_server_socket, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
-
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY;
-    addr.sin_port = htons((uint16_t)port);
-
-    if (bind(g_server_socket, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        LOG_ERROR("绑定端口 %d 失败", port);
-        close(g_server_socket);
-        return -1;
-    }
-
-    if (listen(g_server_socket, 10) < 0) {
-        LOG_ERROR("监听失败");
-        close(g_server_socket);
+    /* 启动 pgwire 服务器 */
+    if (pgwire_server_start(g_pgwire_server) != 0) {
+        LOG_ERROR("pgwire 服务器启动失败（port=%d）", port);
+        pgwire_server_destroy(g_pgwire_server);
+        g_pgwire_server = NULL;
         return -1;
     }
 
     g_running = true;
-    g_data_dir = data_dir;
 
     LOG_INFO("服务器启动: port=%d data_dir=%s", port, data_dir ? data_dir : "(null)");
-
-#ifdef _WIN32
-    HANDLE thread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)accept_thread, NULL, 0, NULL);
-    if (thread) CloseHandle(thread);
-#else
-    pthread_t thread;
-    pthread_create(&thread, NULL, accept_thread, NULL);
-    pthread_detach(thread);
-#endif
 
     return 0;
 }
 
-void server_stop(void) {
+void server_stop(void)
+{
     LOG_INFO("服务器停止...");
     g_running = false;
 
-    if (g_server_socket >= 0) {
-        close(g_server_socket);
-        g_server_socket = -1;
+    if (g_pgwire_server) {
+        pgwire_server_stop(g_pgwire_server);
+        pgwire_server_destroy(g_pgwire_server);
+        g_pgwire_server = NULL;
     }
-
-#ifdef _WIN32
-    WSACleanup();
-#endif
-
-    LOG_INFO("服务器已停止");
 }
 
-int server_execute_sql(const char *sql, char *output, size_t output_len) {
+void server_run(void)
+{
+    if (!g_pgwire_server || !g_running) return;
+
+    LOG_INFO("服务器主循环启动");
+
+    while (g_running) {
+        /* 接受新连接 */
+        PgwireConn *conn = pgwire_server_accept(g_pgwire_server);
+        if (!conn) continue;
+
+        LOG_INFO("收到新连接 (fd=%d)", conn->fd);
+
+        /* 创建会话并处理 */
+        PgwireSession *session = pgwire_session_create(conn);
+        if (session) {
+            pgwire_conn_process(conn);
+            pgwire_session_destroy(session);
+        }
+
+        pgwire_conn_destroy(conn);
+    }
+}
+
+int server_execute_sql(const char *sql, char *output, size_t output_len)
+{
     (void)sql;
     (void)output;
     (void)output_len;
@@ -395,16 +228,8 @@ int main(int argc, char *argv[]) {
 
     printf("数据库服务器已启动，按 Ctrl+C 停止...\n");
 
-    /* 等待信号 */
-#ifdef _WIN32
-    while (g_running) {
-        Sleep(1000);
-    }
-#else
-    while (g_running) {
-        sleep(1);
-    }
-#endif
+    /* 主循环 */
+    server_run();
 
     server_stop();
     guc_shutdown();
