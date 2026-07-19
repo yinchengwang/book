@@ -82,3 +82,6 @@
 [submodule "reference/open-source/dragonfly"]
 	path = reference/open-source/dragonfly
 	url = https://github.com/dragonflydb/dragonfly.git
+[submodule "reference/open-source/timescaledb"]
+	path = reference/open-source/timescaledb
+	url = https://github.com/timescale/timescaledb.git
