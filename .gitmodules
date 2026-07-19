@@ -136,3 +136,6 @@
 [submodule "reference/open-source/streaming/redpanda"]
 	path = reference/open-source/streaming/redpanda
 	url = https://github.com/redpanda-data/redpanda.git
+[submodule "reference/open-source/embedded/badger"]
+	path = reference/open-source/embedded/badger
+	url = https://github.com/dgraph-io/badger.git
