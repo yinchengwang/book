@@ -73,3 +73,6 @@
 [submodule "reference/open-source/appwrite"]
 	path = reference/open-source/appwrite
 	url = https://github.com/appwrite/appwrite.git
+[submodule "reference/open-source/tidb"]
+	path = reference/open-source/tidb
+	url = https://github.com/pingcap/tidb.git
