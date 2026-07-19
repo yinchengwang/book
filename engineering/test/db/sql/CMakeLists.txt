@@ -12,6 +12,11 @@ add_executable(test_sql_planner test_planner.cpp)
 target_include_directories(test_sql_planner PRIVATE ${GTEST_INCLUDE_DIRS})
 target_link_libraries(test_sql_planner sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
 
+# SQL 计划器 SELECT 解析测试
+add_executable(test_planner_select test_planner_select.cpp)
+target_include_directories(test_planner_select PRIVATE ${GTEST_INCLUDE_DIRS})
+target_link_libraries(test_planner_select sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
+
 # SQL 执行器测试
 add_executable(test_sql_executor test_executor.cpp)
 target_include_directories(test_sql_executor PRIVATE ${GTEST_INCLUDE_DIRS})
@@ -116,10 +121,15 @@ add_executable(test_sql_storage_integration test_sql_storage_integration.cpp)
 target_include_directories(test_sql_storage_integration PRIVATE ${GTEST_INCLUDE_DIRS})
 target_link_libraries(test_sql_storage_integration sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
 
-# 存储引擎集成测试（Task 5.1）
+# SQL 存储引擎集成测试（Task 5.1）
 add_executable(test_storage_integration test_storage_integration.cpp)
 target_include_directories(test_storage_integration PRIVATE ${GTEST_INCLUDE_DIRS})
 target_link_libraries(test_storage_integration sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
+
+# 端到端基本流程测试（Task 1.9）
+add_executable(test_e2e_basic test_e2e_basic.cpp)
+target_include_directories(test_e2e_basic PRIVATE ${GTEST_INCLUDE_DIRS})
+target_link_libraries(test_e2e_basic sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
 
 # JIT 性能对比测试（Task 5.6）
 add_executable(test_jit_perf test_jit_perf.cpp)
@@ -153,5 +163,6 @@ add_custom_target(test_sql
     COMMAND test_sql_storage_integration
     COMMAND test_storage_integration
     COMMAND test_jit_perf
-    DEPENDS test_sql_parser test_sql_planner test_sql_executor test_indexscan test_seqscan test_nestloop test_hashagg test_hashjoin test_parallel test_tuple_queue test_worker_pool test_trigger test_trigger_functions test_partition test_sort test_limit test_modifytable test_ddl test_sql_storage_integration test_storage_integration test_jit_perf
+    COMMAND test_e2e_basic
+    DEPENDS test_sql_parser test_sql_planner test_sql_executor test_indexscan test_seqscan test_nestloop test_hashagg test_hashjoin test_parallel test_tuple_queue test_worker_pool test_trigger test_trigger_functions test_partition test_sort test_limit test_modifytable test_ddl test_sql_storage_integration test_storage_integration test_jit_perf test_e2e_basic
 )
