@@ -91,3 +91,6 @@
 [submodule "reference/open-source/relational/duckdb"]
 	path = reference/open-source/relational/duckdb
 	url = https://github.com/duckdb/duckdb.git
+[submodule "reference/open-source/relational/oceanbase"]
+	path = reference/open-source/relational/oceanbase
+	url = https://github.com/oceanbase/oceanbase.git
