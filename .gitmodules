@@ -151,3 +151,6 @@
 [submodule "reference/open-source/analytical/druid"]
 	path = reference/open-source/analytical/druid
 	url = https://github.com/apache/druid.git
+[submodule "reference/open-source/time_series/questdb"]
+	path = reference/open-source/time_series/questdb
+	url = https://github.com/questdb/questdb.git
