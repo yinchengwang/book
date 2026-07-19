@@ -32,3 +32,7 @@ target_link_libraries(guc PRIVATE db_core)
 # === A3: 故障注入测试 ===
 add_executable(test_fault_inject fault_inject_test.cpp)
 target_link_libraries(test_fault_inject db_core project_includes gtest gtest_main)
+
+# === 备份恢复测试 ===
+add_executable(test_backup backup_test.cpp)
+target_link_libraries(test_backup db_core db_storage project_includes gtest gtest_main)
