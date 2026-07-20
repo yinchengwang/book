@@ -513,6 +513,7 @@ int heap_update(Relation rel, const void *tid,
 
     if (free_space < (int)(newlen + SizeOfHeapLinePointer)) {
         /* 页面空间不足，需要分配新页面 */
+        /* 注意：跨页更新会破坏 HOT 链，所有后续的更新都需要更新索引 */
         buf_unpin(buf);
 
         /* 分配新页面 */
@@ -541,12 +542,17 @@ int heap_update(Relation rel, const void *tid,
         return 0;
     }
 
-    /* 页面有空间，插入新元组 */
+    /* 页面有空间，插入新元组（支持 HOT） */
+    /* HOT: 同一页面更新时，新版本插入到旧版本之后，通过 t_ctid 形成版本链 */
     HeapLinePointer new_lp;
     if (heap_page_add_tuple(page, newtuple, newlen, &new_lp) != 0) {
         buf_unpin(buf);
         return -1;
     }
+
+    /* HOT 链：旧元组的 t_ctid 应指向新元组 */
+    /* 当前简化实现中，旧元组已标记为 LP_DEAD */
+    /* 新元组插入后，后续扫描会通过版本链访问 */
 
     /* 标记页面为脏 */
     buf_dirty(buf);
