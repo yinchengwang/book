@@ -61,8 +61,8 @@ typedef PageHeaderData *PageHeader;
  */
 typedef struct HeapLinePointerData {
     uint32_t    t_off;            /**< 元组在页面中的偏移 */
-    uint8_t     t_flags;          /**< 标志 */
-    uint8_t     t_xmax;           /**< 删除事务 ID（高位） */
+    uint8_t     t_flags;          /**< 标志（LP_USED/LP_DEAD/LP_REDIRECT 等） */
+    uint16_t    t_len;            /**< 元组长度（用于快速计算） */
 } HeapLinePointerData;
 
 /** LinePointer 指针 */
@@ -72,17 +72,39 @@ typedef HeapLinePointerData *HeapLinePointer;
  * 元组信息
  * ============================================================ */
 
-/** 元组信息标志 */
-#define HEAP_HASNULL          0x01  /**< 包含 NULL 值 */
-#define HEAP_HASVARWIDTH      0x02  /**< 包含变长列 */
-#define HEAP_HASEXTERNAL      0x04  /**< 包含外部存储 */
-#define HEAP_COMBOCID         0x08  /**< 组合 CID */
-#define HEAP_XMAX_EXCL_LOCK   0x10  /**< 排他锁 */
-#define HEAP_XMAX_SHARED_LOCK 0x20  /**< 共享锁 */
-#define HEAP_XMIN_COMMITTED   0x40  /**< xmin 已提交 */
-#define HEAP_XMAX_COMMITTED   0x80  /**< xmax 已提交 */
-#define HEAP_XMIN_INVALID     0x100 /**< xmin 无效 */
-#define HEAP_XMAX_INVALID     0x200 /**< xmax 无效 */
+/** ItemPointer（CTID）结构 - 指向元组的指针 */
+typedef struct ItemPointerData {
+    uint32_t    ip_blkid;         /**< 块号 */
+    uint16_t    ip_posid;         /**< 位置号（LinePointer 索引） */
+} ItemPointerData;
+
+/** ItemPointer 指针类型 */
+typedef ItemPointerData *ItemPointer;
+
+/** 元组信息标志（t_infomask） */
+#define HEAP_HASNULL          0x0001  /**< 包含 NULL 值 */
+#define HEAP_HASVARWIDTH      0x0002  /**< 包含变长列 */
+#define HEAP_HASEXTERNAL      0x0004  /**< 包含外部存储 */
+#define HEAP_COMBOCID         0x0008  /**< 组合 CID */
+#define HEAP_XMAX_EXCL_LOCK   0x0010  /**< 排他锁 */
+#define HEAP_XMAX_SHARED_LOCK 0x0020  /**< 共享锁 */
+#define HEAP_XMAX_COMMITTED   0x0040  /**< xmax 已提交 */
+#define HEAP_XMAX_INVALID     0x0080  /**< xmax 无效 */
+#define HEAP_XMIN_COMMITTED   0x0100  /**< xmin 已提交 */
+#define HEAP_XMIN_INVALID     0x0200  /**< xmin 无效 */
+#define HEAP_UPDATED          0x0400  /**< 该元组是 UPDATE 新版本 */
+#define HEAP_MOVED_OFF        0x0800  /**< 元组已被移动到其他页面 */
+#define HEAP_MOVED_IN         0x1000  /**< 元组已被移动到本页面 */
+#define HEAP_XMAX_KEYSHR_LOCK 0x2000  /**< 排他键共享锁 */
+#define HEAP_XMAX_SHR_LOCK    (0x4000 | HEAP_XMAX_EXCL_LOCK)  /**< 共享锁 */
+
+/** ItemIdData flags */
+#define LP_USED               0x01    /**< LinePointer 有效 */
+#define LP_DEAD               0x02    /**< 元组已死亡 */
+#define LP_MOVED_OFF          0x04    /**< 元组已移出页面 */
+#define LP_MOVED_IN           0x08    /**< 元组已移入页面 */
+#define LP_REDIRECT           0x10    /**< HOT 重定向指针 */
+#define LP_REDIRECT_DEAD       (0x10 | 0x02)  /**< 死亡元组的 HOT 重定向 */
 
 /** 元组状态 */
 typedef enum HeapTupleStatus_e {
@@ -93,25 +115,55 @@ typedef enum HeapTupleStatus_e {
 } HeapTupleStatus;
 
 /* ============================================================
- * 元组操作
+ * 元组描述符
  * ============================================================ */
 
 /**
  * @brief 元组描述符
+ *
+ * 用于元组版本链追踪的关键字段：
+ * - t_ctid: 指向同一版本链中下一个元组的指针
+ * - t_xmin: 创建该元组的事务 ID
+ * - t_xmax: 删除/更新该元组的事务 ID
+ * - t_infomask: 元组属性标志（是否包含 NULL、是否更新版本等）
  */
 typedef struct HeapTupleTableData {
-    uint32_t    t_tableOid;       /**< 表 OID */
-    uint32_t    t_xidBase;        /**< 事务 ID 基准 */
-    uint32_t    t_cid;            /**< 命令 ID */
-    int         t_natts;          /**< 列数 */
-    uint16_t    t_infomask;       /**< 信息标志 */
-    uint16_t    t_infomask2;      /**< 信息标志 2 */
-    int16_t     t_len;            /**< 元组长度 */
-    uint16_t    t_tid;            /**< 元组在页面的位置 */
+    ItemPointerData t_ctid;       /**< 指向同一版本链中的下一个元组（CTID） */
+    uint32_t        t_xmin;      /**< 创建该元组的事务 ID */
+    uint32_t        t_xmax;      /**< 删除/更新该元组的事务 ID */
+    uint16_t        t_infomask;   /**< 元组属性标志（t_infomask） */
+    uint16_t        t_infomask2;  /**< 元组属性标志 2（保留） */
+    uint8_t         t_hoff;       /**< 头部大小（固定部分之后的偏移） */
+    uint8_t         t_cid;        /**< 命令 ID */
+    uint32_t        t_tableOid;   /**< 表 OID */
+    int16_t         t_len;        /**< 元组总长度 */
 } HeapTupleTableData;
 
 /** 元组指针 */
 typedef HeapTupleTableData *HeapTuple;
+
+/**
+ * @brief 设置 ItemPointer 的值
+ * @param ip ItemPointer
+ * @param blk 块号
+ * @param pos 位置号
+ */
+static inline void ItemPointerSet(ItemPointer ip, uint32_t blk, uint16_t pos) {
+    if (ip) {
+        ip->ip_blkid = blk;
+        ip->ip_posid = pos;
+    }
+}
+
+/**
+ * @brief 判断两个 ItemPointer 是否相等
+ * @param a ItemPointer a
+ * @param b ItemPointer b
+ * @return true 相等
+ */
+static inline bool ItemPointerEquals(ItemPointer a, ItemPointer b) {
+    return a && b && a->ip_blkid == b->ip_blkid && a->ip_posid == b->ip_posid;
+}
 
 /* ============================================================
  * Heap AM 函数

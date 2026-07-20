@@ -148,6 +148,11 @@ add_executable(test_clog clog_test.cpp)
 target_link_libraries(test_clog db_storage project_includes gtest gtest_main)
 add_test(NAME test_clog COMMAND test_clog WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+# Heap 元组头改造测试（Task W2.1）
+add_executable(test_heap_tuple heap_tuple_test.cpp)
+target_link_libraries(test_heap_tuple db_storage project_includes gtest gtest_main)
+add_test(NAME test_heap_tuple COMMAND test_heap_tuple)
+
 # 所有 Storage 测试汇总
 add_custom_target(test_storage_all
     COMMAND test_btree

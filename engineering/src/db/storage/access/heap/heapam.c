@@ -222,11 +222,11 @@ int heap_page_add_tuple(void *page, const void *tuple, size_t len,
     uint16_t off = ph->pd_upper - len;
     ph->pd_upper = off;
 
-    /* 设置 LinePointer（在 pd_lower 处向后） */
+    /* 设置 LinePointer */
     HeapLinePointer lp_ptr = (HeapLinePointer)((char *)page + ph->pd_lower);
-    lp_ptr->t_off = off;      /* 元组偏移量 */
-    lp_ptr->t_flags = 0;       /* 标志位 */
-    lp_ptr->t_xmax = 0;        /* 删除事务ID（初始为0） */
+    lp_ptr->t_off = off;       /* 元组偏移量 */
+    lp_ptr->t_flags = LP_USED;  /* 标记为有效 */
+    lp_ptr->t_len = (uint16_t)len;  /* 元组长度 */
 
     /* 复制元组数据 */
     memcpy((char *)page + off, tuple, len);
@@ -427,9 +427,8 @@ int heap_delete(Relation rel, const void *tid, uint32_t cid,
         return -1;
     }
 
-    /* 设置 t_xmax 标记删除（简化：使用 1 表示已删除） */
-    lp->t_xmax = 1;
-    lp->t_flags |= HEAP_XMAX_INVALID;  /* 标记为无效/已删除 */
+    /* 设置 t_flags 标记删除 */
+    lp->t_flags |= LP_DEAD;  /* 标记为死亡元组 */
 
     /* 标记页面为脏 */
     buf_dirty(buf);
@@ -555,9 +554,9 @@ void *heap_getnext(TableScanDesc scan, ScanDirection direction) {
         HeapLinePointer lp = (HeapLinePointer)(page + lp_offset);
 
         /* 检查元组是否有效 */
-        if (lp->t_off > 0 && lp->t_off < HEAP_PAGE_SIZE) {
-            /* 检查元组是否被删除（t_xmax 非0且标记为无效） */
-            bool is_deleted = (lp->t_xmax != 0) && (lp->t_flags & HEAP_XMAX_INVALID);
+        if ((lp->t_flags & LP_USED) && lp->t_off > 0 && lp->t_off < HEAP_PAGE_SIZE) {
+            /* 检查元组是否被删除（LP_DEAD 标志） */
+            bool is_deleted = (lp->t_flags & LP_DEAD) != 0;
 
             if (!is_deleted) {
                 /* 获取元组数据 */
