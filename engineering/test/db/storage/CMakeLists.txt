@@ -158,6 +158,11 @@ add_executable(test_heap_update heap_update_test.cpp)
 target_link_libraries(test_heap_update db_storage project_includes gtest gtest_main pthread)
 add_test(NAME test_heap_update COMMAND test_heap_update)
 
+# Heap 删除标记测试（Task W2.3）
+add_executable(test_heap_delete heap_delete_test.cpp)
+target_link_libraries(test_heap_delete db_storage project_includes gtest gtest_main)
+add_test(NAME test_heap_delete COMMAND test_heap_delete)
+
 # 所有 Storage 测试汇总
 add_custom_target(test_storage_all
     COMMAND test_btree
