@@ -157,16 +157,16 @@ static void parse_url(const char *url, char *path, size_t path_size,
     }
 }
 
-static const char *get_query_param(const char *query, const char *name) {
-    if (!query || !query[0]) return NULL;
-    static char buf[256];
+/* 将查询参数值拷贝到调用者提供的缓冲区，返回 NULL 表示参数不存在 */
+static const char *get_query_param(const char *query, const char *name, char *buf, size_t buf_size) {
+    if (!query || !query[0] || !buf || buf_size == 0) return NULL;
     const char *p = query;
     size_t nlen = strlen(name);
     while (*p) {
         if (strncmp(p, name, nlen) == 0 && p[nlen] == '=') {
             p += nlen + 1;
             size_t i = 0;
-            while (*p && *p != '&' && i < sizeof(buf) - 1) {
+            while (*p && *p != '&' && i < buf_size - 1) {
                 buf[i++] = *p++;
             }
             buf[i] = '\0';
@@ -185,33 +185,44 @@ static void handle_list(SOCKET client, const char *query_str) {
     todo_query_t query;
     memset(&query, 0, sizeof(query));
 
-    query.status = get_query_param(query_str, "status");
-    query.labels = get_query_param(query_str, "labels");
-    query.search = get_query_param(query_str, "search");
+    /* 每个参数独立缓冲区，避免共享 static buffer 导致指针悬空 */
+    char buf_status[256], buf_labels[256], buf_search[256];
+    char buf_priority[64], buf_group_id[64], buf_due_before[64], buf_due_after[64];
+    char buf_sort[64], buf_sort_desc[16], buf_page[16], buf_per_page[16];
 
-    const char *p_str = get_query_param(query_str, "priority");
+    query.status = get_query_param(query_str, "status", buf_status, sizeof(buf_status));
+    query.labels = get_query_param(query_str, "labels", buf_labels, sizeof(buf_labels));
+    query.search = get_query_param(query_str, "search", buf_search, sizeof(buf_search));
+
+    const char *p_str = get_query_param(query_str, "priority", buf_priority, sizeof(buf_priority));
     query.priority = p_str ? atoi(p_str) : -1;
 
-    const char *gid_str = get_query_param(query_str, "group_id");
+    const char *gid_str = get_query_param(query_str, "group_id", buf_group_id, sizeof(buf_group_id));
     query.group_id = gid_str ? atoll(gid_str) : -1;
 
-    const char *due_before_str = get_query_param(query_str, "due_before");
+    const char *due_before_str = get_query_param(query_str, "due_before", buf_due_before, sizeof(buf_due_before));
     query.due_before = due_before_str ? atoll(due_before_str) : 0;
 
-    const char *due_after_str = get_query_param(query_str, "due_after");
+    const char *due_after_str = get_query_param(query_str, "due_after", buf_due_after, sizeof(buf_due_after));
     query.due_after = due_after_str ? atoll(due_after_str) : 0;
 
-    query.sort = get_query_param(query_str, "sort");
-    const char *sort_desc_str = get_query_param(query_str, "sort_desc");
+    query.sort = get_query_param(query_str, "sort", buf_sort, sizeof(buf_sort));
+    const char *sort_desc_str = get_query_param(query_str, "sort_desc", buf_sort_desc, sizeof(buf_sort_desc));
     query.sort_desc = sort_desc_str ? atoi(sort_desc_str) : 0;
 
-    const char *page_str = get_query_param(query_str, "page");
-    const char *per_page_str = get_query_param(query_str, "per_page");
+    const char *page_str = get_query_param(query_str, "page", buf_page, sizeof(buf_page));
+    const char *per_page_str = get_query_param(query_str, "per_page", buf_per_page, sizeof(buf_per_page));
     query.page = page_str ? atoi(page_str) : 1;
     query.per_page = per_page_str ? atoi(per_page_str) : 20;
     if (query.page < 1) query.page = 1;
     if (query.per_page < 1) query.per_page = 20;
-    if (query.per_page > 100) query.per_page = 100;
+    if (query.per_page > 500) query.per_page = 500;
+
+    /* DEBUG: fprintf(stderr, "  [DEBUG] page=%d per_page=%d status=%s total=%d\n",
+        query.page, query.per_page,
+        query.status ? query.status : "(null)",
+        g_todo_count);
+    fflush(stderr); */
 
     todo_list_t result;
     memset(&result, 0, sizeof(result));
@@ -886,8 +897,9 @@ static void handle_plan_expand(SOCKET client, int64_t plan_id, const char *body)
  * 日历 API
  * ============================================================ */
 static void handle_calendar_day(SOCKET client, const char *query_str) {
-    const char *date_str = get_query_param(query_str, "date");
-    const char *ts_str = get_query_param(query_str, "task_system_id");
+    char buf_date[64], buf_ts[64];
+    const char *date_str = get_query_param(query_str, "date", buf_date, sizeof(buf_date));
+    const char *ts_str = get_query_param(query_str, "task_system_id", buf_ts, sizeof(buf_ts));
     int64_t date = date_str ? atoll(date_str) : time(NULL);
     int64_t ts_id = ts_str ? atoll(ts_str) : -1;
 
@@ -909,8 +921,9 @@ static void handle_calendar_day(SOCKET client, const char *query_str) {
 }
 
 static void handle_calendar_week(SOCKET client, const char *query_str) {
-    const char *date_str = get_query_param(query_str, "date");
-    const char *ts_str = get_query_param(query_str, "task_system_id");
+    char buf_date[64], buf_ts[64];
+    const char *date_str = get_query_param(query_str, "date", buf_date, sizeof(buf_date));
+    const char *ts_str = get_query_param(query_str, "task_system_id", buf_ts, sizeof(buf_ts));
     int64_t date = date_str ? atoll(date_str) : time(NULL);
     int64_t ts_id = ts_str ? atoll(ts_str) : -1;
 
@@ -930,8 +943,9 @@ static void handle_calendar_week(SOCKET client, const char *query_str) {
 }
 
 static void handle_calendar_month(SOCKET client, const char *query_str) {
-    const char *date_str = get_query_param(query_str, "date");
-    const char *ts_str = get_query_param(query_str, "task_system_id");
+    char buf_date[64], buf_ts[64];
+    const char *date_str = get_query_param(query_str, "date", buf_date, sizeof(buf_date));
+    const char *ts_str = get_query_param(query_str, "task_system_id", buf_ts, sizeof(buf_ts));
     int64_t date = date_str ? atoll(date_str) : time(NULL);
     int64_t ts_id = ts_str ? atoll(ts_str) : -1;
 
@@ -1225,6 +1239,9 @@ static void handle_request(SOCKET client, const char *request) {
     /* 解析 URL */
     parse_url(url, path, sizeof(path), query, sizeof(query));
 
+    fprintf(stderr, "[REQ] %s %s\n", method, path);
+    fflush(stderr);
+
     int64_t id_a = 0, id_b = 0;
     int handled = 0;
 
@@ -1463,10 +1480,9 @@ static void handle_request(SOCKET client, const char *request) {
 
     /* 静态文件或 404 */
     if (!handled) {
-        /* 只对疑似静态文件路径尝试提供静态文件，API 路径直接 404 */
-        if (strstr(path, ".") != NULL && serve_static_file(client, path) == 0) {
-            /* 静态文件提供成功 */
-        } else {
+        if (serve_static_file(client, path) != 0) {
+            fprintf(stderr, "[404] path=%s\n", path);
+            fflush(stderr);
             send_error(client, 404, "not found");
         }
     }
