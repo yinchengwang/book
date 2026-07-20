@@ -84,11 +84,13 @@ add_subdirectory(utils)
 # 其他模块
 # ========================================================================
 
-# 事务管理器（MVCC 事务管理）
-add_subdirectory(txn)
+# 事务管理器（MVCC 事务管理）— 已废弃，合并到 storage/txn/
+# 旧版 txn/ 与 storage/txn/ 功能重复，保留 storage/txn/
+# add_subdirectory(txn)
 
-# 并发控制（MVCC 多版本并发控制）
-add_subdirectory(concurrency)
+# 并发控制（MVCC 多版本并发控制）— 已废弃，合并到 storage/txn/
+# 旧版 concurrency/ 与 storage/txn/mvcc.c 功能重复，保留 storage/txn/mvcc.c
+# add_subdirectory(concurrency)
 
 # 主从复制（流复制、故障切换）
 add_subdirectory(replication)

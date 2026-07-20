@@ -1,9 +1,12 @@
 /*
- * mvcc.h - MVCC 多版本并发控制公共接口
+ * mvcc.h - MVCC 多版本并发控制公共接口（旧版，保留接口定义）
+ *
+ * 注意：此头文件已废弃，功能合并到 db/storage/txn/mvcc.h
+ * 新代码应使用 db/storage/txn/mvcc.h
  */
 
-#ifndef DB_MVCC_H
-#define DB_MVCC_H
+#ifndef DB_CONCURRENCY_MVCC_H
+#define DB_CONCURRENCY_MVCC_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -361,4 +364,4 @@ int mvcc_gc_cleanup_undo(mvcc_txn_id_t oldest_active_xmin);
 }
 #endif
 
-#endif /* DB_MVCC_H */
+#endif /* DB_CONCURRENCY_MVCC_H */
