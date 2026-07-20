@@ -188,6 +188,21 @@ add_executable(test_readahead readahead_test.cpp)
 target_link_libraries(test_readahead db_storage project_includes gtest gtest_main)
 add_test(NAME test_readahead COMMAND test_readahead)
 
+# ANALYZE/序列/planner 统计测试（W3.3-W3.5）
+add_executable(test_analyze_seq analyze_sequence_test.cpp)
+target_link_libraries(test_analyze_seq db_storage db_tools_vacuum project_includes gtest gtest_main)
+add_test(NAME test_analyze_seq COMMAND test_analyze_seq)
+
+# 外键/CHECK 约束测试（W3.6-W3.7）
+add_executable(test_foreign_key foreign_key_check_test.cpp)
+target_link_libraries(test_foreign_key db_storage project_includes gtest gtest_main)
+add_test(NAME test_foreign_key COMMAND test_foreign_key)
+
+# Double Write 测试（W3.8）
+add_executable(test_double_write double_write_test.cpp)
+target_link_libraries(test_double_write db_storage project_includes gtest gtest_main)
+add_test(NAME test_double_write COMMAND test_double_write)
+
 # 所有 Storage 测试汇总
 add_custom_target(test_storage_all
     COMMAND test_btree
