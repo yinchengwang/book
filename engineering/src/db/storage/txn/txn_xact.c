@@ -11,6 +11,25 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <ctype.h>  /* for tolower */
+
+/* 确保 bool 类型可用 */
+#include <stdbool.h>
+
+/* ========================================================================
+ * 大小写不敏感字符串比较（跨平台）
+ * ======================================================================== */
+static int str_equal_ignore_case(const char *a, const char *b)
+{
+    while (*a && *b) {
+        if (tolower((unsigned char)*a) != tolower((unsigned char)*b)) {
+            return 0;
+        }
+        a++;
+        b++;
+    }
+    return *a == *b;
+}
 
 /* ========================================================================
  * 事务槽位管理
@@ -418,6 +437,52 @@ bool txn_is_snapshot_isolation(void)
     return ctx->in_transaction &&
            (ctx->isolation == ISOLATION_REPEATABLE_READ ||
             ctx->isolation == ISOLATION_SERIALIZABLE);
+}
+
+/* ========================================================================
+ * 隔离级别解析
+ * ======================================================================== */
+
+/**
+ * @brief 从字符串解析隔离级别
+ * @param level_str 隔离级别字符串
+ * @return 隔离级别，失败返回 -1
+ */
+isolation_level_t txn_parse_isolation_level(const char *level_str)
+{
+    if (!level_str) return (isolation_level_t)-1;
+
+    /* 支持的大小写不敏感匹配 */
+    if (str_equal_ignore_case(level_str, "read committed") == 0 ||
+        str_equal_ignore_case(level_str, "read-committed") == 0 ||
+        str_equal_ignore_case(level_str, "rc") == 0) {
+        return ISOLATION_READ_COMMITTED;
+    }
+    if (str_equal_ignore_case(level_str, "repeatable read") == 0 ||
+        str_equal_ignore_case(level_str, "repeatable-read") == 0 ||
+        str_equal_ignore_case(level_str, "rr") == 0) {
+        return ISOLATION_REPEATABLE_READ;
+    }
+    if (str_equal_ignore_case(level_str, "serializable") == 0 ||
+        str_equal_ignore_case(level_str, "ssi") == 0) {
+        return ISOLATION_SERIALIZABLE;
+    }
+    return (isolation_level_t)-1;
+}
+
+/**
+ * @brief 获取隔离级别的字符串表示
+ * @param level 隔离级别
+ * @return 字符串
+ */
+const char *txn_isolation_level_name(isolation_level_t level)
+{
+    switch (level) {
+        case ISOLATION_READ_COMMITTED:  return "read committed";
+        case ISOLATION_REPEATABLE_READ: return "repeatable read";
+        case ISOLATION_SERIALIZABLE:    return "serializable";
+        default:                        return "unknown";
+    }
 }
 
 /**

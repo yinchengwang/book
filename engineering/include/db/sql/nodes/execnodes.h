@@ -33,6 +33,104 @@
 #include "db/sql/memctx.h"
 #include "db/sql/sql_types.h"  /* 共享类型定义 */
 
+/* ========================================================================
+ * TupleTableSlot 值设置宏
+ * ======================================================================== */
+
+/**
+ * @brief 设置 TupleTableSlot 中的整数值
+ * @param slot 元组槽
+ * @param attno 属性号（从 0 开始）
+ * @param value 整数值
+ *
+ * 用法示例：
+ *   TTS_VALUES_SET_INT(slot, 0, 42);
+ *   TTS_VALUES_SET_INT(slot, 1, count);
+ */
+#define TTS_VALUES_SET_INT(slot, attno, value) \
+    do { \
+        (slot)->tts_values[(attno)] = (void *)(uintptr_t)(uint64_t)(value); \
+        (slot)->tts_isnull[(attno)] = false; \
+    } while (0)
+
+/**
+ * @brief 设置 TupleTableSlot 中的 64 位整数值
+ * @param slot 元组槽
+ * @param attno 属性号
+ * @param value int64_t 值
+ */
+#define TTS_VALUES_SET_INT64(slot, attno, value) \
+    do { \
+        (slot)->tts_values[(attno)] = (void *)(uintptr_t)(uint64_t)(value); \
+        (slot)->tts_isnull[(attno)] = false; \
+    } while (0)
+
+/**
+ * @brief 设置 TupleTableSlot 中的指针值
+ * @param slot 元组槽
+ * @param attno 属性号
+ * @param ptr 指针值
+ */
+#define TTS_VALUES_SET_PTR(slot, attno, ptr) \
+    do { \
+        (slot)->tts_values[(attno)] = (void *)(ptr); \
+        (slot)->tts_isnull[(attno)] = false; \
+    } while (0)
+
+/**
+ * @brief 设置 TupleTableSlot 中的 double 值（使用位拷贝）
+ * @param slot 元组槽
+ * @param attno 属性号
+ * @param value double 值
+ *
+ * 注意：使用位拷贝将 double 的 IEEE 754 表示存储为 uint64_t，
+ * 这是必须的，因为 Datum 是指针大小的整数类型
+ *
+ * 用法示例：
+ *   double dist = 1.5;
+ *   TTS_VALUES_SET_DOUBLE(slot, 1, dist);
+ */
+#define TTS_VALUES_SET_DOUBLE(slot, attno, value) \
+    do { \
+        union { double d; uint64_t u; } _u; \
+        _u.d = (value); \
+        (slot)->tts_values[(attno)] = (void *)(uintptr_t)_u.u; \
+        (slot)->tts_isnull[(attno)] = false; \
+    } while (0)
+
+/**
+ * @brief 从 TupleTableSlot 提取 double 值
+ * @param slot 元组槽
+ * @param attno 属性号
+ * @return double 值
+ */
+#define TTS_VALUES_GET_DOUBLE(slot, attno) \
+    ({ \
+        union { double d; uint64_t u; } _u; \
+        _u.u = (uint64_t)(uintptr_t)((slot)->tts_values[(attno)]); \
+        _u.d; \
+    })
+
+/**
+ * @brief 设置 TupleTableSlot 中的浮点值
+ * @param slot 元组槽
+ * @param attno 属性号
+ * @param value float 值
+ */
+#define TTS_VALUES_SET_FLOAT(slot, attno, value) \
+    TTS_VALUES_SET_DOUBLE((slot), (attno), (double)(value))
+
+/**
+ * @brief 设置 TupleTableSlot 中的 NULL 值
+ * @param slot 元组槽
+ * @param attno 属性号
+ */
+#define TTS_VALUES_SET_NULL(slot, attno) \
+    do { \
+        (slot)->tts_values[(attno)] = NULL; \
+        (slot)->tts_isnull[(attno)] = true; \
+    } while (0)
+
 #ifdef __cplusplus
 extern "C" {
 #endif

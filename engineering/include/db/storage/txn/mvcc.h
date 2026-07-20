@@ -502,6 +502,20 @@ isolation_level_t txn_get_isolation_level(void);
 bool txn_is_snapshot_isolation(void);
 
 /**
+ * @brief 从字符串解析隔离级别
+ * @param level_str 隔离级别字符串
+ * @return 隔离级别，失败返回 -1
+ */
+isolation_level_t txn_parse_isolation_level(const char *level_str);
+
+/**
+ * @brief 获取隔离级别的字符串表示
+ * @param level 隔离级别
+ * @return 字符串
+ */
+const char *txn_isolation_level_name(isolation_level_t level);
+
+/**
  * @brief 获取当前事务上下文
  * @return 事务上下文指针
  */

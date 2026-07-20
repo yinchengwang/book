@@ -27,6 +27,11 @@ add_executable(test_indexscan test_indexscan.cpp)
 target_include_directories(test_indexscan PRIVATE ${GTEST_INCLUDE_DIRS})
 target_link_libraries(test_indexscan sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
 
+# IndexScan 端到端测试（Task 2.9）
+add_executable(test_indexscan_e2e test_indexscan_e2e.cpp)
+target_include_directories(test_indexscan_e2e PRIVATE ${GTEST_INCLUDE_DIRS})
+target_link_libraries(test_indexscan_e2e sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
+
 # ProjectSet（Project/Filter）端到端测试（Task 2.10）
 add_executable(test_project_filter_e2e test_project_filter_e2e.cpp)
 target_include_directories(test_project_filter_e2e PRIVATE ${GTEST_INCLUDE_DIRS})

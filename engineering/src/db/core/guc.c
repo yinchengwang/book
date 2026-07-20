@@ -326,6 +326,14 @@ int guc_init(const char *data_dir) {
     register_bool("ignore_checksum_failure", false,
                   "校验和失败时是否忽略并继续");
 
+    /* 事务参数 */
+    register_string("default_transaction_isolation", "read committed",
+                    "默认事务隔离级别：read committed / repeatable read / serializable");
+    register_bool("default_transaction_read_only", false,
+                  "默认事务是否只读");
+    register_bool("default_transaction_deferrable", false,
+                  "默认事务是否可延迟");
+
     return 0;
 }
 
