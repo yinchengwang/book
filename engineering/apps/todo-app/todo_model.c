@@ -1,73 +1,18 @@
 #include "todo_model.h"
+#include "todo_db.h"
 #include "cjson/cJSON.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sqlite3.h>
 
 /* ============================================================
- * 全局状态
+ * 全局状态（保留 extern 声明供日历/统计模块使用）
  * ============================================================ */
 todo_t           *g_todos = NULL;
 int               g_todo_count = 0;
-static int              g_todo_cap = 0;
-
-static checklist_item_t *g_checks = NULL;
-static int              g_check_count = 0;
-static int              g_check_cap = 0;
-
-static group_t          *g_groups = NULL;
-static int              g_group_count = 0;
-static int              g_group_cap = 0;
-
-static comment_t        *g_comments = NULL;
-static int              g_comment_count = 0;
-static int              g_comment_cap = 0;
-
-static task_system_t   *g_task_systems = NULL;
-static int              g_ts_count = 0;
-static int              g_ts_cap = 0;
-static int64_t          g_next_ts_id = 1;
-
-static plan_t          *g_plans = NULL;
-static int              g_plan_count = 0;
-static int              g_plan_cap = 0;
-static int64_t          g_next_plan_id = 1;
-
-static plan_item_t     *g_plan_items = NULL;
-static int              g_pi_count = 0;
-static int              g_pi_cap = 0;
-static int64_t          g_next_pi_id = 1;
-
-static int64_t          g_next_todo_id = 1;
-static int64_t          g_next_check_id = 1;
-static int64_t          g_next_group_id = 1;
-static int64_t          g_next_comment_id = 1;
-
 static char             g_db_path[512] = {0};
-static int              g_modified = 0;
-
-/* ============================================================
- * 容量扩展宏
- * ============================================================ */
-#define ENSURE_CAP(arr, cap, count, type, init_cap) \
-    do { \
-        if (count >= cap) { \
-            int new_cap = cap ? cap * 2 : init_cap; \
-            while (new_cap <= count) new_cap *= 2; \
-            arr = realloc(arr, new_cap * sizeof(type)); \
-            memset(arr + cap, 0, (new_cap - cap) * sizeof(type)); \
-            cap = new_cap; \
-        } \
-    } while(0)
-
-#define ENSURE_TODO_CAP(n)  ENSURE_CAP(g_todos, g_todo_cap, n, todo_t, 16)
-#define ENSURE_CHECK_CAP(n) ENSURE_CAP(g_checks, g_check_cap, n, checklist_item_t, 16)
-#define ENSURE_GROUP_CAP(n) ENSURE_CAP(g_groups, g_group_cap, n, group_t, 8)
-#define ENSURE_COMM_CAP(n)  ENSURE_CAP(g_comments, g_comment_cap, n, comment_t, 16)
-#define ENSURE_TS_CAP(n)    ENSURE_CAP(g_task_systems, g_ts_cap, n, task_system_t, 8)
-#define ENSURE_PLAN_CAP(n)  ENSURE_CAP(g_plans, g_plan_cap, n, plan_t, 8)
-#define ENSURE_PI_CAP(n)    ENSURE_CAP(g_plan_items, g_pi_cap, n, plan_item_t, 16)
 
 /* ============================================================
  * 工具函数
@@ -76,507 +21,74 @@ static int64_t now_ts(void) {
     return (int64_t)time(NULL);
 }
 
-int find_todo_idx(int64_t id) {
-    for (int i = 0; i < g_todo_count; i++) {
-        if (g_todos[i].id == id) return i;
-    }
-    return -1;
-}
-
-static int find_check_idx(int64_t id) {
-    for (int i = 0; i < g_check_count; i++) {
-        if (g_checks[i].id == id) return i;
-    }
-    return -1;
-}
-
-static int find_group_idx(int64_t id) {
-    for (int i = 0; i < g_group_count; i++) {
-        if (g_groups[i].id == id) return i;
-    }
-    return -1;
-}
-
-static int find_comment_idx(int64_t id) {
-    for (int i = 0; i < g_comment_count; i++) {
-        if (g_comments[i].id == id) return i;
-    }
-    return -1;
-}
-
-static int find_ts_idx(int64_t id) {
-    for (int i = 0; i < g_ts_count; i++) {
-        if (g_task_systems[i].id == id) return i;
-    }
-    return -1;
-}
-
-static int find_plan_idx(int64_t id) {
-    for (int i = 0; i < g_plan_count; i++) {
-        if (g_plans[i].id == id) return i;
-    }
-    return -1;
-}
-
-static int find_pi_idx(int64_t id) {
-    for (int i = 0; i < g_pi_count; i++) {
-        if (g_plan_items[i].id == id) return i;
-    }
-    return -1;
-}
-
 /* ============================================================
- * 持久化（JSON 文件）
+ * 辅助函数：从 SQLite 行读取 todo_t
  * ============================================================ */
-static cJSON *todos_to_json(void) {
-    cJSON *arr = cJSON_CreateArray();
-    for (int i = 0; i < g_todo_count; i++) {
-        cJSON *o = cJSON_CreateObject();
-        cJSON_AddNumberToObject(o, "id", g_todos[i].id);
-        cJSON_AddStringToObject(o, "title", g_todos[i].title);
-        cJSON_AddStringToObject(o, "description", g_todos[i].description);
-        cJSON_AddStringToObject(o, "status", g_todos[i].status);
-        cJSON_AddNumberToObject(o, "priority", g_todos[i].priority);
-        cJSON_AddNumberToObject(o, "due_date", g_todos[i].due_date);
-        cJSON_AddNumberToObject(o, "group_id", g_todos[i].group_id);
-        cJSON_AddNumberToObject(o, "sort_order", g_todos[i].sort_order);
-
-        cJSON *labels = cJSON_Parse(g_todos[i].labels);
-        if (labels && cJSON_IsArray(labels)) {
-            cJSON_AddItemToObject(o, "labels", labels);
-        } else {
-            cJSON_AddItemToObject(o, "labels", cJSON_CreateArray());
-            if (labels) cJSON_Delete(labels);
-        }
-
-        cJSON_AddNumberToObject(o, "created_at", g_todos[i].created_at);
-        cJSON_AddNumberToObject(o, "updated_at", g_todos[i].updated_at);
-        cJSON_AddItemToArray(arr, o);
-    }
-    return arr;
-}
-
-static cJSON *checks_to_json(void) {
-    cJSON *arr = cJSON_CreateArray();
-    for (int i = 0; i < g_check_count; i++) {
-        cJSON *o = cJSON_CreateObject();
-        cJSON_AddNumberToObject(o, "id", g_checks[i].id);
-        cJSON_AddNumberToObject(o, "todo_id", g_checks[i].todo_id);
-        cJSON_AddStringToObject(o, "text", g_checks[i].text);
-        cJSON_AddBoolToObject(o, "done", g_checks[i].done ? 1 : 0);
-        cJSON_AddNumberToObject(o, "sort_order", g_checks[i].sort_order);
-        cJSON_AddItemToArray(arr, o);
-    }
-    return arr;
-}
-
-static cJSON *groups_to_json(void) {
-    cJSON *arr = cJSON_CreateArray();
-    for (int i = 0; i < g_group_count; i++) {
-        cJSON *o = cJSON_CreateObject();
-        cJSON_AddNumberToObject(o, "id", g_groups[i].id);
-        cJSON_AddStringToObject(o, "name", g_groups[i].name);
-        cJSON_AddStringToObject(o, "color", g_groups[i].color);
-        cJSON_AddNumberToObject(o, "sort_order", g_groups[i].sort_order);
-        cJSON_AddNumberToObject(o, "created_at", g_groups[i].created_at);
-        cJSON_AddItemToArray(arr, o);
-    }
-    return arr;
-}
-
-static cJSON *comments_to_json(void) {
-    cJSON *arr = cJSON_CreateArray();
-    for (int i = 0; i < g_comment_count; i++) {
-        cJSON *o = cJSON_CreateObject();
-        cJSON_AddNumberToObject(o, "id", g_comments[i].id);
-        cJSON_AddNumberToObject(o, "todo_id", g_comments[i].todo_id);
-        cJSON_AddStringToObject(o, "text", g_comments[i].text);
-        cJSON_AddNumberToObject(o, "created_at", g_comments[i].created_at);
-        cJSON_AddItemToArray(arr, o);
-    }
-    return arr;
-}
-
-static cJSON *task_systems_to_json(void) {
-    cJSON *arr = cJSON_CreateArray();
-    for (int i = 0; i < g_ts_count; i++) {
-        cJSON *o = cJSON_CreateObject();
-        cJSON_AddNumberToObject(o, "id", g_task_systems[i].id);
-        cJSON_AddStringToObject(o, "name", g_task_systems[i].name);
-        cJSON_AddStringToObject(o, "description", g_task_systems[i].description);
-        cJSON_AddStringToObject(o, "color", g_task_systems[i].color);
-        cJSON_AddNumberToObject(o, "sort_order", g_task_systems[i].sort_order);
-        cJSON_AddNumberToObject(o, "created_at", g_task_systems[i].created_at);
-        cJSON_AddItemToArray(arr, o);
-    }
-    return arr;
-}
-
-static cJSON *plans_to_json(void) {
-    cJSON *arr = cJSON_CreateArray();
-    for (int i = 0; i < g_plan_count; i++) {
-        cJSON *o = cJSON_CreateObject();
-        cJSON_AddNumberToObject(o, "id", g_plans[i].id);
-        cJSON_AddStringToObject(o, "name", g_plans[i].name);
-        cJSON_AddStringToObject(o, "description", g_plans[i].description);
-        cJSON_AddNumberToObject(o, "start_date", g_plans[i].start_date);
-        cJSON_AddNumberToObject(o, "end_date", g_plans[i].end_date);
-        cJSON_AddStringToObject(o, "color", g_plans[i].color);
-        cJSON_AddNumberToObject(o, "status", g_plans[i].status);
-        cJSON_AddNumberToObject(o, "created_at", g_plans[i].created_at);
-        cJSON_AddNumberToObject(o, "updated_at", g_plans[i].updated_at);
-        cJSON_AddItemToArray(arr, o);
-    }
-    return arr;
-}
-
-static cJSON *plan_items_to_json(void) {
-    cJSON *arr = cJSON_CreateArray();
-    for (int i = 0; i < g_pi_count; i++) {
-        cJSON *o = cJSON_CreateObject();
-        cJSON_AddNumberToObject(o, "id", g_plan_items[i].id);
-        cJSON_AddNumberToObject(o, "plan_id", g_plan_items[i].plan_id);
-        cJSON_AddNumberToObject(o, "parent_id", g_plan_items[i].parent_id);
-        cJSON_AddStringToObject(o, "title", g_plan_items[i].title);
-        cJSON_AddNumberToObject(o, "item_type", g_plan_items[i].item_type);
-        cJSON_AddNumberToObject(o, "planned_date", g_plan_items[i].planned_date);
-        cJSON_AddNumberToObject(o, "estimated_minutes", g_plan_items[i].estimated_minutes);
-        cJSON_AddNumberToObject(o, "order_index", g_plan_items[i].order_index);
-        cJSON_AddNumberToObject(o, "completion_rule", g_plan_items[i].completion_rule);
-        cJSON_AddNumberToObject(o, "todo_id", g_plan_items[i].todo_id);
-        cJSON_AddNumberToObject(o, "actual_minutes", g_plan_items[i].actual_minutes);
-        cJSON_AddItemToArray(arr, o);
-    }
-    return arr;
-}
-
-static int persist_now(void) {
-    if (!g_db_path[0]) return 0;
-
-    cJSON *root = cJSON_CreateObject();
-    cJSON_AddNumberToObject(root, "next_todo_id", g_next_todo_id);
-    cJSON_AddNumberToObject(root, "next_check_id", g_next_check_id);
-    cJSON_AddNumberToObject(root, "next_group_id", g_next_group_id);
-    cJSON_AddNumberToObject(root, "next_comment_id", g_next_comment_id);
-    cJSON_AddNumberToObject(root, "next_ts_id", g_next_ts_id);
-    cJSON_AddNumberToObject(root, "next_plan_id", g_next_plan_id);
-    cJSON_AddNumberToObject(root, "next_pi_id", g_next_pi_id);
-    cJSON_AddItemToObject(root, "todos", todos_to_json());
-    cJSON_AddItemToObject(root, "checklist", checks_to_json());
-    cJSON_AddItemToObject(root, "groups", groups_to_json());
-    cJSON_AddItemToObject(root, "comments", comments_to_json());
-    cJSON_AddItemToObject(root, "task_systems", task_systems_to_json());
-    cJSON_AddItemToObject(root, "plans", plans_to_json());
-    cJSON_AddItemToObject(root, "plan_items", plan_items_to_json());
-
-    char *out = cJSON_Print(root);
-    cJSON_Delete(root);
-
-    if (!out) return -1;
-
-    /* 临时文件 + rename 防中途崩溃 */
-    char tmp[600];
-    snprintf(tmp, sizeof(tmp), "%s.tmp", g_db_path);
-
-    FILE *fp = fopen(tmp, "w");
-    if (!fp) { free(out); return -1; }
-    fputs(out, fp);
-    fclose(fp);
-    free(out);
-
-    /* 确保数据刷到磁盘 */
-    {
-        FILE *dst = fopen(g_db_path, "ab");
-        if (dst) fclose(dst);
-    }
-
-    /* Windows 下 rename 不会覆盖已存在文件，先删除 */
-    remove(g_db_path);
-    if (rename(tmp, g_db_path) != 0) {
-        return -1;
-    }
-    g_modified = 0;
+static int row_to_todo(sqlite3_stmt *stmt, todo_t *todo) {
+    memset(todo, 0, sizeof(*todo));
+    todo->id = sqlite3_column_int64(stmt, 0);
+    strncpy(todo->title, (const char *)sqlite3_column_text(stmt, 1), TODO_TITLE_MAX - 1);
+    todo->title[TODO_TITLE_MAX - 1] = '\0';
+    strncpy(todo->description, (const char *)sqlite3_column_text(stmt, 2), TODO_DESC_MAX - 1);
+    todo->description[TODO_DESC_MAX - 1] = '\0';
+    strncpy(todo->status, (const char *)sqlite3_column_text(stmt, 3), TODO_STATUS_MAX - 1);
+    todo->status[TODO_STATUS_MAX - 1] = '\0';
+    const char *labels = (const char *)sqlite3_column_text(stmt, 4);
+    strncpy(todo->labels, labels ? labels : "[]", TODO_LABELS_MAX - 1);
+    todo->labels[TODO_LABELS_MAX - 1] = '\0';
+    todo->priority = sqlite3_column_int(stmt, 5);
+    todo->due_date = sqlite3_column_int64(stmt, 6);
+    todo->group_id = sqlite3_column_int64(stmt, 7);
+    todo->sort_order = sqlite3_column_int(stmt, 8);
+    todo->todo_type = sqlite3_column_int(stmt, 9);
+    todo->original_date = sqlite3_column_int64(stmt, 10);
+    todo->carryover_count = sqlite3_column_int(stmt, 11);
+    todo->plan_id = sqlite3_column_int64(stmt, 12);
+    todo->plan_item_id = sqlite3_column_int64(stmt, 13);
+    todo->completed_at = sqlite3_column_int64(stmt, 14);
+    todo->postpone_until = sqlite3_column_int64(stmt, 15);
+    todo->task_system_id = sqlite3_column_int64(stmt, 16);
+    todo->created_at = sqlite3_column_int64(stmt, 17);
+    todo->updated_at = sqlite3_column_int64(stmt, 18);
     return 0;
 }
 
 /* ============================================================
- * JSON 解析
+ * 辅助函数：todo_t 绑定到 prepared statement
+ * bind index: 1-16 (todo 字段), 17=id (for UPDATE WHERE)
  * ============================================================ */
-static void parse_todo(cJSON *o) {
-    ENSURE_TODO_CAP(g_todo_count + 1);
-    todo_t *it = &g_todos[g_todo_count];
-    memset(it, 0, sizeof(*it));
-
-    cJSON *jid = cJSON_GetObjectItem(o, "id");
-    it->id = jid ? (int64_t)jid->valuedouble : 0;
-
-    cJSON *jtitle = cJSON_GetObjectItem(o, "title");
-    if (jtitle && cJSON_IsString(jtitle)) {
-        strncpy(it->title, jtitle->valuestring, TODO_TITLE_MAX - 1);
-    }
-
-    cJSON *jdesc = cJSON_GetObjectItem(o, "description");
-    if (jdesc && cJSON_IsString(jdesc)) {
-        strncpy(it->description, jdesc->valuestring, TODO_DESC_MAX - 1);
-    }
-
-    cJSON *jstatus = cJSON_GetObjectItem(o, "status");
-    if (jstatus && cJSON_IsString(jstatus)) {
-        strncpy(it->status, jstatus->valuestring, TODO_STATUS_MAX - 1);
-    } else {
-        strncpy(it->status, "open", TODO_STATUS_MAX - 1);
-    }
-
-    cJSON *jpriority = cJSON_GetObjectItem(o, "priority");
-    it->priority = jpriority ? (int)jpriority->valuedouble : PRIORITY_NONE;
-
-    cJSON *jdue = cJSON_GetObjectItem(o, "due_date");
-    it->due_date = jdue ? (int64_t)jdue->valuedouble : 0;
-
-    cJSON *jgid = cJSON_GetObjectItem(o, "group_id");
-    it->group_id = jgid ? (int64_t)jgid->valuedouble : 0;
-
-    cJSON *jso = cJSON_GetObjectItem(o, "sort_order");
-    it->sort_order = jso ? (int)jso->valuedouble : 0;
-
-    cJSON *jlabels = cJSON_GetObjectItem(o, "labels");
-    if (jlabels && cJSON_IsArray(jlabels)) {
-        char *ls = cJSON_PrintUnformatted(jlabels);
-        if (ls) {
-            strncpy(it->labels, ls, TODO_LABELS_MAX - 1);
-            free(ls);
-        }
-    } else if (jlabels && cJSON_IsString(jlabels)) {
-        strncpy(it->labels, jlabels->valuestring, TODO_LABELS_MAX - 1);
-    } else {
-        strcpy(it->labels, "[]");
-    }
-
-    cJSON *jca = cJSON_GetObjectItem(o, "created_at");
-    it->created_at = jca ? (int64_t)jca->valuedouble : 0;
-    cJSON *jua = cJSON_GetObjectItem(o, "updated_at");
-    it->updated_at = jua ? (int64_t)jua->valuedouble : 0;
-
-    /* 解析新增字段 */
-    cJSON *jtodo_type = cJSON_GetObjectItem(o, "todo_type");
-    it->todo_type = jtodo_type ? (int)jtodo_type->valuedouble : 0;
-
-    cJSON *jorig_date = cJSON_GetObjectItem(o, "original_date");
-    it->original_date = jorig_date ? (int64_t)jorig_date->valuedouble : 0;
-
-    cJSON *jcarryover = cJSON_GetObjectItem(o, "carryover_count");
-    it->carryover_count = jcarryover ? (int)jcarryover->valuedouble : 0;
-
-    cJSON *jplan_id = cJSON_GetObjectItem(o, "plan_id");
-    it->plan_id = jplan_id ? (int64_t)jplan_id->valuedouble : 0;
-
-    cJSON *jplan_item_id = cJSON_GetObjectItem(o, "plan_item_id");
-    it->plan_item_id = jplan_item_id ? (int64_t)jplan_item_id->valuedouble : 0;
-
-    cJSON *jcompleted_at = cJSON_GetObjectItem(o, "completed_at");
-    it->completed_at = jcompleted_at ? (int64_t)jcompleted_at->valuedouble : 0;
-
-    cJSON *jpostpone = cJSON_GetObjectItem(o, "postpone_until");
-    it->postpone_until = jpostpone ? (int64_t)jpostpone->valuedouble : 0;
-
-    cJSON *jtask_sys_id = cJSON_GetObjectItem(o, "task_system_id");
-    it->task_system_id = jtask_sys_id ? (int64_t)jtask_sys_id->valuedouble : 0;
-
-    g_todo_count++;
+static void bind_todo(sqlite3_stmt *stmt, const todo_t *todo) {
+    sqlite3_bind_text(stmt, 1, todo->title, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, todo->description, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, todo->status[0] ? todo->status : "open", -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, todo->labels[0] ? todo->labels : "[]", -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 5, todo->priority);
+    sqlite3_bind_int64(stmt, 6, todo->due_date);
+    sqlite3_bind_int64(stmt, 7, todo->group_id);
+    sqlite3_bind_int(stmt, 8, todo->sort_order);
+    sqlite3_bind_int(stmt, 9, todo->todo_type);
+    sqlite3_bind_int64(stmt, 10, todo->original_date);
+    sqlite3_bind_int(stmt, 11, todo->carryover_count);
+    sqlite3_bind_int64(stmt, 12, todo->plan_id);
+    sqlite3_bind_int64(stmt, 13, todo->plan_item_id);
+    sqlite3_bind_int64(stmt, 14, todo->completed_at);
+    sqlite3_bind_int64(stmt, 15, todo->postpone_until);
+    sqlite3_bind_int64(stmt, 16, todo->task_system_id);
 }
 
-static void parse_check(cJSON *o) {
-    ENSURE_CHECK_CAP(g_check_count + 1);
-    checklist_item_t *c = &g_checks[g_check_count];
-    memset(c, 0, sizeof(*c));
-
-    cJSON *jid = cJSON_GetObjectItem(o, "id");
-    c->id = jid ? (int64_t)jid->valuedouble : 0;
-
-    /* 兼容旧字段：issue_id 和 todo_id */
-    cJSON *jtid = cJSON_GetObjectItem(o, "todo_id");
-    if (!jtid) jtid = cJSON_GetObjectItem(o, "issue_id"); /* 兼容旧数据 */
-    c->todo_id = jtid ? (int64_t)jtid->valuedouble : 0;
-
-    cJSON *jtext = cJSON_GetObjectItem(o, "text");
-    if (jtext && cJSON_IsString(jtext)) {
-        strncpy(c->text, jtext->valuestring, CHECKLIST_TEXT_MAX - 1);
-    }
-
-    cJSON *jdone = cJSON_GetObjectItem(o, "done");
-    if (jdone) c->done = (cJSON_IsBool(jdone) ? jdone->valueint : (int)jdone->valuedouble);
-
-    cJSON *jso = cJSON_GetObjectItem(o, "sort_order");
-    c->sort_order = jso ? (int)jso->valuedouble : 0;
-
-    g_check_count++;
-}
-
-static void parse_group(cJSON *o) {
-    ENSURE_GROUP_CAP(g_group_count + 1);
-    group_t *g = &g_groups[g_group_count];
-    memset(g, 0, sizeof(*g));
-
-    cJSON *jid = cJSON_GetObjectItem(o, "id");
-    g->id = jid ? (int64_t)jid->valuedouble : 0;
-
-    cJSON *jname = cJSON_GetObjectItem(o, "name");
-    if (jname && cJSON_IsString(jname)) {
-        strncpy(g->name, jname->valuestring, GROUP_NAME_MAX - 1);
-    }
-
-    cJSON *jcolor = cJSON_GetObjectItem(o, "color");
-    if (jcolor && cJSON_IsString(jcolor)) {
-        strncpy(g->color, jcolor->valuestring, GROUP_COLOR_MAX - 1);
-    } else {
-        strcpy(g->color, "#4A90D9");
-    }
-
-    cJSON *jso = cJSON_GetObjectItem(o, "sort_order");
-    g->sort_order = jso ? (int)jso->valuedouble : 0;
-
-    cJSON *jca = cJSON_GetObjectItem(o, "created_at");
-    g->created_at = jca ? (int64_t)jca->valuedouble : 0;
-
-    g_group_count++;
-}
-
-static void parse_comment(cJSON *o) {
-    ENSURE_COMM_CAP(g_comment_count + 1);
-    comment_t *c = &g_comments[g_comment_count];
-    memset(c, 0, sizeof(*c));
-
-    cJSON *jid = cJSON_GetObjectItem(o, "id");
-    c->id = jid ? (int64_t)jid->valuedouble : 0;
-
-    cJSON *jtid = cJSON_GetObjectItem(o, "todo_id");
-    c->todo_id = jtid ? (int64_t)jtid->valuedouble : 0;
-
-    cJSON *jtext = cJSON_GetObjectItem(o, "text");
-    if (jtext && cJSON_IsString(jtext)) {
-        strncpy(c->text, jtext->valuestring, COMMENT_TEXT_MAX - 1);
-    }
-
-    cJSON *jca = cJSON_GetObjectItem(o, "created_at");
-    c->created_at = jca ? (int64_t)jca->valuedouble : 0;
-
-    g_comment_count++;
-}
-
-static void parse_task_system(cJSON *o) {
-    ENSURE_TS_CAP(g_ts_count + 1);
-    task_system_t *ts = &g_task_systems[g_ts_count];
-    memset(ts, 0, sizeof(*ts));
-
-    cJSON *jid = cJSON_GetObjectItem(o, "id");
-    ts->id = jid ? (int64_t)jid->valuedouble : 0;
-
-    cJSON *jname = cJSON_GetObjectItem(o, "name");
-    if (jname && cJSON_IsString(jname)) {
-        strncpy(ts->name, jname->valuestring, TASK_SYSTEM_NAME_MAX - 1);
-    }
-
-    cJSON *jdesc = cJSON_GetObjectItem(o, "description");
-    if (jdesc && cJSON_IsString(jdesc)) {
-        strncpy(ts->description, jdesc->valuestring, 1023);
-    }
-
-    cJSON *jcolor = cJSON_GetObjectItem(o, "color");
-    if (jcolor && cJSON_IsString(jcolor)) {
-        strncpy(ts->color, jcolor->valuestring, 15);
-    }
-
-    cJSON *jso = cJSON_GetObjectItem(o, "sort_order");
-    ts->sort_order = jso ? (int)jso->valuedouble : 0;
-
-    cJSON *jca = cJSON_GetObjectItem(o, "created_at");
-    ts->created_at = jca ? (int64_t)jca->valuedouble : 0;
-
-    g_ts_count++;
-}
-
-static void parse_plan(cJSON *o) {
-    ENSURE_PLAN_CAP(g_plan_count + 1);
-    plan_t *p = &g_plans[g_plan_count];
-    memset(p, 0, sizeof(*p));
-
-    cJSON *jid = cJSON_GetObjectItem(o, "id");
-    p->id = jid ? (int64_t)jid->valuedouble : 0;
-
-    cJSON *jname = cJSON_GetObjectItem(o, "name");
-    if (jname && cJSON_IsString(jname)) {
-        strncpy(p->name, jname->valuestring, PLAN_NAME_MAX - 1);
-    }
-
-    cJSON *jdesc = cJSON_GetObjectItem(o, "description");
-    if (jdesc && cJSON_IsString(jdesc)) {
-        strncpy(p->description, jdesc->valuestring, PLAN_DESC_MAX - 1);
-    }
-
-    cJSON *jstart = cJSON_GetObjectItem(o, "start_date");
-    p->start_date = jstart ? (int64_t)jstart->valuedouble : 0;
-
-    cJSON *jend = cJSON_GetObjectItem(o, "end_date");
-    p->end_date = jend ? (int64_t)jend->valuedouble : 0;
-
-    cJSON *jcolor = cJSON_GetObjectItem(o, "color");
-    if (jcolor && cJSON_IsString(jcolor)) {
-        strncpy(p->color, jcolor->valuestring, 15);
-    }
-
-    cJSON *jstatus = cJSON_GetObjectItem(o, "status");
-    p->status = jstatus ? (int)jstatus->valuedouble : 0;
-
-    cJSON *jca = cJSON_GetObjectItem(o, "created_at");
-    p->created_at = jca ? (int64_t)jca->valuedouble : 0;
-
-    cJSON *jua = cJSON_GetObjectItem(o, "updated_at");
-    p->updated_at = jua ? (int64_t)jua->valuedouble : 0;
-
-    g_plan_count++;
-}
-
-static void parse_plan_item(cJSON *o) {
-    ENSURE_PI_CAP(g_pi_count + 1);
-    plan_item_t *pi = &g_plan_items[g_pi_count];
-    memset(pi, 0, sizeof(*pi));
-
-    cJSON *jid = cJSON_GetObjectItem(o, "id");
-    pi->id = jid ? (int64_t)jid->valuedouble : 0;
-
-    cJSON *jplan_id = cJSON_GetObjectItem(o, "plan_id");
-    pi->plan_id = jplan_id ? (int64_t)jplan_id->valuedouble : 0;
-
-    cJSON *jparent = cJSON_GetObjectItem(o, "parent_id");
-    pi->parent_id = jparent ? (int64_t)jparent->valuedouble : 0;
-
-    cJSON *jtitle = cJSON_GetObjectItem(o, "title");
-    if (jtitle && cJSON_IsString(jtitle)) {
-        strncpy(pi->title, jtitle->valuestring, ITEM_TITLE_MAX - 1);
-    }
-
-    cJSON *jtype = cJSON_GetObjectItem(o, "item_type");
-    pi->item_type = jtype ? (int)jtype->valuedouble : 0;
-
-    cJSON *jpdate = cJSON_GetObjectItem(o, "planned_date");
-    pi->planned_date = jpdate ? (int64_t)jpdate->valuedouble : 0;
-
-    cJSON *jest = cJSON_GetObjectItem(o, "estimated_minutes");
-    pi->estimated_minutes = jest ? (int)jest->valuedouble : 0;
-
-    cJSON *jorder = cJSON_GetObjectItem(o, "order_index");
-    pi->order_index = jorder ? (int)jorder->valuedouble : 0;
-
-    cJSON *jrule = cJSON_GetObjectItem(o, "completion_rule");
-    pi->completion_rule = jrule ? (int)jrule->valuedouble : 0;
-
-    cJSON *jtodo_id = cJSON_GetObjectItem(o, "todo_id");
-    pi->todo_id = jtodo_id ? (int64_t)jtodo_id->valuedouble : 0;
-
-    cJSON *jactual = cJSON_GetObjectItem(o, "actual_minutes");
-    pi->actual_minutes = jactual ? (int)jactual->valuedouble : 0;
-
-    g_pi_count++;
+/* ============================================================
+ * find_todo_idx — 保留供日历/统计模块通过 extern 使用
+ * 但内部实现改为从 SQLite 查询
+ * ============================================================ */
+int find_todo_idx(int64_t id) {
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "SELECT id FROM todos WHERE id=?", -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, id);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_ROW) ? 0 : -1;
 }
 
 /* ============================================================
@@ -587,176 +99,63 @@ int todo_db_load(const char *db_path) {
     strncpy(g_db_path, db_path, sizeof(g_db_path) - 1);
     g_db_path[sizeof(g_db_path) - 1] = '\0';
 
-    /* 文件不存在即空库 */
-    FILE *fp = fopen(g_db_path, "r");
-    if (!fp) {
-        return 0;
-    }
-    fseek(fp, 0, SEEK_END);
-    long sz = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    if (sz <= 0) { fclose(fp); return 0; }
-
-    char *buf = malloc(sz + 1);
-    if (!buf) { fclose(fp); return -1; }
-    fread(buf, 1, sz, fp);
-    buf[sz] = '\0';
-    fclose(fp);
-
-    cJSON *root = cJSON_Parse(buf);
-    free(buf);
-    if (!root) return -1;
-
-    /* 读取 next_id */
-    cJSON *jnext = cJSON_GetObjectItem(root, "next_todo_id");
-    g_next_todo_id = jnext ? (int64_t)jnext->valuedouble : 1;
-
-    jnext = cJSON_GetObjectItem(root, "next_check_id");
-    g_next_check_id = jnext ? (int64_t)jnext->valuedouble : 1;
-
-    jnext = cJSON_GetObjectItem(root, "next_group_id");
-    g_next_group_id = jnext ? (int64_t)jnext->valuedouble : 1;
-
-    jnext = cJSON_GetObjectItem(root, "next_comment_id");
-    g_next_comment_id = jnext ? (int64_t)jnext->valuedouble : 1;
-
-    jnext = cJSON_GetObjectItem(root, "next_ts_id");
-    g_next_ts_id = jnext ? (int64_t)jnext->valuedouble : 1;
-
-    jnext = cJSON_GetObjectItem(root, "next_plan_id");
-    g_next_plan_id = jnext ? (int64_t)jnext->valuedouble : 1;
-
-    jnext = cJSON_GetObjectItem(root, "next_pi_id");
-    g_next_pi_id = jnext ? (int64_t)jnext->valuedouble : 1;
-
-    /* 读取 todos */
-    cJSON *jtodos = cJSON_GetObjectItem(root, "todos");
-    if (jtodos && cJSON_IsArray(jtodos)) {
-        int n = cJSON_GetArraySize(jtodos);
-        for (int i = 0; i < n; i++) {
-            parse_todo(cJSON_GetArrayItem(jtodos, i));
-        }
+    /* 构造 .db 路径：将 .json 替换为 .db */
+    char db_path_ext[512];
+    const char *dot = strrchr(db_path, '.');
+    if (dot && strcmp(dot, ".json") == 0) {
+        size_t base_len = dot - db_path;
+        snprintf(db_path_ext, sizeof(db_path_ext), "%.*s.db", (int)base_len, db_path);
+    } else {
+        snprintf(db_path_ext, sizeof(db_path_ext), "%s.db", db_path);
     }
 
-    /* 读取 checklist */
-    cJSON *jchecks = cJSON_GetObjectItem(root, "checklist");
-    if (jchecks && cJSON_IsArray(jchecks)) {
-        int n = cJSON_GetArraySize(jchecks);
-        for (int i = 0; i < n; i++) {
-            parse_check(cJSON_GetArrayItem(jchecks, i));
-        }
+    /* 打开 SQLite 数据库 */
+    if (todo_db_open(db_path_ext) != 0) {
+        fprintf(stderr, "SQLite 数据库打开失败: %s\n", db_path_ext);
+        return -1;
     }
 
-    /* 读取 groups */
-    cJSON *jgroups = cJSON_GetObjectItem(root, "groups");
-    if (jgroups && cJSON_IsArray(jgroups)) {
-        int n = cJSON_GetArraySize(jgroups);
-        for (int i = 0; i < n; i++) {
-            parse_group(cJSON_GetArrayItem(jgroups, i));
-        }
+    /* 检查 JSON 文件是否存在，如果存在则迁移 */
+    FILE *fp = fopen(db_path, "rb");
+    if (fp) {
+        fclose(fp);
+        printf("发现 JSON 文件 %s，开始迁移到 SQLite...\n", db_path);
+        todo_db_migrate_from_json(db_path);
     }
 
-    /* 读取 comments */
-    cJSON *jcomments = cJSON_GetObjectItem(root, "comments");
-    if (jcomments && cJSON_IsArray(jcomments)) {
-        int n = cJSON_GetArraySize(jcomments);
-        for (int i = 0; i < n; i++) {
-            parse_comment(cJSON_GetArrayItem(jcomments, i));
-        }
-    }
-
-    /* 读取 task_systems */
-    cJSON *jts = cJSON_GetObjectItem(root, "task_systems");
-    if (jts && cJSON_IsArray(jts)) {
-        int n = cJSON_GetArraySize(jts);
-        for (int i = 0; i < n; i++) {
-            parse_task_system(cJSON_GetArrayItem(jts, i));
-        }
-    }
-
-    /* 读取 plans */
-    cJSON *jplans = cJSON_GetObjectItem(root, "plans");
-    if (jplans && cJSON_IsArray(jplans)) {
-        int n = cJSON_GetArraySize(jplans);
-        for (int i = 0; i < n; i++) {
-            parse_plan(cJSON_GetArrayItem(jplans, i));
-        }
-    }
-
-    /* 读取 plan_items */
-    cJSON *jpitems = cJSON_GetObjectItem(root, "plan_items");
-    if (jpitems && cJSON_IsArray(jpitems)) {
-        int n = cJSON_GetArraySize(jpitems);
-        for (int i = 0; i < n; i++) {
-            parse_plan_item(cJSON_GetArrayItem(jpitems, i));
-        }
-    }
-
-    /* 确保存在默认任务系统 */
-    if (g_ts_count == 0) {
-        task_system_t def_ts;
-        memset(&def_ts, 0, sizeof(def_ts));
-        strncpy(def_ts.name, "默认任务系统", TASK_SYSTEM_NAME_MAX - 1);
-        strncpy(def_ts.color, "#4A90D9", 15);
-        task_system_create(&def_ts, NULL);
-    }
-
-    cJSON_Delete(root);
     return 0;
 }
 
 int todo_db_save(void) {
-    g_modified = 1;
-    return persist_now();
+    /* SQLite 模式下不需要显式保存，每次写操作已提交 */
+    return 0;
 }
 
 void todo_db_shutdown(void) {
-    if (g_modified) persist_now();
-    free(g_todos);    g_todos = NULL;
-    free(g_checks);   g_checks = NULL;
-    free(g_groups);   g_groups = NULL;
-    free(g_comments); g_comments = NULL;
-    free(g_task_systems); g_task_systems = NULL;
-    free(g_plans);       g_plans = NULL;
-    free(g_plan_items);  g_plan_items = NULL;
-    g_todo_count = g_todo_cap = 0;
-    g_check_count = g_check_cap = 0;
-    g_group_count = g_group_cap = 0;
-    g_comment_count = g_comment_cap = 0;
-    g_ts_count = g_ts_cap = 0;
-    g_plan_count = g_plan_cap = 0;
-    g_pi_count = g_pi_cap = 0;
+    todo_db_close();
+    g_todos = NULL;
+    g_todo_count = 0;
 }
 
 void todo_db_reset(void) {
-    /* 仅清除内存数据，不释放指针，用于测试 */
-    free(g_todos);    g_todos = NULL;
-    free(g_checks);   g_checks = NULL;
-    free(g_groups);   g_groups = NULL;
-    free(g_comments); g_comments = NULL;
-    free(g_task_systems); g_task_systems = NULL;
-    free(g_plans);       g_plans = NULL;
-    free(g_plan_items);  g_plan_items = NULL;
-    g_todo_count = g_todo_cap = 0;
-    g_check_count = g_check_cap = 0;
-    g_group_count = g_group_cap = 0;
-    g_comment_count = g_comment_cap = 0;
-    g_ts_count = g_ts_cap = 0;
-    g_plan_count = g_plan_cap = 0;
-    g_pi_count = g_pi_cap = 0;
-    g_next_todo_id = 1;
-    g_next_check_id = 1;
-    g_next_group_id = 1;
-    g_next_comment_id = 1;
-    g_next_ts_id = 1;
-    g_next_plan_id = 1;
-    g_next_pi_id = 1;
+    todo_db_close();
+    g_todos = NULL;
+    g_todo_count = 0;
     g_db_path[0] = '\0';
-    g_modified = 0;
+    /* 删除 .db 文件 */
+    char db_path_ext[512];
+    const char *dot = strrchr(g_db_path, '.');
+    if (dot) {
+        size_t base_len = dot - g_db_path;
+        snprintf(db_path_ext, sizeof(db_path_ext), "%.*s.db", (int)base_len, g_db_path);
+    } else {
+        snprintf(db_path_ext, sizeof(db_path_ext), "%s.db", g_db_path);
+    }
+    remove(db_path_ext);
 }
 
 /* ============================================================
- * 标签匹配
+ * 标签匹配（保留，用于 todo_list 的 labels 过滤）
  * ============================================================ */
 static int match_labels(const char *todo_labels, const char *query_labels) {
     if (!query_labels || !query_labels[0]) return 1;
@@ -773,7 +172,6 @@ static int match_labels(const char *todo_labels, const char *query_labels) {
         size_t tlen = strlen(tok);
         while (tlen > 0 && (tok[tlen-1] == ' ' || tok[tlen-1] == '"')) tlen--;
         tok[tlen] = '\0';
-
         if (tok[0] && strstr(todo_labels, tok) == NULL) return 0;
         tok = strtok_r(NULL, ",", &save);
     }
@@ -784,192 +182,244 @@ static int match_labels(const char *todo_labels, const char *query_labels) {
  * Todo CRUD
  * ============================================================ */
 int todo_create(const todo_t *todo, int64_t *out_id) {
-    ENSURE_TODO_CAP(g_todo_count + 1);
-    todo_t *it = &g_todos[g_todo_count];
-    memset(it, 0, sizeof(*it));
-    it->id = g_next_todo_id++;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
 
-    strncpy(it->title, todo->title, TODO_TITLE_MAX - 1);
-    strncpy(it->description, todo->description, TODO_DESC_MAX - 1);
-    if (todo->status[0])
-        strncpy(it->status, todo->status, TODO_STATUS_MAX - 1);
-    else
-        strncpy(it->status, "open", TODO_STATUS_MAX - 1);
+    sqlite3_stmt *stmt = NULL;
+    const char *sql = "INSERT INTO todos (title, description, status, labels, priority, "
+        "due_date, group_id, sort_order, todo_type, original_date, carryover_count, "
+        "plan_id, plan_item_id, completed_at, postpone_until, task_system_id, "
+        "created_at, updated_at) "
+        "VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)";
 
-    if (todo->labels[0])
-        strncpy(it->labels, todo->labels, TODO_LABELS_MAX - 1);
-    else
-        strcpy(it->labels, "[]");
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "todo_create prepare error: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
 
-    it->priority = todo->priority;
-    it->due_date = todo->due_date;
-    it->group_id = todo->group_id;
-    it->sort_order = todo->sort_order;
-    it->todo_type = todo->todo_type;
-    it->original_date = todo->original_date;
-    it->carryover_count = todo->carryover_count;
-    it->plan_id = todo->plan_id;
-    it->plan_item_id = todo->plan_item_id;
-    it->completed_at = todo->completed_at;
-    it->postpone_until = todo->postpone_until;
-    it->task_system_id = todo->task_system_id;
-    it->created_at = now_ts();
-    it->updated_at = it->created_at;
+    bind_todo(stmt, todo);
+    int64_t now = now_ts();
+    sqlite3_bind_int64(stmt, 17, now);
+    sqlite3_bind_int64(stmt, 18, now);
 
-    g_todo_count++;
-    if (out_id) *out_id = it->id;
-    todo_db_save();
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        fprintf(stderr, "todo_create step error: %s\n", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    int64_t id = sqlite3_last_insert_rowid(db);
+    sqlite3_finalize(stmt);
+
+    if (out_id) *out_id = id;
     return 0;
 }
 
 int todo_get_by_id(int64_t id, todo_t *todo) {
-    int idx = find_todo_idx(id);
-    if (idx < 0) return -1;
-    if (todo) *todo = g_todos[idx];
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "SELECT * FROM todos WHERE id=?", -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, id);
+
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW) {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    if (todo) row_to_todo(stmt, todo);
+    sqlite3_finalize(stmt);
     return 0;
 }
 
 int todo_update(const todo_t *todo) {
-    int idx = find_todo_idx(todo->id);
-    if (idx < 0) return -1;
-    todo_t *it = &g_todos[idx];
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
 
-    strncpy(it->title, todo->title, TODO_TITLE_MAX - 1);
-    strncpy(it->description, todo->description, TODO_DESC_MAX - 1);
-    strncpy(it->status, todo->status, TODO_STATUS_MAX - 1);
-    strncpy(it->labels, todo->labels, TODO_LABELS_MAX - 1);
-    it->priority = todo->priority;
-    it->due_date = todo->due_date;
-    it->group_id = todo->group_id;
-    it->sort_order = todo->sort_order;
-    it->todo_type = todo->todo_type;
-    it->original_date = todo->original_date;
-    it->carryover_count = todo->carryover_count;
-    it->plan_id = todo->plan_id;
-    it->plan_item_id = todo->plan_item_id;
-    it->completed_at = todo->completed_at;
-    it->postpone_until = todo->postpone_until;
-    it->task_system_id = todo->task_system_id;
-    it->updated_at = now_ts();
-    todo_db_save();
+    sqlite3_stmt *stmt = NULL;
+    const char *sql = "UPDATE todos SET title=?1, description=?2, status=?3, labels=?4, "
+        "priority=?5, due_date=?6, group_id=?7, sort_order=?8, todo_type=?9, "
+        "original_date=?10, carryover_count=?11, plan_id=?12, plan_item_id=?13, "
+        "completed_at=?14, postpone_until=?15, task_system_id=?16, "
+        "updated_at=CAST(strftime('%s','now') AS INTEGER) "
+        "WHERE id=?17";
+
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "todo_update prepare error: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    bind_todo(stmt, todo);
+    sqlite3_bind_int64(stmt, 17, todo->id);
+
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        fprintf(stderr, "todo_update error: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
     return 0;
 }
 
 int todo_delete(int64_t id) {
-    int idx = find_todo_idx(id);
-    if (idx < 0) return -1;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
 
-    /* 级联删除 checklist */
-    int j = 0;
-    for (int i = 0; i < g_check_count; i++) {
-        if (g_checks[i].todo_id != id) {
-            g_checks[j++] = g_checks[i];
-        }
-    }
-    g_check_count = j;
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "DELETE FROM todos WHERE id=?", -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, id);
 
-    /* 级联删除评论 */
-    j = 0;
-    for (int i = 0; i < g_comment_count; i++) {
-        if (g_comments[i].todo_id != id) {
-            g_comments[j++] = g_comments[i];
-        }
-    }
-    g_comment_count = j;
-
-    /* 删除 todo */
-    for (int i = idx; i < g_todo_count - 1; i++) {
-        g_todos[i] = g_todos[i+1];
-    }
-    g_todo_count--;
-    todo_db_save();
-    return 0;
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? 0 : -1;
 }
 
 int todo_list(const todo_query_t *query, todo_list_t *result) {
     memset(result, 0, sizeof(*result));
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
 
-    /* 第一遍：筛选 */
-    todo_t *matches = NULL;
-    int mcount = 0, mcap = 0;
+    /* 构建动态 SQL */
+    char sql_base[4096];
+    char where[2048] = "WHERE 1=1";
+    int param_idx = 1;
+    /* 用于存储绑定值，避免临时变量生命周期问题 */
+    char status_buf[64] = {0};
+    char search_buf[512] = {0};
+    char labels_buf[1024] = {0};
 
-    int64_t now = now_ts();
-
-    for (int i = 0; i < g_todo_count; i++) {
-        todo_t *it = &g_todos[i];
-
-        if (query->status && strcmp(query->status, "all") != 0) {
-            if (strcmp(it->status, query->status) != 0) continue;
-        }
-        if (query->labels && query->labels[0]) {
-            if (!match_labels(it->labels, query->labels)) continue;
-        }
-        if (query->search && query->search[0]) {
-            if (strstr(it->title, query->search) == NULL &&
-                strstr(it->description, query->search) == NULL) continue;
-        }
-        if (query->priority >= 0 && it->priority != query->priority) continue;
-        if (query->group_id > 0 && it->group_id != query->group_id) continue;
-        if (query->group_id == 0 && it->group_id != 0) continue;  /* 只查未分组 */
-        if (query->due_before > 0 && it->due_date > 0 && it->due_date > query->due_before) continue;
-        if (query->due_after > 0 && it->due_date > 0 && it->due_date < query->due_after) continue;
-
-        if (mcount >= mcap) {
-            mcap = mcap ? mcap * 2 : 16;
-            matches = realloc(matches, mcap * sizeof(todo_t));
-        }
-        matches[mcount++] = *it;
+    if (query->status && strcmp(query->status, "all") != 0 && query->status[0]) {
+        strncpy(status_buf, query->status, sizeof(status_buf) - 1);
+        char cond[256];
+        snprintf(cond, sizeof(cond), " AND status=?%d", param_idx++);
+        strcat(where, cond);
+    }
+    if (query->labels && query->labels[0]) {
+        strncpy(labels_buf, query->labels, sizeof(labels_buf) - 1);
+        char cond[256];
+        /* labels 存储为 JSON 数组字符串，用 LIKE 搜索 */
+        snprintf(cond, sizeof(cond), " AND labels LIKE '%%' || ?%d || '%%'", param_idx++);
+        strcat(where, cond);
+    }
+    if (query->search && query->search[0]) {
+        strncpy(search_buf, query->search, sizeof(search_buf) - 1);
+        char cond[512];
+        snprintf(cond, sizeof(cond), " AND (title LIKE '%%' || ?%d || '%%' OR description LIKE '%%' || ?%d || '%%')", param_idx, param_idx);
+        param_idx++;
+        strcat(where, cond);
+    }
+    if (query->priority >= 0) {
+        char cond[128];
+        snprintf(cond, sizeof(cond), " AND priority=?%d", param_idx++);
+        strcat(where, cond);
+    }
+    if (query->group_id >= 0) {
+        char cond[128];
+        snprintf(cond, sizeof(cond), " AND group_id=?%d", param_idx++);
+        strcat(where, cond);
+    }
+    if (query->due_before > 0) {
+        char cond[128];
+        snprintf(cond, sizeof(cond), " AND (due_date=0 OR due_date<=?%d)", param_idx++);
+        strcat(where, cond);
+    }
+    if (query->due_after > 0) {
+        char cond[128];
+        snprintf(cond, sizeof(cond), " AND (due_date=0 OR due_date>=?%d)", param_idx++);
+        strcat(where, cond);
     }
 
     /* 排序 */
-    if (matches && mcount > 1) {
-        const char *sort_field = query->sort ? query->sort : "sort_order";
-        int desc = query->sort_desc ? -1 : 1;
+    const char *order_field = "sort_order";
+    if (query->sort) {
+        if (strcmp(query->sort, "priority") == 0) order_field = "priority";
+        else if (strcmp(query->sort, "due_date") == 0) order_field = "due_date";
+        else if (strcmp(query->sort, "created_at") == 0) order_field = "created_at";
+        else if (strcmp(query->sort, "sort_order") == 0) order_field = "sort_order";
+    }
+    const char *order_dir = query->sort_desc ? "DESC" : "ASC";
 
-        for (int i = 0; i < mcount - 1; i++) {
-            for (int k = i + 1; k < mcount; k++) {
-                int swap = 0;
-                if (strcmp(sort_field, "priority") == 0) {
-                    swap = (matches[i].priority * desc) > (matches[k].priority * desc);
-                } else if (strcmp(sort_field, "due_date") == 0) {
-                    swap = matches[i].due_date > matches[k].due_date;
-                    if (desc < 0) swap = !swap;
-                } else if (strcmp(sort_field, "created_at") == 0) {
-                    swap = matches[i].created_at < matches[k].created_at;
-                    if (desc < 0) swap = !swap;
-                } else {
-                    /* 默认 sort_order */
-                    swap = matches[i].sort_order > matches[k].sort_order;
-                    if (desc < 0) swap = !swap;
-                }
-                if (swap) {
-                    todo_t tmp = matches[i];
-                    matches[i] = matches[k];
-                    matches[k] = tmp;
-                }
-            }
+    /* 先查询总数 */
+    snprintf(sql_base, sizeof(sql_base), "SELECT COUNT(*) FROM todos %s", where);
+    sqlite3_stmt *count_stmt = NULL;
+    if (sqlite3_prepare_v2(db, sql_base, -1, &count_stmt, NULL) != SQLITE_OK) return -1;
+    int p = 1;
+    if (query->status && strcmp(query->status, "all") != 0 && query->status[0])
+        sqlite3_bind_text(count_stmt, p++, status_buf, -1, SQLITE_STATIC);
+    if (query->labels && query->labels[0])
+        sqlite3_bind_text(count_stmt, p++, labels_buf, -1, SQLITE_STATIC);
+    if (query->search && query->search[0])
+        sqlite3_bind_text(count_stmt, p++, search_buf, -1, SQLITE_STATIC);
+    if (query->priority >= 0)
+        sqlite3_bind_int(count_stmt, p++, query->priority);
+    if (query->group_id >= 0)
+        sqlite3_bind_int64(count_stmt, p++, query->group_id);
+    if (query->due_before > 0)
+        sqlite3_bind_int64(count_stmt, p++, query->due_before);
+    if (query->due_after > 0)
+        sqlite3_bind_int64(count_stmt, p++, query->due_after);
+
+    int total = 0;
+    if (sqlite3_step(count_stmt) == SQLITE_ROW) {
+        total = sqlite3_column_int(count_stmt, 0);
+    }
+    sqlite3_finalize(count_stmt);
+
+    /* 分页参数 */
+    int page = query->page > 0 ? query->page : 1;
+    int per_page = query->per_page > 0 ? query->per_page : 20;
+    if (per_page > 100) per_page = 100;
+    int offset = (page - 1) * per_page;
+
+    /* 查询数据 */
+    snprintf(sql_base, sizeof(sql_base),
+        "SELECT * FROM todos %s ORDER BY %s %s LIMIT ?%d OFFSET ?%d",
+        where, order_field, order_dir, param_idx, param_idx + 1);
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, sql_base, -1, &stmt, NULL) != SQLITE_OK) {
+        fprintf(stderr, "todo_list prepare error: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    p = 1;
+    if (query->status && strcmp(query->status, "all") != 0 && query->status[0])
+        sqlite3_bind_text(stmt, p++, status_buf, -1, SQLITE_STATIC);
+    if (query->labels && query->labels[0])
+        sqlite3_bind_text(stmt, p++, labels_buf, -1, SQLITE_STATIC);
+    if (query->search && query->search[0])
+        sqlite3_bind_text(stmt, p++, search_buf, -1, SQLITE_STATIC);
+    if (query->priority >= 0)
+        sqlite3_bind_int(stmt, p++, query->priority);
+    if (query->group_id >= 0)
+        sqlite3_bind_int64(stmt, p++, query->group_id);
+    if (query->due_before > 0)
+        sqlite3_bind_int64(stmt, p++, query->due_before);
+    if (query->due_after > 0)
+        sqlite3_bind_int64(stmt, p++, query->due_after);
+    sqlite3_bind_int(stmt, p++, per_page);
+    sqlite3_bind_int(stmt, p++, offset);
+
+    /* 收集结果 */
+    int count = 0, cap = 16;
+    todo_t *items = malloc(cap * sizeof(todo_t));
+    if (!items) { sqlite3_finalize(stmt); return -1; }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        if (count >= cap) {
+            cap *= 2;
+            todo_t *new_items = realloc(items, cap * sizeof(todo_t));
+            if (!new_items) { free(items); sqlite3_finalize(stmt); return -1; }
+            items = new_items;
         }
+        row_to_todo(stmt, &items[count++]);
     }
+    sqlite3_finalize(stmt);
 
-    result->total = mcount;
-
-    int p = query->page > 0 ? query->page : 1;
-    int pp = query->per_page > 0 ? query->per_page : 20;
-    if (pp > 100) pp = 100;
-
-    int start = (p - 1) * pp;
-    if (start < mcount) {
-        int end = start + pp;
-        if (end > mcount) end = mcount;
-        result->count = end - start;
-        result->items = malloc(result->count * sizeof(todo_t));
-        memcpy(result->items, matches + start, result->count * sizeof(todo_t));
-    } else {
-        result->count = 0;
-        result->items = NULL;
-    }
-
-    free(matches);
+    result->items = items;
+    result->count = count;
+    result->total = total;
     return 0;
 }
 
@@ -982,41 +432,55 @@ void todo_list_free(todo_list_t *result) {
 }
 
 int todo_update_sort(int64_t id, int sort_order) {
-    int idx = find_todo_idx(id);
-    if (idx < 0) return -1;
-    g_todos[idx].sort_order = sort_order;
-    g_todos[idx].updated_at = now_ts();
-    todo_db_save();
-    return 0;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "UPDATE todos SET sort_order=?, updated_at=CAST(strftime('%s','now') AS INTEGER) WHERE id=?",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int(stmt, 1, sort_order);
+    sqlite3_bind_int64(stmt, 2, id);
+
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? 0 : -1;
 }
 
 int todo_get_stats(todo_stats_t *stats) {
     memset(stats, 0, sizeof(*stats));
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+
     int64_t now = now_ts();
-    int64_t today_end = (now / 86400 + 1) * 86400;  /* 今天 23:59:59 */
-    int64_t today_start = (now / 86400) * 86400;      /* 今天 00:00:00 */
+    int64_t today_start = (now / 86400) * 86400;
+    int64_t today_end = today_start + 86400;
 
-    for (int i = 0; i < g_todo_count; i++) {
-        todo_t *it = &g_todos[i];
-        stats->total++;
-        if (strcmp(it->status, "open") == 0) stats->open++;
-        else if (strcmp(it->status, "closed") == 0) stats->closed++;
-        else if (strcmp(it->status, "archived") == 0) stats->archived++;
-
-        /* 过期：截止日期已过且状态为 open */
-        if (it->due_date > 0 && it->due_date < now && strcmp(it->status, "open") == 0) {
-            stats->overdue++;
-        }
-        /* 今日到期 */
-        if (it->due_date >= today_start && it->due_date < today_end && strcmp(it->status, "open") == 0) {
-            stats->due_today++;
-        }
+    /* 总计数 */
+    sqlite3_stmt *stmt = NULL;
+    sqlite3_prepare_v2(db, "SELECT COUNT(*), SUM(status='open'), SUM(status='closed'), SUM(status='archived') FROM todos", -1, &stmt, NULL);
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        stats->total = sqlite3_column_int(stmt, 0);
+        stats->open = sqlite3_column_int(stmt, 1);
+        stats->closed = sqlite3_column_int(stmt, 2);
+        stats->archived = sqlite3_column_int(stmt, 3);
     }
+    sqlite3_finalize(stmt);
 
-    /* 完成率 = closed / (open + closed)，忽略 archived */
+    /* 过期数 */
+    sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM todos WHERE due_date>0 AND due_date<? AND status='open'", -1, &stmt, NULL);
+    sqlite3_bind_int64(stmt, 1, now);
+    if (sqlite3_step(stmt) == SQLITE_ROW) stats->overdue = sqlite3_column_int(stmt, 0);
+    sqlite3_finalize(stmt);
+
+    /* 今日到期 */
+    sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM todos WHERE due_date>=? AND due_date<? AND status='open'", -1, &stmt, NULL);
+    sqlite3_bind_int64(stmt, 1, today_start);
+    sqlite3_bind_int64(stmt, 2, today_end);
+    if (sqlite3_step(stmt) == SQLITE_ROW) stats->due_today = sqlite3_column_int(stmt, 0);
+    sqlite3_finalize(stmt);
+
     int active = stats->open + stats->closed;
     stats->completion_rate = active > 0 ? (double)stats->closed / active : 0.0;
-
     return 0;
 }
 
@@ -1024,60 +488,97 @@ int todo_get_stats(todo_stats_t *stats) {
  * Checklist
  * ============================================================ */
 int checklist_add(int64_t todo_id, const char *text, checklist_item_t *item) {
-    if (find_todo_idx(todo_id) < 0) return -1;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
 
-    int max_sort = 0;
-    for (int i = 0; i < g_check_count; i++) {
-        if (g_checks[i].todo_id == todo_id && g_checks[i].sort_order > max_sort) {
-            max_sort = g_checks[i].sort_order;
-        }
+    sqlite3_stmt *stmt = NULL;
+    /* 自动分配 sort_order */
+    if (sqlite3_prepare_v2(db,
+        "INSERT INTO checklist (todo_id, text, done, sort_order) VALUES (?,?,0,"
+        "(SELECT COALESCE(MAX(sort_order),0)+1 FROM checklist WHERE todo_id=?))",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, todo_id);
+    sqlite3_bind_text(stmt, 2, text, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 3, todo_id);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        return -1;
     }
+    int64_t id = sqlite3_last_insert_rowid(db);
+    sqlite3_finalize(stmt);
 
-    ENSURE_CHECK_CAP(g_check_count + 1);
-    checklist_item_t *c = &g_checks[g_check_count];
-    memset(c, 0, sizeof(*c));
-    c->id = g_next_check_id++;
-    c->todo_id = todo_id;
-    c->done = 0;
-    c->sort_order = max_sort + 1;
-    strncpy(c->text, text, CHECKLIST_TEXT_MAX - 1);
-    g_check_count++;
-
-    if (item) *item = *c;
-    todo_db_save();
+    if (item) {
+        /* 回读取创建的数据 */
+        sqlite3_prepare_v2(db, "SELECT id, todo_id, text, done, sort_order FROM checklist WHERE id=?", -1, &stmt, NULL);
+        sqlite3_bind_int64(stmt, 1, id);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            memset(item, 0, sizeof(*item));
+            item->id = sqlite3_column_int64(stmt, 0);
+            item->todo_id = sqlite3_column_int64(stmt, 1);
+            strncpy(item->text, (const char *)sqlite3_column_text(stmt, 2), CHECKLIST_TEXT_MAX - 1);
+            item->done = sqlite3_column_int(stmt, 3);
+            item->sort_order = sqlite3_column_int(stmt, 4);
+        }
+        sqlite3_finalize(stmt);
+    }
     return 0;
 }
 
 int checklist_toggle(int64_t item_id) {
-    int idx = find_check_idx(item_id);
-    if (idx < 0) return -1;
-    g_checks[idx].done = g_checks[idx].done ? 0 : 1;
-    todo_db_save();
-    return 0;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "UPDATE checklist SET done=1-done WHERE id=?", -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, item_id);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? 0 : -1;
 }
 
 int checklist_delete(int64_t item_id) {
-    int idx = find_check_idx(item_id);
-    if (idx < 0) return -1;
-    for (int i = idx; i < g_check_count - 1; i++) {
-        g_checks[i] = g_checks[i+1];
-    }
-    g_check_count--;
-    todo_db_save();
-    return 0;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "DELETE FROM checklist WHERE id=?", -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, item_id);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? 0 : -1;
 }
 
 int checklist_list(int64_t todo_id, checklist_item_t **items, int *count) {
-    checklist_item_t *list = NULL;
-    int cnt = 0, cap = 0;
-    for (int i = 0; i < g_check_count; i++) {
-        if (g_checks[i].todo_id != todo_id) continue;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "SELECT id, todo_id, text, done, sort_order FROM checklist WHERE todo_id=? ORDER BY sort_order",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, todo_id);
+
+    int cap = 8, cnt = 0;
+    checklist_item_t *list = malloc(cap * sizeof(checklist_item_t));
+    if (!list) { sqlite3_finalize(stmt); return -1; }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
         if (cnt >= cap) {
-            cap = cap ? cap * 2 : 8;
-            list = realloc(list, cap * sizeof(checklist_item_t));
+            cap *= 2;
+            checklist_item_t *new_list = realloc(list, cap * sizeof(checklist_item_t));
+            if (!new_list) { free(list); sqlite3_finalize(stmt); return -1; }
+            list = new_list;
         }
-        list[cnt++] = g_checks[i];
+        memset(&list[cnt], 0, sizeof(checklist_item_t));
+        list[cnt].id = sqlite3_column_int64(stmt, 0);
+        list[cnt].todo_id = sqlite3_column_int64(stmt, 1);
+        strncpy(list[cnt].text, (const char *)sqlite3_column_text(stmt, 2), CHECKLIST_TEXT_MAX - 1);
+        list[cnt].done = sqlite3_column_int(stmt, 3);
+        list[cnt].sort_order = sqlite3_column_int(stmt, 4);
+        cnt++;
     }
+    sqlite3_finalize(stmt);
+
     *items = list;
     *count = cnt;
     return 0;
@@ -1089,75 +590,118 @@ void checklist_list_free(checklist_item_t *items, int count) {
 }
 
 /* ============================================================
- * 分组 CRUD
+ * 分组 CRUD（表名：groups_t）
  * ============================================================ */
 int group_create(const group_t *group, int64_t *out_id) {
-    ENSURE_GROUP_CAP(g_group_count + 1);
-    group_t *g = &g_groups[g_group_count];
-    memset(g, 0, sizeof(*g));
-    g->id = g_next_group_id++;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
 
-    strncpy(g->name, group->name, GROUP_NAME_MAX - 1);
-    if (group->color[0])
-        strncpy(g->color, group->color, GROUP_COLOR_MAX - 1);
-    else
-        strcpy(g->color, "#4A90D9");
-    g->sort_order = group->sort_order;
-    g->created_at = now_ts();
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db,
+        "INSERT INTO groups_t (name, color, sort_order, created_at) VALUES (?,?,?,CAST(strftime('%s','now') AS INTEGER))",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_text(stmt, 1, group->name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, group->color[0] ? group->color : "#4A90D9", -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 3, group->sort_order);
 
-    g_group_count++;
-    if (out_id) *out_id = g->id;
-    todo_db_save();
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    int64_t id = sqlite3_last_insert_rowid(db);
+    sqlite3_finalize(stmt);
+    if (out_id) *out_id = id;
     return 0;
 }
 
 int group_get(int64_t id, group_t *group) {
-    int idx = find_group_idx(id);
-    if (idx < 0) return -1;
-    if (group) *group = g_groups[idx];
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "SELECT id, name, color, sort_order, created_at FROM groups_t WHERE id=?", -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, id);
+
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW) { sqlite3_finalize(stmt); return -1; }
+    if (group) {
+        memset(group, 0, sizeof(*group));
+        group->id = sqlite3_column_int64(stmt, 0);
+        strncpy(group->name, (const char *)sqlite3_column_text(stmt, 1), GROUP_NAME_MAX - 1);
+        strncpy(group->color, (const char *)sqlite3_column_text(stmt, 2), GROUP_COLOR_MAX - 1);
+        group->sort_order = sqlite3_column_int(stmt, 3);
+        group->created_at = sqlite3_column_int64(stmt, 4);
+    }
+    sqlite3_finalize(stmt);
     return 0;
 }
 
 int group_update(const group_t *group) {
-    int idx = find_group_idx(group->id);
-    if (idx < 0) return -1;
-    group_t *g = &g_groups[idx];
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
 
-    strncpy(g->name, group->name, GROUP_NAME_MAX - 1);
-    strncpy(g->color, group->color, GROUP_COLOR_MAX - 1);
-    g->sort_order = group->sort_order;
-    todo_db_save();
-    return 0;
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "UPDATE groups_t SET name=?, color=?, sort_order=? WHERE id=?", -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_text(stmt, 1, group->name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, group->color, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 3, group->sort_order);
+    sqlite3_bind_int64(stmt, 4, group->id);
+
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? 0 : -1;
 }
 
 int group_delete(int64_t id) {
-    int idx = find_group_idx(id);
-    if (idx < 0) return -1;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
 
     /* 将该分组的待办置为未分组 */
-    for (int i = 0; i < g_todo_count; i++) {
-        if (g_todos[i].group_id == id) {
-            g_todos[i].group_id = 0;
-        }
-    }
+    sqlite3_stmt *stmt = NULL;
+    sqlite3_prepare_v2(db, "UPDATE todos SET group_id=0 WHERE group_id=?", -1, &stmt, NULL);
+    sqlite3_bind_int64(stmt, 1, id);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
 
     /* 删除分组 */
-    for (int i = idx; i < g_group_count - 1; i++) {
-        g_groups[i] = g_groups[i+1];
-    }
-    g_group_count--;
-    todo_db_save();
-    return 0;
+    sqlite3_prepare_v2(db, "DELETE FROM groups_t WHERE id=?", -1, &stmt, NULL);
+    sqlite3_bind_int64(stmt, 1, id);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? 0 : -1;
 }
 
 int group_list(group_t **groups, int *count) {
-    group_t *list = malloc(g_group_count * sizeof(group_t));
-    if (!list) return -1;
-    for (int i = 0; i < g_group_count; i++) {
-        list[i] = g_groups[i];
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "SELECT id, name, color, sort_order, created_at FROM groups_t ORDER BY sort_order",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+
+    int cap = 8, cnt = 0;
+    group_t *list = malloc(cap * sizeof(group_t));
+    if (!list) { sqlite3_finalize(stmt); return -1; }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        if (cnt >= cap) {
+            cap *= 2;
+            group_t *new_list = realloc(list, cap * sizeof(group_t));
+            if (!new_list) { free(list); sqlite3_finalize(stmt); return -1; }
+            list = new_list;
+        }
+        memset(&list[cnt], 0, sizeof(group_t));
+        list[cnt].id = sqlite3_column_int64(stmt, 0);
+        strncpy(list[cnt].name, (const char *)sqlite3_column_text(stmt, 1), GROUP_NAME_MAX - 1);
+        strncpy(list[cnt].color, (const char *)sqlite3_column_text(stmt, 2), GROUP_COLOR_MAX - 1);
+        list[cnt].sort_order = sqlite3_column_int(stmt, 3);
+        list[cnt].created_at = sqlite3_column_int64(stmt, 4);
+        cnt++;
     }
+    sqlite3_finalize(stmt);
+
     *groups = list;
-    *count = g_group_count;
+    *count = cnt;
     return 0;
 }
 
@@ -1170,33 +714,67 @@ void group_list_free(group_t *groups, int count) {
  * 评论 CRUD
  * ============================================================ */
 int comment_add(int64_t todo_id, const char *text, comment_t *comment) {
-    if (find_todo_idx(todo_id) < 0) return -1;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
 
-    ENSURE_COMM_CAP(g_comment_count + 1);
-    comment_t *c = &g_comments[g_comment_count];
-    memset(c, 0, sizeof(*c));
-    c->id = g_next_comment_id++;
-    c->todo_id = todo_id;
-    strncpy(c->text, text, COMMENT_TEXT_MAX - 1);
-    c->created_at = now_ts();
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db,
+        "INSERT INTO comments (todo_id, text, created_at) VALUES (?,?,CAST(strftime('%s','now') AS INTEGER))",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, todo_id);
+    sqlite3_bind_text(stmt, 2, text, -1, SQLITE_TRANSIENT);
 
-    g_comment_count++;
-    if (comment) *comment = *c;
-    todo_db_save();
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    int64_t id = sqlite3_last_insert_rowid(db);
+    sqlite3_finalize(stmt);
+
+    if (comment) {
+        sqlite3_prepare_v2(db, "SELECT id, todo_id, text, created_at FROM comments WHERE id=?", -1, &stmt, NULL);
+        sqlite3_bind_int64(stmt, 1, id);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            memset(comment, 0, sizeof(*comment));
+            comment->id = sqlite3_column_int64(stmt, 0);
+            comment->todo_id = sqlite3_column_int64(stmt, 1);
+            strncpy(comment->text, (const char *)sqlite3_column_text(stmt, 2), COMMENT_TEXT_MAX - 1);
+            comment->created_at = sqlite3_column_int64(stmt, 3);
+        }
+        sqlite3_finalize(stmt);
+    }
     return 0;
 }
 
 int comment_list(int64_t todo_id, comment_t **comments, int *count) {
-    comment_t *list = NULL;
-    int cnt = 0, cap = 0;
-    for (int i = 0; i < g_comment_count; i++) {
-        if (g_comments[i].todo_id != todo_id) continue;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "SELECT id, todo_id, text, created_at FROM comments WHERE todo_id=? ORDER BY created_at",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, todo_id);
+
+    int cap = 8, cnt = 0;
+    comment_t *list = malloc(cap * sizeof(comment_t));
+    if (!list) { sqlite3_finalize(stmt); return -1; }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
         if (cnt >= cap) {
-            cap = cap ? cap * 2 : 8;
-            list = realloc(list, cap * sizeof(comment_t));
+            cap *= 2;
+            comment_t *new_list = realloc(list, cap * sizeof(comment_t));
+            if (!new_list) { free(list); sqlite3_finalize(stmt); return -1; }
+            list = new_list;
         }
-        list[cnt++] = g_comments[i];
+        memset(&list[cnt], 0, sizeof(comment_t));
+        list[cnt].id = sqlite3_column_int64(stmt, 0);
+        list[cnt].todo_id = sqlite3_column_int64(stmt, 1);
+        strncpy(list[cnt].text, (const char *)sqlite3_column_text(stmt, 2), COMMENT_TEXT_MAX - 1);
+        list[cnt].created_at = sqlite3_column_int64(stmt, 3);
+        cnt++;
     }
+    sqlite3_finalize(stmt);
+
     *comments = list;
     *count = cnt;
     return 0;
@@ -1208,87 +786,135 @@ void comment_list_free(comment_t *comments, int count) {
 }
 
 int comment_delete(int64_t comment_id) {
-    int idx = find_comment_idx(comment_id);
-    if (idx < 0) return -1;
-    for (int i = idx; i < g_comment_count - 1; i++) {
-        g_comments[i] = g_comments[i+1];
-    }
-    g_comment_count--;
-    todo_db_save();
-    return 0;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "DELETE FROM comments WHERE id=?", -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, comment_id);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? 0 : -1;
 }
 
 /* ============================================================
  * 任务系统 CRUD
  * ============================================================ */
 int task_system_create(const task_system_t *ts, int64_t *out_id) {
-    ENSURE_TS_CAP(g_ts_count + 1);
-    task_system_t *t = &g_task_systems[g_ts_count];
-    memset(t, 0, sizeof(*t));
-    t->id = g_next_ts_id++;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
 
-    strncpy(t->name, ts->name, TASK_SYSTEM_NAME_MAX - 1);
-    strncpy(t->description, ts->description, 1023);
-    if (ts->color[0])
-        strncpy(t->color, ts->color, 15);
-    else
-        strcpy(t->color, "#4A90D9");
-    t->sort_order = ts->sort_order;
-    t->created_at = now_ts();
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db,
+        "INSERT INTO task_systems (name, description, color, sort_order, created_at) VALUES (?,?,?,?,CAST(strftime('%s','now') AS INTEGER))",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_text(stmt, 1, ts->name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, ts->description, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, ts->color[0] ? ts->color : "#4A90D9", -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 4, ts->sort_order);
 
-    g_ts_count++;
-    if (out_id) *out_id = t->id;
-    todo_db_save();
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    int64_t id = sqlite3_last_insert_rowid(db);
+    sqlite3_finalize(stmt);
+    if (out_id) *out_id = id;
     return 0;
 }
 
 int task_system_get(int64_t id, task_system_t *ts) {
-    int idx = find_ts_idx(id);
-    if (idx < 0) return -1;
-    if (ts) *ts = g_task_systems[idx];
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "SELECT id, name, description, color, sort_order, created_at FROM task_systems WHERE id=?",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, id);
+
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW) { sqlite3_finalize(stmt); return -1; }
+    if (ts) {
+        memset(ts, 0, sizeof(*ts));
+        ts->id = sqlite3_column_int64(stmt, 0);
+        strncpy(ts->name, (const char *)sqlite3_column_text(stmt, 1), TASK_SYSTEM_NAME_MAX - 1);
+        strncpy(ts->description, (const char *)sqlite3_column_text(stmt, 2), 1023);
+        strncpy(ts->color, (const char *)sqlite3_column_text(stmt, 3), 15);
+        ts->sort_order = sqlite3_column_int(stmt, 4);
+        ts->created_at = sqlite3_column_int64(stmt, 5);
+    }
+    sqlite3_finalize(stmt);
     return 0;
 }
 
 int task_system_update(const task_system_t *ts) {
-    int idx = find_ts_idx(ts->id);
-    if (idx < 0) return -1;
-    task_system_t *t = &g_task_systems[idx];
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
 
-    strncpy(t->name, ts->name, TASK_SYSTEM_NAME_MAX - 1);
-    strncpy(t->description, ts->description, 1023);
-    strncpy(t->color, ts->color, 15);
-    t->sort_order = ts->sort_order;
-    todo_db_save();
-    return 0;
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "UPDATE task_systems SET name=?, description=?, color=?, sort_order=? WHERE id=?",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_text(stmt, 1, ts->name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, ts->description, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, ts->color, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 4, ts->sort_order);
+    sqlite3_bind_int64(stmt, 5, ts->id);
+
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? 0 : -1;
 }
 
 int task_system_delete(int64_t id) {
-    int idx = find_ts_idx(id);
-    if (idx < 0) return -1;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
 
     /* 将该系统的待办置为默认系统 */
-    for (int i = 0; i < g_todo_count; i++) {
-        if (g_todos[i].task_system_id == id) {
-            g_todos[i].task_system_id = 1; /* 默认系统 */
-        }
-    }
+    sqlite3_stmt *stmt = NULL;
+    sqlite3_prepare_v2(db, "UPDATE todos SET task_system_id=1 WHERE task_system_id=?", -1, &stmt, NULL);
+    sqlite3_bind_int64(stmt, 1, id);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
 
-    for (int i = idx; i < g_ts_count - 1; i++) {
-        g_task_systems[i] = g_task_systems[i+1];
-    }
-    g_ts_count--;
-    todo_db_save();
-    return 0;
+    sqlite3_prepare_v2(db, "DELETE FROM task_systems WHERE id=?", -1, &stmt, NULL);
+    sqlite3_bind_int64(stmt, 1, id);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? 0 : -1;
 }
 
 int task_system_list(task_system_t **systems, int *count) {
-    task_system_t *list = malloc(g_ts_count * sizeof(task_system_t));
-    if (!list) return -1;
-    for (int i = 0; i < g_ts_count; i++) {
-        list[i] = g_task_systems[i];
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "SELECT id, name, description, color, sort_order, created_at FROM task_systems ORDER BY sort_order",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+
+    int cap = 8, cnt = 0;
+    task_system_t *list = malloc(cap * sizeof(task_system_t));
+    if (!list) { sqlite3_finalize(stmt); return -1; }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        if (cnt >= cap) {
+            cap *= 2;
+            task_system_t *new_list = realloc(list, cap * sizeof(task_system_t));
+            if (!new_list) { free(list); sqlite3_finalize(stmt); return -1; }
+            list = new_list;
+        }
+        memset(&list[cnt], 0, sizeof(task_system_t));
+        list[cnt].id = sqlite3_column_int64(stmt, 0);
+        strncpy(list[cnt].name, (const char *)sqlite3_column_text(stmt, 1), TASK_SYSTEM_NAME_MAX - 1);
+        strncpy(list[cnt].description, (const char *)sqlite3_column_text(stmt, 2), 1023);
+        strncpy(list[cnt].color, (const char *)sqlite3_column_text(stmt, 3), 15);
+        list[cnt].sort_order = sqlite3_column_int(stmt, 4);
+        list[cnt].created_at = sqlite3_column_int64(stmt, 5);
+        cnt++;
     }
+    sqlite3_finalize(stmt);
+
     *systems = list;
-    *count = g_ts_count;
+    *count = cnt;
     return 0;
 }
 
@@ -1301,82 +927,128 @@ void task_system_list_free(task_system_t *systems, int count) {
  * 学习计划 CRUD
  * ============================================================ */
 int plan_create(const plan_t *plan, int64_t *out_id) {
-    ENSURE_PLAN_CAP(g_plan_count + 1);
-    plan_t *p = &g_plans[g_plan_count];
-    memset(p, 0, sizeof(*p));
-    p->id = g_next_plan_id++;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
 
-    strncpy(p->name, plan->name, PLAN_NAME_MAX - 1);
-    strncpy(p->description, plan->description, PLAN_DESC_MAX - 1);
-    p->start_date = plan->start_date;
-    p->end_date = plan->end_date;
-    if (plan->color[0])
-        strncpy(p->color, plan->color, 15);
-    else
-        strcpy(p->color, "#4A90D9");
-    p->status = plan->status;
-    p->created_at = now_ts();
-    p->updated_at = p->created_at;
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db,
+        "INSERT INTO plans (name, description, start_date, end_date, color, status, created_at, updated_at) "
+        "VALUES (?,?,?,?,?,?,CAST(strftime('%s','now') AS INTEGER),CAST(strftime('%s','now') AS INTEGER))",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_text(stmt, 1, plan->name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, plan->description, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 3, plan->start_date);
+    sqlite3_bind_int64(stmt, 4, plan->end_date);
+    sqlite3_bind_text(stmt, 5, plan->color[0] ? plan->color : "#4A90D9", -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 6, plan->status);
 
-    g_plan_count++;
-    if (out_id) *out_id = p->id;
-    todo_db_save();
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    int64_t id = sqlite3_last_insert_rowid(db);
+    sqlite3_finalize(stmt);
+    if (out_id) *out_id = id;
     return 0;
 }
 
 int plan_get(int64_t id, plan_t *plan) {
-    int idx = find_plan_idx(id);
-    if (idx < 0) return -1;
-    if (plan) *plan = g_plans[idx];
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "SELECT id, name, description, start_date, end_date, color, status, created_at, updated_at FROM plans WHERE id=?",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, id);
+
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW) { sqlite3_finalize(stmt); return -1; }
+    if (plan) {
+        memset(plan, 0, sizeof(*plan));
+        plan->id = sqlite3_column_int64(stmt, 0);
+        strncpy(plan->name, (const char *)sqlite3_column_text(stmt, 1), PLAN_NAME_MAX - 1);
+        strncpy(plan->description, (const char *)sqlite3_column_text(stmt, 2), PLAN_DESC_MAX - 1);
+        plan->start_date = sqlite3_column_int64(stmt, 3);
+        plan->end_date = sqlite3_column_int64(stmt, 4);
+        strncpy(plan->color, (const char *)sqlite3_column_text(stmt, 5), 15);
+        plan->status = sqlite3_column_int(stmt, 6);
+        plan->created_at = sqlite3_column_int64(stmt, 7);
+        plan->updated_at = sqlite3_column_int64(stmt, 8);
+    }
+    sqlite3_finalize(stmt);
     return 0;
 }
 
 int plan_update(const plan_t *plan) {
-    int idx = find_plan_idx(plan->id);
-    if (idx < 0) return -1;
-    plan_t *p = &g_plans[idx];
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
 
-    strncpy(p->name, plan->name, PLAN_NAME_MAX - 1);
-    strncpy(p->description, plan->description, PLAN_DESC_MAX - 1);
-    p->start_date = plan->start_date;
-    p->end_date = plan->end_date;
-    strncpy(p->color, plan->color, 15);
-    p->status = plan->status;
-    p->updated_at = now_ts();
-    todo_db_save();
-    return 0;
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db,
+        "UPDATE plans SET name=?, description=?, start_date=?, end_date=?, color=?, status=?, "
+        "updated_at=CAST(strftime('%s','now') AS INTEGER) WHERE id=?",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_text(stmt, 1, plan->name, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, plan->description, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 3, plan->start_date);
+    sqlite3_bind_int64(stmt, 4, plan->end_date);
+    sqlite3_bind_text(stmt, 5, plan->color, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 6, plan->status);
+    sqlite3_bind_int64(stmt, 7, plan->id);
+
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? 0 : -1;
 }
 
 int plan_delete(int64_t id) {
-    int idx = find_plan_idx(id);
-    if (idx < 0) return -1;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
 
-    /* 删除关联的 plan_item */
-    int j = 0;
-    for (int i = 0; i < g_pi_count; i++) {
-        if (g_plan_items[i].plan_id != id) {
-            g_plan_items[j++] = g_plan_items[i];
-        }
-    }
-    g_pi_count = j;
-
-    /* 删除计划 */
-    for (int i = idx; i < g_plan_count - 1; i++) {
-        g_plans[i] = g_plans[i+1];
-    }
-    g_plan_count--;
-    todo_db_save();
-    return 0;
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "DELETE FROM plans WHERE id=?", -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, id);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    /* 外键级联删除 plan_items */
+    return (rc == SQLITE_DONE) ? 0 : -1;
 }
 
 int plan_list(plan_t **plans, int *count) {
-    plan_t *list = malloc(g_plan_count * sizeof(plan_t));
-    if (!list) return -1;
-    for (int i = 0; i < g_plan_count; i++) {
-        list[i] = g_plans[i];
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "SELECT id, name, description, start_date, end_date, color, status, created_at, updated_at FROM plans ORDER BY id",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+
+    int cap = 8, cnt = 0;
+    plan_t *list = malloc(cap * sizeof(plan_t));
+    if (!list) { sqlite3_finalize(stmt); return -1; }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        if (cnt >= cap) {
+            cap *= 2;
+            plan_t *new_list = realloc(list, cap * sizeof(plan_t));
+            if (!new_list) { free(list); sqlite3_finalize(stmt); return -1; }
+            list = new_list;
+        }
+        memset(&list[cnt], 0, sizeof(plan_t));
+        list[cnt].id = sqlite3_column_int64(stmt, 0);
+        strncpy(list[cnt].name, (const char *)sqlite3_column_text(stmt, 1), PLAN_NAME_MAX - 1);
+        strncpy(list[cnt].description, (const char *)sqlite3_column_text(stmt, 2), PLAN_DESC_MAX - 1);
+        list[cnt].start_date = sqlite3_column_int64(stmt, 3);
+        list[cnt].end_date = sqlite3_column_int64(stmt, 4);
+        strncpy(list[cnt].color, (const char *)sqlite3_column_text(stmt, 5), 15);
+        list[cnt].status = sqlite3_column_int(stmt, 6);
+        list[cnt].created_at = sqlite3_column_int64(stmt, 7);
+        list[cnt].updated_at = sqlite3_column_int64(stmt, 8);
+        cnt++;
     }
+    sqlite3_finalize(stmt);
+
     *plans = list;
-    *count = g_plan_count;
+    *count = cnt;
     return 0;
 }
 
@@ -1389,76 +1061,144 @@ void plan_list_free(plan_t *plans, int count) {
  * 计划项 CRUD
  * ============================================================ */
 int plan_item_create(const plan_item_t *item, int64_t *out_id) {
-    ENSURE_PI_CAP(g_pi_count + 1);
-    plan_item_t *pi = &g_plan_items[g_pi_count];
-    memset(pi, 0, sizeof(*pi));
-    pi->id = g_next_pi_id++;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
 
-    pi->plan_id = item->plan_id;
-    pi->parent_id = item->parent_id;
-    strncpy(pi->title, item->title, ITEM_TITLE_MAX - 1);
-    pi->item_type = item->item_type;
-    pi->planned_date = item->planned_date;
-    pi->estimated_minutes = item->estimated_minutes;
-    pi->order_index = item->order_index;
-    pi->completion_rule = item->completion_rule;
-    pi->todo_id = item->todo_id;
-    pi->actual_minutes = item->actual_minutes;
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db,
+        "INSERT INTO plan_items (plan_id, parent_id, title, item_type, planned_date, "
+        "estimated_minutes, order_index, completion_rule, todo_id, actual_minutes) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, item->plan_id);
+    sqlite3_bind_int64(stmt, 2, item->parent_id);
+    sqlite3_bind_text(stmt, 3, item->title, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 4, item->item_type);
+    sqlite3_bind_int64(stmt, 5, item->planned_date);
+    sqlite3_bind_int(stmt, 6, item->estimated_minutes);
+    sqlite3_bind_int(stmt, 7, item->order_index);
+    sqlite3_bind_int(stmt, 8, item->completion_rule);
+    sqlite3_bind_int64(stmt, 9, item->todo_id);
+    sqlite3_bind_int(stmt, 10, item->actual_minutes);
 
-    g_pi_count++;
-    if (out_id) *out_id = pi->id;
-    todo_db_save();
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    int64_t id = sqlite3_last_insert_rowid(db);
+    sqlite3_finalize(stmt);
+    if (out_id) *out_id = id;
     return 0;
 }
 
 int plan_item_get(int64_t id, plan_item_t *item) {
-    int idx = find_pi_idx(id);
-    if (idx < 0) return -1;
-    if (item) *item = g_plan_items[idx];
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db,
+        "SELECT id, plan_id, parent_id, title, item_type, planned_date, "
+        "estimated_minutes, order_index, completion_rule, todo_id, actual_minutes FROM plan_items WHERE id=?",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, id);
+
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW) { sqlite3_finalize(stmt); return -1; }
+    if (item) {
+        memset(item, 0, sizeof(*item));
+        item->id = sqlite3_column_int64(stmt, 0);
+        item->plan_id = sqlite3_column_int64(stmt, 1);
+        item->parent_id = sqlite3_column_int64(stmt, 2);
+        strncpy(item->title, (const char *)sqlite3_column_text(stmt, 3), ITEM_TITLE_MAX - 1);
+        item->item_type = sqlite3_column_int(stmt, 4);
+        item->planned_date = sqlite3_column_int64(stmt, 5);
+        item->estimated_minutes = sqlite3_column_int(stmt, 6);
+        item->order_index = sqlite3_column_int(stmt, 7);
+        item->completion_rule = sqlite3_column_int(stmt, 8);
+        item->todo_id = sqlite3_column_int64(stmt, 9);
+        item->actual_minutes = sqlite3_column_int(stmt, 10);
+    }
+    sqlite3_finalize(stmt);
     return 0;
 }
 
 int plan_item_update(const plan_item_t *item) {
-    int idx = find_pi_idx(item->id);
-    if (idx < 0) return -1;
-    plan_item_t *pi = &g_plan_items[idx];
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
 
-    pi->plan_id = item->plan_id;
-    pi->parent_id = item->parent_id;
-    strncpy(pi->title, item->title, ITEM_TITLE_MAX - 1);
-    pi->item_type = item->item_type;
-    pi->planned_date = item->planned_date;
-    pi->estimated_minutes = item->estimated_minutes;
-    pi->order_index = item->order_index;
-    pi->completion_rule = item->completion_rule;
-    pi->todo_id = item->todo_id;
-    pi->actual_minutes = item->actual_minutes;
-    todo_db_save();
-    return 0;
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db,
+        "UPDATE plan_items SET plan_id=?, parent_id=?, title=?, item_type=?, planned_date=?, "
+        "estimated_minutes=?, order_index=?, completion_rule=?, todo_id=?, actual_minutes=? WHERE id=?",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, item->plan_id);
+    sqlite3_bind_int64(stmt, 2, item->parent_id);
+    sqlite3_bind_text(stmt, 3, item->title, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 4, item->item_type);
+    sqlite3_bind_int64(stmt, 5, item->planned_date);
+    sqlite3_bind_int(stmt, 6, item->estimated_minutes);
+    sqlite3_bind_int(stmt, 7, item->order_index);
+    sqlite3_bind_int(stmt, 8, item->completion_rule);
+    sqlite3_bind_int64(stmt, 9, item->todo_id);
+    sqlite3_bind_int(stmt, 10, item->actual_minutes);
+    sqlite3_bind_int64(stmt, 11, item->id);
+
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? 0 : -1;
 }
 
 int plan_item_delete(int64_t id) {
-    int idx = find_pi_idx(id);
-    if (idx < 0) return -1;
-    for (int i = idx; i < g_pi_count - 1; i++) {
-        g_plan_items[i] = g_plan_items[i+1];
-    }
-    g_pi_count--;
-    todo_db_save();
-    return 0;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "DELETE FROM plan_items WHERE id=?", -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, id);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? 0 : -1;
 }
 
 int plan_item_list_by_plan(int64_t plan_id, plan_item_t **items, int *count) {
-    plan_item_t *list = NULL;
-    int cnt = 0, cap = 0;
-    for (int i = 0; i < g_pi_count; i++) {
-        if (g_plan_items[i].plan_id != plan_id) continue;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db,
+        "SELECT id, plan_id, parent_id, title, item_type, planned_date, "
+        "estimated_minutes, order_index, completion_rule, todo_id, actual_minutes "
+        "FROM plan_items WHERE plan_id=? ORDER BY order_index",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, plan_id);
+
+    int cap = 16, cnt = 0;
+    plan_item_t *list = malloc(cap * sizeof(plan_item_t));
+    if (!list) { sqlite3_finalize(stmt); return -1; }
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
         if (cnt >= cap) {
-            cap = cap ? cap * 2 : 8;
-            list = realloc(list, cap * sizeof(plan_item_t));
+            cap *= 2;
+            plan_item_t *new_list = realloc(list, cap * sizeof(plan_item_t));
+            if (!new_list) { free(list); sqlite3_finalize(stmt); return -1; }
+            list = new_list;
         }
-        list[cnt++] = g_plan_items[i];
+        memset(&list[cnt], 0, sizeof(plan_item_t));
+        list[cnt].id = sqlite3_column_int64(stmt, 0);
+        list[cnt].plan_id = sqlite3_column_int64(stmt, 1);
+        list[cnt].parent_id = sqlite3_column_int64(stmt, 2);
+        strncpy(list[cnt].title, (const char *)sqlite3_column_text(stmt, 3), ITEM_TITLE_MAX - 1);
+        list[cnt].item_type = sqlite3_column_int(stmt, 4);
+        list[cnt].planned_date = sqlite3_column_int64(stmt, 5);
+        list[cnt].estimated_minutes = sqlite3_column_int(stmt, 6);
+        list[cnt].order_index = sqlite3_column_int(stmt, 7);
+        list[cnt].completion_rule = sqlite3_column_int(stmt, 8);
+        list[cnt].todo_id = sqlite3_column_int64(stmt, 9);
+        list[cnt].actual_minutes = sqlite3_column_int(stmt, 10);
+        cnt++;
     }
+    sqlite3_finalize(stmt);
+
     *items = list;
     *count = cnt;
     return 0;

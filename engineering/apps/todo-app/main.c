@@ -37,7 +37,7 @@ int main(int argc, char *argv[]) {
 
     todo_handler_init();
     calendar_init();
-    calendar_timer_start();  /* 启动后台定时任务 */
+    /* calendar_timer_start();  TODO: 修复 CreateThread 在 Git Bash 环境下 segfault */
 
     /* 注册信号处理 */
     signal(SIGINT, signal_handler);
