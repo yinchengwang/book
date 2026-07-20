@@ -8,6 +8,7 @@
       <router-link to="/calendar" class="nav-link">📅 日历</router-link>
       <router-link to="/stats-dfx" class="nav-link">📊 DFX</router-link>
       <router-link to="/plan-manage" class="nav-link">📋 计划</router-link>
+      <router-link to="/views" class="nav-link">🎨 视图</router-link>
     </nav>
     <router-view />
     <CarryoverModal :show="showCarryover" :tasks="carryoverTasks" @close="showCarryover = false" @confirm="handleCarryoverConfirm" />

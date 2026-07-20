@@ -54,6 +54,14 @@ const api = {
   createPlan: (body) => fetch(`${BASE}/plans`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
   importTemplate: (body) => fetch(`${BASE}/plans/import-template`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
   expandPlan: (id, body) => fetch(`${BASE}/plans/${id}/expand`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+
+  /* 视图系统 */
+  listViews: () => fetch(`${BASE}/views`).then(r => r.json()),
+  createView: (body) => fetch(`${BASE}/views`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+  getView: (id) => fetch(`${BASE}/views/${id}`).then(r => r.json()),
+  updateView: (id, body) => fetch(`${BASE}/views/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+  deleteView: (id) => fetch(`${BASE}/views/${id}`, { method: 'DELETE' }).then(r => r.json()),
+  setViewDefault: (id) => fetch(`${BASE}/views/${id}/default`, { method: 'PATCH' }).then(r => r.json()),
 }
 
 export default api
