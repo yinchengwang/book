@@ -178,6 +178,11 @@ add_executable(test_vacuum_index vacuum_index_freeze_test.cpp)
 target_link_libraries(test_vacuum_index db_storage project_includes gtest gtest_main)
 add_test(NAME test_vacuum_index COMMAND test_vacuum_index)
 
+# TOAST 大值存储测试（Task W3.1）
+add_executable(test_toast toast_test.cpp)
+target_link_libraries(test_toast db_storage project_includes gtest gtest_main)
+add_test(NAME test_toast COMMAND test_toast)
+
 # 所有 Storage 测试汇总
 add_custom_target(test_storage_all
     COMMAND test_btree

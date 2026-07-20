@@ -96,6 +96,9 @@ endif()
 if(TARGET storage_access_btree)
     list(APPEND DB_STORAGE_OBJECTS $<TARGET_OBJECTS:storage_access_btree>)
 endif()
+if(TARGET storage_access_toast)
+    list(APPEND DB_STORAGE_OBJECTS $<TARGET_OBJECTS:storage_access_toast>)
+endif()
 
 # 组合为静态库
 if(DB_STORAGE_OBJECTS)
