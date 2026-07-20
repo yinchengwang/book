@@ -32,6 +32,7 @@
 #include "db/lock.h"
 #include "db/page.h"       /* page_verify_checksum, page_set_checksum */
 #include "db/guc.h"        /* guc_get_bool */
+#include "db/storage/buffer/bgwriter.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -83,7 +84,7 @@ struct BufferPool_s {
  * ============================================================ */
 
 static BufferPool *buffer_pool = NULL;
-static bool buf_initialized = false;
+bool buf_initialized = false;
 
 /* KV 存储（可选，用于页面持久化） */
 static kv_t *kv_store = NULL;
@@ -163,6 +164,7 @@ int buf_init(int nbuffers) {
         buffer_pool->descriptors[i].hash_prev = UINT32_MAX;
         buffer_pool->descriptors[i].hash_next = UINT32_MAX;
         buffer_pool->descriptors[i].refcount = 0;
+	        buffer_pool->descriptors[i].file = NULL;
     }
 
     /* 分配 Hash 表 */
@@ -188,6 +190,10 @@ int buf_init(int nbuffers) {
     buffer_pool->reads = 0;
 
     buf_initialized = true;
+
+    /* 启动后台写进程 */
+    bgwriter_start();
+
     return 0;
 }
 
@@ -196,7 +202,10 @@ void buf_shutdown(void) {
         return;
     }
 
-    /* 刷写所有脏页 */
+    /* 先停止后台写进程（会刷所有脏页） */
+    bgwriter_stop();
+
+    /* 再次刷所有脏页（确保） */
     buf_flush_all();
 
     /* 关闭 KV 存储（如果有） */
