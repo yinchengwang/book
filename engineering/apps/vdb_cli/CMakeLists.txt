@@ -15,12 +15,11 @@ target_include_directories(vdb_cli PRIVATE
     ${ENGINEERING_SOURCE_DIR}/include
     ${ENGINEERING_SOURCE_DIR}/include/db
     ${ENGINEERING_SOURCE_DIR}/../third_part
+    ${ENGINEERING_SOURCE_DIR}/sdk/c/include
 )
 
 # 链接库
 target_link_libraries(vdb_cli PRIVATE
-    vector_api
-    db_core
-    db_bm25
+    db_sdk
     project_includes
 )

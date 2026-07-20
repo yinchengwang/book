@@ -126,6 +126,11 @@ if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/tools/CMakeLists.txt")
     add_subdirectory(tools)
 endif()
 
+# SDK 层（C SDK）
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/sdk/c/CMakeLists.txt")
+    add_subdirectory(sdk/c)
+endif()
+
 if(BUILD_TESTING)
     add_subdirectory(test)
 endif()

@@ -12,13 +12,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdarg.h>
 #include <time.h>
 #include <ctype.h>
 #include <errno.h>
 
 #include "vdb_cli.h"
-#include <db/vdb_api.h>
-#include <db/log.h>
+#include "db_sdk.h"
 
 /* ========================================================================
  * 常量定义
@@ -45,10 +45,10 @@
 
 /** CLI 内部状态 */
 struct vdb_cli_s {
-    vdb_cli_config_t config;      /**< 配置 */
-    vdb_handle_t *db;             /**< 数据库句柄 */
+    vdb_cli_config_t config;          /**< 配置 */
+    db_sdk_t *db;                     /**< 数据库句柄（通过 SDK） */
     vdb_output_format_t output_format; /**< 输出格式 */
-    char *last_collection;        /**< 上次使用的集合名 */
+    char *last_collection;            /**< 上次使用的集合名 */
 };
 
 /* ========================================================================
@@ -102,7 +102,7 @@ static float *parse_float_array(const char *str, int32_t *out_count) {
     char *token = strtok(copy, ",");
     int32_t i = 0;
     while (token && i < count) {
-        arr[i++] = (float)atof(token);
+        arr[i++] = (float)strtod(token, NULL);
         token = strtok(NULL, ",");
     }
     free(copy);
@@ -187,8 +187,8 @@ static void print_table_row(const char **vals, int n) {
 static int cmd_create(vdb_cli_t *cli, int argc, char *argv[]) {
     const char *collection = NULL;
     int32_t dimension = DEFAULT_DIM;
-    vdb_index_type_t index_type = VDB_INDEX_HNSW;
-    vdb_metric_type_t metric_type = VDB_METRIC_L2;
+    db_sdk_index_type_t index_type = DB_SDK_INDEX_HNSW;
+    db_sdk_metric_type_t metric_type = DB_SDK_METRIC_L2;
     int32_t ef_search = 100;
     int32_t index_m = 16;
 
@@ -204,16 +204,16 @@ static int cmd_create(vdb_cli_t *cli, int argc, char *argv[]) {
             dimension = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--index") == 0 && i + 1 < argc) {
             const char *idx = argv[++i];
-            if (strcmp(idx, "hnsw") == 0) index_type = VDB_INDEX_HNSW;
-            else if (strcmp(idx, "ivf") == 0) index_type = VDB_INDEX_IVF;
+            if (strcmp(idx, "hnsw") == 0) index_type = DB_SDK_INDEX_HNSW;
+            else if (strcmp(idx, "ivf") == 0) index_type = DB_SDK_INDEX_IVF;
             else if (strcmp(idx, "brute") == 0 || strcmp(idx, "brute_force") == 0)
-                index_type = VDB_INDEX_BRUTE_FORCE;
-            else if (strcmp(idx, "auto") == 0) index_type = VDB_INDEX_AUTO;
+                index_type = DB_SDK_INDEX_BRUTE_FORCE;
+            else if (strcmp(idx, "auto") == 0) index_type = DB_SDK_INDEX_AUTO;
         } else if (strcmp(argv[i], "--metric") == 0 && i + 1 < argc) {
             const char *met = argv[++i];
-            if (strcmp(met, "l2") == 0) metric_type = VDB_METRIC_L2;
-            else if (strcmp(met, "cosine") == 0) metric_type = VDB_METRIC_COSINE;
-            else if (strcmp(met, "ip") == 0) metric_type = VDB_METRIC_IP;
+            if (strcmp(met, "l2") == 0) metric_type = DB_SDK_METRIC_L2;
+            else if (strcmp(met, "cosine") == 0) metric_type = DB_SDK_METRIC_COSINE;
+            else if (strcmp(met, "ip") == 0) metric_type = DB_SDK_METRIC_IP;
         } else if (strcmp(argv[i], "--ef-search") == 0 && i + 1 < argc) {
             ef_search = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--m") == 0 && i + 1 < argc) {
@@ -231,7 +231,7 @@ static int cmd_create(vdb_cli_t *cli, int argc, char *argv[]) {
         return 1;
     }
 
-    vdb_collection_config_t config;
+    db_sdk_collection_config_t config;
     memset(&config, 0, sizeof(config));
     strncpy(config.name, collection, sizeof(config.name) - 1);
     config.dimension = dimension;
@@ -240,27 +240,27 @@ static int cmd_create(vdb_cli_t *cli, int argc, char *argv[]) {
     config.index_ef_search = ef_search;
     config.index_m = index_m;
 
-    int rc = vdb_create_collection(cli->db, collection, &config);
+    int rc = db_sdk_create_collection(cli->db, collection, &config);
 
     if (cli->output_format == VDB_OUTPUT_JSON) {
-        print_json_start(rc == VDB_OK, "create");
-        if (rc == VDB_OK) {
+        print_json_start(rc == DB_SDK_OK, "create");
+        if (rc == DB_SDK_OK) {
             printf("\"collection\":\"%s\",\"dimension\":%d", collection, dimension);
         } else {
-            printf("\"error\":\"%s\"", vdb_error(cli->db));
+            printf("\"error\":\"%s\"", db_sdk_error(cli->db));
         }
         print_json_end();
     } else {
-        if (rc == VDB_OK) {
+        if (rc == DB_SDK_OK) {
             printf("✓ 集合创建成功: %s (dim=%d)\n", collection, dimension);
-        } else if (rc == VDB_ERR_EXISTS) {
+        } else if (rc == DB_SDK_ERR_EXISTS) {
             printf("集合已存在: %s\n", collection);
         } else {
-            vdb_cli_print_error(vdb_error(cli->db));
+            vdb_cli_print_error(db_sdk_error(cli->db));
         }
     }
 
-    return rc == VDB_OK ? 0 : 1;
+    return rc == DB_SDK_OK ? 0 : 1;
 }
 
 /* ========================================================================
@@ -288,25 +288,25 @@ static int cmd_drop(vdb_cli_t *cli, int argc, char *argv[]) {
         return 1;
     }
 
-    int rc = vdb_drop_collection(cli->db, collection);
+    int rc = db_sdk_drop_collection(cli->db, collection);
 
     if (cli->output_format == VDB_OUTPUT_JSON) {
-        print_json_start(rc == VDB_OK, "drop");
-        if (rc == VDB_OK) {
+        print_json_start(rc == DB_SDK_OK, "drop");
+        if (rc == DB_SDK_OK) {
             printf("\"collection\":\"%s\"", collection);
         } else {
             printf("\"error\":\"集合不存在或删除失败\"");
         }
         print_json_end();
     } else {
-        if (rc == VDB_OK) {
+        if (rc == DB_SDK_OK) {
             printf("✓ 集合已删除: %s\n", collection);
         } else {
             vdb_cli_print_error("集合不存在");
         }
     }
 
-    return rc == VDB_OK ? 0 : 1;
+    return rc == DB_SDK_OK ? 0 : 1;
 }
 
 /* ========================================================================
@@ -318,9 +318,9 @@ static int cmd_list(vdb_cli_t *cli, int argc, char *argv[]) {
 
     char **names = NULL;
     int32_t count = 0;
-    int rc = vdb_list_collections(cli->db, &names, &count);
+    int rc = db_sdk_list_collections(cli->db, &names, &count);
 
-    if (rc != VDB_OK) {
+    if (rc != DB_SDK_OK) {
         if (cli->output_format == VDB_OUTPUT_JSON) {
             print_json_start(false, "list");
             printf("\"error\":\"获取集合列表失败\"");
@@ -348,12 +348,12 @@ static int cmd_list(vdb_cli_t *cli, int argc, char *argv[]) {
             print_table_header(header, 4);
 
             for (int32_t i = 0; i < count; i++) {
-                vdb_collection_t *coll = vdb_get_collection(cli->db, names[i]);
+                db_sdk_collection_t *coll = db_sdk_get_collection(cli->db, names[i]);
                 if (coll) {
-                    vdb_collection_config_t info;
+                    db_sdk_collection_config_t info;
                     memset(&info, 0, sizeof(info));
-                    vdb_collection_info(coll, &info);
-                    int32_t size = vdb_size(coll);
+                    db_sdk_collection_info(coll, &info);
+                    int32_t size = db_sdk_size(coll);
 
                     char size_str[32], dim_str[32];
                     snprintf(size_str, sizeof(size_str), "%d", size);
@@ -361,10 +361,10 @@ static int cmd_list(vdb_cli_t *cli, int argc, char *argv[]) {
 
                     const char *idx_name = "unknown";
                     switch (info.index_type) {
-                        case VDB_INDEX_HNSW: idx_name = "HNSW"; break;
-                        case VDB_INDEX_IVF: idx_name = "IVF"; break;
-                        case VDB_INDEX_BRUTE_FORCE: idx_name = "BRUTE_FORCE"; break;
-                        case VDB_INDEX_DISKANN: idx_name = "DiskANN"; break;
+                        case DB_SDK_INDEX_HNSW: idx_name = "HNSW"; break;
+                        case DB_SDK_INDEX_IVF: idx_name = "IVF"; break;
+                        case DB_SDK_INDEX_BRUTE_FORCE: idx_name = "BRUTE_FORCE"; break;
+                        case DB_SDK_INDEX_DISKANN: idx_name = "DiskANN"; break;
                         default: idx_name = "AUTO"; break;
                     }
 
@@ -376,7 +376,7 @@ static int cmd_list(vdb_cli_t *cli, int argc, char *argv[]) {
         }
     }
 
-    vdb_free_names(names, count);
+    db_sdk_free_names(names, count);
     return 0;
 }
 
@@ -402,40 +402,40 @@ static int cmd_info(vdb_cli_t *cli, int argc, char *argv[]) {
         return 1;
     }
 
-    vdb_collection_t *coll = vdb_get_collection(cli->db, collection);
+    db_sdk_collection_t *coll = db_sdk_get_collection(cli->db, collection);
     if (!coll) {
         vdb_cli_print_error("集合不存在");
         return 1;
     }
 
-    vdb_collection_config_t info;
+    db_sdk_collection_config_t info;
     memset(&info, 0, sizeof(info));
-    vdb_collection_info(coll, &info);
-    int32_t size = vdb_size(coll);
+    db_sdk_collection_info(coll, &info);
+    int32_t size = db_sdk_size(coll);
 
     if (cli->output_format == VDB_OUTPUT_JSON) {
         print_json_start(true, "info");
         printf("\"collection\":\"%s\",", collection);
         printf("\"dimension\":%d,", info.dimension);
         printf("\"size\":%d,", size);
-        const char *idx_name = info.index_type == VDB_INDEX_HNSW ? "HNSW" :
-                               info.index_type == VDB_INDEX_IVF ? "IVF" :
-                               info.index_type == VDB_INDEX_BRUTE_FORCE ? "BRUTE_FORCE" : "AUTO";
+        const char *idx_name = info.index_type == DB_SDK_INDEX_HNSW ? "HNSW" :
+                               info.index_type == DB_SDK_INDEX_IVF ? "IVF" :
+                               info.index_type == DB_SDK_INDEX_BRUTE_FORCE ? "BRUTE_FORCE" : "AUTO";
         printf("\"index_type\":\"%s\",", idx_name);
-        const char *met_name = info.metric_type == VDB_METRIC_COSINE ? "COSINE" :
-                               info.metric_type == VDB_METRIC_IP ? "IP" : "L2";
+        const char *met_name = info.metric_type == DB_SDK_METRIC_COSINE ? "COSINE" :
+                               info.metric_type == DB_SDK_METRIC_IP ? "IP" : "L2";
         printf("\"metric_type\":\"%s\"", met_name);
         print_json_end();
     } else {
         printf("集合信息: %s\n", collection);
         printf("  维度: %d\n", info.dimension);
         printf("  向量数: %d\n", size);
-        const char *idx_name = info.index_type == VDB_INDEX_HNSW ? "HNSW" :
-                               info.index_type == VDB_INDEX_IVF ? "IVF" :
-                               info.index_type == VDB_INDEX_BRUTE_FORCE ? "BRUTE_FORCE" : "AUTO";
+        const char *idx_name = info.index_type == DB_SDK_INDEX_HNSW ? "HNSW" :
+                               info.index_type == DB_SDK_INDEX_IVF ? "IVF" :
+                               info.index_type == DB_SDK_INDEX_BRUTE_FORCE ? "BRUTE_FORCE" : "AUTO";
         printf("  索引类型: %s\n", idx_name);
-        const char *met_name = info.metric_type == VDB_METRIC_COSINE ? "COSINE" :
-                               info.metric_type == VDB_METRIC_IP ? "IP" : "L2";
+        const char *met_name = info.metric_type == DB_SDK_METRIC_COSINE ? "COSINE" :
+                               info.metric_type == DB_SDK_METRIC_IP ? "IP" : "L2";
         printf("  距离度量: %s\n", met_name);
     }
 
@@ -479,7 +479,7 @@ static int cmd_insert(vdb_cli_t *cli, int argc, char *argv[]) {
         return 1;
     }
 
-    vdb_collection_t *coll = vdb_get_collection(cli->db, collection);
+    db_sdk_collection_t *coll = db_sdk_get_collection(cli->db, collection);
     if (!coll) {
         vdb_cli_print_error("集合不存在");
         return 1;
@@ -517,7 +517,7 @@ static int cmd_insert(vdb_cli_t *cli, int argc, char *argv[]) {
             if (!vec || dim == 0) continue;
 
             int64_t t0 = now_ms();
-            int64_t id = vdb_insert(coll, vec, dim, NULL, 0);
+            int64_t id = db_sdk_insert(coll, vec, dim, NULL, 0);
             total_time += now_ms() - t0;
 
             free(vec);
@@ -554,7 +554,7 @@ static int cmd_insert(vdb_cli_t *cli, int argc, char *argv[]) {
     void *metadata = metadata_str ? parse_json_metadata(metadata_str, &meta_size) : NULL;
 
     int64_t t0 = now_ms();
-    int64_t id = vdb_insert(coll, vector, dim, metadata, meta_size);
+    int64_t id = db_sdk_insert(coll, vector, dim, metadata, meta_size);
     int64_t took = now_ms() - t0;
 
     free(vector);
@@ -624,7 +624,7 @@ static int cmd_query(vdb_cli_t *cli, int argc, char *argv[]) {
         return 1;
     }
 
-    vdb_collection_t *coll = vdb_get_collection(cli->db, collection);
+    db_sdk_collection_t *coll = db_sdk_get_collection(cli->db, collection);
     if (!coll) {
         vdb_cli_print_error("集合不存在");
         return 1;
@@ -637,13 +637,13 @@ static int cmd_query(vdb_cli_t *cli, int argc, char *argv[]) {
         return 1;
     }
 
-    vdb_search_params_t params;
+    db_sdk_search_params_t params;
     memset(&params, 0, sizeof(params));
     params.top_k = top_k;
     params.with_distance = with_distance;
 
     int64_t t0 = now_ms();
-    vdb_results_t *results = vdb_search(coll, vector, dim, &params);
+    db_sdk_results_t *results = db_sdk_search(coll, vector, dim, &params);
     int64_t took = now_ms() - t0;
 
     free(vector);
@@ -691,7 +691,7 @@ static int cmd_query(vdb_cli_t *cli, int argc, char *argv[]) {
         printf("找到 %d 个结果，耗时 %.2f ms\n", results->count, took / 1000.0);
     }
 
-    vdb_results_free(results);
+    db_sdk_results_free(results);
 
     /* 保存上次集合名 */
     free(cli->last_collection);
@@ -733,31 +733,31 @@ static int cmd_delete(vdb_cli_t *cli, int argc, char *argv[]) {
         return 1;
     }
 
-    vdb_collection_t *coll = vdb_get_collection(cli->db, collection);
+    db_sdk_collection_t *coll = db_sdk_get_collection(cli->db, collection);
     if (!coll) {
         vdb_cli_print_error("集合不存在");
         return 1;
     }
 
-    int rc = vdb_delete(coll, id);
+    int rc = db_sdk_delete(coll, id);
 
     if (cli->output_format == VDB_OUTPUT_JSON) {
-        print_json_start(rc == VDB_OK, "delete");
-        if (rc == VDB_OK) {
+        print_json_start(rc == DB_SDK_OK, "delete");
+        if (rc == DB_SDK_OK) {
             printf("\"id\":%lld", (long long)id);
         } else {
             printf("\"error\":\"删除失败\"");
         }
         print_json_end();
     } else {
-        if (rc == VDB_OK) {
+        if (rc == DB_SDK_OK) {
             printf("✓ 向量已删除: id=%lld\n", (long long)id);
         } else {
             vdb_cli_print_error("删除失败");
         }
     }
 
-    return rc == VDB_OK ? 0 : 1;
+    return rc == DB_SDK_OK ? 0 : 1;
 }
 
 /* ========================================================================
@@ -789,7 +789,7 @@ static int cmd_benchmark(vdb_cli_t *cli, int argc, char *argv[]) {
         return 1;
     }
 
-    vdb_collection_t *coll = vdb_get_collection(cli->db, collection);
+    db_sdk_collection_t *coll = db_sdk_get_collection(cli->db, collection);
     if (!coll) {
         vdb_cli_print_error("集合不存在");
         return 1;
@@ -811,7 +811,7 @@ static int cmd_benchmark(vdb_cli_t *cli, int argc, char *argv[]) {
         int64_t t0 = now_ms();
         int32_t inserted = 0;
         for (int32_t i = 0; i < count; i++) {
-            int64_t id = vdb_insert(coll, vectors + i * dim, dim, NULL, 0);
+            int64_t id = db_sdk_insert(coll, vectors + i * dim, dim, NULL, 0);
             if (id > 0) inserted++;
         }
         int64_t took = now_ms() - t0;
@@ -832,7 +832,7 @@ static int cmd_benchmark(vdb_cli_t *cli, int argc, char *argv[]) {
         }
     } else if (strcmp(mode, "query") == 0) {
         /* 查询性能测试 */
-        int32_t current_size = vdb_size(coll);
+        int32_t current_size = db_sdk_size(coll);
         if (current_size == 0) {
             vdb_cli_print_error("集合为空，请先插入数据");
             return 1;
@@ -848,11 +848,11 @@ static int cmd_benchmark(vdb_cli_t *cli, int argc, char *argv[]) {
         int64_t total_time = 0;
 
         for (int32_t i = 0; i < actual_count; i++) {
-            vdb_search_params_t params = { .top_k = 10, .with_distance = true };
+            db_sdk_search_params_t params = { .top_k = 10, .with_distance = true };
             int64_t t0 = now_ms();
-            vdb_results_t *results = vdb_search(coll, query_vec, dim, &params);
+            db_sdk_results_t *results = db_sdk_search(coll, query_vec, dim, &params);
             total_time += now_ms() - t0;
-            if (results) vdb_results_free(results);
+            if (results) db_sdk_results_free(results);
         }
 
         free(query_vec);
@@ -1102,7 +1102,7 @@ vdb_cli_t *vdb_cli_create(const vdb_cli_config_t *config) {
     cli->output_format = cli->config.json_output ? VDB_OUTPUT_JSON : VDB_OUTPUT_TABLE;
 
     /* 打开数据库 */
-    cli->db = vdb_open(cli->config.data_dir, NULL);
+    cli->db = db_sdk_open(cli->config.data_dir);
     if (!cli->db) {
         free(cli);
         return NULL;
@@ -1113,7 +1113,7 @@ vdb_cli_t *vdb_cli_create(const vdb_cli_config_t *config) {
 
 void vdb_cli_destroy(vdb_cli_t *cli) {
     if (!cli) return;
-    if (cli->db) vdb_close(cli->db);
+    if (cli->db) db_sdk_close(cli->db);
     free(cli->last_collection);
     free(cli);
 }
