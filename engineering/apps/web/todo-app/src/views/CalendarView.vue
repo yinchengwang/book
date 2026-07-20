@@ -1,5 +1,6 @@
 <template>
   <div class="calendar-page">
+    <ViewSelector @view-changed="onViewChanged" />
     <div class="calendar-header">
       <button @click="prevMonth">◀</button>
       <h2>{{ currentYear }} 年 {{ currentMonth + 1 }} 月</h2>
@@ -71,11 +72,17 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '../api.js'
+import ViewSelector from '../components/ViewSelector.vue'
 
 const view = ref('month')
 const currentDate = ref(new Date())
 const tasksByDate = ref({})
 const selectedDate = ref(new Date())
+const currentView = ref(null)
+
+function onViewChanged(view) {
+  currentView.value = view
+}
 
 const currentYear = computed(() => currentDate.value.getFullYear())
 const currentMonth = computed(() => currentDate.value.getMonth())

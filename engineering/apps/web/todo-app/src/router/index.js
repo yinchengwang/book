@@ -7,6 +7,7 @@ import CalendarView from '../views/CalendarView.vue'
 import StatsDFXView from '../views/StatsDFXView.vue'
 import PlanManageView from '../views/PlanManageView.vue'
 import ViewManager from '../views/ViewManager.vue'
+import GanttView from '../views/GanttView.vue'
 
 const routes = [
   { path: '/', component: TableView, meta: { title: '待办列表' } },
@@ -16,7 +17,8 @@ const routes = [
   { path: '/calendar', component: CalendarView, meta: { title: '日历' } },
   { path: '/stats-dfx', component: StatsDFXView, meta: { title: 'DFX 统计' } },
   { path: '/plan-manage', component: PlanManageView, meta: { title: '计划管理' } },
-  { path: '/views', component: ViewManager, meta: { title: '视图管理' } }
+  { path: '/views', component: ViewManager, meta: { title: '视图管理' } },
+  { path: '/gantt', component: GanttView, meta: { title: '甘特图' } }
 ]
 
 const router = createRouter({

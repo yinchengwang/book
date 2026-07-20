@@ -3,6 +3,7 @@
     <nav class="nav">
       <router-link to="/" class="nav-link">📋 列表</router-link>
       <router-link to="/board" class="nav-link">📊 看板</router-link>
+      <router-link to="/gantt" class="nav-link">📈 甘特图</router-link>
       <router-link to="/stats" class="nav-link">📈 统计</router-link>
       <router-link to="/groups" class="nav-link">🏷️ 分组</router-link>
       <router-link to="/calendar" class="nav-link">📅 日历</router-link>

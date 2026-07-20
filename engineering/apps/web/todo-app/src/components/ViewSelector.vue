@@ -43,13 +43,6 @@ async function loadViews() {
   }
 }
 
-// 选择视图
-function selectView(view) {
-  currentView.value = view
-  localStorage.setItem('currentViewId', String(view.id))
-  emit('view-changed', view)
-}
-
 function viewIcon(type) {
   const icons = { table: '📋', board: '📊', calendar: '📅', gantt: '📈' }
   return icons[type] || '📋'
@@ -58,6 +51,23 @@ function viewIcon(type) {
 function viewTypeLabel(type) {
   const labels = { table: '表格', board: '看板', calendar: '日历', gantt: '甘特图' }
   return labels[type] || '表格'
+}
+
+// 根据视图类型跳转到对应路由
+function navigateToView(view) {
+  const routes = { table: '/', board: '/board', calendar: '/calendar', gantt: '/gantt' }
+  const route = routes[view.type] || '/'
+  if (router.currentRoute.value.path !== route) {
+    router.push(route)
+  }
+}
+
+// 选择视图时跳转到对应路由
+function selectView(view) {
+  currentView.value = view
+  localStorage.setItem('currentViewId', String(view.id))
+  navigateToView(view)
+  emit('view-changed', view)
 }
 
 // 恢复上次选择的视图
