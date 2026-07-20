@@ -34,6 +34,13 @@ extern "C" {
 #endif
 
 /* ========================================================================
+ * 前向声明
+ * ======================================================================== */
+
+/** 事务上下文（不透明） */
+typedef struct TxnContext_s TxnContext;
+
+/* ========================================================================
  * 常量定义
  * ======================================================================== */
 
@@ -199,6 +206,14 @@ ReadView *mvcc_create_readview(isolation_level_t isolation);
  * @param rv ReadView 指针
  */
 void mvcc_destroy_readview(ReadView *rv);
+
+/**
+ * @brief 检查事务 ID 是否在活跃事务列表中
+ * @param rv ReadView
+ * @param xid 事务 ID
+ * @return true 如果在活跃列表中
+ */
+bool is_active_in_readview(const ReadView *rv, TransactionId xid);
 
 /**
  * @brief 获取当前事务的 ReadView

@@ -268,7 +268,7 @@ void mvcc_set_current_readview(ReadView *rv)
 /**
  * @brief 检查事务 ID 是否在活跃事务列表中
  */
-static bool is_active_in_readview(const ReadView *rv, TransactionId xid)
+bool is_active_in_readview(const ReadView *rv, TransactionId xid)
 {
     if (!rv || !rv->active_txs) {
         return false;

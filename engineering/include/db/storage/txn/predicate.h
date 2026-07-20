@@ -14,6 +14,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "db/storage/txn/mvcc.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -198,7 +198,6 @@ int vacuum_freeze_all(uint32_t freeze_age)
 {
     VacuumParams p = g_vacuum_params;
     p.freeze_min_age = freeze_age;
-    p.mode = VACUUM_FREEZE;
 
     /* 遍历所有关系，冻结旧元组 */
     /* TODO: 实现 freeze 逻辑 */

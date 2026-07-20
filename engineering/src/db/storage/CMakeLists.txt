@@ -32,8 +32,7 @@ add_subdirectory(lock)
 
 add_subdirectory(catalog)
 add_subdirectory(wal)
-# txn 模块暂时禁用 - 存在 TxnContext 未定义问题，待修复
-# add_subdirectory(txn)
+add_subdirectory(txn)
 add_subdirectory(rel)
 
 # ========================================================================
@@ -76,7 +75,7 @@ add_subdirectory(yang)
 set(DB_STORAGE_OBJECTS "")
 
 # 条件收集 OBJECT 库（Task 2.12 添加 spatial 子模块）
-foreach(subdir buffer page lock catalog wal rel mm kv vector graph spatial yang)
+foreach(subdir buffer page lock catalog wal txn rel mm kv vector graph spatial yang)
     if(TARGET storage_${subdir})
         list(APPEND DB_STORAGE_OBJECTS $<TARGET_OBJECTS:storage_${subdir}>)
     endif()

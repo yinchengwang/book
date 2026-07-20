@@ -10,6 +10,7 @@
 #include "db/storage/access/heap/heapam.h"
 
 #include <stdbool.h>
+#include <stdio.h>
 
 /* ========================================================================
  * 可见性判断核心
