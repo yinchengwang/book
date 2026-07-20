@@ -183,6 +183,11 @@ add_executable(test_toast toast_test.cpp)
 target_link_libraries(test_toast db_storage project_includes gtest gtest_main)
 add_test(NAME test_toast COMMAND test_toast)
 
+# 预读测试（Task W3.2）
+add_executable(test_readahead readahead_test.cpp)
+target_link_libraries(test_readahead db_storage project_includes gtest gtest_main)
+add_test(NAME test_readahead COMMAND test_readahead)
+
 # 所有 Storage 测试汇总
 add_custom_target(test_storage_all
     COMMAND test_btree
