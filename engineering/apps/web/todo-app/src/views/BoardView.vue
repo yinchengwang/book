@@ -158,10 +158,15 @@ async function select(todo) {
   if (r.code === 0) current.value = r.data
 }
 
-async function onCreated(form) {
-  const r = await api.create(form)
-  if (r.code === 0) { showToast('已创建'); await loadData() }
-  else showToast(r.msg || '创建失败', 'error')
+async function onCreated(payload) {
+  const { body, fields } = payload
+  const r = await api.create(body)
+  if (r.code === 0) {
+    if (fields && Object.keys(fields).length > 0) {
+      await api.updateTodoFields(r.data.id, fields)
+    }
+    showToast('已创建'); await loadData()
+  } else showToast(r.msg || '创建失败', 'error')
 }
 
 // 拖拽

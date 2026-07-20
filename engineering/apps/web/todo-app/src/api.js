@@ -68,6 +68,9 @@ const api = {
   createField: (body) => fetch(`${BASE}/fields`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
   updateField: (id, body) => fetch(`${BASE}/fields/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
   deleteField: (id) => fetch(`${BASE}/fields/${id}`, { method: 'DELETE' }).then(r => r.json()),
+
+  /* 扩展字段值 */
+  updateTodoFields: (id, fields) => fetch(`${BASE}/todos/${id}/fields`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) }).then(r => r.json()),
 }
 
 export default api

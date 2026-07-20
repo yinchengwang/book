@@ -229,10 +229,19 @@ async function reloadCurrent() {
   await load()
 }
 
-async function onCreated(form) {
-  const r = await api.create(form)
-  if (r.code === 0) { showToast('已创建'); await load(); await select(r.data) }
-  else showToast(r.msg || '创建失败', 'error')
+async function onCreated(payload) {
+  const { body, fields } = payload
+  const r = await api.create(body)
+  if (r.code === 0) {
+    const todo = r.data
+    // 如果有扩展字段，创建后设置
+    if (fields && Object.keys(fields).length > 0) {
+      await api.updateTodoFields(todo.id, fields)
+    }
+    showToast('已创建')
+    await load()
+    await select(todo.id)
+  } else showToast(r.msg || '创建失败', 'error')
 }
 
 function onViewChanged(view) {
