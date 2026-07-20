@@ -7,6 +7,11 @@
 #include "db/rel.h"
 #include "db/buf.h"
 #include "db/access/btree/btree_split.h"
+/* 注意：btpage.h 的 BTPageHeaderData 定义与 btreeam.h 冲突，
+ * btreeam.c 继续使用 btreeam.h 中的定义（旧格式，20 字节），
+ * btree_split.c 使用 btpage.h 中的定义（新格式，28 字节）。
+ * 后续 Phase 将统一两个定义。 */
+/* #include "db/access/btree/btpage.h" */
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -46,7 +51,7 @@ void bt_page_init(void *page, uint16_t level) {
 
     BTPageHeader ph = (BTPageHeader)page;
 
-    ph->btpo_flags = (level == 0) ? BTP_LEAF_FLAG : BTP_INTERNAL_FLAG;
+    ph->btpo_flags = (level == 0) ? BTP_LEAF_FLAG | BTP_ROOT_FLAG : BTP_INTERNAL_FLAG;
     ph->btpo_level = level;
     ph->btpo_prev = 0;
     ph->btpo_next = 0;
@@ -180,14 +185,27 @@ int btinsert(Relation rel, const void **values, int nkeys, void *heap_ptr) {
     if (free_space < needed) {
         /* 页面已满，尝试分裂 */
         uint32_t new_blkno;
-        int split_result = btree_split_leaf(rel, 0, &new_blkno);
+        int split_result = btree_split_leaf(rel, buf_get_blocknum(buf), &new_blkno);
         if (split_result != 0) {
             /* 分裂失败，返回错误 */
             buf_unpin(buf);
             return -1;
         }
 
-        /* 分裂后重新检查空间 */
+        /* 分裂后重新读取页面 */
+        buf_unpin(buf);
+        buf = buf_read(rel->rd_relfilenode, 0, 1);
+        if (!buf) {
+            return -1;
+        }
+        page = buf_get_data(buf);
+        if (!page) {
+            buf_unpin(buf);
+            return -1;
+        }
+        ph = bt_page_get_header(page);
+
+        /* 重新检查空间 */
         free_space = bt_page_get_free_space(page);
         if (free_space < needed) {
             /* 分裂后仍然没有足够空间（理论上不应该发生） */

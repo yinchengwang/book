@@ -20,7 +20,7 @@ extern "C" {
  * 类型定义
  * ============================================================ */
 
-/* 使用 db/access/btree/btpage.h 中的 BTPageHeader 定义 */
+/* 前向声明，避免与 btreeam.h 中的定义冲突 */
 struct BTPageHeaderData;
 typedef struct BTPageHeaderData *BTPageHeader;
 
