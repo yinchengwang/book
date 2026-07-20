@@ -30,6 +30,30 @@ const api = {
 
   /* OPSX 变更 */
   createChange: (id) => fetch(`${BASE}/todos/${id}/create-change`, { method: 'POST' }).then(r => r.json()),
+
+  /* 日历 */
+  calendarDay: (date, tsId) => fetch(`${BASE}/calendar/day?date=${date}&task_system_id=${tsId||-1}`).then(r => r.json()),
+  calendarWeek: (date, tsId) => fetch(`${BASE}/calendar/week?date=${date}&task_system_id=${tsId||-1}`).then(r => r.json()),
+  calendarMonth: (date, tsId) => fetch(`${BASE}/calendar/month?date=${date}&task_system_id=${tsId||-1}`).then(r => r.json()),
+  pendingCarryover: () => fetch(`${BASE}/calendar/pending-carryover`).then(r => r.json()),
+  confirmCarryover: (items) => fetch(`${BASE}/calendar/carryover-confirm`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(items) }).then(r => r.json()),
+
+  /* DFX 统计 */
+  statsDfx: () => fetch(`${BASE}/stats-dfx`).then(r => r.json()),
+  statsHeatmap: () => fetch(`${BASE}/stats-dfx/heatmap`).then(r => r.json()),
+
+  /* 任务系统 */
+  listTaskSystems: () => fetch(`${BASE}/task-systems`).then(r => r.json()),
+  createTaskSystem: (body) => fetch(`${BASE}/task-systems`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+  updateTaskSystem: (id, body) => fetch(`${BASE}/task-systems/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+  deleteTaskSystem: (id) => fetch(`${BASE}/task-systems/${id}`, { method: 'DELETE' }).then(r => r.json()),
+
+  /* 学习计划 */
+  listPlans: () => fetch(`${BASE}/plans`).then(r => r.json()),
+  getPlan: (id) => fetch(`${BASE}/plans/${id}`).then(r => r.json()),
+  createPlan: (body) => fetch(`${BASE}/plans`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+  importTemplate: (body) => fetch(`${BASE}/plans/import-template`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+  expandPlan: (id, body) => fetch(`${BASE}/plans/${id}/expand`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
 }
 
 export default api
