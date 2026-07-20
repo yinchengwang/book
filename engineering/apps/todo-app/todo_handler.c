@@ -1519,6 +1519,14 @@ static void handle_request(SOCKET client, const char *request) {
                 handled = 1;
             }
         }
+        /* PATCH /api/todos/:id/fields */
+        else if (sscanf(path, "/api/todos/%lld/fields", (long long *)&id_a) == 1) {
+            snprintf(expect, sizeof(expect), "/api/todos/%lld/fields", (long long)id_a);
+            if (strcmp(path, expect) == 0 && strcmp(method, "PATCH") == 0) {
+                handle_todo_fields_update(client, id_a, body);
+                handled = 1;
+            }
+        }
         /* PATCH /api/todos/:id/sort */
         else if (sscanf(path, "/api/todos/%lld/sort", (long long *)&id_a) == 1) {
             snprintf(expect, sizeof(expect), "/api/todos/%lld/sort", (long long)id_a);
@@ -1750,16 +1758,6 @@ static void handle_request(SOCKET client, const char *request) {
             }
         }
     }
-    /* PATCH /api/todos/:id/fields */
-    else if (sscanf(path, "/api/todos/%lld/fields", (long long *)&id_a) == 1) {
-        char expect[128];
-        snprintf(expect, sizeof(expect), "/api/todos/%lld/fields", (long long)id_a);
-        if (strcmp(path, expect) == 0 && strcmp(method, "PATCH") == 0) {
-            handle_todo_fields_update(client, id_a, body);
-            handled = 1;
-        }
-    }
-
     /* 静态文件或 404 */
     if (!handled) {
         if (serve_static_file(client, path) != 0) {

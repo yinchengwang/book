@@ -56,6 +56,11 @@ typedef struct BTPageHeaderData {
     uint32_t    btpo_xact;        /**< 事务 ID */
     uint16_t    btpo_offset;      /**< 空闲空间起始偏移 */
     uint16_t    btpo_count;       /**< 页面中的条目数 */
+
+    /* 并发 Latch — 简单读写锁（自旋实现） */
+    volatile int    latch_readers;         /**< 当前读锁持有者数 */
+    volatile int    latch_writers_waiting; /**< 等待写锁的线程数 */
+    volatile int    latch_writer_active;   /**< 是否有写锁持有者 */
 } BTPageHeaderData;
 
 /** 页面头部指针类型 */
@@ -94,6 +99,88 @@ typedef BTPageHeaderData *BTPageHeader;
 #define BT_PAGE_FREE_SPACE(header) \
     ((int)((header)->btpo_offset - BTREE_PAGE_HEADER_SIZE - \
            (header)->btpo_count * sizeof(uint32_t)))
+
+/* ============================================================
+ * 页面 Latch 操作（自旋读写锁）
+ *
+ * 用于 BTree 并发访问控制，每页面一个 latch。
+ * 读锁共享，写锁互斥，自旋等待。
+ * ============================================================ */
+
+/**
+ * @brief 初始化页面 latch
+ */
+static inline void bt_latch_init(BTPageHeader header) {
+    header->latch_readers = 0;
+    header->latch_writers_waiting = 0;
+    header->latch_writer_active = 0;
+}
+
+/**
+ * @brief 获取读锁（共享）
+ * 多个线程可同时持有读锁，写锁等待所有读锁释放。
+ */
+static inline void bt_latch_read_lock(BTPageHeader header) {
+    for (;;) {
+        while (header->latch_writer_active) { /* 等待写锁释放 */ }
+        __sync_fetch_and_add(&header->latch_readers, 1);
+        if (!header->latch_writer_active) return;
+        __sync_fetch_and_sub(&header->latch_readers, 1);
+    }
+}
+
+/**
+ * @brief 释放读锁
+ */
+static inline void bt_latch_read_unlock(BTPageHeader header) {
+    __sync_fetch_and_sub(&header->latch_readers, 1);
+}
+
+/**
+ * @brief 获取写锁（排他）
+ * 等待所有读锁释放后原子获取写锁。
+ */
+static inline void bt_latch_write_lock(BTPageHeader header) {
+    __sync_fetch_and_add(&header->latch_writers_waiting, 1);
+    for (;;) {
+        while (header->latch_readers > 0) { /* 等待读锁释放 */ }
+        if (__sync_bool_compare_and_swap(&header->latch_writer_active, 0, 1)) {
+            __sync_fetch_and_sub(&header->latch_writers_waiting, 1);
+            return;
+        }
+    }
+}
+
+/**
+ * @brief 释放写锁
+ */
+static inline void bt_latch_write_unlock(BTPageHeader header) {
+    __sync_fetch_and_and(&header->latch_writer_active, 0);
+}
+
+/**
+ * @brief 尝试获取读锁（非阻塞）
+ * @return 0 成功，-1 失败（有写锁持有者）
+ */
+static inline int bt_latch_read_trylock(BTPageHeader header) {
+    if (header->latch_writer_active) return -1;
+    __sync_fetch_and_add(&header->latch_readers, 1);
+    if (!header->latch_writer_active) return 0;
+    __sync_fetch_and_sub(&header->latch_readers, 1);
+    return -1;
+}
+
+/**
+ * @brief 尝试获取写锁（非阻塞）
+ * @return 0 成功，-1 失败
+ */
+static inline int bt_latch_write_trylock(BTPageHeader header) {
+    if (header->latch_readers > 0) return -1;
+    if (__sync_bool_compare_and_swap(&header->latch_writer_active, 0, 1)) {
+        return 0;
+    }
+    return -1;
+}
 
 #ifdef __cplusplus
 }

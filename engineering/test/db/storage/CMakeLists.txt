@@ -138,6 +138,11 @@ add_executable(test_btree_split_internal btree_split_internal_test.cpp)
 target_link_libraries(test_btree_split_internal db_storage project_includes gtest gtest_main)
 add_test(NAME test_btree_split_internal COMMAND test_btree_split_internal)
 
+# BTree 并发 Latch 测试（Task W1.4）
+add_executable(test_btree_concurrent btree_concurrent_test.cpp)
+target_link_libraries(test_btree_concurrent db_storage project_includes gtest gtest_main pthread)
+add_test(NAME test_btree_concurrent COMMAND test_btree_concurrent)
+
 # 所有 Storage 测试汇总
 add_custom_target(test_storage_all
     COMMAND test_btree

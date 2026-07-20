@@ -83,6 +83,9 @@ static BufferDesc *alloc_new_page(Relation rel, uint32_t *blockno,
     header->btpo_offset = BTREE_PAGE_SIZE;
     header->btpo_count = 0;
 
+    /* 初始化并发 latch */
+    bt_latch_init(header);
+
     return buf;
 }
 
@@ -194,6 +197,9 @@ int btree_split_leaf(Relation rel, uint32_t old_blkno, uint32_t *new_blkno) {
     new_header->btpo_xact = old_header->btpo_xact;
     new_header->btpo_offset = old_header->btpo_offset;
 
+    /* 初始化并发 latch */
+    bt_latch_init(new_header);
+
     /* 5. 更新兄弟链接 */
     new_header->btpo_next = old_header->btpo_next;
     new_header->btpo_rightlink = old_header->btpo_rightlink;
@@ -304,6 +310,9 @@ int btree_split_internal(Relation rel, uint32_t old_blkno, uint32_t *new_blkno) 
     new_header->btpo_xact = old_header->btpo_xact;
     new_header->btpo_offset = old_header->btpo_offset;
 
+    /* 初始化并发 latch */
+    bt_latch_init(new_header);
+
     /* 5. 更新兄弟链接 */
     new_header->btpo_next = old_header->btpo_next;
     new_header->btpo_rightlink = old_header->btpo_rightlink;
@@ -393,6 +402,9 @@ int btree_split_root(Relation rel, uint32_t old_blkno, uint32_t new_blkno) {
     /* 新根有两个子节点条目：old_blkno 和 new_blkno */
     new_root_header->btpo_count = 2;
     new_root_header->btpo_offset = BTREE_PAGE_SIZE;
+
+    /* 初始化新根的并发 latch */
+    bt_latch_init(new_root_header);
 
     /* 4. 存储两个子节点块号 */
     InternalEntryPtr entry0 = internal_entry_ptr(new_root_page, 0);

@@ -53,6 +53,11 @@ void bt_page_init(void *page, uint16_t level) {
     ph->btpo_xact = 0;
     ph->btpo_offset = BTREE_PAGE_SIZE;
     ph->btpo_count = 0;
+
+    /* 注意：并发 latch 字段在 btreeam.h 的 BTPageHeaderData 中不存在，
+     * 此处不初始化 latch（由调用方在需要时通过 btpage.h 的 bt_latch_init 完成）。
+     * 当前 btreeam.h 与 btpage.h 的 BTPageHeaderData 定义不同，
+     * 后续重构应统一头文件。 */
 }
 
 BTPageHeader bt_page_get_header(void *page) {
