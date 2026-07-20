@@ -7,7 +7,7 @@
 #include <time.h>
 #include <sqlite3.h>
 
-static sqlite3 *g_db = NULL;
+sqlite3 *g_db = NULL;
 
 /* ============================================================
  * 内部辅助函数
@@ -170,6 +170,20 @@ static int create_all_tables(sqlite3 *db) {
         "INSERT OR IGNORE INTO meta (key, value) VALUES ('next_field_id', '10');";
     if (exec_sql(db, sql6) != 0) return -1;
 
+    /* 视图表 */
+    const char *sql7 =
+        "CREATE TABLE IF NOT EXISTS views ("
+        "  id         INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  name       TEXT NOT NULL,"
+        "  type       TEXT NOT NULL DEFAULT 'table',"
+        "  config     TEXT NOT NULL DEFAULT '{}',"
+        "  is_default INTEGER NOT NULL DEFAULT 0,"
+        "  sort_order INTEGER NOT NULL DEFAULT 0,"
+        "  created_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s','now') AS INTEGER))"
+        ");"
+        "CREATE INDEX IF NOT EXISTS idx_views_order ON views(sort_order);";
+    if (exec_sql(db, sql7) != 0) return -1;
+
     return 0;
 }
 
@@ -189,6 +203,31 @@ static int insert_builtin_fields(sqlite3 *db) {
         "(7, '分组', 'single_select', '{}', 1, 7),"
         "(8, '创建时间', 'datetime', '{}', 1, 8),"
         "(9, '更新时间', 'datetime', '{}', 1, 9);";
+    return exec_sql(db, sql);
+}
+
+/* ============================================================
+ * 预置默认视图
+ * ============================================================ */
+
+static int insert_default_views(sqlite3 *db) {
+    /* 检查是否已有视图 */
+    sqlite3_stmt *check = NULL;
+    if (sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM views", -1, &check, NULL) == SQLITE_OK) {
+        if (sqlite3_step(check) == SQLITE_ROW && sqlite3_column_int(check, 0) > 0) {
+            sqlite3_finalize(check);
+            return 0;  /* 已有视图，跳过 */
+        }
+        sqlite3_finalize(check);
+    }
+
+    /* 预置 4 个默认视图 */
+    const char *sql =
+        "INSERT INTO views (name, type, config, is_default, sort_order) VALUES "
+        "('表格视图', 'table', '{\"visible_fields\":[1,3,4,5],\"group_by\":null,\"sort_by\":{\"field\":\"5\",\"desc\":false}}', 1, 1),"
+        "('看板视图', 'board', '{\"group_field\":\"3\",\"card_fields\":[1,5],\"card_cover_field\":null}', 0, 2),"
+        "('日历视图', 'calendar', '{\"date_field\":\"5\",\"show_fields\":[1,3]}', 0, 3),"
+        "('甘特图', 'gantt', '{\"start_field\":\"5\",\"end_field\":null,\"duration_field\":null,\"bar_label_field\":\"1\"}', 0, 4);";
     return exec_sql(db, sql);
 }
 
@@ -632,6 +671,13 @@ int todo_db_open(const char *path) {
     /* 预置内置字段 */
     if (insert_builtin_fields(g_db) != 0) {
         fprintf(stderr, "预置内置字段失败\n");
+        todo_db_close();
+        return -1;
+    }
+
+    /* 预置默认视图 */
+    if (insert_default_views(g_db) != 0) {
+        fprintf(stderr, "预置默认视图失败\n");
         todo_db_close();
         return -1;
     }

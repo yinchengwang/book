@@ -1,6 +1,7 @@
 #include "todo_handler.h"
 #include "todo_model.h"
 #include "todo_field.h"
+#include "todo_view.h"
 #include "todo_change.h"
 #include "todo_calendar.h"
 #include "todo_stats.h"
@@ -1196,6 +1197,212 @@ static void handle_fields_sort(SOCKET client, int64_t id, const char *body) {
     send_success(client, cJSON_CreateObject());
 }
 
+/* ============================================================
+ * 视图系统 Handler
+ * ============================================================ */
+
+/* 视图转 JSON */
+static cJSON *view_to_json(const view_t *view) {
+    cJSON *j = cJSON_CreateObject();
+    cJSON_AddNumberToObject(j, "id", (double)view->id);
+    cJSON_AddStringToObject(j, "name", view->name);
+    cJSON_AddStringToObject(j, "type", view_type_to_string(view->type));
+    /* 解析 config JSON 字符串 */
+    cJSON *jconfig = cJSON_Parse(view->config);
+    if (jconfig) {
+        cJSON_AddItemToObject(j, "config", jconfig);
+    } else {
+        cJSON_AddObjectToObject(j, "config");
+    }
+    cJSON_AddNumberToObject(j, "is_default", view->is_default);
+    cJSON_AddNumberToObject(j, "sort_order", view->sort_order);
+    cJSON_AddNumberToObject(j, "created_at", (double)view->created_at);
+    return j;
+}
+
+/* GET /api/views — 获取所有视图 */
+static void handle_views_list(SOCKET client) {
+    view_t *views = NULL;
+    int count = 0;
+    if (view_list(&views, &count) != 0) {
+        send_error(client, 9002, "查询视图失败");
+        return;
+    }
+    cJSON *jviews = cJSON_CreateArray();
+    for (int i = 0; i < count; i++)
+        cJSON_AddItemToArray(jviews, view_to_json(&views[i]));
+    view_free_list(views, count);
+    send_success(client, jviews);
+}
+
+/* GET /api/views/:id */
+static void handle_views_get(SOCKET client, int64_t id) {
+    view_t view;
+    if (view_get(id, &view) != 0) {
+        send_error(client, 9002, "view not found");
+        return;
+    }
+    send_success(client, view_to_json(&view));
+}
+
+/* POST /api/views — 创建视图 */
+static void handle_views_create(SOCKET client, const char *body) {
+    if (!body || !body[0]) {
+        send_error(client, 1001, "请求体为空");
+        return;
+    }
+    cJSON *jbody = cJSON_Parse(body);
+    if (!jbody) {
+        send_error(client, 1002, "JSON 解析失败");
+        return;
+    }
+
+    cJSON *jname = cJSON_GetObjectItem(jbody, "name");
+    if (!jname || !cJSON_IsString(jname) || !jname->valuestring[0]) {
+        cJSON_Delete(jbody);
+        send_error(client, 1001, "缺少必填参数: name");
+        return;
+    }
+
+    cJSON *jtype = cJSON_GetObjectItem(jbody, "type");
+    view_type_t type = VIEW_TYPE_TABLE;
+    if (jtype && cJSON_IsString(jtype)) {
+        type = view_type_from_string(jtype->valuestring);
+    }
+
+    cJSON *jconfig = cJSON_GetObjectItem(jbody, "config");
+    char config_buf[4096] = "{}";
+    if (jconfig && cJSON_IsObject(jconfig)) {
+        char *cfg = cJSON_PrintUnformatted(jconfig);
+        if (cfg) {
+            strncpy(config_buf, cfg, sizeof(config_buf) - 1);
+            free(cfg);
+        }
+    } else if (jconfig && cJSON_IsString(jconfig)) {
+        strncpy(config_buf, jconfig->valuestring, sizeof(config_buf) - 1);
+    }
+
+    cJSON *jdefault = cJSON_GetObjectItem(jbody, "is_default");
+    int is_default = (jdefault && cJSON_IsNumber(jdefault)) ? (jdefault->valueint != 0) : 0;
+
+    int64_t new_id = 0;
+    if (view_create(jname->valuestring, type, config_buf, is_default, &new_id) != 0) {
+        cJSON_Delete(jbody);
+        send_error(client, 9002, "创建视图失败");
+        return;
+    }
+
+    /* 从数据库读取完整数据 */
+    view_t view;
+    if (view_get(new_id, &view) != 0) {
+        cJSON_Delete(jbody);
+        send_error(client, 9002, "视图创建成功但读取失败");
+        return;
+    }
+    cJSON *jresult = view_to_json(&view);
+    cJSON_Delete(jbody);
+    send_success(client, jresult);
+}
+
+/* PATCH /api/views/:id — 更新视图 */
+static void handle_views_update(SOCKET client, int64_t id, const char *body) {
+    view_t view;
+    if (view_get(id, &view) != 0) {
+        send_error(client, 9002, "view not found");
+        return;
+    }
+
+    if (!body || !body[0]) {
+        send_error(client, 1001, "请求体为空");
+        return;
+    }
+    cJSON *jbody = cJSON_Parse(body);
+    if (!jbody) {
+        send_error(client, 1002, "JSON 解析失败");
+        return;
+    }
+
+    const char *name = NULL;
+    cJSON *jname = cJSON_GetObjectItem(jbody, "name");
+    if (jname && cJSON_IsString(jname) && jname->valuestring[0])
+        name = jname->valuestring;
+
+    const char *config = NULL;
+    char config_buf[4096] = "{}";
+    cJSON *jconfig = cJSON_GetObjectItem(jbody, "config");
+    if (jconfig && cJSON_IsObject(jconfig)) {
+        char *cfg = cJSON_PrintUnformatted(jconfig);
+        if (cfg) {
+            strncpy(config_buf, cfg, sizeof(config_buf) - 1);
+            config = config_buf;
+            free(cfg);
+        }
+    } else if (jconfig && cJSON_IsString(jconfig)) {
+        strncpy(config_buf, jconfig->valuestring, sizeof(config_buf) - 1);
+        config = config_buf;
+    }
+
+    int *p_is_default = NULL;
+    int is_default_val = view.is_default;
+    cJSON *jdefault = cJSON_GetObjectItem(jbody, "is_default");
+    if (jdefault && cJSON_IsNumber(jdefault)) {
+        is_default_val = (jdefault->valueint != 0);
+        p_is_default = &is_default_val;
+    }
+
+    if (view_update(id, name, config, p_is_default) != 0) {
+        cJSON_Delete(jbody);
+        send_error(client, 9002, "更新视图失败");
+        return;
+    }
+
+    cJSON_Delete(jbody);
+
+    /* 返回更新后的完整数据 */
+    if (view_get(id, &view) == 0) {
+        send_success(client, view_to_json(&view));
+    } else {
+        send_success(client, cJSON_CreateObject());
+    }
+}
+
+/* DELETE /api/views/:id */
+static void handle_views_delete(SOCKET client, int64_t id) {
+    if (view_delete(id) != 0) {
+        send_error(client, 9002, "删除视图失败");
+        return;
+    }
+    send_success(client, cJSON_CreateObject());
+}
+
+/* PATCH /api/views/:id/default — 设为默认视图 */
+static void handle_views_set_default(SOCKET client, int64_t id) {
+    if (view_set_default(id) != 0) {
+        send_error(client, 9002, "设置默认视图失败");
+        return;
+    }
+    send_success(client, cJSON_CreateObject());
+}
+
+/* PATCH /api/views/:id/sort — 调整视图排序 */
+static void handle_views_sort(SOCKET client, int64_t id, const char *body) {
+    int sort_order = 0;
+    if (body && body[0]) {
+        cJSON *jbody = cJSON_Parse(body);
+        if (jbody) {
+            cJSON *jso = cJSON_GetObjectItem(jbody, "sort_order");
+            if (jso) sort_order = (int)jso->valuedouble;
+            cJSON_Delete(jbody);
+        }
+    }
+
+    if (view_update_sort(id, sort_order) != 0) {
+        send_error(client, 9002, "视图不存在");
+        return;
+    }
+    send_success(client, cJSON_CreateObject());
+}
+
 /* PATCH /api/todos/:id/fields — 批量更新扩展字段值 */
 static void handle_todo_fields_update(SOCKET client, int64_t todo_id, const char *body) {
     todo_t todo;
@@ -1758,6 +1965,52 @@ static void handle_request(SOCKET client, const char *request) {
             }
         }
     }
+
+    /* ===== 视图系统 API ===== */
+    /* GET /api/views */
+    else if (strcmp(path, "/api/views") == 0 && strcmp(method, "GET") == 0) {
+        handle_views_list(client);
+        handled = 1;
+    }
+    /* POST /api/views */
+    else if (strcmp(path, "/api/views") == 0 && strcmp(method, "POST") == 0) {
+        handle_views_create(client, body);
+        handled = 1;
+    }
+    /* PATCH/DELETE /api/views/:id */
+    else if (sscanf(path, "/api/views/%lld", (long long *)&id_a) == 1) {
+        char expect[128];
+        snprintf(expect, sizeof(expect), "/api/views/%lld", (long long)id_a);
+        if (strcmp(path, expect) == 0) {
+            if (strcmp(method, "GET") == 0) {
+                handle_views_get(client, id_a);
+                handled = 1;
+            } else if (strcmp(method, "PATCH") == 0) {
+                handle_views_update(client, id_a, body);
+                handled = 1;
+            } else if (strcmp(method, "DELETE") == 0) {
+                handle_views_delete(client, id_a);
+                handled = 1;
+            }
+        }
+        /* PATCH /api/views/:id/default */
+        else if (sscanf(path, "/api/views/%lld/default", (long long *)&id_a) == 1) {
+            snprintf(expect, sizeof(expect), "/api/views/%lld/default", (long long)id_a);
+            if (strcmp(path, expect) == 0 && strcmp(method, "PATCH") == 0) {
+                handle_views_set_default(client, id_a);
+                handled = 1;
+            }
+        }
+        /* PATCH /api/views/:id/sort */
+        else if (sscanf(path, "/api/views/%lld/sort", (long long *)&id_a) == 1) {
+            snprintf(expect, sizeof(expect), "/api/views/%lld/sort", (long long)id_a);
+            if (strcmp(path, expect) == 0 && strcmp(method, "PATCH") == 0) {
+                handle_views_sort(client, id_a, body);
+                handled = 1;
+            }
+        }
+    }
+
     /* 静态文件或 404 */
     if (!handled) {
         if (serve_static_file(client, path) != 0) {
