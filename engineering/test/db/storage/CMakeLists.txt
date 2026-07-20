@@ -1,5 +1,9 @@
 # Storage 模块测试
 
+# BTree 页面格式测试（Task W1.1）
+add_executable(test_btree btree_test.cpp)
+target_link_libraries(test_btree project_includes gtest gtest_main)
+
 # KV 测试
 add_executable(test_storage_kv kv.cpp)
 target_link_libraries(test_storage_kv db_storage project_includes gtest gtest_main)
@@ -126,6 +130,7 @@ target_link_libraries(test_vector_index_type db_storage project_includes gtest g
 
 # 所有 Storage 测试汇总
 add_custom_target(test_storage_all
+    COMMAND test_btree
     COMMAND test_storage_kv
     COMMAND test_storage_wal
     COMMAND test_storage_main
