@@ -86,6 +86,9 @@ struct BufferDesc_s {
     /* 时间戳和 LSN */
     LSN         last_written;     /**< 最后写入的 LSN */
 
+    /* 文件描述符（刷盘用） */
+    void       *file;             /**< 对应的 db_file_t* */
+
     /* Hash 链表指针（用于快速查找） */
     uint32_t    hash_prev;        /**< Hash 链表前驱 */
     uint32_t    hash_next;        /**< Hash 链表后继 */

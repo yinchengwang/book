@@ -922,25 +922,27 @@ int buf_write(BufferDesc *buf) {
         return 0;
     }
 
-    /* [A1.2] 刷盘前设置校验和
-     * 使用 BUF_PAGE_SIZE 计算校验和，与 buf_read 校验和验证一致。
-     */
-    {
+    /* 如果 Buffer 有关联的文件，调用 disk 层写入 */
+    if (buf->file) {
         page_t *pg = (page_t *)buffer_pool->buffers[buf->buf_id];
+
+        /* 刷盘前设置校验和 */
         pg->header.checksum = page_calc_checksum_bytes((const uint8_t *)pg, BUF_PAGE_SIZE);
+
+        /* 通过 db_file_t 写入 */
+        int ret = disk_write_page((db_file_t *)buf->file, buf->blocknum, pg);
+        if (ret != 0) {
+            fprintf(stderr, "buf_write: 页面写盘失败 relfilenode=%u blocknum=%u\n",
+                      buf->relfilenode, buf->blocknum);
+            return -1;
+        }
     }
 
-    /* 写入到持久存储
-     * 简化实现：此处仅更新统计
-     * 实际应调用底层存储层的写接口
-     */
-    buffer_pool->writes++;
-
-    /* 清除脏标记
-     * 注意：BM_DIRTY 清除后，BM_JUST_DIRTIED 也应清除
-     * 此处简化处理，仅清除 BM_DIRTY
-     */
+    /* 清除脏标记 */
     buf->state &= ~BM_DIRTY;
+
+    /* 更新统计 */
+    buffer_pool->writes++;
 
     return 0;
 }
