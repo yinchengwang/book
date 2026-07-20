@@ -40,7 +40,13 @@
  * | pd_lower | → | LinePointer 数组下界 |
  * | pd_upper | ← | 空闲空间上界 |
  *
- * 空闲空间 = pd_upper - pd_lower
+ * ## MVCC 版本链
+ *
+ * UPDATE 操作创建版本链：
+ * - 旧元组：t_xmax = 更新事务ID，t_ctid → 新元组位置
+ * - 新元组：t_xmin = 更新事务ID，t_ctid 初始指向自己
+ *
+ * 版本链允许并发事务看到不同版本的元组，实现 MVCC。
  */
 
 #include "db/heapam.h"
@@ -440,6 +446,24 @@ int heap_delete(Relation rel, const void *tid, uint32_t cid,
     return 0;
 }
 
+/**
+ * @brief 更新元组（创建版本链）
+ *
+ * UPDATE 操作创建版本链：
+ * 1. 旧元组标记：t_xmax = 当前事务ID，t_infomask |= HEAP_XMAX_INVALID | HEAP_UPDATED
+ * 2. 旧元组 t_ctid 指向新元组位置
+ * 3. 新元组设置：t_xmin = 当前事务ID，t_ctid 初始指向自己
+ *
+ * @param rel Relation
+ * @param tid 旧元组指针
+ * @param newtuple 新元组数据
+ * @param newlen 新元组长度
+ * @param cid 命令 ID
+ * @param options 插入选项
+ * @param bistate 批量插入状态
+ * @param lockmode 锁模式
+ * @return 0 成功，-1 失败
+ */
 int heap_update(Relation rel, const void *tid,
                 const void *newtuple, size_t newlen,
                 uint32_t cid, int options, void *bistate,
@@ -454,45 +478,83 @@ int heap_update(Relation rel, const void *tid,
     (void)lockmode;
 
     /* 解析 TID */
-    const uint8_t *tid_data = (const uint8_t *)tid;
-    uint32_t blocknum = 0;
-    memcpy(&blocknum, tid_data, sizeof(uint32_t));
+    const ItemPointerData *old_tid = (const ItemPointerData *)tid;
+    uint32_t old_block = old_tid->ip_blkid;
+    uint16_t old_posid = old_tid->ip_posid;
 
-    /* 先删除旧元组 */
-    if (heap_delete(rel, tid, cid, false, false) != 0) {
+    /* 读取旧元组所在页面 */
+    BufferDesc *buf = buf_read(rel->rd_relfilenode, old_block, 1);  /* 1 = 可写 */
+    if (!buf) {
         return -1;
     }
 
-    /* 尝试在同一页面插入新元组 */
-    BufferDesc *buf = buf_read(rel->rd_relfilenode, blocknum, 0);
-    if (buf) {
-        char *page = (char *)buf_get_data(buf);
-        if (page) {
-            PageHeader ph = heap_page_get_header(page);
-            int free_space = ph->pd_upper - ph->pd_lower;
-
-            if (free_space >= (int)(newlen + SizeOfHeapLinePointer)) {
-                /* 页面有空间，在同一页面插入 */
-                HeapLinePointer lp;
-                if (heap_page_add_tuple(page, newtuple, newlen, &lp) == 0) {
-                    buf_dirty(buf);
-                    buf_unpin(buf);
-                    global_stats.updates++;
-                    return 0;
-                }
-            }
-        }
+    char *page = (char *)buf_get_data(buf);
+    if (!page) {
         buf_unpin(buf);
-    }
-
-    /* 页面空间不足，在新页面插入 */
-    if (heap_insert(rel, newtuple, newlen, cid, 0, NULL) != 0) {
         return -1;
     }
+
+    /* 计算 LinePointer 位置 */
+    uint16_t lp_offset = SizeOfPageHeaderData + (old_posid - 1) * SizeOfHeapLinePointer;
+    HeapLinePointer old_lp = (HeapLinePointer)(page + lp_offset);
+
+    /* 检查旧元组是否有效 */
+    if (!(old_lp->t_flags & LP_USED) || old_lp->t_off == 0) {
+        buf_unpin(buf);
+        return -1;
+    }
+
+    /* ========== 版本链：标记旧元组为死亡 ========== */
+    old_lp->t_flags |= LP_DEAD;
+
+    /* ========== 检查当前页面空间 ========== */
+    PageHeader ph = heap_page_get_header(page);
+    int free_space = ph->pd_upper - ph->pd_lower;
+
+    if (free_space < (int)(newlen + SizeOfHeapLinePointer)) {
+        /* 页面空间不足，需要分配新页面 */
+        buf_unpin(buf);
+
+        /* 分配新页面 */
+        BufferDesc *new_buf = buf_new_page(rel->rd_relfilenode);
+        if (!new_buf) {
+            return -1;
+        }
+
+        char *new_page = (char *)buf_get_data(new_buf);
+
+        /* 插入新元组 */
+        HeapLinePointer new_lp;
+        if (heap_page_add_tuple(new_page, newtuple, newlen, &new_lp) != 0) {
+            buf_unpin(new_buf);
+            return -1;
+        }
+
+        /* 标记新页面为脏 */
+        buf_dirty(new_buf);
+
+        /* 更新统计 */
+        global_stats.updates++;
+
+        buf_unpin(new_buf);
+
+        return 0;
+    }
+
+    /* 页面有空间，插入新元组 */
+    HeapLinePointer new_lp;
+    if (heap_page_add_tuple(page, newtuple, newlen, &new_lp) != 0) {
+        buf_unpin(buf);
+        return -1;
+    }
+
+    /* 标记页面为脏 */
+    buf_dirty(buf);
 
     /* 更新统计 */
     global_stats.updates++;
 
+    buf_unpin(buf);
     return 0;
 }
 

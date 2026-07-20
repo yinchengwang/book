@@ -153,6 +153,11 @@ add_executable(test_heap_tuple heap_tuple_test.cpp)
 target_link_libraries(test_heap_tuple db_storage project_includes gtest gtest_main)
 add_test(NAME test_heap_tuple COMMAND test_heap_tuple)
 
+# Heap 更新版本链测试（Task W2.2）
+add_executable(test_heap_update heap_update_test.cpp)
+target_link_libraries(test_heap_update db_storage project_includes gtest gtest_main pthread)
+add_test(NAME test_heap_update COMMAND test_heap_update)
+
 # 所有 Storage 测试汇总
 add_custom_target(test_storage_all
     COMMAND test_btree
