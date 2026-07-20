@@ -12,8 +12,13 @@ target_include_directories(todo-app PRIVATE
     ${ENGINEERING_SOURCE_DIR}/../third_part
 )
 
+# 添加 sqlite3 子目录
+# 添加 sqlite3 子目录
+add_subdirectory(${ENGINEERING_SOURCE_DIR}/../third_part/sqlite3 ${CMAKE_BINARY_DIR}/sqlite3)
+
 target_link_libraries(todo-app PRIVATE
     project_includes
     cjson
+    sqlite3
     ws2_32
 )
