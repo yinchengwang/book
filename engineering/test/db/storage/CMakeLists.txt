@@ -173,6 +173,11 @@ add_executable(test_vacuum_page vacuum_test.cpp)
 target_link_libraries(test_vacuum_page db_storage project_includes gtest gtest_main)
 add_test(NAME test_vacuum_page COMMAND test_vacuum_page)
 
+# VACUUM 索引清理 + Freeze 测试（Task W2.6/W2.7）
+add_executable(test_vacuum_index vacuum_index_freeze_test.cpp)
+target_link_libraries(test_vacuum_index db_storage project_includes gtest gtest_main)
+add_test(NAME test_vacuum_index COMMAND test_vacuum_index)
+
 # 所有 Storage 测试汇总
 add_custom_target(test_storage_all
     COMMAND test_btree
