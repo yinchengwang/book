@@ -11,6 +11,7 @@
 #include "db/storage/txn/mvcc.h"
 #include "db/storage/txn/predicate.h"
 #include "db/storage/txn/vacuum.h"
+#include "db/storage/txn/clog.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -143,10 +144,8 @@ TransactionId mvcc_get_xid_horizon(void)
  */
 void mvcc_mark_committed(TransactionId xid)
 {
-    /* 简化实现：直接更新状态 */
-    /* 实际实现应该用更复杂的状态表 */
-    (void)xid;
-    /* 在真实实现中，这里需要写入持久化存储 */
+    /* 通过 CLOG 持久化事务状态 */
+    clog_set_status(xid, CLOG_STATUS_COMMITTED);
 }
 
 /**
@@ -154,8 +153,7 @@ void mvcc_mark_committed(TransactionId xid)
  */
 void mvcc_mark_aborted(TransactionId xid)
 {
-    (void)xid;
-    /* 在真实实现中，这里需要写入持久化存储 */
+    clog_set_status(xid, CLOG_STATUS_ABORTED);
 }
 
 /**
@@ -163,10 +161,18 @@ void mvcc_mark_aborted(TransactionId xid)
  */
 transaction_status_t mvcc_get_status(TransactionId xid)
 {
-    /* 简化实现：假设所有未知事务都是进行中 */
-    /* 实际实现需要查询事务状态表 */
-    (void)xid;
-    return TRANSACTION_STATUS_IN_PROGRESS;
+    /* 通过 CLOG 查询事务状态 */
+    switch (clog_get_status(xid)) {
+        case CLOG_STATUS_COMMITTED:
+            return TRANSACTION_STATUS_COMMITTED;
+        case CLOG_STATUS_ABORTED:
+            return TRANSACTION_STATUS_ABORTED;
+        case CLOG_STATUS_PREPARED:
+            /* 简化：PREPARED 视为进行中 */
+            return TRANSACTION_STATUS_IN_PROGRESS;
+        default:
+            return TRANSACTION_STATUS_IN_PROGRESS;
+    }
 }
 
 /**
@@ -639,6 +645,9 @@ int mvcc_init(void)
     /* 初始化 VACUUM 子系统 */
     vacuum_init();
 
+    /* 初始化 CLOG 子系统 */
+    clog_init("./");
+
     return 0;
 }
 
@@ -661,6 +670,9 @@ void mvcc_shutdown(void)
 
     /* 清理 VACUUM 子系统 */
     vacuum_shutdown();
+
+    /* 关闭 CLOG 子系统（自动刷脏页） */
+    clog_shutdown();
 }
 
 /**

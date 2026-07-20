@@ -143,6 +143,11 @@ add_executable(test_btree_concurrent btree_concurrent_test.cpp)
 target_link_libraries(test_btree_concurrent db_storage project_includes gtest gtest_main pthread)
 add_test(NAME test_btree_concurrent COMMAND test_btree_concurrent)
 
+# CLOG 持久化测试（Task W1.5）
+add_executable(test_clog clog_test.cpp)
+target_link_libraries(test_clog db_storage project_includes gtest gtest_main)
+add_test(NAME test_clog COMMAND test_clog WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 # 所有 Storage 测试汇总
 add_custom_target(test_storage_all
     COMMAND test_btree
