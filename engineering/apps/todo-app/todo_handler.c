@@ -1,5 +1,6 @@
 #include "todo_handler.h"
 #include "todo_model.h"
+#include "todo_field.h"
 #include "todo_change.h"
 #include "todo_calendar.h"
 #include "todo_stats.h"
@@ -94,6 +95,23 @@ static cJSON *todo_to_json(const todo_t *todo) {
 
     cJSON_AddNumberToObject(j, "created_at", todo->created_at);
     cJSON_AddNumberToObject(j, "updated_at", todo->updated_at);
+
+    /* 附加扩展字段值 */
+    field_value_t *fvs = NULL;
+    int fvc = 0;
+    if (field_value_list_by_todo(todo->id, &fvs, &fvc) == 0) {
+        cJSON *jfields = cJSON_CreateObject();
+        for (int i = 0; i < fvc; i++) {
+            char key[32];
+            snprintf(key, sizeof(key), "%lld", (long long)fvs[i].field_id);
+            cJSON_AddStringToObject(jfields, key, fvs[i].value);
+        }
+        cJSON_AddItemToObject(j, "fields", jfields);
+        field_value_list_free(fvs, fvc);
+    } else {
+        cJSON_AddItemToObject(j, "fields", cJSON_CreateObject());
+    }
+
     return j;
 }
 
@@ -1040,6 +1058,227 @@ static void handle_promote(SOCKET client, const char *body) {
 }
 
 /* ============================================================
+ * 字段系统 API
+ * ============================================================ */
+static cJSON *field_def_to_json(const field_def_t *field) {
+    cJSON *j = cJSON_CreateObject();
+    cJSON_AddNumberToObject(j, "id", field->id);
+    cJSON_AddStringToObject(j, "name", field->name);
+    cJSON_AddStringToObject(j, "type", field_type_to_string(field->type));
+    cJSON_AddStringToObject(j, "options", field->options);
+    cJSON_AddNumberToObject(j, "built_in", field->built_in);
+    cJSON_AddNumberToObject(j, "sort_order", field->sort_order);
+    cJSON_AddNumberToObject(j, "created_at", field->created_at);
+    return j;
+}
+
+static void handle_fields_list(SOCKET client) {
+    field_def_t *fields = NULL;
+    int count = 0;
+    if (field_def_list(&fields, &count) != 0) {
+        send_error(client, 9001, "查询字段失败");
+        return;
+    }
+    cJSON *jfields = cJSON_CreateArray();
+    for (int i = 0; i < count; i++)
+        cJSON_AddItemToArray(jfields, field_def_to_json(&fields[i]));
+    field_def_list_free(fields, count);
+    send_success(client, jfields);
+}
+
+static void handle_fields_create(SOCKET client, const char *body) {
+    if (!body || !body[0]) {
+        send_error(client, 1001, "请求体为空");
+        return;
+    }
+    cJSON *jbody = cJSON_Parse(body);
+    if (!jbody) {
+        send_error(client, 1002, "JSON 解析失败");
+        return;
+    }
+
+    cJSON *jname = cJSON_GetObjectItem(jbody, "name");
+    if (!jname || !cJSON_IsString(jname) || !jname->valuestring[0]) {
+        cJSON_Delete(jbody);
+        send_error(client, 1001, "缺少必填参数: name");
+        return;
+    }
+
+    cJSON *jtype = cJSON_GetObjectItem(jbody, "type");
+    if (!jtype || !cJSON_IsString(jtype)) {
+        cJSON_Delete(jbody);
+        send_error(client, 1001, "缺少必填参数: type");
+        return;
+    }
+
+    field_def_t field;
+    memset(&field, 0, sizeof(field));
+    strncpy(field.name, jname->valuestring, FIELD_NAME_MAX - 1);
+    field.type = field_type_from_string(jtype->valuestring);
+
+    cJSON *joptions = cJSON_GetObjectItem(jbody, "options");
+    if (joptions && cJSON_IsString(joptions)) {
+        strncpy(field.options, joptions->valuestring, FIELD_OPTS_MAX - 1);
+    } else {
+        strcpy(field.options, "{}");
+    }
+
+    int64_t new_id = 0;
+    if (field_def_create(&field, &new_id) != 0) {
+        cJSON_Delete(jbody);
+        send_error(client, 9001, "创建字段失败");
+        return;
+    }
+
+    field.id = new_id;
+    cJSON *jresult = field_def_to_json(&field);
+    cJSON_Delete(jbody);
+    send_success(client, jresult);
+}
+
+static void handle_fields_update(SOCKET client, int64_t id, const char *body) {
+    field_def_t field;
+    if (field_def_get(id, &field) != 0) {
+        send_error(client, 2001, "field not found");
+        return;
+    }
+
+    if (body && body[0]) {
+        cJSON *jbody = cJSON_Parse(body);
+        if (jbody) {
+            cJSON *jname = cJSON_GetObjectItem(jbody, "name");
+            if (jname && cJSON_IsString(jname))
+                strncpy(field.name, jname->valuestring, FIELD_NAME_MAX - 1);
+
+            cJSON *joptions = cJSON_GetObjectItem(jbody, "options");
+            if (joptions && cJSON_IsString(joptions))
+                strncpy(field.options, joptions->valuestring, FIELD_OPTS_MAX - 1);
+
+            cJSON *jso = cJSON_GetObjectItem(jbody, "sort_order");
+            if (jso) field.sort_order = (int)jso->valuedouble;
+
+            cJSON_Delete(jbody);
+        }
+    }
+
+    if (field_def_update(&field) != 0) {
+        send_error(client, 9001, "更新字段失败");
+        return;
+    }
+
+    cJSON *jresult = field_def_to_json(&field);
+    send_success(client, jresult);
+}
+
+static void handle_fields_delete(SOCKET client, int64_t id) {
+    if (field_def_delete(id) != 0) {
+        send_error(client, 2001, "field not found 或为内置字段");
+        return;
+    }
+    send_success(client, cJSON_CreateObject());
+}
+
+static void handle_fields_sort(SOCKET client, int64_t id, const char *body) {
+    int sort_order = 0;
+    if (body && body[0]) {
+        cJSON *jbody = cJSON_Parse(body);
+        if (jbody) {
+            cJSON *jso = cJSON_GetObjectItem(jbody, "sort_order");
+            if (jso) sort_order = (int)jso->valuedouble;
+            cJSON_Delete(jbody);
+        }
+    }
+
+    if (field_def_update_sort(id, sort_order) != 0) {
+        send_error(client, 2001, "field not found");
+        return;
+    }
+    send_success(client, cJSON_CreateObject());
+}
+
+/* PATCH /api/todos/:id/fields — 批量更新扩展字段值 */
+static void handle_todo_fields_update(SOCKET client, int64_t todo_id, const char *body) {
+    todo_t todo;
+    if (todo_get_by_id(todo_id, &todo) != 0) {
+        send_error(client, 2001, "todo not found");
+        return;
+    }
+
+    if (!body || !body[0]) {
+        send_error(client, 1001, "请求体为空");
+        return;
+    }
+
+    cJSON *jbody = cJSON_Parse(body);
+    if (!jbody) {
+        send_error(client, 1002, "JSON 解析失败");
+        return;
+    }
+
+    cJSON *jfields = cJSON_GetObjectItem(jbody, "fields");
+    if (!jfields || !cJSON_IsObject(jfields)) {
+        cJSON_Delete(jbody);
+        send_error(client, 1001, "缺少 fields 对象");
+        return;
+    }
+
+    /* 收集所有要设置的字段值 */
+    int count = cJSON_GetArraySize(jfields);
+    field_value_t *values = (field_value_t *)calloc(count, sizeof(field_value_t));
+    int valid = 0;
+
+    cJSON *jchild = NULL;
+    cJSON_ArrayForEach(jchild, jfields) {
+        if (!jchild->string) continue;
+        int64_t field_id = atoll(jchild->string);
+        if (field_id <= 0) continue;
+
+        values[valid].todo_id = todo_id;
+        values[valid].field_id = field_id;
+
+        if (cJSON_IsString(jchild)) {
+            snprintf(values[valid].value, sizeof(values[valid].value), "%s", jchild->valuestring);
+        } else {
+            char *str = cJSON_PrintUnformatted(jchild);
+            if (str) {
+                snprintf(values[valid].value, sizeof(values[valid].value), "%s", str);
+                free(str);
+            }
+        }
+        valid++;
+    }
+
+    int ret = field_value_set_batch(todo_id, values, valid);
+    free(values);
+
+    if (ret != 0) {
+        cJSON_Delete(jbody);
+        send_error(client, 9001, "更新字段值失败");
+        return;
+    }
+
+    /* 返回更新后的字段值 */
+    field_value_t *saved = NULL;
+    int saved_count = 0;
+    cJSON *jresult_fields = cJSON_CreateObject();
+    if (field_value_list_by_todo(todo_id, &saved, &saved_count) == 0) {
+        for (int i = 0; i < saved_count; i++) {
+            char key[32];
+            snprintf(key, sizeof(key), "%lld", (long long)saved[i].field_id);
+            cJSON_AddStringToObject(jresult_fields, key, saved[i].value);
+        }
+        field_value_list_free(saved, saved_count);
+    }
+
+    cJSON *data = cJSON_CreateObject();
+    cJSON_AddNumberToObject(data, "id", todo_id);
+    cJSON_AddItemToObject(data, "fields", jresult_fields);
+
+    cJSON_Delete(jbody);
+    send_success(client, data);
+}
+
+/* ============================================================
  * DFX 统计 API
  * ============================================================ */
 static void handle_stats_dfx(SOCKET client) {
@@ -1475,6 +1714,49 @@ static void handle_request(SOCKET client, const char *request) {
                 handle_group_delete(client, id_a);
                 handled = 1;
             }
+        }
+    }
+
+    /* ===== 字段系统 API ===== */
+    /* GET /api/fields */
+    else if (strcmp(path, "/api/fields") == 0 && strcmp(method, "GET") == 0) {
+        handle_fields_list(client);
+        handled = 1;
+    }
+    /* POST /api/fields */
+    else if (strcmp(path, "/api/fields") == 0 && strcmp(method, "POST") == 0) {
+        handle_fields_create(client, body);
+        handled = 1;
+    }
+    /* PATCH/DELETE /api/fields/:id */
+    else if (sscanf(path, "/api/fields/%lld", (long long *)&id_a) == 1) {
+        char expect[128];
+        snprintf(expect, sizeof(expect), "/api/fields/%lld", (long long)id_a);
+        if (strcmp(path, expect) == 0) {
+            if (strcmp(method, "PATCH") == 0) {
+                handle_fields_update(client, id_a, body);
+                handled = 1;
+            } else if (strcmp(method, "DELETE") == 0) {
+                handle_fields_delete(client, id_a);
+                handled = 1;
+            }
+        }
+        /* PATCH /api/fields/:id/sort */
+        else if (sscanf(path, "/api/fields/%lld/sort", (long long *)&id_a) == 1) {
+            snprintf(expect, sizeof(expect), "/api/fields/%lld/sort", (long long)id_a);
+            if (strcmp(path, expect) == 0 && strcmp(method, "PATCH") == 0) {
+                handle_fields_sort(client, id_a, body);
+                handled = 1;
+            }
+        }
+    }
+    /* PATCH /api/todos/:id/fields */
+    else if (sscanf(path, "/api/todos/%lld/fields", (long long *)&id_a) == 1) {
+        char expect[128];
+        snprintf(expect, sizeof(expect), "/api/todos/%lld/fields", (long long)id_a);
+        if (strcmp(path, expect) == 0 && strcmp(method, "PATCH") == 0) {
+            handle_todo_fields_update(client, id_a, body);
+            handled = 1;
         }
     }
 
