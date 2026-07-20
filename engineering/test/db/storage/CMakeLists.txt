@@ -128,6 +128,10 @@ target_link_libraries(test_vector_build_empty db_storage project_includes gtest 
 add_executable(test_vector_index_type test_vector_index_type.cpp)
 target_link_libraries(test_vector_index_type db_storage project_includes gtest gtest_main)
 
+# BTree 页面分裂测试（Task W1.2）
+add_executable(test_btree_split btree_split_test.cpp)
+target_link_libraries(test_btree_split db_storage project_includes gtest gtest_main)
+
 # 所有 Storage 测试汇总
 add_custom_target(test_storage_all
     COMMAND test_btree

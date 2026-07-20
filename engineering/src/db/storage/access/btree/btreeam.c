@@ -6,6 +6,7 @@
 #include "db/btreeam.h"
 #include "db/rel.h"
 #include "db/buf.h"
+#include "db/access/btree/btree_split.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -177,9 +178,22 @@ int btinsert(Relation rel, const void **values, int nkeys, void *heap_ptr) {
     int needed = nkeys * sizeof(void *) + 8;  /* 简化 */
 
     if (free_space < needed) {
-        /* 需要分裂（简化：返回错误） */
-        buf_unpin(buf);
-        return -1;
+        /* 页面已满，尝试分裂 */
+        uint32_t new_blkno;
+        int split_result = btree_split_leaf(rel, 0, &new_blkno);
+        if (split_result != 0) {
+            /* 分裂失败，返回错误 */
+            buf_unpin(buf);
+            return -1;
+        }
+
+        /* 分裂后重新检查空间 */
+        free_space = bt_page_get_free_space(page);
+        if (free_space < needed) {
+            /* 分裂后仍然没有足够空间（理论上不应该发生） */
+            buf_unpin(buf);
+            return -1;
+        }
     }
 
     /* 插入条目（简化实现） */
