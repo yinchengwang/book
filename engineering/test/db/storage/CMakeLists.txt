@@ -163,6 +163,16 @@ add_executable(test_heap_delete heap_delete_test.cpp)
 target_link_libraries(test_heap_delete db_storage project_includes gtest gtest_main)
 add_test(NAME test_heap_delete COMMAND test_heap_delete)
 
+# HOT 堆内元组测试（Task W2.4）
+add_executable(test_hot hot_test.cpp)
+target_link_libraries(test_hot db_storage project_includes gtest gtest_main)
+add_test(NAME test_hot COMMAND test_hot)
+
+# VACUUM 死元组清理测试（Task W2.5）
+add_executable(test_vacuum_page vacuum_test.cpp)
+target_link_libraries(test_vacuum_page db_storage project_includes gtest gtest_main)
+add_test(NAME test_vacuum_page COMMAND test_vacuum_page)
+
 # 所有 Storage 测试汇总
 add_custom_target(test_storage_all
     COMMAND test_btree
