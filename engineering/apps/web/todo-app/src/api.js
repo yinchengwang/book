@@ -62,6 +62,12 @@ const api = {
   updateView: (id, body) => fetch(`${BASE}/views/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
   deleteView: (id) => fetch(`${BASE}/views/${id}`, { method: 'DELETE' }).then(r => r.json()),
   setViewDefault: (id) => fetch(`${BASE}/views/${id}/default`, { method: 'PATCH' }).then(r => r.json()),
+
+  /* 字段系统 */
+  listFields: () => fetch(`${BASE}/fields`).then(r => r.json()),
+  createField: (body) => fetch(`${BASE}/fields`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+  updateField: (id, body) => fetch(`${BASE}/fields/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+  deleteField: (id) => fetch(`${BASE}/fields/${id}`, { method: 'DELETE' }).then(r => r.json()),
 }
 
 export default api

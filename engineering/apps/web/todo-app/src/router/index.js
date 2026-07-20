@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import ListView from '../views/ListView.vue'
+import TableView from '../views/TableView.vue'
 import BoardView from '../views/BoardView.vue'
 import StatsView from '../views/StatsView.vue'
 import GroupManager from '../views/GroupManager.vue'
@@ -9,7 +9,7 @@ import PlanManageView from '../views/PlanManageView.vue'
 import ViewManager from '../views/ViewManager.vue'
 
 const routes = [
-  { path: '/', component: ListView, meta: { title: '待办列表' } },
+  { path: '/', component: TableView, meta: { title: '待办列表' } },
   { path: '/board', component: BoardView, meta: { title: '看板视图' } },
   { path: '/stats', component: StatsView, meta: { title: '统计看板' } },
   { path: '/groups', component: GroupManager, meta: { title: '分组管理' } },
