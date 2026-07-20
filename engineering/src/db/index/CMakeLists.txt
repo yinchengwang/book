@@ -1,12 +1,8 @@
 # 索引子系统
 add_subdirectory(shared)
 
-# 索引 MVCC 可见性判断（索引与 MVCC 集成）
-if(TARGET index)
-    target_sources(index PRIVATE
-        index_mvcc.c
-    )
-endif()
+# 索引 MVCC 可见性判断（已移除，合并到 storage/txn/mvcc.c）
+# 旧版 index_mvcc.c 依赖 db/txn.h（系统A），已随系统A禁用
 
 # Hilbert 曲线索引
 add_subdirectory(hilbert)

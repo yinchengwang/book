@@ -7,7 +7,7 @@
 #ifndef DB_BUFFER_H
 #define DB_BUFFER_H
 
-#include "db/disk.h"
+#include "disk.h"
 #include <stdbool.h>
 
 #ifdef __cplusplus

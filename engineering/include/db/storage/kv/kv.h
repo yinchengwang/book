@@ -8,7 +8,7 @@
 #define DB_KV_H
 
 #include "db/buffer.h"
-#include "db/wal.h"
+#include "db/storage/wal/wal.h"
 #include "db/lock.h"
 #include <stdbool.h>
 #include <stddef.h>

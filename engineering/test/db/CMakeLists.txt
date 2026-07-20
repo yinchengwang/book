@@ -5,7 +5,8 @@
 add_subdirectory(parser)  # 解析器测试
 add_subdirectory(sql)
 add_subdirectory(storage)
-add_subdirectory(concurrency)
+# concurrency 模块已移除（合并到 storage/txn/mvcc.c）
+# add_subdirectory(concurrency)
 # constraints 模块源代码已迁移到 validator，测试暂时跳过
 # add_subdirectory(constraints)
 # add_subdirectory(optimizer)  # 优化器测试在 sql/ 目录下
@@ -40,7 +41,7 @@ add_custom_target(db_all_tests
     DEPENDS
         test_sql
         test_storage
-        test_mvcc_test
+        # test_mvcc_test  # 已迁移到 storage/txn/mvcc.c
         # test_constraints_test  # 已跳过
         # test_optimizer_test  # 已迁移到 test_sql
         test_replication_test
@@ -51,5 +52,5 @@ add_custom_target(db_all_tests
 
 # 便捷别名
 add_custom_target(test_db
-    COMMAND echo "Use: test_sql, test_storage, test_mvcc_test, etc."
+    COMMAND echo "Use: test_sql, test_storage, etc."
 )

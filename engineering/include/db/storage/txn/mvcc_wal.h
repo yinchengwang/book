@@ -13,7 +13,7 @@
 #define DB_MVCC_WAL_H
 
 #include "db/storage/txn/mvcc.h"
-#include "db/wal.h"
+#include "db/storage/wal/wal.h"
 
 #ifdef __cplusplus
 extern "C" {

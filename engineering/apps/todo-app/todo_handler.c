@@ -1105,6 +1105,8 @@ static int serve_static_file(SOCKET client, const char *url) {
         "engineering/apps/web/todo-app/dist%s",
         "../engineering/apps/web/todo-app/dist%s",
         "../../engineering/apps/web/todo-app/dist%s",
+        "../../../engineering/apps/web/todo-app/dist%s",
+        "../../../../engineering/apps/web/todo-app/dist%s",
         "apps/web/todo-app/dist%s",
         NULL
     };
@@ -1461,7 +1463,10 @@ static void handle_request(SOCKET client, const char *request) {
 
     /* 静态文件或 404 */
     if (!handled) {
-        if (serve_static_file(client, path) != 0) {
+        /* 只对疑似静态文件路径尝试提供静态文件，API 路径直接 404 */
+        if (strstr(path, ".") != NULL && serve_static_file(client, path) == 0) {
+            /* 静态文件提供成功 */
+        } else {
             send_error(client, 404, "not found");
         }
     }

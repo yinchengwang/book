@@ -11,7 +11,7 @@
 #ifndef DB_WAL_BUF_H
 #define DB_WAL_BUF_H
 
-#include "db/wal.h"
+#include "wal.h"
 #include "db/buf.h"
 #include <stdbool.h>
 

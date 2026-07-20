@@ -11,7 +11,7 @@
 #ifndef DB_TXN_H
 #define DB_TXN_H
 
-#include "db/wal.h"
+#include "db/storage/wal/wal.h"
 #include "db/kv.h"
 #include <stdint.h>
 #include <stdbool.h>
