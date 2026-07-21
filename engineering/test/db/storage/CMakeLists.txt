@@ -213,6 +213,11 @@ add_executable(test_twophase_recovery twophase_recovery_test.cpp)
 target_link_libraries(test_twophase_recovery db_storage project_includes gtest gtest_main)
 add_test(NAME test_twophase_recovery COMMAND test_twophase_recovery WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+# 子事务/保存点测试（W5.3）
+add_executable(test_savepoint txn_savepoint_test.cpp)
+target_link_libraries(test_savepoint db_storage project_includes gtest gtest_main)
+add_test(NAME test_savepoint COMMAND test_savepoint WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 # 所有 Storage 测试汇总
 
 # 所有 Storage 测试汇总

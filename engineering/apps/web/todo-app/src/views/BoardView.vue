@@ -25,8 +25,13 @@
             @click="select(todo)"
           >
             <div class="card-title">{{ todo.title }}</div>
-            <div v-if="todo.due_date" class="card-due">{{ formatDate(todo.due_date) }}</div>
-            <div v-if="todo.priority !== 2" class="card-priority">{{ priorityIcon(todo.priority) }}</div>
+            <div class="card-meta">
+              <span v-if="todo.priority !== 4" class="card-priority">{{ priorityIcon(todo.priority) }}</span>
+              <span v-if="todo.due_date" class="card-due">{{ formatDate(todo.due_date) }}</span>
+            </div>
+            <div v-if="todo.labels && todo.labels !== '[]'" class="card-labels">
+              <span v-for="label in JSON.parse(todo.labels || '[]')" :key="label" class="card-label">{{ label }}</span>
+            </div>
           </div>
           <div v-if="col.todos.length === 0" class="column-empty">无待办</div>
         </div>
@@ -86,6 +91,7 @@ const columns = computed(() => {
     // 按自定义字段分组
     const fieldMap = new Map()
     fields.value.forEach(f => fieldMap.set(f.id, f))
+    const columnsMap = new Map()
 
     for (const todo of todos.value) {
       const val = todo.fields?.[fid] || '_none_'
@@ -102,7 +108,11 @@ const columns = computed(() => {
 })
 
 async function loadData() {
-  const r = await api.list({ status: 'all', per_page: 1000 })
+  const params = { status: 'all', per_page: 1000 }
+  if (currentView.value) {
+    params.view_id = currentView.value.id
+  }
+  const r = await api.list(params)
   if (r.code === 0) todos.value = r.data.items
   const rg = await api.listGroups()
   if (rg.code === 0) groups.value = rg.data
@@ -142,25 +152,22 @@ async function onDrop(e, targetKey) {
   const todo = draggedTodo.value
   draggedTodo.value = null
 
-  // 根据分组字段更新 todo
   const fid = groupFieldId.value
-  let updates = {}
 
   if (fid === 3) {
-    updates.status = targetKey
+    await api.update(todo.id, { status: targetKey })
   } else if (fid === 4) {
-    updates.priority = parseInt(targetKey)
+    await api.update(todo.id, { priority: parseInt(targetKey) })
   } else if (fid === 7) {
-    updates.group_id = parseInt(targetKey)
+    await api.update(todo.id, { group_id: parseInt(targetKey) })
+  } else if (fid >= 10) {
+    const field = {}
+    field[String(fid)] = targetKey === '_none_' ? '' : targetKey
+    await api.updateTodoFields(todo.id, field)
   }
 
-  if (Object.keys(updates).length > 0) {
-    const r = await api.update(todo.id, updates)
-    if (r.code === 0) {
-      showToast('已移动')
-      loadData()
-    }
-  }
+  showToast('已移动')
+  loadData()
 }
 
 function priorityIcon(p) {

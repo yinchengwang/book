@@ -12,6 +12,7 @@
 #include <ctype.h>
 
 #include "db/storage/txn/mvcc.h"
+#include "db/storage/txn/txn_savepoint.h"
 
 /* 确保 bool 类型可用 */
 #include <stdbool.h>
@@ -422,10 +423,12 @@ void txn_cleanup_finished(void)
 
 /** 当前线程的事务上下文 */
 typedef struct TxnContext_s {
-    TransactionId xid;           /**< 当前事务 ID */
-    isolation_level_t isolation;  /**< 隔离级别 */
-    ReadView *readview;          /**< 读视图 */
-    bool in_transaction;        /**< 是否在事务中 */
+    TransactionId xid;               /**< 当前事务 ID */
+    isolation_level_t isolation;     /**< 隔离级别 */
+    ReadView *readview;              /**< 读视图 */
+    bool in_transaction;            /**< 是否在事务中 */
+    int      savepoint_count;       /**< 当前保存点数量 */
+    Savepoint savepoints[MAX_SAVEPOINTS]; /**< 保存点栈 */
 } TxnContext;
 
 /** 当前线程的事务上下文（线程本地） */
@@ -491,6 +494,7 @@ int txn_end(void)
     }
 
     ctx->in_transaction = false;
+    ctx->savepoint_count = 0;  /* 清理保存点 */
 
     return 0;
 }
@@ -516,6 +520,7 @@ int txn_abort(void)
     }
 
     ctx->in_transaction = false;
+    ctx->savepoint_count = 0;  /* 清理保存点 */
 
     return 0;
 }
