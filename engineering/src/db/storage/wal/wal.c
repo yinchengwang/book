@@ -674,6 +674,9 @@ int wal_analyze(const char *path, wal_recovery_info_t *info) {
         } else if (rec->type == WAL_LOG_BEGIN && rec->txn_id > 0) {
             /* 开始记录 → 新增活动事务 */
             info->active_txn_count++;
+        } else if (rec->type == WAL_LOG_PREPARE && rec->txn_id > 0) {
+            /* PREPARE 记录 → 计数为"活动"事务（悬挂事务） */
+            info->active_txn_count++;
         }
 
         /* 移动到下一条记录 */

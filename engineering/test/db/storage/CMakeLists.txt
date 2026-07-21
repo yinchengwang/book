@@ -208,6 +208,11 @@ add_executable(test_twophase twophase_test.cpp)
 target_link_libraries(test_twophase db_storage project_includes gtest gtest_main)
 add_test(NAME test_twophase COMMAND test_twophase)
 
+# 2PC 崩溃恢复测试（W5.2）
+add_executable(test_twophase_recovery twophase_recovery_test.cpp)
+target_link_libraries(test_twophase_recovery db_storage project_includes gtest gtest_main)
+add_test(NAME test_twophase_recovery COMMAND test_twophase_recovery WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 # 所有 Storage 测试汇总
 
 # 所有 Storage 测试汇总
