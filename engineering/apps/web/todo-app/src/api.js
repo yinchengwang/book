@@ -62,6 +62,11 @@ const api = {
   updateView: (id, body) => fetch(`${BASE}/views/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
   deleteView: (id) => fetch(`${BASE}/views/${id}`, { method: 'DELETE' }).then(r => r.json()),
   setViewDefault: (id) => fetch(`${BASE}/views/${id}/default`, { method: 'PATCH' }).then(r => r.json()),
+  updateViewConfig: (id, config) => fetch(`${BASE}/views/${id}/config`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ config: JSON.stringify(config) })
+  }).then(r => r.json()),
 
   /* 字段系统 */
   listFields: () => fetch(`${BASE}/fields`).then(r => r.json()),
@@ -71,6 +76,19 @@ const api = {
 
   /* 扩展字段值 */
   updateTodoFields: (id, fields) => fetch(`${BASE}/todos/${id}/fields`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) }).then(r => r.json()),
+
+  /* 批量操作 */
+  batchUpdate: (ids, updates) => fetch(`${BASE}/todos/batch-update`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, updates })
+  }).then(r => r.json()),
+
+  batchDelete: (ids) => fetch(`${BASE}/todos/batch-delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids })
+  }).then(r => r.json()),
 }
 
 export default api

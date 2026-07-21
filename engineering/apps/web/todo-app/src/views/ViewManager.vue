@@ -48,23 +48,24 @@
           </div>
           <div class="form-group">
             <label>视图配置</label>
-            <div class="config-hint">
-              <template v-if="form.type === 'board'">
-                <p>看板视图配置：</p>
-                <input v-model="configGroupField" type="number" class="form-input config-input" placeholder="分组字段 ID (如: 3)" />
-                <small>分组字段通常是"状态"字段 (ID: 3)</small>
-              </template>
-              <template v-else-if="form.type === 'calendar'">
-                <p>日历视图配置：</p>
-                <input v-model="configDateField" type="number" class="form-input config-input" placeholder="日期字段 ID (如: 5)" />
-              </template>
-              <template v-else-if="form.type === 'gantt'">
-                <p>甘特图配置：</p>
-                <input v-model="configDateField" type="number" class="form-input config-input" placeholder="开始日期字段 ID" />
-              </template>
-              <template v-else>
-                <p>表格视图将显示所有字段，可自定义显示列</p>
-              </template>
+            <div class="config-tabs">
+              <button :class="['config-tab', { active: configTab === 'columns' }]" @click="configTab = 'columns'">列</button>
+              <button :class="['config-tab', { active: configTab === 'filters' }]" @click="configTab = 'filters'">筛选</button>
+              <button :class="['config-tab', { active: configTab === 'sort' }]" @click="configTab = 'sort'">排序</button>
+            </div>
+            <div v-show="configTab === 'columns'" class="config-panel">
+              <div v-for="f in allFields" :key="f.id" class="field-row">
+                <label class="checkbox-label">
+                  <input type="checkbox" :checked="visibleFields.includes(f.id)" @change="toggleField(f.id)" />
+                  {{ f.name }}
+                </label>
+              </div>
+            </div>
+            <div v-show="configTab === 'filters'" class="config-panel">
+              <FilterBuilder :fields="allFields" v-model="configData.filters" />
+            </div>
+            <div v-show="configTab === 'sort'" class="config-panel">
+              <SortBuilder :fields="allFields" v-model="configData.sort" />
             </div>
           </div>
         </div>
@@ -80,6 +81,8 @@
 <script setup>
 import { ref, onMounted, inject } from 'vue'
 import api from '../api.js'
+import FilterBuilder from '../components/FilterBuilder.vue'
+import SortBuilder from '../components/SortBuilder.vue'
 
 const showToast = inject('showToast')
 const views = ref([])
@@ -88,12 +91,21 @@ const editingView = ref(null)
 const form = ref({ name: '', type: 'table' })
 const configGroupField = ref('3')
 const configDateField = ref('5')
+const configTab = ref('columns')
+const allFields = ref([])
+const configData = ref({ filters: [], sort: [], visible_fields: [1, 3, 4, 5] })
+const visibleFields = ref([1, 3, 4, 5])
 
 async function loadViews() {
   const res = await api.listViews()
   if (res.code === 0) {
     views.value = res.data
   }
+}
+
+async function loadFields() {
+  const res = await api.listFields()
+  if (res.code === 0) allFields.value = res.data
 }
 
 function viewIcon(type) {
@@ -107,7 +119,11 @@ function viewTypeLabel(type) {
 }
 
 function buildConfig() {
-  const cfg = {}
+  const cfg = {
+    visible_fields: visibleFields.value,
+    filters: configData.value.filters,
+    sort: configData.value.sort,
+  }
   if (form.value.type === 'board') {
     const fid = parseInt(configGroupField.value) || 3
     cfg.group_field = String(fid)
@@ -116,7 +132,7 @@ function buildConfig() {
   } else if (form.value.type === 'calendar') {
     const fid = parseInt(configDateField.value) || 5
     cfg.date_field = String(fid)
-    cfg.show_fields = [1, 3]
+    cfg.show_fields = visibleFields.value
   } else if (form.value.type === 'gantt') {
     const fid = parseInt(configDateField.value) || 5
     cfg.start_field = String(fid)
@@ -140,6 +156,15 @@ async function saveView() {
     ? await api.updateView(editingView.value.id, body)
     : await api.createView(body)
   if (res.code === 0) {
+    /* 编辑已有视图时，额外更新 config 中的 filter/sort/visible_fields */
+    if (editingView.value) {
+      const cfg = {
+        visible_fields: visibleFields.value,
+        filters: configData.value.filters,
+        sort: configData.value.sort,
+      }
+      await api.updateViewConfig(editingView.value.id, cfg)
+    }
     showToast(editingView.value ? '视图已更新' : '视图已创建')
     closeModal()
     loadViews()
@@ -164,6 +189,21 @@ function editView(view) {
   const cfg = view.config || {}
   configGroupField.value = cfg.group_field || '3'
   configDateField.value = cfg.date_field || '5'
+  visibleFields.value = cfg.visible_fields || [1, 3, 4, 5]
+  configData.value = {
+    filters: cfg.filters || [],
+    sort: cfg.sort || [],
+    visible_fields: visibleFields.value,
+  }
+}
+
+function toggleField(id) {
+  const idx = visibleFields.value.indexOf(id)
+  if (idx >= 0) {
+    visibleFields.value.splice(idx, 1)
+  } else {
+    visibleFields.value.push(id)
+  }
 }
 
 async function deleteView(id) {
@@ -183,9 +223,15 @@ function closeModal() {
   form.value = { name: '', type: 'table' }
   configGroupField.value = '3'
   configDateField.value = '5'
+  configTab.value = 'columns'
+  configData.value = { filters: [], sort: [], visible_fields: [1, 3, 4, 5] }
+  visibleFields.value = [1, 3, 4, 5]
 }
 
-onMounted(loadViews)
+onMounted(() => {
+  loadViews()
+  loadFields()
+})
 </script>
 
 <style scoped>
@@ -306,5 +352,40 @@ onMounted(loadViews)
 }
 .config-input {
   margin-top: 8px;
+}
+.config-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  padding-bottom: 4px;
+}
+.config-tab {
+  padding: 4px 12px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: #888;
+  border-radius: 4px 4px 0 0;
+}
+.config-tab.active {
+  color: var(--primary-color, #4A90D9);
+  background: rgba(74, 144, 217, 0.08);
+  font-weight: 500;
+}
+.config-panel {
+  max-height: 300px;
+  overflow-y: auto;
+}
+.field-row {
+  padding: 4px 0;
+}
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
 }
 </style>

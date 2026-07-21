@@ -7,6 +7,14 @@
     <div class="view-content">
       <!-- 表格视图 -->
       <template v-if="currentView?.type === 'table'">
+        <!-- 批量操作栏 -->
+        <BatchActions :selectedIds="selectedIds" @clear="selectedIds = []" @done="selectedIds = []; load()" />
+
+        <!-- 导出按钮 -->
+        <div class="export-buttons">
+          <button class="btn btn-secondary btn-sm" @click="exportData('csv')">📥 CSV</button>
+          <button class="btn btn-secondary btn-sm" @click="exportData('json')">📥 JSON</button>
+        </div>
         <!-- 分组模式 -->
         <div v-if="groupConfig" class="grouped-view">
           <div v-for="group in groupedTodos" :key="group.key" class="todo-group">
@@ -19,15 +27,24 @@
               <table>
                 <thead>
                   <tr>
+                    <th class="select-col">
+                      <input type="checkbox" :checked="selectedIds.length === group.items.length && group.items.length > 0" @change="toggleSelectAllGroup(group.items)" />
+                    </th>
                     <th v-for="col in visibleColumns" :key="col.id" :style="{ width: col.width + 'px' }">
                       {{ col.name }}
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="todo in group.items" :key="todo.id" @click="select(todo)">
-                    <td v-for="col in visibleColumns" :key="col.id">
-                      <template v-if="col.id === 1">{{ todo.title }}</template>
+                  <tr v-for="todo in group.items" :key="todo.id" :class="{ 'is-selected': selectedIds.includes(todo.id) }" @click="select(todo)">
+                    <td class="select-col" @click.stop>
+                      <input type="checkbox" :checked="selectedIds.includes(todo.id)" @change="toggleSelect(todo.id)" />
+                    </td>
+                    <td v-for="col in visibleColumns" :key="col.id" @dblclick.stop="startCellEdit(todo.id, col.id, getCellValue(todo, col.id))">
+                      <template v-if="editingCell?.todoId === todo.id && editingCell?.fieldId === col.id">
+                        <input v-model="editValue" class="cell-editor" @blur="saveCellEdit" @keyup.enter="saveCellEdit" @keyup.escape="cancelCellEdit" />
+                      </template>
+                      <template v-else-if="col.id === 1">{{ todo.title }}</template>
                       <template v-else-if="col.id === 3">
                         <span :class="['status-badge', 'status-' + todo.status]">{{ statusLabel(todo.status) }}</span>
                       </template>
@@ -50,15 +67,24 @@
           <table>
             <thead>
               <tr>
+                <th class="select-col">
+                  <input type="checkbox" :checked="selectedIds.length === todos.length && todos.length > 0" @change="toggleSelectAll()" />
+                </th>
                 <th v-for="col in visibleColumns" :key="col.id" :style="{ width: col.width + 'px' }">
                   {{ col.name }}
                 </th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="todo in todos" :key="todo.id" @click="select(todo)">
-                <td v-for="col in visibleColumns" :key="col.id">
-                  <template v-if="col.id === 1">{{ todo.title }}</template>
+              <tr v-for="todo in todos" :key="todo.id" :class="{ 'is-selected': selectedIds.includes(todo.id) }" @click="select(todo)">
+                <td class="select-col" @click.stop>
+                  <input type="checkbox" :checked="selectedIds.includes(todo.id)" @change="toggleSelect(todo.id)" />
+                </td>
+                <td v-for="col in visibleColumns" :key="col.id" @dblclick.stop="startCellEdit(todo.id, col.id, getCellValue(todo, col.id))">
+                  <template v-if="editingCell?.todoId === todo.id && editingCell?.fieldId === col.id">
+                    <input v-model="editValue" class="cell-editor" @blur="saveCellEdit" @keyup.enter="saveCellEdit" @keyup.escape="cancelCellEdit" />
+                  </template>
+                  <template v-else-if="col.id === 1">{{ todo.title }}</template>
                   <template v-else-if="col.id === 3">
                     <span :class="['status-badge', 'status-' + todo.status]">{{ statusLabel(todo.status) }}</span>
                   </template>
@@ -111,7 +137,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, inject } from 'vue'
+import { ref, computed, onMounted, watch, inject, nextTick } from 'vue'
 import api from '../api.js'
 import ViewSelector from '../components/ViewSelector.vue'
 import TodoCard from '../components/TodoCard.vue'
@@ -119,6 +145,7 @@ import DetailPanel from '../components/DetailPanel.vue'
 import CreateDialog from '../components/CreateDialog.vue'
 import SkeletonLoader from '../components/SkeletonLoader.vue'
 import EmptyState from '../components/EmptyState.vue'
+import BatchActions from '../components/BatchActions.vue'
 
 const showToast = inject('showToast')
 const todos = ref([])
@@ -133,6 +160,10 @@ const groupsMap = computed(() => {
 const loading = ref(true)
 const fields = ref([])
 const currentView = ref(null)
+
+const selectedIds = ref([])
+const editingCell = ref(null)
+const editValue = ref('')
 
 const filter = ref({ status: 'all', priority: -1, group_id: -1, search: '' })
 
@@ -213,6 +244,12 @@ async function load(f) {
   if (f) filter.value = { ...filter.value, ...f }
   loading.value = true
   const params = { ...filter.value, page: 1, per_page: 100 }
+
+  /* 如果有当前视图，传入 view_id */
+  if (currentView.value) {
+    params.view_id = currentView.value.id
+  }
+
   const r = await api.list(params)
   if (r.code === 0) todos.value = r.data.items
   else showToast('加载失败', 'error')
@@ -263,6 +300,88 @@ function formatDate(ts) {
   if (!ts) return '-'
   const d = new Date(ts * 1000)
   return d.toLocaleDateString('zh-CN')
+}
+
+function getCellValue(todo, fieldId) {
+  if (fieldId === 1) return todo.title
+  if (fieldId === 3) return todo.status
+  if (fieldId === 4) return todo.priority
+  if (fieldId === 5) return todo.due_date
+  if (fieldId >= 10) return todo.fields?.[fieldId] || ''
+  return ''
+}
+
+/* 行选择 */
+function toggleSelect(todoId) {
+  const idx = selectedIds.value.indexOf(todoId)
+  if (idx >= 0) selectedIds.value.splice(idx, 1)
+  else selectedIds.value.push(todoId)
+}
+
+function toggleSelectAll() {
+  if (selectedIds.value.length === todos.value.length) {
+    selectedIds.value = []
+  } else {
+    selectedIds.value = todos.value.map(t => t.id)
+  }
+}
+
+function toggleSelectAllGroup(items) {
+  const ids = items.map(t => t.id)
+  const allSelected = ids.every(id => selectedIds.value.includes(id))
+  if (allSelected) {
+    selectedIds.value = selectedIds.value.filter(id => !ids.includes(id))
+  } else {
+    ids.forEach(id => {
+      if (!selectedIds.value.includes(id)) selectedIds.value.push(id)
+    })
+  }
+}
+
+/* 行内编辑 */
+function startCellEdit(todoId, fieldId, value) {
+  editingCell.value = { todoId, fieldId }
+  editValue.value = String(value)
+  nextTick(() => {
+    const el = document.querySelector('.cell-editor')
+    if (el) el.focus()
+  })
+}
+
+async function saveCellEdit() {
+  if (!editingCell.value) return
+  const { todoId, fieldId } = editingCell.value
+
+  if (fieldId <= 9) {
+    const updates = {}
+    if (fieldId === 1) updates.title = editValue.value
+    else if (fieldId === 3) updates.status = editValue.value
+    else if (fieldId === 4) updates.priority = parseInt(editValue.value)
+    else if (fieldId === 5) updates.due_date = parseInt(editValue.value) || 0
+    if (Object.keys(updates).length > 0) {
+      await api.update(todoId, updates)
+    }
+  } else {
+    const fields = {}
+    fields[String(fieldId)] = editValue.value
+    await api.updateTodoFields(todoId, fields)
+  }
+
+  editingCell.value = null
+  await load()
+}
+
+function cancelCellEdit() {
+  editingCell.value = null
+}
+
+/* 导出 */
+function exportData(format) {
+  const params = new URLSearchParams({ format, per_page: '10000' })
+  if (currentView.value) {
+    params.set('view_id', currentView.value.id)
+  }
+  window.open(`/api/export?${params.toString()}`, '_blank')
 }
 
 onMounted(async () => {
@@ -340,6 +459,25 @@ onMounted(async () => {
   text-align: center;
   color: #888;
   padding: 40px !important;
+}
+.select-col { width: 36px; text-align: center; }
+.select-col input { cursor: pointer; }
+.is-selected { background: rgba(74, 144, 217, 0.06); }
+.cell-editor {
+  width: 100%;
+  border: 1px solid var(--primary-color, #4A90D9);
+  border-radius: 2px;
+  padding: 2px 4px;
+  font-size: inherit;
+  font-family: inherit;
+  background: #fff;
+  outline: none;
+}
+.export-buttons {
+  display: flex;
+  gap: 6px;
+  padding: 8px 16px;
+  justify-content: flex-end;
 }
 
 /* 浮动按钮 */
