@@ -111,6 +111,14 @@ void field_def_list_free(field_def_t *fields, int count);
  */
 int field_def_update_sort(int64_t id, int sort_order);
 
+/**
+ * @brief 校验字段值是否符合字段类型
+ * @param field_id 字段 ID
+ * @param value 待校验的值
+ * @return 0 合法，-1 不合法（类型不匹配）
+ */
+int field_value_validate(int64_t field_id, const char *value);
+
 /* 工具函数：类型名与枚举互转 */
 int field_type_from_string(const char *type_str);
 const char *field_type_to_string(int type);

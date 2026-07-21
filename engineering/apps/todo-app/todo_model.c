@@ -1,6 +1,7 @@
 #include "todo_model.h"
 #include "todo_db.h"
 #include "todo_view.h"
+#include "todo_field.h"
 #include "cjson/cJSON.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -395,6 +396,20 @@ static void append_sort_sql_inline(const sort_rule_t *rules, int count, char *or
             }
             snprintf(buf, sizeof(buf), "%s %s %s", i > 0 ? "," : " ORDER BY", col, dir);
         } else {
+            /* 扩展字段排序 — 支持数值类型按 CAST AS REAL 排序 */
+            field_def_t fdef;
+            if (field_def_get(rules[i].field_id, &fdef) == 0) {
+                if (fdef.type == FIELD_TYPE_NUMBER) {
+                    snprintf(buf, sizeof(buf), "%s (SELECT CAST(value AS REAL) FROM field_values fv WHERE fv.todo_id = todos.id AND fv.field_id = %lld) %s",
+                             i > 0 ? "," : " ORDER BY",
+                             (long long)rules[i].field_id, dir);
+                } else {
+                    snprintf(buf, sizeof(buf), "%s (SELECT value FROM field_values fv WHERE fv.todo_id = todos.id AND fv.field_id = %lld) %s",
+                             i > 0 ? "," : " ORDER BY",
+                             (long long)rules[i].field_id, dir);
+                }
+                strncat(order_by, buf, order_by_size - strlen(order_by) - 1);
+            }
             continue;
         }
         strncat(order_by, buf, order_by_size - strlen(order_by) - 1);

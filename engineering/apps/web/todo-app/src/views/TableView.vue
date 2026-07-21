@@ -42,7 +42,8 @@
                     </td>
                     <td v-for="col in visibleColumns" :key="col.id" @dblclick.stop="startCellEdit(todo.id, col.id, getCellValue(todo, col.id))">
                       <template v-if="editingCell?.todoId === todo.id && editingCell?.fieldId === col.id">
-                        <input v-model="editValue" class="cell-editor" @blur="saveCellEdit" @keyup.enter="saveCellEdit" @keyup.escape="cancelCellEdit" />
+                        <FieldCell v-if="col.id >= 10" :field="getFieldDef(col.id)" v-model="editValue" class="cell-editor" @blur="saveCellEdit" @keyup.enter="saveCellEdit" @keyup.escape="cancelCellEdit" />
+                        <input v-else v-model="editValue" class="cell-editor" @blur="saveCellEdit" @keyup.enter="saveCellEdit" @keyup.escape="cancelCellEdit" />
                       </template>
                       <template v-else-if="col.id === 1">{{ todo.title }}</template>
                       <template v-else-if="col.id === 3">
@@ -82,7 +83,8 @@
                 </td>
                 <td v-for="col in visibleColumns" :key="col.id" @dblclick.stop="startCellEdit(todo.id, col.id, getCellValue(todo, col.id))">
                   <template v-if="editingCell?.todoId === todo.id && editingCell?.fieldId === col.id">
-                    <input v-model="editValue" class="cell-editor" @blur="saveCellEdit" @keyup.enter="saveCellEdit" @keyup.escape="cancelCellEdit" />
+                    <FieldCell v-if="col.id >= 10" :field="getFieldDef(col.id)" v-model="editValue" class="cell-editor" @blur="saveCellEdit" @keyup.enter="saveCellEdit" @keyup.escape="cancelCellEdit" />
+                    <input v-else v-model="editValue" class="cell-editor" @blur="saveCellEdit" @keyup.enter="saveCellEdit" @keyup.escape="cancelCellEdit" />
                   </template>
                   <template v-else-if="col.id === 1">{{ todo.title }}</template>
                   <template v-else-if="col.id === 3">
@@ -146,6 +148,7 @@ import CreateDialog from '../components/CreateDialog.vue'
 import SkeletonLoader from '../components/SkeletonLoader.vue'
 import EmptyState from '../components/EmptyState.vue'
 import BatchActions from '../components/BatchActions.vue'
+import FieldCell from '../components/FieldCell.vue'
 
 const showToast = inject('showToast')
 const todos = ref([])
@@ -309,6 +312,10 @@ function getCellValue(todo, fieldId) {
   if (fieldId === 5) return todo.due_date
   if (fieldId >= 10) return todo.fields?.[fieldId] || ''
   return ''
+}
+
+function getFieldDef(fieldId) {
+  return fields.value.find(f => f.id === fieldId) || { type: 'text' }
 }
 
 /* 行选择 */

@@ -34,13 +34,6 @@ extern "C" {
 #endif
 
 /* ========================================================================
- * 前向声明
- * ======================================================================== */
-
-/** 事务上下文（不透明） */
-typedef struct TxnContext_s TxnContext;
-
-/* ========================================================================
  * 常量定义
  * ======================================================================== */
 
@@ -59,7 +52,37 @@ typedef struct TxnContext_s TxnContext;
 /** TransactionId 基准偏移量 */
 #define TRANSACTION_ID_OFFSET 3
 
-/** 隔离级别枚举 */
+/** 事务 ID 类型 */
+typedef uint32_t TransactionId;
+
+/* ========================================================================
+ * 前向声明
+ * ======================================================================== */
+
+/** 保存点结构（用于子事务） */
+typedef struct Savepoint_s {
+    char     name[64];               /**< 保存点名称 */
+    TransactionId xid;               /**< 保存点创建时的事务 ID */
+    struct ReadView_s *saved_readview; /**< 保存点时的 ReadView 快照 */
+    int      savepoint_depth;        /**< 保存点嵌套深度 */
+} Savepoint;
+
+/** 最大保存点数量 */
+#define MAX_SAVEPOINTS 64
+
+/** 事务上下文 */
+typedef struct TxnContext_s {
+    TransactionId xid;                     /**< 当前事务 ID */
+    int      isolation;                    /**< 隔离级别（简化：使用 int 避免循环引用） */
+    struct ReadView_s *readview;           /**< 读视图 */
+    bool in_transaction;                   /**< 是否在事务中 */
+    int      savepoint_count;              /**< 当前保存点数量 */
+    Savepoint savepoints[MAX_SAVEPOINTS];  /**< 保存点栈 */
+} TxnContext;
+
+/* ========================================================================
+ * 隔离级别枚举
+ * ======================================================================== */
 typedef enum {
     ISOLATION_READ_COMMITTED = 0,   /**< 读已提交 */
     ISOLATION_REPEATABLE_READ = 1,   /**< 可重复读 */

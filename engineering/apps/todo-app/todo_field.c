@@ -1,5 +1,6 @@
 #include "todo_field.h"
 #include "todo_db.h"
+#include "cjson/cJSON.h"
 #include <sqlite3.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -241,6 +242,83 @@ int field_def_list(field_def_t **fields, int *count) {
 
     *fields = arr;
     *count = n;
+    return 0;
+}
+
+/* ============================================================
+ * 字段值校验
+ * ============================================================ */
+int field_value_validate(int64_t field_id, const char *value) {
+    field_def_t field;
+    if (field_def_get(field_id, &field) != 0) return -1;
+    if (!value || !value[0]) return 0;  /* 空值总是合法 */
+
+    switch (field.type) {
+        case FIELD_TYPE_NUMBER: {
+            char *end = NULL;
+            strtod(value, &end);
+            if (end == value || *end != '\0') return -1;
+            break;
+        }
+        case FIELD_TYPE_SINGLE_SELECT: {
+            /* 检查值是否在 options 的 choices 中 */
+            cJSON *jopts = cJSON_Parse(field.options);
+            if (!jopts) return -1;
+            cJSON *jchoices = cJSON_GetObjectItem(jopts, "choices");
+            int found = 0;
+            if (jchoices && cJSON_IsArray(jchoices)) {
+                int n = cJSON_GetArraySize(jchoices);
+                for (int i = 0; i < n; i++) {
+                    cJSON *jitem = cJSON_GetArrayItem(jchoices, i);
+                    const char *opt = cJSON_GetStringValue(jitem);
+                    if (opt && strcmp(opt, value) == 0) { found = 1; break; }
+                }
+            }
+            cJSON_Delete(jopts);
+            if (!found) return -1;
+            break;
+        }
+        case FIELD_TYPE_MULTI_SELECT: {
+            /* 检查每个值是否在 choices 中 */
+            cJSON *jvals = cJSON_Parse(value);
+            if (!jvals || !cJSON_IsArray(jvals)) return -1;
+            cJSON *jopts = cJSON_Parse(field.options);
+            if (!jopts) { cJSON_Delete(jvals); return -1; }
+            cJSON *jchoices = cJSON_GetObjectItem(jopts, "choices");
+            int n = cJSON_GetArraySize(jvals);
+            int all_found = 1;
+            for (int i = 0; i < n; i++) {
+                /* cJSON 旧版本没有 cJSON_IsString/cJSON_GetStringValue，用直接访问 */
+                cJSON *jv = cJSON_GetArrayItem(jvals, i);
+                if (!jv || !jv->valuestring) { all_found = 0; break; }
+                const char *v = jv->valuestring;
+                if (!v) { all_found = 0; break; }
+                int found = 0;
+                if (jchoices && cJSON_IsArray(jchoices)) {
+                    int cn = cJSON_GetArraySize(jchoices);
+                    for (int j = 0; j < cn; j++) {
+                        const char *opt = cJSON_GetArrayItem(jchoices, j)->valuestring;
+                        if (opt && strcmp(opt, v) == 0) { found = 1; break; }
+                    }
+                }
+                if (!found) { all_found = 0; break; }
+            }
+            cJSON_Delete(jopts);
+            cJSON_Delete(jvals);
+            if (!all_found) return -1;
+            break;
+        }
+        case FIELD_TYPE_DATE:
+        case FIELD_TYPE_DATETIME: {
+            /* 检查是否为有效时间戳（正整数） */
+            char *end = NULL;
+            long long ts = strtoll(value, &end, 10);
+            if (end == value || *end != '\0' || ts < 0) return -1;
+            break;
+        }
+        default:
+            break;  /* text 等类型不校验 */
+    }
     return 0;
 }
 

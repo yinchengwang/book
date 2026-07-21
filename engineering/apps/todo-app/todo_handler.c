@@ -1636,17 +1636,32 @@ static void handle_todo_fields_update(SOCKET client, int64_t todo_id, const char
         int64_t field_id = atoll(jchild->string);
         if (field_id <= 0) continue;
 
-        values[valid].todo_id = todo_id;
-        values[valid].field_id = field_id;
-
+        /* 校验字段值类型 */
+        const char *val_str = NULL;
+        char val_buf[FIELD_VALUE_MAX];
         if (cJSON_IsString(jchild)) {
-            snprintf(values[valid].value, sizeof(values[valid].value), "%s", jchild->valuestring);
+            val_str = jchild->valuestring;
         } else {
             char *str = cJSON_PrintUnformatted(jchild);
             if (str) {
-                snprintf(values[valid].value, sizeof(values[valid].value), "%s", str);
+                snprintf(val_buf, sizeof(val_buf), "%s", str);
+                val_str = val_buf;
                 free(str);
             }
+        }
+        if (field_value_validate(field_id, val_str) != 0) {
+            free(values);
+            cJSON_Delete(jbody);
+            char err_msg[128];
+            snprintf(err_msg, sizeof(err_msg), "字段 %lld 值类型不合法", (long long)field_id);
+            send_error(client, 1001, err_msg);
+            return;
+        }
+
+        values[valid].todo_id = todo_id;
+        values[valid].field_id = field_id;
+        if (val_str) {
+            snprintf(values[valid].value, sizeof(values[valid].value), "%s", val_str);
         }
         valid++;
     }
