@@ -7,6 +7,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 /* ========================================================================
  * ParallelContext API
  * ======================================================================== */
@@ -123,6 +127,86 @@ void ParallelCoordinatorAttach(ParallelCoordinator *coordinator) {
     if (coordinator) {
         coordinator->nworkers_attached++;
     }
+}
+
+/* ========================================================================
+ * ParallelScanState API
+ * ======================================================================== */
+
+ParallelScanState *CreateParallelScanState(void *rel, int total_pages, int nworkers) {
+    ParallelScanState *pstate;
+
+    if (total_pages <= 0 || nworkers <= 0) {
+        return NULL;
+    }
+
+    pstate = (ParallelScanState *)calloc(1, sizeof(ParallelScanState));
+    if (!pstate) {
+        return NULL;
+    }
+
+    pstate->type = T_ParallelScanState;
+    pstate->total_pages = total_pages;
+    pstate->next_page = 0;
+    pstate->pages_scanned = 0;
+    pstate->workers_finished = 0;
+    pstate->nworkers = nworkers;
+    pstate->relation = rel;
+    pstate->scan_flags = 0;
+
+    return pstate;
+}
+
+void DestroyParallelScanState(ParallelScanState *pstate) {
+    if (!pstate) {
+        return;
+    }
+    free(pstate);
+}
+
+int ParallelScanNextPage(ParallelScanState *pstate) {
+    if (!pstate) {
+        return -1;
+    }
+
+    /* 原子获取下一个页面号 */
+    int page;
+#ifdef _WIN32
+    page = InterlockedIncrement((volatile LONG *)&pstate->next_page) - 1;
+#else
+    page = __sync_fetch_and_add(&pstate->next_page, 1);
+#endif
+
+    if (page >= pstate->total_pages) {
+        return -1;  /* 所有页面已分配 */
+    }
+
+#ifdef _WIN32
+    InterlockedIncrement((volatile LONG *)&pstate->pages_scanned);
+#else
+    __sync_fetch_and_add(&pstate->pages_scanned, 1);
+#endif
+
+    return page;
+}
+
+void ParallelScanWorkerFinished(ParallelScanState *pstate) {
+    if (!pstate) {
+        return;
+    }
+
+#ifdef _WIN32
+    InterlockedIncrement((volatile LONG *)&pstate->workers_finished);
+#else
+    __sync_fetch_and_add(&pstate->workers_finished, 1);
+#endif
+}
+
+bool ParallelScanAllFinished(ParallelScanState *pstate) {
+    if (!pstate) {
+        return true;
+    }
+    return pstate->workers_finished >= pstate->nworkers;
 }
 
 /* ========================================================================

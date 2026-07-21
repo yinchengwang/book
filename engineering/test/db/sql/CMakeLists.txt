@@ -77,6 +77,12 @@ add_executable(test_worker_pool test_worker_pool.cpp)
 target_include_directories(test_worker_pool PRIVATE ${GTEST_INCLUDE_DIRS})
 target_link_libraries(test_worker_pool sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
 
+# 并行 SeqScan 测试（W4.2）
+add_executable(test_parallel_seqscan parallel_seqscan_test.cpp)
+target_include_directories(test_parallel_seqscan PRIVATE ${GTEST_INCLUDE_DIRS})
+target_link_libraries(test_parallel_seqscan sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
+add_test(NAME test_parallel_seqscan COMMAND test_parallel_seqscan)
+
 # 触发器测试
 add_executable(test_trigger test_trigger.cpp)
 target_include_directories(test_trigger PRIVATE ${GTEST_INCLUDE_DIRS})

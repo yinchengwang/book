@@ -302,6 +302,7 @@ typedef enum NodeTag {
     T_ParallelContext,
     T_ParallelCoordinator,
     T_ParallelHashJoinState,
+    T_ParallelScanState,
     T_GatherMerge,
     T_GatherMergeState,
 

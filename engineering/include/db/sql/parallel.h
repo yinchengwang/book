@@ -174,6 +174,67 @@ bool ParallelCoordinatorIsFinished(ParallelCoordinator *coordinator);
 void ParallelCoordinatorAttach(ParallelCoordinator *coordinator);
 
 /* ========================================================================
+ * ParallelScanState — 并行 SeqScan 共享状态
+ * ======================================================================== */
+
+/**
+ * @brief 并行顺序扫描共享状态
+ *
+ * 在多个并行 worker 之间共享页面扫描范围。
+ * 每个 worker 原子地获取下一个待扫描页面号，实现无锁分工。
+ */
+typedef struct ParallelScanState {
+    NodeTag     type;               /**< T_ParallelScanState */
+    int         total_pages;        /**< 表的总页数 */
+    volatile int next_page;         /**< 下一个待扫描的页面号（原子递增） */
+    volatile int pages_scanned;     /**< 已扫描的页面数 */
+    volatile int workers_finished;  /**< 已完成的 worker 数 */
+    int         nworkers;           /**< worker 总数 */
+    void        *relation;          /**< 扫描的 Relation */
+    int         scan_flags;         /**< 扫描标志 */
+} ParallelScanState;
+
+/**
+ * @brief 创建并行扫描状态
+ *
+ * @param rel        Relation 指针
+ * @param total_pages 表的总页数
+ * @param nworkers    worker 数量
+ * @return 新创建的 ParallelScanState；失败返回 NULL
+ */
+ParallelScanState *CreateParallelScanState(void *rel, int total_pages, int nworkers);
+
+/**
+ * @brief 销毁并行扫描状态
+ *
+ * @param pstate ParallelScanState（可为 NULL）
+ */
+void DestroyParallelScanState(ParallelScanState *pstate);
+
+/**
+ * @brief 原子获取下一个待扫描页面号
+ *
+ * @param pstate ParallelScanState
+ * @return 页面号；-1 表示无更多页面
+ */
+int ParallelScanNextPage(ParallelScanState *pstate);
+
+/**
+ * @brief 标记 worker 完成扫描
+ *
+ * @param pstate ParallelScanState
+ */
+void ParallelScanWorkerFinished(ParallelScanState *pstate);
+
+/**
+ * @brief 检查所有 worker 是否已完成
+ *
+ * @param pstate ParallelScanState
+ * @return true 表示所有 worker 已完成
+ */
+bool ParallelScanAllFinished(ParallelScanState *pstate);
+
+/* ========================================================================
  * 并行 Hash API
  * ======================================================================== */
 
