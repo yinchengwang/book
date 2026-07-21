@@ -53,5 +53,11 @@ endfunction()
 # 构建 01_base 目录下的示例
 add_cpp_examples("01_base" "01_baseTest")
 
-# 构建 02_header 目录下的示例（目录为空时自动跳过）
+# 构建 02_header 目录下的示例
 add_cpp_examples("02_header" "02_headerTest")
+
+# 构建 03_func 目录下的示例
+add_cpp_examples("03_func" "03_funcTest")
+
+# 构建 04_stl 目录下的示例
+add_cpp_examples("04_stl" "04_stlTest")
