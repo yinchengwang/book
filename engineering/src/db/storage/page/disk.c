@@ -29,13 +29,14 @@ typedef HANDLE file_handle_t;
 #define INVALID_FD INVALID_HANDLE_VALUE
 
 static ssize_t file_pread(file_handle_t fd, void *buf, size_t count, off_t offset) {
+    /* 使用 SetFilePointer 设置位置，然后同步读取 */
     LARGE_INTEGER li_offset;
     li_offset.QuadPart = offset;
-    OVERLAPPED ov = {0};
-    ov.Offset = (DWORD)(li_offset.LowPart);
-    ov.OffsetHigh = (DWORD)(li_offset.HighPart);
+    if (!SetFilePointerEx(fd, li_offset, NULL, FILE_BEGIN)) {
+        return -1;
+    }
     DWORD bytes_read = 0;
-    if (!ReadFile(fd, buf, (DWORD)count, &bytes_read, &ov)) {
+    if (!ReadFile(fd, buf, (DWORD)count, &bytes_read, NULL)) {
         return -1;
     }
     return (ssize_t)bytes_read;
@@ -116,6 +117,7 @@ struct db_file_s {
     page_id_t     page_count; /**< 页面总数 */
     page_id_t     free_head;  /**< 空闲页面链表头 */
     db_file_header_t header;  /**< 文件头部（缓存） */
+    bool          is_raw;     /**< 是否为 raw 文件（close 时不写头部） */
 };
 
 /* ============================================================
@@ -208,11 +210,14 @@ void disk_close(db_file_t *file) {
     if (!file) return;
 
     if (file->fd != INVALID_FD) {
-        /* 保存头部信息 */
-        file->header.page_count = file->page_count;
-        file->header.free_page_head = file->free_head;
-        file_pwrite(file->fd, &file->header, sizeof(file->header), 0);
-        file_sync(file->fd);
+        /* 只有非 raw 文件才写头部信息，避免覆盖 WAL 段文件头等特殊格式 */
+        if (!file->is_raw) {
+            /* 保存头部信息 */
+            file->header.page_count = file->page_count;
+            file->header.free_page_head = file->free_head;
+            file_pwrite(file->fd, &file->header, sizeof(file->header), 0);
+            file_sync(file->fd);
+        }
 
 #ifdef _WIN32
         CloseHandle(file->fd);
@@ -232,6 +237,7 @@ db_file_t *disk_open_raw(const char *path) {
 
     file->path = strdup(path);
     file->page_size = 8192;  /* 默认页面大小 */
+    file->is_raw = true;     /* 标记为 raw 文件，close 时不写头部 */
 
 #ifdef _WIN32
     file->fd = CreateFileA(path,

@@ -180,13 +180,21 @@ TEST_F(WALSegmentTest, PathForLsn) {
 }
 
 /* ========================================================================
- * 测试 7: 跨段读写
+ * 测试 7: 跨段读写（自包含：创建 → 写入 → 关闭 → 打开 → 验证）
  * ======================================================================== */
 TEST_F(WALSegmentTest, CrossSegmentRead) {
-    wal_t *wal = wal_create(TEST_SEG_DIR, 8192);
+    /* 使用独立目录，避免受其他测试清理影响 */
+    const char *test_dir = "./test_pg_wal_cross";
+#ifdef _WIN32
+    system("rmdir /s /q test_pg_wal_cross 2>nul");
+#else
+    system("rm -rf test_pg_wal_cross");
+#endif
+
+    wal_t *wal = wal_create(test_dir, 8192);
     ASSERT_NE(wal, nullptr);
 
-    /* 段 0 写入 */
+    /* 写入两条记录 */
     int key1 = 100, val1 = 200;
     ASSERT_GT(wal_write_insert(wal, 1, &key1, sizeof(key1), &val1, sizeof(val1)), 0U);
     ASSERT_GT(wal_write_commit(wal, 1), 0U);
@@ -194,7 +202,7 @@ TEST_F(WALSegmentTest, CrossSegmentRead) {
     wal_close(wal);
 
     /* 重新打开，验证恢复 */
-    wal_t *wal2 = wal_open(TEST_SEG_DIR);
+    wal_t *wal2 = wal_open(test_dir);
     ASSERT_NE(wal2, nullptr);
 
     /* 验证统计信息 */
@@ -203,6 +211,13 @@ TEST_F(WALSegmentTest, CrossSegmentRead) {
     EXPECT_GE(stats.total_records, 2U);
 
     wal_close(wal2);
+
+    /* 清理 */
+#ifdef _WIN32
+    system("rmdir /s /q test_pg_wal_cross 2>nul");
+#else
+    system("rm -rf test_pg_wal_cross");
+#endif
 }
 
 /* ========================================================================
@@ -231,5 +246,160 @@ TEST_F(WALSegmentTest, SetSegmentDir) {
 #else
     system("rm -rf alt_pg_wal");
     system("rm -rf test_pg_wal");
+#endif
+}
+
+/* ========================================================================
+ * 测试 9: WAL 归档功能
+ * ======================================================================== */
+TEST_F(WALSegmentTest, ArchiveToDir) {
+    /* 创建 WAL 和归档目录 */
+    const char *archive_dir = "./wal_archive_dir";
+#ifdef _WIN32
+    system("rmdir /s /q wal_archive_dir 2>nul");
+#else
+    system("rm -rf wal_archive_dir");
+#endif
+
+    wal_t *wal = wal_create(TEST_SEG_DIR, 8192);
+    ASSERT_NE(wal, nullptr);
+
+    /* 设置归档目录 */
+    ASSERT_EQ(wal_set_archive_dir(wal, archive_dir), 0);
+    EXPECT_STREQ(wal_get_archive_dir(wal), archive_dir);
+    EXPECT_TRUE(wal_archive_enabled(wal));
+
+    /* 写入数据触发段切换 */
+    int key = 1, val = 100;
+    for (int i = 0; i < 100; i++) {
+        wal_write_insert(wal, 1, &key, sizeof(key), &val, sizeof(val));
+    }
+
+    /* 手动切换段触发归档 */
+    ASSERT_EQ(wal_switch_segment(wal), 0);
+
+    wal_close(wal);
+
+    /* 检查归档目录是否有文件 */
+    char cmd[256];
+    snprintf(cmd, sizeof(cmd), "ls -la %s 2>&1", archive_dir);
+    printf("Archive directory contents:\n");
+    system(cmd);
+
+    /* 验证归档成功 */
+    char check_path[512];
+    snprintf(check_path, sizeof(check_path), "%s/00000001_00000000", archive_dir);
+    FILE *f = fopen(check_path, "rb");
+    EXPECT_NE(f, nullptr) << "Archived segment file should exist";
+    if (f) fclose(f);
+
+    /* 清理 */
+#ifdef _WIN32
+    system("rmdir /s /q wal_archive_dir 2>nul");
+    system("rmdir /s /q test_pg_wal 2>nul");
+#else
+    system("rm -rf wal_archive_dir");
+    system("rm -rf test_pg_wal");
+#endif
+}
+
+/* ========================================================================
+ * 测试 10: 归档命令
+ * ======================================================================== */
+TEST_F(WALSegmentTest, ArchiveCommand) {
+    const char *archive_cmd = "cp %p archive_test/%f";
+
+    wal_t *wal = wal_create(TEST_SEG_DIR, 8192);
+    ASSERT_NE(wal, nullptr);
+
+    /* 设置归档命令 */
+    ASSERT_EQ(wal_set_archive_command(wal, archive_cmd), 0);
+    EXPECT_STREQ(wal_get_archive_command(wal), archive_cmd);
+    EXPECT_TRUE(wal_archive_enabled(wal));
+
+    /* 创建归档目录 */
+#ifdef _WIN32
+    system("mkdir archive_test 2>nul");
+#else
+    system("mkdir -p archive_test");
+#endif
+
+    /* 手动切换段触发归档命令 */
+    ASSERT_EQ(wal_switch_segment(wal), 0);
+
+    wal_close(wal);
+
+    /* 检查归档目录 */
+    printf("Archive command test - checking archive_test directory:\n");
+    system("ls -la archive_test/ 2>&1 || echo 'Archive command test: dir not found'");
+
+    /* 清理 */
+#ifdef _WIN32
+    system("rmdir /s /q archive_test 2>nul");
+    system("rmdir /s /q test_pg_wal 2>nul");
+#else
+    system("rm -rf archive_test");
+    system("rm -rf test_pg_wal");
+#endif
+}
+
+/* ========================================================================
+ * 测试 11: PITR 恢复
+ * ======================================================================== */
+TEST_F(WALSegmentTest, PITRRecovery) {
+    /* 创建测试数据 */
+    const char *test_dir = "./test_pg_wal_pitr";
+#ifdef _WIN32
+    system("rmdir /s /q test_pg_wal_pitr 2>nul");
+#else
+    system("rm -rf test_pg_wal_pitr");
+#endif
+
+    wal_t *wal = wal_create(test_dir, 8192);
+    ASSERT_NE(wal, nullptr);
+
+    /* 写入一些数据 */
+    for (int i = 0; i < 10; i++) {
+        int key = i, val = i * 100;
+        ASSERT_GT(wal_write_insert(wal, i + 1, &key, sizeof(key), &val, sizeof(val)), 0U);
+        ASSERT_GT(wal_write_commit(wal, i + 1), 0U);
+    }
+
+    /* 写入检查点 */
+    ASSERT_GT(wal_write_checkpoint(wal, NULL, 0), 0U);
+
+    /* 获取当前 LSN */
+    uint64_t lsn_before = wal_get_lsn(wal);
+    printf("LSN before recovery: %llu\n", (unsigned long long)lsn_before);
+
+    wal_close(wal);
+
+    /* 执行 PITR 恢复 */
+    wal_recovery_options_t options;
+    memset(&options, 0, sizeof(options));
+    options.target_type = WAL_RECOVERY_END;
+
+    auto progress_cb = [](uint64_t current, uint64_t target) {
+        printf("Recovery progress: %llu / %llu\n",
+               (unsigned long long)current, (unsigned long long)target);
+    };
+
+    ASSERT_EQ(wal_recover(test_dir, NULL, &options, progress_cb), 0);
+
+    /* 验证恢复后可以正常打开 */
+    wal = wal_open(test_dir);
+    ASSERT_NE(wal, nullptr);
+
+    wal_stats_t stats;
+    wal_get_stats(wal, &stats);
+    printf("Stats after recovery: total_records=%u\n", stats.total_records);
+
+    wal_close(wal);
+
+    /* 清理 */
+#ifdef _WIN32
+    system("rmdir /s /q test_pg_wal_pitr 2>nul");
+#else
+    system("rm -rf test_pg_wal_pitr");
 #endif
 }

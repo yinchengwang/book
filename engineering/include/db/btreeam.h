@@ -315,6 +315,80 @@ void btreeam_get_stats(BTREEAMStats *stats);
  */
 void btreeam_reset_stats(void);
 
+/* ============================================================
+ * 表达式索引和部分索引
+ * ============================================================ */
+
+/**
+ * @brief 索引选项
+ */
+typedef struct IndexOptions_s {
+    bool        is_unique;          /**< 是否唯一索引 */
+    bool        is_primary;         /**< 是否主键索引 */
+    bool        is_partial;         /**< 是否部分索引 */
+    bool        is_expression;      /**< 是否表达式索引 */
+    const char *where_clause;       /**< 部分索引 WHERE 子句 */
+    const char *expression_str;     /**< 表达式字符串（如 "lower(name)"） */
+    const void *index_predicate;    /**< 索引谓词（内部表示） */
+} IndexOptions;
+
+/**
+ * @brief 创建带选项的索引
+ * @param rel 索引 Relation
+ * @param options 索引选项
+ * @return 0 成功，-1 失败
+ */
+int btcreate_with_options(Relation rel, const IndexOptions *options);
+
+/**
+ * @brief 设置索引表达式
+ * @param rel 索引 Relation
+ * @param expr_str 表达式字符串
+ * @return 0 成功，-1 失败
+ */
+int bt_set_index_expression(Relation rel, const char *expr_str);
+
+/**
+ * @brief 获取索引表达式
+ * @param rel 索引 Relation
+ * @return 表达式字符串（内部存储，不需要释放）
+ */
+const char *bt_get_index_expression(Relation rel);
+
+/**
+ * @brief 设置部分索引谓词
+ * @param rel 索引 Relation
+ * @param predicate 谓词字符串（如 "status = 'active'"）
+ * @return 0 成功，-1 失败
+ */
+int bt_set_index_predicate(Relation rel, const char *predicate);
+
+/**
+ * @brief 获取部分索引谓词
+ * @param rel 索引 Relation
+ * @return 谓词字符串（内部存储，不需要释放）
+ */
+const char *bt_get_index_predicate(Relation rel);
+
+/**
+ * @brief 检查元组是否满足部分索引谓词
+ * @param rel 索引 Relation
+ * @param tuple 元组数据
+ * @return true 满足，false 不满足
+ */
+bool bt_check_partial_predicate(Relation rel, const void *tuple);
+
+/**
+ * @brief 计算索引表达式的值
+ * @param rel 索引 Relation
+ * @param tuple 元组数据
+ * @param result 输出结果缓冲区
+ * @param result_size 缓冲区大小
+ * @return 0 成功，-1 失败
+ */
+int bt_evaluate_expression(Relation rel, const void *tuple,
+                           void *result, size_t result_size);
+
 #ifdef __cplusplus
 }
 #endif

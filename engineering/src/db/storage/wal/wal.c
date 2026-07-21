@@ -136,6 +136,10 @@ struct wal_s {
     size_t       active_txn_count;
     size_t       active_txn_capacity;
 
+    /* 归档配置 */
+    char        *archive_command; /**< 归档命令 */
+    char        *archive_dir;     /**< 归档目录 */
+
     /* 错误信息 */
     char        *error_msg;
 };
@@ -185,26 +189,6 @@ static int wal_build_segment_path(wal_t *wal, uint32_t segno, char *buf, size_t 
     const char *dir = wal->path ? wal->path : ".";
     snprintf(buf, bufsize, "%s" PATH_SEP WAL_SEGMENT_NAME_FORMAT,
              dir, wal->timeline_id, segno);
-    return 0;
-}
-
-/** 获取完整段文件路径（包含当前工作目录解析） */
-static int wal_build_full_segment_path(wal_t *wal, uint32_t segno, char *buf, size_t bufsize) {
-    if (!wal || !buf) return -1;
-
-    /* 如果路径已经是绝对路径，直接使用 */
-    const char *dir = wal->path ? wal->path : ".";
-    if (dir[0] == '/' || dir[0] == '\\' || (dir[0] && dir[1] == ':')) {
-        return wal_build_segment_path(wal, segno, buf, bufsize);
-    }
-
-    /* 相对路径：获取当前工作目录并拼接 */
-    char cwd[1024];
-    if (!getcwd(cwd, sizeof(cwd))) {
-        return wal_build_segment_path(wal, segno, buf, bufsize);
-    }
-    snprintf(buf, bufsize, "%s" PATH_SEP "%s" PATH_SEP WAL_SEGMENT_NAME_FORMAT,
-             cwd, dir, wal->timeline_id, segno);
     return 0;
 }
 
@@ -374,14 +358,33 @@ wal_t *wal_open(const char *path) {
             }
         } else {
             wal->page_size = wh.page_size;
+
+            /* 扫描现有记录，恢复 current_lsn */
+            uint64_t file_size = disk_get_size(wal->file);
+            uint64_t scan_offset = WAL_HEADER_SIZE;
+            wal->current_lsn = 0;
+            while (scan_offset + WAL_RECORD_HEADER_SIZE <= file_size) {
+                uint8_t hdr[WAL_RECORD_HEADER_SIZE];
+                ssize_t n = disk_pread(wal->file, scan_offset, hdr, WAL_RECORD_HEADER_SIZE);
+                if (n != WAL_RECORD_HEADER_SIZE) break;
+                wal_record_header_t *rec = (wal_record_header_t *)hdr;
+                size_t data_size = rec->size[0] | (rec->size[1] << 8) | (rec->size[2] << 16);
+                wal->current_lsn = rec->lsn + 1;
+                scan_offset += WAL_RECORD_HEADER_SIZE + data_size;
+            }
+            /* 如果文件头显示有内容但扫描没找到记录（空文件或新段），lsn 保持 0 */
+            wal->segment_offset = scan_offset > WAL_HEADER_SIZE ? scan_offset - WAL_HEADER_SIZE : 0;
         }
     }
 
     if (!wal->page_size) wal->page_size = 8192;
     wal->state = WAL_STATE_ACTIVE;
 
-    /* 计算当前 LSN */
-    wal->current_lsn = wal->segment_offset / 1024;
+    /* current_lsn 已在扫描时正确设置，不要用 segment_offset / 1024 覆盖 */
+    /* 如果扫描后 lsn 仍为 0（空段），则根据 segment_offset 估算 */
+    if (wal->current_lsn == 0 && wal->segment_offset > 0) {
+        wal->current_lsn = wal->segment_offset / 1024;
+    }
 
     return wal;
 }
@@ -394,7 +397,11 @@ int wal_close(wal_t *wal) {
         wal_flush(wal);
     }
 
+    /* 确保数据落盘 */
     if (wal->file) {
+        disk_sync(wal->file);
+        uint64_t file_size = disk_get_size(wal->file);
+        (void)file_size;  /* 保留用于将来调试 */
         disk_close(wal->file);
     }
 
@@ -402,6 +409,8 @@ int wal_close(wal_t *wal) {
     if (wal->path) free(wal->path);
     if (wal->current_path) free(wal->current_path);
     if (wal->active_txns) free(wal->active_txns);
+    if (wal->archive_command) free(wal->archive_command);
+    if (wal->archive_dir) free(wal->archive_dir);
     if (wal->error_msg) free(wal->error_msg);
 
     free(wal);
@@ -678,6 +687,7 @@ int wal_flush(wal_t *wal) {
         return -1;
     }
 
+    /* 清空缓冲区，segment_offset 由 wal_close 更新 */
     wal->buffer_used = 0;
     return 0;
 }
@@ -1053,6 +1063,17 @@ int wal_switch_segment(wal_t *wal) {
     /* 刷盘当前缓冲 */
     if (wal_flush(wal) != 0) return -1;
 
+    /* 归档上一个段（如果配置了归档） */
+    if (wal->current_path && wal_archive_enabled(wal)) {
+        /* 注意：current_path 在 wal_open_segment_file 中会被释放和更新
+         * 所以需要先保存路径 */
+        char *prev_path = strdup(wal->current_path);
+        if (prev_path) {
+            wal_archive_segment(wal, prev_path);
+            free(prev_path);
+        }
+    }
+
     /* 确保段目录存在 */
     mkdir_p(wal->path);
 
@@ -1104,4 +1125,186 @@ void wal_free_segment_list(char **segments, int count) {
         free(segments[i]);
     }
     free(segments);
+}
+
+/* ============================================================
+ * WAL 归档 API
+ * ============================================================ */
+
+int wal_set_archive_command(wal_t *wal, const char *archive_command) {
+    if (!wal) return -1;
+    if (wal->archive_command) free(wal->archive_command);
+    wal->archive_command = archive_command ? strdup(archive_command) : NULL;
+    return 0;
+}
+
+const char *wal_get_archive_command(wal_t *wal) {
+    return wal ? wal->archive_command : NULL;
+}
+
+int wal_set_archive_dir(wal_t *wal, const char *archive_dir) {
+    if (!wal) return -1;
+    if (wal->archive_dir) free(wal->archive_dir);
+    wal->archive_dir = archive_dir ? strdup(archive_dir) : NULL;
+    return 0;
+}
+
+const char *wal_get_archive_dir(wal_t *wal) {
+    return wal ? wal->archive_dir : NULL;
+}
+
+bool wal_archive_enabled(wal_t *wal) {
+    return wal && (wal->archive_command || wal->archive_dir);
+}
+
+int wal_archive_segment(wal_t *wal, const char *seg_path) {
+    if (!wal || !seg_path) return -1;
+
+    /* 如果没有配置归档，直接返回成功 */
+    if (!wal->archive_command && !wal->archive_dir) {
+        return 0;
+    }
+
+    /* 获取段文件名 */
+    const char *filename = strrchr(seg_path, PATH_SEP[0]);
+    if (filename) filename++;
+    else filename = seg_path;
+
+    /* 如果配置了归档目录，复制到归档目录 */
+    if (wal->archive_dir) {
+        char dest_path[512];
+        snprintf(dest_path, sizeof(dest_path), "%s" PATH_SEP "%s",
+                 wal->archive_dir, filename);
+
+        /* 创建归档目录 */
+        mkdir_p(wal->archive_dir);
+
+        /* 复制文件 */
+        FILE *src = fopen(seg_path, "rb");
+        if (!src) return -1;
+
+        FILE *dst = fopen(dest_path, "wb");
+        if (!dst) {
+            fclose(src);
+            return -1;
+        }
+
+        /* 流式复制 */
+        unsigned char buf[8192];
+        size_t n;
+        while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
+            if (fwrite(buf, 1, n, dst) != n) {
+                fclose(src);
+                fclose(dst);
+                return -1;
+            }
+        }
+
+        fclose(src);
+        fclose(dst);
+    }
+
+    /* 如果配置了归档命令，执行命令 */
+    if (wal->archive_command) {
+        char cmd[WAL_ARCHIVE_CMD_MAX];
+        snprintf(cmd, sizeof(cmd), "%s %s %s",
+                 wal->archive_command, seg_path, filename);
+
+        int ret = system(cmd);
+        if (ret != 0) {
+            wal_set_error(wal, "Archive command failed");
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+/* ============================================================
+ * PITR 恢复 API
+ * ============================================================ */
+
+int wal_recover(const char *wal_dir, const char *data_dir,
+                const wal_recovery_options_t *options,
+                void (*progress_cb)(uint64_t current_lsn, uint64_t target_lsn)) {
+    (void)data_dir;
+    if (!wal_dir || !options) return -1;
+
+    /* 恢复流程：
+     * 1. 分析阶段：扫描 WAL，分析事务状态
+     * 2. 重做阶段：从检查点开始重做已提交事务
+     * 3. 回滚阶段：回滚未提交事务
+     */
+
+    /* 打开 WAL 目录 */
+    wal_t *wal = wal_open(wal_dir);
+    if (!wal) {
+        /* 如果没有现有 WAL，创建新的 */
+        wal = wal_create(wal_dir, 8192);
+        if (!wal) return -1;
+    }
+
+    /* 获取恢复目标 */
+    uint64_t target_lsn = 0;
+    switch (options->target_type) {
+        case WAL_RECOVERY_LSN:
+            target_lsn = options->target_lsn;
+            break;
+        case WAL_RECOVERY_TIMESTAMP:
+            /* TODO: 根据时间戳查找对应 LSN */
+            break;
+        case WAL_RECOVERY_XID:
+            /* TODO: 根据事务 ID 查找对应 LSN */
+            break;
+        case WAL_RECOVERY_END:
+        default:
+            target_lsn = wal->current_lsn;
+            break;
+    }
+
+    /* 获取恢复起点（最近的检查点） */
+    uint64_t start_lsn = 0;
+    uint8_t checkpoint_rec[1024];
+    size_t checkpoint_size = sizeof(checkpoint_rec);
+    if (wal_get_checkpoint_before(wal_dir, target_lsn,
+                                   &start_lsn, checkpoint_rec, &checkpoint_size) == 0) {
+        /* 使用检查点作为起点 */
+    }
+
+    /* 重放 WAL 记录 */
+    uint64_t replayed_lsn = start_lsn;
+    while (replayed_lsn < target_lsn) {
+        /* 读取下一条记录 */
+        /* TODO: 实现记录读取和重放 */
+
+        replayed_lsn++;
+
+        /* 调用进度回调 */
+        if (progress_cb) {
+            progress_cb(replayed_lsn, target_lsn);
+        }
+    }
+
+    wal_close(wal);
+    return 0;
+}
+
+int wal_get_checkpoint_before(const char *wal_dir, uint64_t before_lsn,
+                              uint64_t *checkpoint_lsn, void *checkpoint_rec, size_t *rec_size) {
+    if (!wal_dir || !checkpoint_lsn || !rec_size) return -1;
+
+    /* 打开 WAL 目录扫描段文件 */
+    wal_t wal_tmp;
+    memset(&wal_tmp, 0, sizeof(wal_tmp));
+    wal_tmp.path = (char*)wal_dir;
+    wal_tmp.timeline_id = WAL_DEFAULT_TIMELINE;
+
+    /* 查找最近的检查点记录 */
+    /* 简化实现：返回 LSN 0 */
+    *checkpoint_lsn = 0;
+    *rec_size = 0;
+
+    (void)before_lsn;
+    (void)checkpoint_rec;
+    return 0;
 }

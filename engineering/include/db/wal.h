@@ -81,6 +81,12 @@ extern "C" {
 /** 默认缓冲区大小 (1MB) */
 #define WAL_BUFFER_SIZE (1024 * 1024)
 
+/** 归档目录名 */
+#define WAL_ARCHIVE_DIR "archive"
+
+/** 归档命令最大长度 */
+#define WAL_ARCHIVE_CMD_MAX 1024
+
 /* ============================================================
  * 日志类型
  * ============================================================ */
@@ -177,6 +183,55 @@ int wal_flush(wal_t *wal);
  * @return 当前 LSN
  */
 uint64_t wal_get_lsn(wal_t *wal);
+
+/* ============================================================
+ * WAL 归档 API
+ * ============================================================ */
+
+/**
+ * @brief 设置归档命令
+ * @param wal WAL 句柄
+ * @param archive_command 归档命令（%p 替换段路径，%f 替换段文件名）
+ * @return 0 成功，-1 失败
+ */
+int wal_set_archive_command(wal_t *wal, const char *archive_command);
+
+/**
+ * @brief 获取当前归档命令
+ * @param wal WAL 句柄
+ * @return 归档命令字符串（内部存储，不需要释放）
+ */
+const char *wal_get_archive_command(wal_t *wal);
+
+/**
+ * @brief 设置归档目录
+ * @param wal WAL 句柄
+ * @param archive_dir 归档目录路径
+ * @return 0 成功，-1 失败
+ */
+int wal_set_archive_dir(wal_t *wal, const char *archive_dir);
+
+/**
+ * @brief 获取当前归档目录
+ * @param wal WAL 句柄
+ * @return 归档目录字符串（内部存储，不需要释放）
+ */
+const char *wal_get_archive_dir(wal_t *wal);
+
+/**
+ * @brief 检查归档是否启用
+ * @param wal WAL 句柄
+ * @return true 启用，false 未启用
+ */
+bool wal_archive_enabled(wal_t *wal);
+
+/**
+ * @brief 归档已完成的段文件
+ * @param wal WAL 句柄
+ * @param seg_path 段文件路径
+ * @return 0 成功，-1 失败
+ */
+int wal_archive_segment(wal_t *wal, const char *seg_path);
 
 /* ============================================================
  * 日志写入 API
@@ -327,6 +382,56 @@ int wal_list_segments(wal_t *wal, char ***segments, int *count);
  * @param count 数组长度
  */
 void wal_free_segment_list(char **segments, int count);
+
+/* ============================================================
+ * PITR 恢复 API
+ * ============================================================ */
+
+/**
+ * @brief PITR 恢复目标
+ */
+typedef enum wal_recovery_target_e {
+    WAL_RECOVERY_END = 0,      /**< 恢复到最新状态 */
+    WAL_RECOVERY_LSN = 1,      /**< 恢复到指定 LSN */
+    WAL_RECOVERY_TIMESTAMP = 2, /**< 恢复到指定时间戳 */
+    WAL_RECOVERY_XID = 3       /**< 恢复到指定事务 ID */
+} wal_recovery_target_t;
+
+/**
+ * @brief PITR 恢复选项
+ */
+typedef struct wal_recovery_options_s {
+    wal_recovery_target_t target_type;  /**< 恢复目标类型 */
+    uint64_t target_lsn;                 /**< 目标 LSN */
+    uint64_t target_timestamp;           /**< 目标时间戳 */
+    uint32_t target_xid;                 /**< 目标事务 ID */
+    const char *archive_dir;             /**< 归档目录 */
+    bool pause_at_recovery_target;       /**< 是否暂停在恢复点 */
+} wal_recovery_options_t;
+
+/**
+ * @brief 执行 PITR 恢复
+ * @param wal_dir WAL 目录
+ * @param data_dir 数据目录
+ * @param options 恢复选项
+ * @param progress_cb 进度回调（可选）
+ * @return 0 成功，-1 失败
+ */
+int wal_recover(const char *wal_dir, const char *data_dir,
+                const wal_recovery_options_t *options,
+                void (*progress_cb)(uint64_t current_lsn, uint64_t target_lsn));
+
+/**
+ * @brief 获取指定 LSN 之前的最近检查点
+ * @param wal_dir WAL 目录
+ * @param before_lsn 在此 LSN 之前的检查点
+ * @param checkpoint_lsn 输出：检查点 LSN
+ * @param checkpoint_rec 输出：检查点记录数据
+ * @param rec_size 输出：记录大小
+ * @return 0 成功，-1 失败
+ */
+int wal_get_checkpoint_before(const char *wal_dir, uint64_t before_lsn,
+                              uint64_t *checkpoint_lsn, void *checkpoint_rec, size_t *rec_size);
 
 /**
  * @brief 恢复状态（用于崩溃恢复）

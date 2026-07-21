@@ -34,7 +34,8 @@ typedef enum RelKind_e {
     RELKIND_INDEX = 'i',       /**< 索引 */
     RELKIND_SEQUENCE = 'S',    /**< 序列 */
     RELKIND_VIEW = 'v',        /**< 视图 */
-    RELKIND_COMPOSITE_TYPE = 'c' /**< 复合类型 */
+    RELKIND_COMPOSITE_TYPE = 'c', /**< 复合类型 */
+    RELKIND_MATVIEW = 'm'     /**< 物化视图 */
 } RelKind;
 
 /** 访问方法类型 */

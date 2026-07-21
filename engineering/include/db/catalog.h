@@ -369,6 +369,159 @@ Oid *catalog_get_partitions(Oid table_oid, int *nparts);
  */
 Oid catalog_get_partition_parent(Oid part_oid);
 
+/* ============================================================
+ * 视图管理
+ * ============================================================ */
+
+/**
+ * @brief 创建视图
+ * @param view_name 视图名
+ * @param query_def 查询定义（SQL 字符串）
+ * @return 视图 OID，失败返回 InvalidOid
+ */
+Oid catalog_create_view(const char *view_name, const char *query_def);
+
+/**
+ * @brief 删除视图
+ * @param view_oid 视图 OID
+ * @return 0 成功，-1 失败
+ */
+int catalog_drop_view(Oid view_oid);
+
+/**
+ * @brief 获取视图定义
+ * @param view_oid 视图 OID
+ * @return 查询定义字符串（内部存储，不需要释放）
+ */
+const char *catalog_get_view_definition(Oid view_oid);
+
+/**
+ * @brief 检查是否为视图
+ * @param oid 关系 OID
+ * @return true 是视图，false 不是
+ */
+bool catalog_is_view(Oid oid);
+
+/* ============================================================
+ * 物化视图管理
+ * ============================================================ */
+
+/**
+ * @brief 创建物化视图
+ * @param mv_name 物化视图名
+ * @param query_def 查询定义
+ * @return 物化视图 OID，失败返回 InvalidOid
+ */
+Oid catalog_create_matview(const char *mv_name, const char *query_def);
+
+/**
+ * @brief 删除物化视图
+ * @param mv_oid 物化视图 OID
+ * @return 0 成功，-1 失败
+ */
+int catalog_drop_matview(Oid mv_oid);
+
+/**
+ * @brief 刷新物化视图
+ * @param mv_oid 物化视图 OID
+ * @param wait 是否等待完成
+ * @return 0 成功，-1 失败
+ */
+int catalog_refresh_matview(Oid mv_oid, bool wait);
+
+/**
+ * @brief 获取物化视图刷新时间
+ * @param mv_oid 物化视图 OID
+ * @return 最后刷新时间戳（Unix 时间），从未刷新返回 0
+ */
+uint64_t catalog_get_matview_refresh_time(Oid mv_oid);
+
+/**
+ * @brief 检查是否为物化视图
+ * @param oid 关系 OID
+ * @return true 是物化视图，false 不是
+ */
+bool catalog_is_matview(Oid oid);
+
+/* ============================================================
+ * 继承表管理
+ * ============================================================ */
+
+/**
+ * @brief 创建继承表
+ * @param child_name 子表名
+ * @param parent_oid 父表 OID
+ * @return 子表 OID，失败返回 InvalidOid
+ */
+Oid catalog_create_inherited_table(const char *child_name, Oid parent_oid);
+
+/**
+ * @brief 获取表的父表
+ * @param child_oid 子表 OID
+ * @return 父表 OID，非继承表返回 InvalidOid
+ */
+Oid catalog_get_parent_table(Oid child_oid);
+
+/**
+ * @brief 获取子表列表
+ * @param parent_oid 父表 OID
+ * @param nchildren 输出子表数量
+ * @return 子表 OID 数组，调用者负责释放
+ */
+Oid *catalog_get_child_tables(Oid parent_oid, int *nchildren);
+
+/* ============================================================
+ * 规则系统
+ * ============================================================ */
+
+/** 规则事件类型 */
+typedef enum RuleEvent_e {
+    RULE_EVENT_INSERT = 1,   /**< INSERT 事件 */
+    RULE_EVENT_UPDATE = 2,   /**< UPDATE 事件 */
+    RULE_EVENT_DELETE = 3,   /**< DELETE 事件 */
+    RULE_EVENT_SELECT = 4    /**< SELECT 事件（INSTEAD OF） */
+} RuleEvent;
+
+/**
+ * @brief 规则信息
+ */
+typedef struct RuleInfo_s {
+    Oid         relation_oid;     /**< 规则所属关系 */
+    const char *rule_name;        /**< 规则名 */
+    RuleEvent   event;            /**< 事件类型 */
+    const char *action;           /**< 规则动作（SQL 语句） */
+    bool        is_instead;       /**< 是否为 INSTEAD 规则 */
+    bool        is_enabled;       /**< 是否启用 */
+} RuleInfo;
+
+/**
+ * @brief 创建规则
+ * @param rel_oid 关系 OID
+ * @param rule_name 规则名
+ * @param event 事件类型
+ * @param action 规则动作
+ * @param is_instead 是否为 INSTEAD 规则
+ * @return 规则 ID，失败返回 -1
+ */
+int catalog_create_rule(Oid rel_oid, const char *rule_name,
+                        RuleEvent event, const char *action, bool is_instead);
+
+/**
+ * @brief 删除规则
+ * @param rule_id 规则 ID
+ * @return 0 成功，-1 失败
+ */
+int catalog_drop_rule(int rule_id);
+
+/**
+ * @brief 获取关系的规则列表
+ * @param rel_oid 关系 OID
+ * @param event 事件类型（过滤，可为 -1 表示所有）
+ * @param nrules 输出规则数量
+ * @return 规则信息数组，调用者负责释放
+ */
+RuleInfo *catalog_get_rules(Oid rel_oid, RuleEvent event, int *nrules);
+
 #ifdef __cplusplus
 }
 #endif
