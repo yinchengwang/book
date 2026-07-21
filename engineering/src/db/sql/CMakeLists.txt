@@ -28,6 +28,7 @@ add_library(sql_engine STATIC
     nodeProjectSet.c
     nodeGather.c
     nodeNestloop.c
+    nodeMergejoin.c
     trigger.c
     trigger_functions.c
     partition.c

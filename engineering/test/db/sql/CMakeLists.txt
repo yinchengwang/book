@@ -89,6 +89,12 @@ target_include_directories(test_partition_prune PRIVATE ${GTEST_INCLUDE_DIRS})
 target_link_libraries(test_partition_prune sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
 add_test(NAME test_partition_prune COMMAND test_partition_prune)
 
+# MergeJoin 算子测试（W4.5）
+add_executable(test_mergejoin mergejoin_test.cpp)
+target_include_directories(test_mergejoin PRIVATE ${GTEST_INCLUDE_DIRS})
+target_link_libraries(test_mergejoin sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
+add_test(NAME test_mergejoin COMMAND test_mergejoin)
+
 # 触发器测试
 add_executable(test_trigger test_trigger.cpp)
 target_include_directories(test_trigger PRIVATE ${GTEST_INCLUDE_DIRS})
