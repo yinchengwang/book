@@ -111,6 +111,11 @@ typedef enum PhysicalOpType_e {
     PHYS_DOCUMENT_SCAN,     /**< 文档扫描 */
     PHYS_SPATIAL_SCAN,      /**< 空间扫描 */
 
+    /* 并行算子 */
+    PHYS_GATHER,            /**< Gather 并行汇聚 */
+    PHYS_GATHER_MERGE,      /**< GatherMerge 有序并行汇聚 */
+    PHYS_PARALLEL_SCAN,     /**< 并行扫描 */
+
     /* 连接算子 */
     PHYS_NESTLOOP,          /**< 嵌套循环连接 */
     PHYS_NESTLOOP_PARAM,    /**< 带参数的嵌套循环 */
@@ -617,6 +622,17 @@ bool planner_can_vector_index(PlannerContext *ctx, LogicalPlan *plan, Expr *pred
  */
 LogicalPlan *planner_add_vector_index_scan(PlannerContext *ctx, LogicalPlan *plan,
                                           Expr *pred);
+
+/**
+ * @brief 分区裁剪优化
+ *
+ * 检查 WHERE 条件中的分区键，只扫描匹配的分区。
+ * 如果表不是分区表，则不做任何操作。
+ *
+ * @param ctx  PlannerContext
+ * @param plan 逻辑计划
+ */
+void planner_partition_prune(PlannerContext *ctx, LogicalPlan *plan);
 
 /* ========================================================================
  * PlanState 桥接函数

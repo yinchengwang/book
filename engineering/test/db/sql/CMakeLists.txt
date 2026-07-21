@@ -83,6 +83,12 @@ target_include_directories(test_parallel_seqscan PRIVATE ${GTEST_INCLUDE_DIRS})
 target_link_libraries(test_parallel_seqscan sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
 add_test(NAME test_parallel_seqscan COMMAND test_parallel_seqscan)
 
+# 分区裁剪测试（W4.4）
+add_executable(test_partition_prune partition_prune_test.cpp)
+target_include_directories(test_partition_prune PRIVATE ${GTEST_INCLUDE_DIRS})
+target_link_libraries(test_partition_prune sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
+add_test(NAME test_partition_prune COMMAND test_partition_prune)
+
 # 触发器测试
 add_executable(test_trigger test_trigger.cpp)
 target_include_directories(test_trigger PRIVATE ${GTEST_INCLUDE_DIRS})
