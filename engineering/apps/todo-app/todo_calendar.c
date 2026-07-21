@@ -1,51 +1,40 @@
 #include "todo_calendar.h"
 #include "todo_model.h"
+#include "todo_db.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include <time.h>
 #include <windows.h>
+#include <stdio.h>
+#include <sqlite3.h>
 
-/* 外部引用 todo_model.c 中的全局状态 */
-extern todo_t *g_todos;
-extern int g_todo_count;
-extern int find_todo_idx(int64_t id);
+/* ============================================================
+ * 辅助函数：时间计算
+ * ============================================================ */
 
-/* 全局标记：有待确认的过期任务 */
-static int        g_pending_cc_count = 0;
-static int64_t   *g_pending_cc_ids = NULL;
-static int        g_pending_cc_cap = 0;
-
-/* 后台定时任务线程 */
-static HANDLE g_timer_thread = NULL;
-static volatile int g_timer_running = 0;
-
-/* 获取今天的 Unix 时间戳（00:00:00 UTC） */
 static int64_t today_start(void) {
     time_t now = time(NULL);
     return (int64_t)(now / 86400) * 86400;
 }
 
-/* 获取某天的 00:00:00 */
 static int64_t day_start(int64_t ts) {
     return (ts / 86400) * 86400;
 }
 
-/* 获取某天是周几（1=周一, 7=周日） */
 static int day_of_week(int64_t ts) {
     time_t t = (time_t)ts;
     struct tm *lt = localtime(&t);
-    int wday = lt->tm_wday; /* 0=周日 */
+    int wday = lt->tm_wday;
     return wday == 0 ? 7 : wday;
 }
 
-/* 获取某周的周一 00:00:00 */
 static int64_t week_start(int64_t ts) {
     int64_t ds = day_start(ts);
     int dow = day_of_week(ds);
     return ds - (int64_t)(dow - 1) * 86400;
 }
 
-/* 获取某月的 1 号 00:00:00 */
 static int64_t month_start(int64_t ts) {
     time_t t = (time_t)ts;
     struct tm *lt = localtime(&t);
@@ -55,7 +44,6 @@ static int64_t month_start(int64_t ts) {
     return (int64_t)mktime(&copy);
 }
 
-/* 获取某月的天数 */
 static int month_days(int64_t ts) {
     time_t t = (time_t)ts;
     struct tm *lt = localtime(&t);
@@ -68,90 +56,9 @@ static int month_days(int64_t ts) {
     return (int)((next - t) / 86400);
 }
 
-/* 计算到次日 00:00 的毫秒数 */
-static int64_t ms_until_tomorrow(void) {
-    time_t now = time(NULL);
-    struct tm *t = localtime(&now);
-    int64_t ms_passed = (int64_t)t->tm_hour * 3600000LL
-                      + (int64_t)t->tm_min * 60000LL
-                      + (int64_t)t->tm_sec * 1000LL;
-    int64_t ms_remaining = 86400000LL - ms_passed;
-    return ms_remaining > 0 ? ms_remaining : 1000;
-}
-
-/* 扫描所有过期任务，加入待确认列表 */
-static void scan_overdue_todos(void) {
-    int64_t now = today_start();
-    for (int i = 0; i < g_todo_count; i++) {
-        if (strcmp(g_todos[i].status, "open") != 0) continue;
-        if (g_todos[i].due_date <= 0) continue;
-        if (g_todos[i].due_date >= now) continue; /* 未过期 */
-
-        /* 检查是否已在待确认列表中 */
-        int already = 0;
-        for (int j = 0; j < g_pending_cc_count; j++) {
-            if (g_pending_cc_ids[j] == g_todos[i].id) { already = 1; break; }
-        }
-        if (already) continue;
-
-        /* 加入待确认列表 */
-        if (g_pending_cc_count >= g_pending_cc_cap) {
-            g_pending_cc_cap = g_pending_cc_cap ? g_pending_cc_cap * 2 : 64;
-            int64_t *new_ids = (int64_t *)realloc(g_pending_cc_ids, g_pending_cc_cap * sizeof(int64_t));
-            if (!new_ids) return;
-            g_pending_cc_ids = new_ids;
-        }
-        g_pending_cc_ids[g_pending_cc_count++] = g_todos[i].id;
-    }
-}
-
-/* 后台定时任务线程 */
-static DWORD WINAPI timer_thread_func(LPVOID arg) {
-    (void)arg;
-    while (g_timer_running) {
-        int64_t wait_ms = ms_until_tomorrow();
-        Sleep((DWORD)wait_ms);
-        if (!g_timer_running) break;
-        scan_overdue_todos();
-    }
-    return 0;
-}
-
-void calendar_init(void) {
-    g_pending_cc_count = 0;
-    g_pending_cc_cap = 0;
-    g_pending_cc_ids = NULL;
-    g_timer_running = 0;
-    g_timer_thread = NULL;
-}
-
-void calendar_timer_start(void) {
-    if (g_timer_running) return;
-    g_timer_running = 1;
-    DWORD tid;
-    g_timer_thread = CreateThread(NULL, 0, timer_thread_func, NULL, 0, &tid);
-    /* 启动时立即扫描一次 */
-    scan_overdue_todos();
-}
-
-void calendar_timer_stop(void) {
-    g_timer_running = 0;
-    if (g_timer_thread) {
-        WaitForSingleObject(g_timer_thread, 3000);
-        CloseHandle(g_timer_thread);
-        g_timer_thread = NULL;
-    }
-}
-
-void calendar_shutdown(void) {
-    calendar_timer_stop();
-    if (g_pending_cc_ids) {
-        free(g_pending_cc_ids);
-        g_pending_cc_ids = NULL;
-    }
-    g_pending_cc_count = 0;
-    g_pending_cc_cap = 0;
-}
+/* ============================================================
+ * 日历查询：从 SQLite 直接查询，不再依赖 g_todos 全局数组
+ * ============================================================ */
 
 /* 按 original_date → priority → sort_order 排序 */
 static int todo_cmp(const void *a, const void *b) {
@@ -166,113 +73,156 @@ static int todo_cmp(const void *a, const void *b) {
     return 0;
 }
 
-int calendar_day_todos(int64_t date, int64_t ts_id, todo_t **todos, int *count) {
-    int64_t ds = day_start(date);
-    int64_t de = ds + 86400;
+/* 从 SQLite 查询时间范围内的 todo */
+static int query_todos_by_range(int64_t range_start, int64_t range_end,
+                                 int64_t ts_id, todo_t **todos, int *count) {
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+    sqlite3_stmt *stmt = NULL;
 
-    /* 第一遍：统计符合条件的任务数 */
-    int match_count = 0;
-    for (int i = 0; i < g_todo_count; i++) {
-        if (strcmp(g_todos[i].status, "open") != 0) continue;
-        if (g_todos[i].due_date < ds || g_todos[i].due_date >= de) continue;
-        if (ts_id >= 0 && g_todos[i].task_system_id != ts_id) continue;
-        match_count++;
-    }
+    const char *sql = "SELECT * FROM todos WHERE status='open' "
+                      "AND due_date >= ? AND due_date < ? "
+                      "AND (? < 0 OR task_system_id = ?) "
+                      "ORDER BY original_date, priority, sort_order";
 
-    if (match_count == 0) {
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_int64(stmt, 1, range_start);
+    sqlite3_bind_int64(stmt, 2, range_end);
+    sqlite3_bind_int64(stmt, 3, ts_id);
+    sqlite3_bind_int64(stmt, 4, ts_id);
+
+    /* 先统计数量 */
+    int n = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW) n++;
+    sqlite3_reset(stmt);
+    sqlite3_bind_int64(stmt, 1, range_start);
+    sqlite3_bind_int64(stmt, 2, range_end);
+    sqlite3_bind_int64(stmt, 3, ts_id);
+    sqlite3_bind_int64(stmt, 4, ts_id);
+
+    if (n == 0) {
         *todos = NULL;
         *count = 0;
+        sqlite3_finalize(stmt);
         return 0;
     }
 
-    /* 分配数组 */
-    *todos = (todo_t *)malloc(match_count * sizeof(todo_t));
-    if (!*todos) return -1;
+    todo_t *arr = (todo_t *)malloc(n * sizeof(todo_t));
+    if (!arr) { sqlite3_finalize(stmt); return -1; }
 
-    /* 第二遍：复制匹配的任务 */
-    int idx = 0;
-    for (int i = 0; i < g_todo_count; i++) {
-        if (strcmp(g_todos[i].status, "open") != 0) continue;
-        if (g_todos[i].due_date < ds || g_todos[i].due_date >= de) continue;
-        if (ts_id >= 0 && g_todos[i].task_system_id != ts_id) continue;
-        (*todos)[idx++] = g_todos[i];
+    int i = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW && i < n) {
+        memset(&arr[i], 0, sizeof(arr[i]));
+        arr[i].id = sqlite3_column_int64(stmt, 0);
+        strncpy(arr[i].title, (const char *)sqlite3_column_text(stmt, 1), TODO_TITLE_MAX - 1);
+        strncpy(arr[i].description, (const char *)sqlite3_column_text(stmt, 2), TODO_DESC_MAX - 1);
+        strncpy(arr[i].status, (const char *)sqlite3_column_text(stmt, 3), TODO_STATUS_MAX - 1);
+        const char *labels = (const char *)sqlite3_column_text(stmt, 4);
+        strncpy(arr[i].labels, labels ? labels : "[]", TODO_LABELS_MAX - 1);
+        arr[i].priority = sqlite3_column_int(stmt, 5);
+        arr[i].due_date = sqlite3_column_int64(stmt, 6);
+        arr[i].group_id = sqlite3_column_int64(stmt, 7);
+        arr[i].sort_order = sqlite3_column_int(stmt, 8);
+        arr[i].todo_type = sqlite3_column_int(stmt, 9);
+        arr[i].original_date = sqlite3_column_int64(stmt, 10);
+        arr[i].carryover_count = sqlite3_column_int(stmt, 11);
+        arr[i].plan_id = sqlite3_column_int64(stmt, 12);
+        arr[i].plan_item_id = sqlite3_column_int64(stmt, 13);
+        arr[i].completed_at = sqlite3_column_int64(stmt, 14);
+        arr[i].postpone_until = sqlite3_column_int64(stmt, 15);
+        arr[i].task_system_id = sqlite3_column_int64(stmt, 16);
+        arr[i].created_at = sqlite3_column_int64(stmt, 17);
+        arr[i].updated_at = sqlite3_column_int64(stmt, 18);
+        i++;
     }
 
-    /* 排序：按 original_date → priority → sort_order */
-    qsort(*todos, match_count, sizeof(todo_t), todo_cmp);
-
-    *count = match_count;
+    sqlite3_finalize(stmt);
+    *todos = arr;
+    *count = n;
     return 0;
+}
+
+int calendar_day_todos(int64_t date, int64_t ts_id, todo_t **todos, int *count) {
+    int64_t ds = day_start(date);
+    int64_t de = ds + 86400;
+    return query_todos_by_range(ds, de, ts_id, todos, count);
 }
 
 int calendar_week_todos(int64_t date, int64_t ts_id, todo_t **todos, int *count) {
     int64_t ws = week_start(date);
     int64_t we = ws + 7 * 86400;
-
-    int match_count = 0;
-    for (int i = 0; i < g_todo_count; i++) {
-        if (strcmp(g_todos[i].status, "open") != 0) continue;
-        if (g_todos[i].due_date < ws || g_todos[i].due_date >= we) continue;
-        if (ts_id >= 0 && g_todos[i].task_system_id != ts_id) continue;
-        match_count++;
-    }
-
-    if (match_count == 0) {
-        *todos = NULL;
-        *count = 0;
-        return 0;
-    }
-
-    *todos = (todo_t *)malloc(match_count * sizeof(todo_t));
-    if (!*todos) return -1;
-
-    int idx = 0;
-    for (int i = 0; i < g_todo_count; i++) {
-        if (strcmp(g_todos[i].status, "open") != 0) continue;
-        if (g_todos[i].due_date < ws || g_todos[i].due_date >= we) continue;
-        if (ts_id >= 0 && g_todos[i].task_system_id != ts_id) continue;
-        (*todos)[idx++] = g_todos[i];
-    }
-
-    qsort(*todos, match_count, sizeof(todo_t), todo_cmp);
-
-    *count = match_count;
-    return 0;
+    return query_todos_by_range(ws, we, ts_id, todos, count);
 }
 
 int calendar_month_todos(int64_t date, int64_t ts_id, todo_t **todos, int *count) {
     int64_t ms = month_start(date);
     int64_t me = ms + (int64_t)month_days(date) * 86400;
+    return query_todos_by_range(ms, me, ts_id, todos, count);
+}
 
-    int match_count = 0;
-    for (int i = 0; i < g_todo_count; i++) {
-        if (strcmp(g_todos[i].status, "open") != 0) continue;
-        if (g_todos[i].due_date < ms || g_todos[i].due_date >= me) continue;
-        if (ts_id >= 0 && g_todos[i].task_system_id != ts_id) continue;
-        match_count++;
+/* ============================================================
+ * 顺延机制（基于 SQLite）
+ * ============================================================ */
+
+/* 全局标记：有待确认的过期任务 */
+static int        g_pending_cc_count = 0;
+static int64_t   *g_pending_cc_ids = NULL;
+static int        g_pending_cc_cap = 0;
+
+/* 扫描所有过期任务，加入待确认列表 */
+static void scan_overdue_todos(void) {
+    sqlite3 *db = todo_db_handle();
+    if (!db) return;
+    int64_t now = today_start();
+    sqlite3_stmt *stmt = NULL;
+
+    if (sqlite3_prepare_v2(db,
+        "SELECT id FROM todos WHERE status='open' AND due_date > 0 AND due_date < ?",
+        -1, &stmt, NULL) != SQLITE_OK) return;
+    sqlite3_bind_int64(stmt, 1, now);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        int64_t id = sqlite3_column_int64(stmt, 0);
+        /* 检查是否已在待确认列表中 */
+        int already = 0;
+        for (int j = 0; j < g_pending_cc_count; j++) {
+            if (g_pending_cc_ids[j] == id) { already = 1; break; }
+        }
+        if (already) continue;
+
+        if (g_pending_cc_count >= g_pending_cc_cap) {
+            g_pending_cc_cap = g_pending_cc_cap ? g_pending_cc_cap * 2 : 64;
+            int64_t *new_ids = (int64_t *)realloc(g_pending_cc_ids, g_pending_cc_cap * sizeof(int64_t));
+            if (!new_ids) { sqlite3_finalize(stmt); return; }
+            g_pending_cc_ids = new_ids;
+        }
+        g_pending_cc_ids[g_pending_cc_count++] = id;
     }
+    sqlite3_finalize(stmt);
+}
 
-    if (match_count == 0) {
-        *todos = NULL;
-        *count = 0;
-        return 0;
+void calendar_init(void) {
+    g_pending_cc_count = 0;
+    g_pending_cc_cap = 0;
+    g_pending_cc_ids = NULL;
+}
+
+void calendar_timer_start(void) {
+    /* 在 Git Bash 环境下 CreateThread 有 segfault 问题，暂不启用 */
+    scan_overdue_todos();
+}
+
+void calendar_timer_stop(void) {
+    /* no-op */
+}
+
+void calendar_shutdown(void) {
+    if (g_pending_cc_ids) {
+        free(g_pending_cc_ids);
+        g_pending_cc_ids = NULL;
     }
-
-    *todos = (todo_t *)malloc(match_count * sizeof(todo_t));
-    if (!*todos) return -1;
-
-    int idx = 0;
-    for (int i = 0; i < g_todo_count; i++) {
-        if (strcmp(g_todos[i].status, "open") != 0) continue;
-        if (g_todos[i].due_date < ms || g_todos[i].due_date >= me) continue;
-        if (ts_id >= 0 && g_todos[i].task_system_id != ts_id) continue;
-        (*todos)[idx++] = g_todos[i];
-    }
-
-    qsort(*todos, match_count, sizeof(todo_t), todo_cmp);
-
-    *count = match_count;
-    return 0;
+    g_pending_cc_count = 0;
+    g_pending_cc_cap = 0;
 }
 
 int calendar_pending_carryover(todo_t **todos, int *count) {
@@ -281,52 +231,78 @@ int calendar_pending_carryover(todo_t **todos, int *count) {
         *count = 0;
         return 0;
     }
-    *todos = (todo_t *)malloc(g_pending_cc_count * sizeof(todo_t));
-    if (!*todos) return -1;
-    *count = 0;
+
+    todo_t *arr = (todo_t *)malloc(g_pending_cc_count * sizeof(todo_t));
+    if (!arr) return -1;
+    int found = 0;
+
     for (int i = 0; i < g_pending_cc_count; i++) {
-        int idx = find_todo_idx(g_pending_cc_ids[i]);
-        if (idx >= 0) {
-            (*todos)[*count] = g_todos[idx];
-            (*count)++;
-        }
+        if (todo_get_by_id(g_pending_cc_ids[i], &arr[found]) == 0)
+            found++;
     }
+
+    *todos = arr;
+    *count = found;
     return 0;
 }
 
 carryover_report_t calendar_confirm_carryover(carryover_confirm_t *items, int count) {
     carryover_report_t report = {0};
     int64_t now = today_start();
-    for (int i = 0; i < count; i++) {
-        int idx = find_todo_idx(items[i].todo_id);
-        if (idx < 0) continue;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return report;
 
+    for (int i = 0; i < count; i++) {
         if (items[i].completed) {
-            /* 标记完成 */
-            strcpy(g_todos[idx].status, "closed");
-            g_todos[idx].completed_at = time(NULL);
+            char sql[256];
+            snprintf(sql, sizeof(sql),
+                "UPDATE todos SET status='closed', completed_at=CAST(strftime('%%s','now') AS INTEGER), "
+                "updated_at=CAST(strftime('%%s','now') AS INTEGER) WHERE id=?");
+            sqlite3_stmt *stmt = NULL;
+            if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_int64(stmt, 1, items[i].todo_id);
+                sqlite3_step(stmt);
+                sqlite3_finalize(stmt);
+            }
         } else {
             /* 顺延到今天 */
-            g_todos[idx].due_date = now;
-            g_todos[idx].carryover_count++;
+            sqlite3_stmt *stmt = NULL;
+            if (sqlite3_prepare_v2(db,
+                "UPDATE todos SET due_date=?, carryover_count=carryover_count+1, "
+                "updated_at=CAST(strftime('%s','now') AS INTEGER) WHERE id=?",
+                -1, &stmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_int64(stmt, 1, now);
+                sqlite3_bind_int64(stmt, 2, items[i].todo_id);
+                sqlite3_step(stmt);
+                sqlite3_finalize(stmt);
+            }
             report.carried_in_week++;
         }
-        g_todos[idx].updated_at = time(NULL);
     }
+
     /* 清空待确认列表 */
     g_pending_cc_count = 0;
-    todo_db_save();
     return report;
 }
 
 int calendar_postpone(int64_t todo_id, int days) {
-    int idx = find_todo_idx(todo_id);
-    if (idx < 0) return -1;
-    g_todos[idx].due_date += (int64_t)days * 86400;
-    g_todos[idx].postpone_until = g_todos[idx].due_date;
-    g_todos[idx].updated_at = time(NULL);
-    todo_db_save();
-    return 0;
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
+    sqlite3_stmt *stmt = NULL;
+
+    if (sqlite3_prepare_v2(db,
+        "UPDATE todos SET due_date=due_date+?, postpone_until=due_date+?, "
+        "updated_at=CAST(strftime('%s','now') AS INTEGER) WHERE id=?",
+        -1, &stmt, NULL) != SQLITE_OK) return -1;
+
+    int64_t offset = (int64_t)days * 86400;
+    sqlite3_bind_int64(stmt, 1, offset);
+    sqlite3_bind_int64(stmt, 2, offset);
+    sqlite3_bind_int64(stmt, 3, todo_id);
+
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE && sqlite3_changes(db) > 0) ? 0 : -1;
 }
 
 carryover_report_t calendar_promote(int scope) {

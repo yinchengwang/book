@@ -75,7 +75,7 @@ static void send_error(SOCKET client, int code, const char *msg) {
 /* ============================================================
  * 序列化函数
  * ============================================================ */
-static cJSON *todo_to_json(const todo_t *todo) {
+static cJSON *todo_to_json(const todo_t *todo, int include_fields) {
     cJSON *j = cJSON_CreateObject();
     cJSON_AddNumberToObject(j, "id", todo->id);
     cJSON_AddStringToObject(j, "title", todo->title);
@@ -97,18 +97,22 @@ static cJSON *todo_to_json(const todo_t *todo) {
     cJSON_AddNumberToObject(j, "created_at", todo->created_at);
     cJSON_AddNumberToObject(j, "updated_at", todo->updated_at);
 
-    /* 附加扩展字段值 */
-    field_value_t *fvs = NULL;
-    int fvc = 0;
-    if (field_value_list_by_todo(todo->id, &fvs, &fvc) == 0) {
-        cJSON *jfields = cJSON_CreateObject();
-        for (int i = 0; i < fvc; i++) {
-            char key[32];
-            snprintf(key, sizeof(key), "%lld", (long long)fvs[i].field_id);
-            cJSON_AddStringToObject(jfields, key, fvs[i].value);
+    /* 仅当 include_fields 为真时才附加扩展字段（避免列表 N+1） */
+    if (include_fields) {
+        field_value_t *fvs = NULL;
+        int fvc = 0;
+        if (field_value_list_by_todo(todo->id, &fvs, &fvc) == 0) {
+            cJSON *jfields = cJSON_CreateObject();
+            for (int i = 0; i < fvc; i++) {
+                char key[32];
+                snprintf(key, sizeof(key), "%lld", (long long)fvs[i].field_id);
+                cJSON_AddStringToObject(jfields, key, fvs[i].value);
+            }
+            cJSON_AddItemToObject(j, "fields", jfields);
+            field_value_list_free(fvs, fvc);
+        } else {
+            cJSON_AddItemToObject(j, "fields", cJSON_CreateObject());
         }
-        cJSON_AddItemToObject(j, "fields", jfields);
-        field_value_list_free(fvs, fvc);
     } else {
         cJSON_AddItemToObject(j, "fields", cJSON_CreateObject());
     }
@@ -235,7 +239,7 @@ static void handle_list(SOCKET client, const char *query_str) {
     query.per_page = per_page_str ? atoi(per_page_str) : 20;
     if (query.page < 1) query.page = 1;
     if (query.per_page < 1) query.per_page = 20;
-    if (query.per_page > 500) query.per_page = 500;
+    if (query.per_page > 100000) query.per_page = 100000;
 
     /* DEBUG: fprintf(stderr, "  [DEBUG] page=%d per_page=%d status=%s total=%d\n",
         query.page, query.per_page,
@@ -260,7 +264,7 @@ static void handle_list(SOCKET client, const char *query_str) {
 
     cJSON *jitems = cJSON_CreateArray();
     for (int i = 0; i < result.count; i++) {
-        cJSON_AddItemToArray(jitems, todo_to_json(&result.items[i]));
+        cJSON_AddItemToArray(jitems, todo_to_json(&result.items[i], 0));  /* 列表不加载扩展字段 */
     }
 
     cJSON *data = cJSON_CreateObject();
@@ -362,7 +366,7 @@ static void handle_create(SOCKET client, const char *body) {
     }
 
     todo.id = new_id;
-    cJSON *jresult = todo_to_json(&todo);
+    cJSON *jresult = todo_to_json(&todo, 1);
     cJSON_Delete(jbody);
     send_success(client, jresult);
 }
@@ -377,7 +381,7 @@ static void handle_get(SOCKET client, int64_t id) {
         return;
     }
 
-    cJSON *jtodo = todo_to_json(&todo);
+    cJSON *jtodo = todo_to_json(&todo, 1);
 
     /* 附加 checklist */
     checklist_item_t *items = NULL;
@@ -466,7 +470,7 @@ static void handle_update(SOCKET client, int64_t id, const char *body) {
         return;
     }
 
-    cJSON *jresult = todo_to_json(&todo);
+    cJSON *jresult = todo_to_json(&todo, 1);
     send_success(client, jresult);
 }
 
@@ -935,7 +939,7 @@ static void handle_calendar_day(SOCKET client, const char *query_str) {
 
     cJSON *jitems = cJSON_CreateArray();
     for (int i = 0; i < count; i++) {
-        cJSON *j = todo_to_json(&todos[i]);
+        cJSON *j = todo_to_json(&todos[i], 1);
         cJSON_AddItemToArray(jitems, j);
     }
     free(todos);
@@ -959,7 +963,7 @@ static void handle_calendar_week(SOCKET client, const char *query_str) {
 
     cJSON *jitems = cJSON_CreateArray();
     for (int i = 0; i < count; i++)
-        cJSON_AddItemToArray(jitems, todo_to_json(&todos[i]));
+        cJSON_AddItemToArray(jitems, todo_to_json(&todos[i], 1));
     free(todos);
 
     cJSON *data = cJSON_CreateObject();
@@ -981,7 +985,7 @@ static void handle_calendar_month(SOCKET client, const char *query_str) {
 
     cJSON *jitems = cJSON_CreateArray();
     for (int i = 0; i < count; i++)
-        cJSON_AddItemToArray(jitems, todo_to_json(&todos[i]));
+        cJSON_AddItemToArray(jitems, todo_to_json(&todos[i], 1));
     free(todos);
 
     cJSON *data = cJSON_CreateObject();
@@ -997,7 +1001,7 @@ static void handle_pending_carryover(SOCKET client) {
 
     cJSON *jitems = cJSON_CreateArray();
     for (int i = 0; i < count; i++)
-        cJSON_AddItemToArray(jitems, todo_to_json(&todos[i]));
+        cJSON_AddItemToArray(jitems, todo_to_json(&todos[i], 1));
     free(todos);
 
     cJSON *data = cJSON_CreateObject();
@@ -1570,7 +1574,7 @@ static void handle_export(SOCKET client, const char *query_str) {
     } else {
         cJSON *jitems = cJSON_CreateArray();
         for (int i = 0; i < result.count; i++)
-            cJSON_AddItemToArray(jitems, todo_to_json(&result.items[i]));
+            cJSON_AddItemToArray(jitems, todo_to_json(&result.items[i], 0));  /* 导出列表不加载扩展字段 */
         cJSON *jdata = cJSON_CreateObject();
         cJSON_AddItemToObject(jdata, "items", jitems);
         cJSON_AddNumberToObject(jdata, "total", result.total);

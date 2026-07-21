@@ -599,7 +599,7 @@ int todo_list(const todo_query_t *query, todo_list_t *result) {
     /* 分页参数 */
     int page = query->page > 0 ? query->page : 1;
     int per_page = query->per_page > 0 ? query->per_page : 20;
-    if (per_page > 100) per_page = 100;
+    if (per_page > 100000) per_page = 100000;  /* 导出场景允许大 per_page */
     int offset = (page - 1) * per_page;
 
     /* 查询数据 */

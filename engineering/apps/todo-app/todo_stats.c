@@ -1,9 +1,11 @@
 #include "todo_stats.h"
 #include "todo_model.h"
+#include "todo_db.h"
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <sqlite3.h>
 
 /* ============================================================
  * 辅助函数：时间计算
@@ -26,71 +28,80 @@ static int64_t week_start(int64_t ts) {
     time_t t = (time_t)ds;
     struct tm *lt = localtime(&t);
     int wday = lt->tm_wday;
-    if (wday == 0) wday = 7;  /* 周日转为 7 */
+    if (wday == 0) wday = 7;
     return ds - (int64_t)(wday - 1) * 86400;
 }
 
 /* ============================================================
- * stats_calculate - 计算 DFX 统计
+ * stats_calculate - 计算 DFX 统计（基于 SQLite 查询）
  * ============================================================ */
 int stats_calculate(dfx_stats_t *stats) {
     memset(stats, 0, sizeof(*stats));
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
     int64_t today = today_start();
+    sqlite3_stmt *stmt = NULL;
 
-    int has_plan_tasks = 0;
-    int has_temporary_tasks = 0;
-    int plan_completed = 0;
-    int temporary_completed = 0;
+    /* 总完成数、按时完成数、提前完成数、顺延数 */
+    if (sqlite3_prepare_v2(db,
+        "SELECT COUNT(*),"
+        "  SUM(CASE WHEN completed_at > 0 AND due_date > 0 AND completed_at <= due_date THEN 1 ELSE 0 END),"
+        "  SUM(CASE WHEN completed_at > 0 AND due_date > 0 AND completed_at < due_date - 43200 THEN 1 ELSE 0 END),"
+        "  SUM(CASE WHEN carryover_count > 0 THEN 1 ELSE 0 END),"
+        "  SUM(CASE WHEN plan_id > 0 THEN 1 ELSE 0 END),"
+        "  SUM(CASE WHEN plan_id = 0 THEN 1 ELSE 0 END)"
+        " FROM todos WHERE status='closed'",
+        -1, &stmt, NULL) == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW) {
+        stats->total_completed = sqlite3_column_int(stmt, 0);
+        stats->on_time_completed = sqlite3_column_int(stmt, 1);
+        stats->early_completed = sqlite3_column_int(stmt, 2);
+        stats->carried_over_count = sqlite3_column_int(stmt, 3);
+        stats->plan_completion_rate = 0;
+        stats->temporary_completion_rate = 0;
+    }
+    sqlite3_finalize(stmt);
 
-    /* 遍历所有 closed 的 todo */
-    for (int i = 0; i < g_todo_count; i++) {
-        todo_t *t = &g_todos[i];
-        if (strcmp(t->status, "closed") != 0) continue;
-        stats->total_completed++;
-
-        /* 按时/提前完成判定 */
-        if (t->completed_at > 0 && t->due_date > 0) {
-            if (t->completed_at <= t->due_date) {
-                stats->on_time_completed++;
-                /* 提前超过半天才算提前完成 */
-                if (t->completed_at < t->due_date - 43200) {
-                    stats->early_completed++;
-                    stats->avg_early_days += (double)(t->due_date - t->completed_at) / 86400.0;
-                }
-            }
+    /* 提前完成平均天数 */
+    if (stats->early_completed > 0) {
+        if (sqlite3_prepare_v2(db,
+            "SELECT AVG((due_date - completed_at) / 86400.0) FROM todos "
+            "WHERE status='closed' AND completed_at > 0 AND due_date > 0 AND completed_at < due_date - 43200",
+            -1, &stmt, NULL) == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW) {
+            stats->avg_early_days = sqlite3_column_double(stmt, 0);
         }
-
-        /* 顺延统计 */
-        if (t->carryover_count > 0) {
-            stats->carried_over_count++;
-            stats->avg_carryover_days += (double)t->carryover_count;
-            if (t->carryover_count >= 2) stats->hard_task_ratio += 1.0;
-        }
-
-        /* 计划 vs 临时任务 */
-        if (t->plan_id > 0) {
-            has_plan_tasks++;
-            plan_completed++;
-        } else {
-            has_temporary_tasks++;
-            temporary_completed++;
-        }
+        sqlite3_finalize(stmt);
     }
 
-    /* 平均值 */
-    if (stats->early_completed > 0)
-        stats->avg_early_days /= stats->early_completed;
-    if (stats->carried_over_count > 0)
-        stats->avg_carryover_days /= stats->carried_over_count;
+    /* 平均顺延次数 */
+    if (stats->carried_over_count > 0) {
+        if (sqlite3_prepare_v2(db,
+            "SELECT AVG(carryover_count) FROM todos WHERE status='closed' AND carryover_count > 0",
+            -1, &stmt, NULL) == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW) {
+            stats->avg_carryover_days = sqlite3_column_double(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+    }
+
+    /* 困难任务占比（顺延 >= 2 次） */
+    if (stats->total_completed > 0) {
+        if (sqlite3_prepare_v2(db,
+            "SELECT COUNT(*) FROM todos WHERE status='closed' AND carryover_count >= 2",
+            -1, &stmt, NULL) == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW) {
+            stats->hard_task_ratio = (double)sqlite3_column_int(stmt, 0) / stats->total_completed;
+        }
+        sqlite3_finalize(stmt);
+    }
 
     /* 逾期未完成 */
-    stats->overdue_count = 0;
-    for (int i = 0; i < g_todo_count; i++) {
-        if (strcmp(g_todos[i].status, "open") == 0 &&
-            g_todos[i].due_date > 0 && g_todos[i].due_date < today) {
-            stats->overdue_count++;
+    if (sqlite3_prepare_v2(db,
+        "SELECT COUNT(*) FROM todos WHERE status='open' AND due_date > 0 AND due_date < ?",
+        -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int64(stmt, 1, today);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            stats->overdue_count = sqlite3_column_int(stmt, 0);
         }
     }
+    sqlite3_finalize(stmt);
 
     /* 完成率 */
     int total_active = stats->total_completed + stats->overdue_count;
@@ -100,21 +111,22 @@ int stats_calculate(dfx_stats_t *stats) {
     /* 连续完成天数（从昨天往前推） */
     stats->streak_days = 0;
     int64_t check_date = today - 86400;
-    int max_streak_check = 365;
-    while (max_streak_check > 0) {
-        int found = 0;
-        for (int i = 0; i < g_todo_count; i++) {
-            if (strcmp(g_todos[i].status, "closed") == 0 &&
-                g_todos[i].completed_at >= check_date &&
-                g_todos[i].completed_at < check_date + 86400) {
+    for (int d = 0; d < 365; d++) {
+        if (sqlite3_prepare_v2(db,
+            "SELECT COUNT(*) FROM todos WHERE status='closed' AND completed_at >= ? AND completed_at < ?",
+            -1, &stmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_int64(stmt, 1, check_date);
+            sqlite3_bind_int64(stmt, 2, check_date + 86400);
+            int found = 0;
+            if (sqlite3_step(stmt) == SQLITE_ROW && sqlite3_column_int(stmt, 0) > 0)
                 found = 1;
-                break;
-            }
+            sqlite3_finalize(stmt);
+            if (!found) break;
+            stats->streak_days++;
+            check_date -= 86400;
+        } else {
+            break;
         }
-        if (!found) break;
-        stats->streak_days++;
-        check_date -= 86400;
-        max_streak_check--;
     }
 
     /* 周趋势（近 12 周） */
@@ -122,37 +134,54 @@ int stats_calculate(dfx_stats_t *stats) {
     for (int w = 0; w < 12; w++) {
         int64_t ws = week_start(today) - (int64_t)w * 7 * 86400;
         int64_t we = ws + 7 * 86400;
-        int wc = 0;
-        for (int i = 0; i < g_todo_count; i++) {
-            if (strcmp(g_todos[i].status, "closed") == 0 &&
-                g_todos[i].completed_at >= ws &&
-                g_todos[i].completed_at < we) {
-                wc++;
-            }
+        if (sqlite3_prepare_v2(db,
+            "SELECT COUNT(*) FROM todos WHERE status='closed' AND completed_at >= ? AND completed_at < ?",
+            -1, &stmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_int64(stmt, 1, ws);
+            sqlite3_bind_int64(stmt, 2, we);
+            int wc = 0;
+            if (sqlite3_step(stmt) == SQLITE_ROW)
+                wc = sqlite3_column_int(stmt, 0);
+            sqlite3_finalize(stmt);
+            stats->weekly_trend[stats->weekly_trend_count].week_offset = -w;
+            stats->weekly_trend[stats->weekly_trend_count].week_start = ws;
+            stats->weekly_trend[stats->weekly_trend_count].week_end = we;
+            stats->weekly_trend[stats->weekly_trend_count].completed_count = wc;
+            stats->weekly_trend_count++;
         }
-        stats->weekly_trend[stats->weekly_trend_count].week_offset = -w;
-        stats->weekly_trend[stats->weekly_trend_count].week_start = ws;
-        stats->weekly_trend[stats->weekly_trend_count].week_end = we;
-        stats->weekly_trend[stats->weekly_trend_count].completed_count = wc;
-        stats->weekly_trend_count++;
     }
 
     /* 计划 vs 临时任务完成率 */
-    stats->plan_completion_rate = 0.0;
-    stats->temporary_completion_rate = 0.0;
     {
-        int total_plan = 0, total_temp = 0;
-        for (int i = 0; i < g_todo_count; i++) {
-            if (strcmp(g_todos[i].status, "closed") == 0 ||
-                strcmp(g_todos[i].status, "open") == 0) {
-                if (g_todos[i].plan_id > 0) total_plan++;
-                else total_temp++;
-            }
-        }
+        int plan_completed = 0, temp_completed = 0, total_plan = 0, total_temp = 0;
+        if (sqlite3_prepare_v2(db,
+            "SELECT COUNT(*) FROM todos WHERE status='closed' AND plan_id > 0",
+            -1, &stmt, NULL) == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW)
+            plan_completed = sqlite3_column_int(stmt, 0);
+        sqlite3_finalize(stmt);
+
+        if (sqlite3_prepare_v2(db,
+            "SELECT COUNT(*) FROM todos WHERE status='closed' AND plan_id = 0",
+            -1, &stmt, NULL) == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW)
+            temp_completed = sqlite3_column_int(stmt, 0);
+        sqlite3_finalize(stmt);
+
+        if (sqlite3_prepare_v2(db,
+            "SELECT COUNT(*) FROM todos WHERE (status='closed' OR status='open') AND plan_id > 0",
+            -1, &stmt, NULL) == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW)
+            total_plan = sqlite3_column_int(stmt, 0);
+        sqlite3_finalize(stmt);
+
+        if (sqlite3_prepare_v2(db,
+            "SELECT COUNT(*) FROM todos WHERE (status='closed' OR status='open') AND plan_id = 0",
+            -1, &stmt, NULL) == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW)
+            total_temp = sqlite3_column_int(stmt, 0);
+        sqlite3_finalize(stmt);
+
         if (total_plan > 0)
             stats->plan_completion_rate = (double)plan_completed / total_plan;
         if (total_temp > 0)
-            stats->temporary_completion_rate = (double)temporary_completed / total_temp;
+            stats->temporary_completion_rate = (double)temp_completed / total_temp;
     }
 
     /* 计划健康度 */
@@ -174,39 +203,32 @@ int stats_calculate(dfx_stats_t *stats) {
         if (stats->plan_health_score < 0.0)   stats->plan_health_score = 0.0;
     }
 
-    /* 困难任务占比 */
-    if (stats->total_completed > 0 && stats->hard_task_ratio > 0) {
-        stats->hard_task_ratio /= stats->total_completed;
-    }
-
-    /* estimation_accuracy 暂设为 0（需要预估时间数据支持） */
     stats->estimation_accuracy = 0.0;
-
-    /* phase_progress 暂不实现（需要阶段数据） */
     stats->phase_progress_count = 0;
 
     return 0;
 }
 
 /* ============================================================
- * stats_calculate_heatmap - 计算热力图
+ * stats_calculate_heatmap - 计算热力图（基于 SQLite）
  * ============================================================ */
 int stats_calculate_heatmap(heatmap_data_t *heatmap) {
     memset(heatmap, 0, sizeof(*heatmap));
+    sqlite3 *db = todo_db_handle();
+    if (!db) return -1;
     int64_t today = today_start();
 
-    /* 计算一年前的日期 */
     time_t t = time(NULL);
     struct tm *lt = localtime(&t);
     struct tm past = *lt;
     past.tm_year -= 1;
-    (void)mktime(&past);  /* 规范化 */
+    (void)mktime(&past);
     int64_t one_year_ago = (int64_t)mktime(&past);
 
-    /* 从一年前开始，按周分组 */
     int64_t ws = week_start(one_year_ago);
     int max_count = 0;
     heatmap->weeks_count = 0;
+    sqlite3_stmt *stmt = NULL;
 
     while (ws < today && heatmap->weeks_count < 53) {
         heatmap_week_t *week = &heatmap->weeks[heatmap->weeks_count];
@@ -216,12 +238,14 @@ int stats_calculate_heatmap(heatmap_data_t *heatmap) {
             int64_t day_ts = ws + (int64_t)d * 86400;
             int count = 0;
 
-            for (int i = 0; i < g_todo_count; i++) {
-                if (strcmp(g_todos[i].status, "closed") == 0 &&
-                    g_todos[i].completed_at >= day_ts &&
-                    g_todos[i].completed_at < day_ts + 86400) {
-                    count++;
-                }
+            if (sqlite3_prepare_v2(db,
+                "SELECT COUNT(*) FROM todos WHERE status='closed' AND completed_at >= ? AND completed_at < ?",
+                -1, &stmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_int64(stmt, 1, day_ts);
+                sqlite3_bind_int64(stmt, 2, day_ts + 86400);
+                if (sqlite3_step(stmt) == SQLITE_ROW)
+                    count = sqlite3_column_int(stmt, 0);
+                sqlite3_finalize(stmt);
             }
 
             heatmap_cell_t *cell = &week->days[d];
@@ -234,7 +258,6 @@ int stats_calculate_heatmap(heatmap_data_t *heatmap) {
         ws += 7 * 86400;
     }
 
-    /* 计算色级（0-3） */
     heatmap->max_daily_count = max_count;
     int threshold = max_count > 0 ? max_count / 3 : 1;
     if (threshold < 1) threshold = 1;
@@ -242,15 +265,10 @@ int stats_calculate_heatmap(heatmap_data_t *heatmap) {
     for (int w = 0; w < heatmap->weeks_count; w++) {
         for (int d = 0; d < 7; d++) {
             int c = heatmap->weeks[w].days[d].completed_count;
-            if (c == 0) {
-                heatmap->weeks[w].days[d].level = 0;
-            } else if (c <= threshold) {
-                heatmap->weeks[w].days[d].level = 1;
-            } else if (c <= threshold * 2) {
-                heatmap->weeks[w].days[d].level = 2;
-            } else {
-                heatmap->weeks[w].days[d].level = 3;
-            }
+            if (c == 0) heatmap->weeks[w].days[d].level = 0;
+            else if (c <= threshold) heatmap->weeks[w].days[d].level = 1;
+            else if (c <= threshold * 2) heatmap->weeks[w].days[d].level = 2;
+            else heatmap->weeks[w].days[d].level = 3;
         }
     }
 
