@@ -143,6 +143,11 @@ add_executable(test_btree_concurrent btree_concurrent_test.cpp)
 target_link_libraries(test_btree_concurrent db_storage project_includes gtest gtest_main pthread)
 add_test(NAME test_btree_concurrent COMMAND test_btree_concurrent)
 
+# WAL 段文件管理测试（W6.1）
+add_executable(test_wal_segment wal_segment_test.cpp)
+target_link_libraries(test_wal_segment db_storage project_includes gtest gtest_main)
+add_test(NAME test_wal_segment COMMAND test_wal_segment WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 # CLOG 持久化测试（Task W1.5）
 add_executable(test_clog clog_test.cpp)
 target_link_libraries(test_clog db_storage project_includes gtest gtest_main)

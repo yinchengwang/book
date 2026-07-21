@@ -67,7 +67,28 @@
 #include <string.h>
 #include <stdio.h>
 #include <sys/stat.h>
-#include <dirent.h>
+#include <sys/types.h>
+#include <errno.h>
+
+#ifdef _WIN32
+    #include <direct.h>
+    #define mkdir_p(path) _mkdir(path)
+    #define PATH_SEP "\\"
+#else
+    #include <dirent.h>
+    #define PATH_SEP "/"
+    #define mkdir_p(path) mkdir(path, 0755)
+#endif
+
+/* 确保 ssize_t 可用 */
+#if defined(_WIN32) && !defined(_SSIZE_T_DEFINED)
+    #ifdef _WIN64
+        typedef long long ssize_t;
+    #else
+        typedef int ssize_t;
+    #endif
+    #define _SSIZE_T_DEFINED
+#endif
 
 /* ============================================================
  * 内部数据结构
@@ -222,26 +243,12 @@ static int wal_open_segment_file(wal_t *wal, uint32_t segno, bool create) {
     return 0;
 }
 
-    for (size_t i = 0; i < len; i++) {
-        crc ^= p[i];
-        for (int j = 0; j < 8; j++) {
-            if (crc & 1) {
-                crc = (crc >> 1) ^ 0xEDB88320;
-            } else {
-                crc >>= 1;
-            }
-        }
-    }
-
-    return ~crc;
-}
-
 /* ============================================================
  * WAL 创建与销毁
  * ============================================================ */
 
 wal_t *wal_create(const char *path, uint32_t page_size) {
-    if (!path) path = "wal.db";
+    if (!path) path = "pg_wal";
 
     wal_t *wal = (wal_t *)calloc(1, sizeof(wal_t));
     if (!wal) return NULL;
@@ -251,6 +258,8 @@ wal_t *wal_create(const char *path, uint32_t page_size) {
     wal->current_lsn = 0;
     wal->checkpoint_lsn = 0;
     wal->state = WAL_STATE_ACTIVE;
+    wal->timeline_id = WAL_DEFAULT_TIMELINE;
+    wal->segment_no = 0;
 
     /* 分配缓冲区 */
     wal->buffer_size = WAL_BUFFER_SIZE;
@@ -265,26 +274,13 @@ wal_t *wal_create(const char *path, uint32_t page_size) {
     wal->active_txn_capacity = 64;
     wal->active_txns = (uint32_t *)malloc(wal->active_txn_capacity * sizeof(uint32_t));
 
-    /* 打开文件 */
-    wal->file = disk_open(path, page_size);
-    if (!wal->file) {
-        free(wal->buffer);
-        free(wal->path);
-        free(wal);
-        return NULL;
-    }
+    /* 创建段目录 */
+    mkdir_p(wal->path);
 
-    /* 写入文件头 */
-    wal_file_header_t header;
-    memset(&header, 0, sizeof(header));
-    header.magic = WAL_MAGIC;
-    header.version = WAL_VERSION;
-    header.page_size = page_size;
-    header.checksum = wal_calc_checksum(&header, offsetof(wal_file_header_t, checksum));
-
-    if (disk_pwrite(wal->file, 0, &header, sizeof(header)) != sizeof(header)) {
-        disk_close(wal->file);
+    /* 打开第一个段文件 */
+    if (wal_open_segment_file(wal, 0, true) != 0) {
         free(wal->buffer);
+        free(wal->active_txns);
         free(wal->path);
         free(wal);
         return NULL;
@@ -294,12 +290,14 @@ wal_t *wal_create(const char *path, uint32_t page_size) {
 }
 
 wal_t *wal_open(const char *path) {
-    if (!path) path = "wal.db";
+    if (!path) path = "pg_wal";
 
     wal_t *wal = (wal_t *)calloc(1, sizeof(wal_t));
     if (!wal) return NULL;
 
     wal->path = strdup(path);
+    wal->timeline_id = WAL_DEFAULT_TIMELINE;
+    wal->segment_no = 0;
 
     /* 分配活动事务表（先于文件操作，避免泄漏） */
     wal->active_txn_capacity = 64;
@@ -320,54 +318,43 @@ wal_t *wal_open(const char *path) {
         return NULL;
     }
 
-    /* 尝试打开文件（使用 raw 模式，不初始化头部） */
-    wal->file = disk_open_raw(path);
-    if (!wal->file) {
-        free(wal->buffer);
-        free(wal->active_txns);
-        free(wal->path);
-        free(wal);
-        return NULL;
-    }
-
-    /* 读取并验证文件头 */
-    wal_file_header_t header;
-    ssize_t bytes_read = disk_pread(wal->file, 0, &header, sizeof(header));
-
-    if (bytes_read != sizeof(header)) {
-        /* 新创建的文件或读取失败，初始化文件头 */
-        memset(&header, 0, sizeof(header));
-        header.magic = WAL_MAGIC;
-        header.version = WAL_VERSION;
-        header.page_size = DEFAULT_PAGE_SIZE;
-        header.checksum = wal_calc_checksum(&header, offsetof(wal_file_header_t, checksum));
-
-        if (disk_pwrite(wal->file, 0, &header, sizeof(header)) != sizeof(header)) {
-            disk_close(wal->file);
+    /* 扫描段目录，找到最新的段文件 */
+    /* 先尝试打开段 0 */
+    if (wal_open_segment_file(wal, 0, false) != 0) {
+        /* 没有有效段文件，创建新段 */
+        mkdir_p(wal->path);
+        if (wal_open_segment_file(wal, 0, true) != 0) {
             free(wal->buffer);
             free(wal->active_txns);
             free(wal->path);
             free(wal);
             return NULL;
         }
-    } else if (header.magic != WAL_MAGIC) {
-        wal_set_error(wal, "Invalid WAL file");
-        disk_close(wal->file);
-        free(wal->buffer);
-        free(wal->active_txns);
-        free(wal->path);
-        free(wal);
-        return NULL;
+    } else {
+        /* 读取文件头验证（段文件使用 WAL 头格式，不是 DB 头） */
+        wal_file_header_t wh;
+        ssize_t bytes_read = disk_pread(wal->file, 0, &wh, sizeof(wh));
+        if (bytes_read != sizeof(wh) || wh.magic != WAL_MAGIC) {
+            /* 无效段，创建新 */
+            disk_close(wal->file);
+            wal->file = NULL;
+            if (wal_open_segment_file(wal, 0, true) != 0) {
+                free(wal->buffer);
+                free(wal->active_txns);
+                free(wal->path);
+                free(wal);
+                return NULL;
+            }
+        } else {
+            wal->page_size = wh.page_size;
+        }
     }
 
-    wal->page_size = header.page_size;
+    if (!wal->page_size) wal->page_size = 8192;
     wal->state = WAL_STATE_ACTIVE;
 
-    /* 计算当前 LSN（文件大小 - 头大小） */
-    uint64_t file_size = disk_get_size(wal->file);
-    if (file_size > WAL_HEADER_SIZE) {
-        wal->current_lsn = (file_size - WAL_HEADER_SIZE) / 1024;
-    }
+    /* 计算当前 LSN */
+    wal->current_lsn = wal->segment_offset / 1024;
 
     return wal;
 }
@@ -386,6 +373,7 @@ int wal_close(wal_t *wal) {
 
     if (wal->buffer) free(wal->buffer);
     if (wal->path) free(wal->path);
+    if (wal->current_path) free(wal->current_path);
     if (wal->active_txns) free(wal->active_txns);
     if (wal->error_msg) free(wal->error_msg);
 
@@ -491,8 +479,14 @@ static uint64_t wal_write_record(wal_t *wal, wal_log_type_t type,
         return 0;
     }
 
+    /* 如果段已满，自动切换 */
+    if (wal_need_switch_segment(wal)) {
+        if (wal_flush(wal) != 0) return 0;
+        if (wal_switch_segment(wal) != 0) return 0;
+    }
+
     /* 计算记录大小 */
-    size_t data_size = sizeof(uint32_t) * 2 + key_len + value_len;  /* key_len + key + value_len + value */
+    size_t data_size = sizeof(uint32_t) * 2 + key_len + value_len;
     size_t total_size = WAL_RECORD_HEADER_SIZE + data_size;
 
     /* 分配记录空间 */
@@ -508,32 +502,32 @@ static uint64_t wal_write_record(wal_t *wal, wal_log_type_t type,
     header->lsn = wal->current_lsn;
     header->txn_id = txn_id;
     header->prev_lsn = prev_lsn;
-    header->checksum = 0;  /* 先填充0，后计算 */
+    header->checksum = 0;
 
     /* 写入数据 */
     uint8_t *data = record + WAL_RECORD_HEADER_SIZE;
-    size_t offset = 0;
+    size_t d_off = 0;
 
-    memcpy(data + offset, &key_len, sizeof(uint32_t));
-    offset += sizeof(uint32_t);
+    memcpy(data + d_off, &key_len, sizeof(uint32_t));
+    d_off += sizeof(uint32_t);
 
     if (key && key_len > 0) {
-        memcpy(data + offset, key, key_len);
+        memcpy(data + d_off, key, key_len);
     }
-    offset += key_len;
+    d_off += key_len;
 
-    memcpy(data + offset, &value_len, sizeof(uint32_t));
-    offset += sizeof(uint32_t);
+    memcpy(data + d_off, &value_len, sizeof(uint32_t));
+    d_off += sizeof(uint32_t);
 
     if (value && value_len > 0) {
-        memcpy(data + offset, value, value_len);
+        memcpy(data + d_off, value, value_len);
     }
 
     /* 计算校验和 */
     header->checksum = wal_calc_checksum(record + 1, total_size - 1);
 
-    /* 写入文件（追加） */
-    uint64_t file_offset = WAL_HEADER_SIZE + wal->current_lsn * 1024;
+    /* 写入段文件（段内偏移 + 头大小） */
+    uint64_t file_offset = WAL_HEADER_SIZE + wal->segment_offset;
 
     /* 如果缓冲区有空间，先放缓冲区 */
     if (wal->buffer_used + total_size <= wal->buffer_size) {
@@ -542,20 +536,21 @@ static uint64_t wal_write_record(wal_t *wal, wal_log_type_t type,
     } else {
         /* 缓冲区满了，刷盘 */
         if (wal->buffer_used > 0) {
-            disk_pwrite(wal->file, WAL_HEADER_SIZE + (wal->current_lsn - (wal->buffer_used / 1024)) * 1024,
-                        wal->buffer, wal->buffer_used);
+            uint64_t buf_offset = WAL_HEADER_SIZE + wal->segment_offset - wal->buffer_used;
+            disk_pwrite(wal->file, buf_offset, wal->buffer, wal->buffer_used);
         }
         /* 直接写记录 */
         disk_pwrite(wal->file, file_offset, record, total_size);
         wal->buffer_used = 0;
     }
 
-    /* 更新 LSN */
+    /* 更新 LSN 和段内偏移 */
     uint64_t lsn = wal->current_lsn;
     wal->current_lsn++;
+    wal->segment_offset += total_size;
 
     free(record);
-    return lsn + 1;  /* 返回1-based LSN */
+    return lsn + 1;
 }
 
 /* ============================================================
@@ -648,9 +643,8 @@ uint64_t wal_write_checkpoint(wal_t *wal, const uint32_t *dirty_pages, size_t nu
 int wal_flush(wal_t *wal) {
     if (!wal || wal->buffer_used == 0) return 0;
 
-    /* 计算起始偏移 */
-    uint64_t start_lsn = (wal->current_lsn * 1024 - wal->buffer_used) / 1024;
-    uint64_t offset = WAL_HEADER_SIZE + start_lsn * 1024;
+    /* 计算起始偏移（段内偏移 - 缓冲区已用量） */
+    uint64_t offset = WAL_HEADER_SIZE + wal->segment_offset - wal->buffer_used;
 
     if (disk_pwrite(wal->file, offset, wal->buffer, wal->buffer_used) != (ssize_t)wal->buffer_used) {
         wal_set_error(wal, "Failed to flush WAL");
@@ -670,7 +664,7 @@ int wal_get_stats(wal_t *wal, wal_stats_t *stats) {
     if (!wal || !stats) return -1;
 
     stats->total_records = wal->current_lsn;
-    stats->total_bytes = WAL_HEADER_SIZE + wal->current_lsn * 1024;
+    stats->total_bytes = (wal->segment_no * WAL_SEGMENT_SIZE) + WAL_HEADER_SIZE + wal->segment_offset;
     stats->current_lsn = wal->current_lsn;
     stats->checkpoint_lsn = wal->checkpoint_lsn;
     stats->active_txns = (uint32_t)wal->active_txn_count;
@@ -1003,4 +997,81 @@ void wal_recovery_info_free(wal_recovery_info_t *info) {
     if (!info) return;
     if (info->active_txns) free(info->active_txns);
     memset(info, 0, sizeof(*info));
+}
+
+/* ============================================================
+ * 段文件管理 API
+ * ============================================================ */
+
+int wal_set_segment_dir(wal_t *wal, const char *dir) {
+    if (!wal || !dir) return -1;
+    if (wal->path) free(wal->path);
+    wal->path = strdup(dir);
+    return 0;
+}
+
+const char *wal_current_segment_path(wal_t *wal) {
+    if (!wal) return NULL;
+    return wal->current_path;
+}
+
+uint32_t wal_current_segment_no(wal_t *wal) {
+    if (!wal) return 0;
+    return wal->segment_no;
+}
+
+int wal_switch_segment(wal_t *wal) {
+    if (!wal) return -1;
+
+    /* 刷盘当前缓冲 */
+    if (wal_flush(wal) != 0) return -1;
+
+    /* 打开下一个段 */
+    uint32_t next_seg = wal->segment_no + 1;
+    if (wal_open_segment_file(wal, next_seg, true) != 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
+char *wal_segment_path_for_lsn(wal_t *wal, uint64_t lsn) {
+    if (!wal) return NULL;
+
+    /* 根据 LSN 估算段序号（简化：假设每个段 16MB / 每个记录以 1024 为单位） */
+    uint64_t bytes_per_seg = WAL_SEGMENT_SIZE;
+    uint32_t segno = (uint32_t)((lsn * 1024) / bytes_per_seg);
+
+    char buf[512];
+    if (wal_build_segment_path(wal, segno, buf, sizeof(buf)) != 0) {
+        return NULL;
+    }
+    return strdup(buf);
+}
+
+int wal_list_segments(wal_t *wal, char ***segments, int *count) {
+    if (!wal || !segments || !count) return -1;
+
+    /* 简化实现：枚举段 0 到当前段 */
+    int n = (int)(wal->segment_no + 1);
+    char **list = (char **)malloc(n * sizeof(char *));
+    if (!list) return -1;
+
+    for (int i = 0; i < n; i++) {
+        char buf[512];
+        wal_build_segment_path(wal, (uint32_t)i, buf, sizeof(buf));
+        list[i] = strdup(buf);
+    }
+
+    *segments = list;
+    *count = n;
+    return 0;
+}
+
+void wal_free_segment_list(char **segments, int count) {
+    if (!segments) return;
+    for (int i = 0; i < count; i++) {
+        free(segments[i]);
+    }
+    free(segments);
 }

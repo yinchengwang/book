@@ -60,17 +60,23 @@
         <h3>{{ formatDateLong(selectedDate) }}</h3>
       </div>
       <div class="day-timeline">
-        <div v-for="hour in 24" :key="hour" class="hour-row">
-          <div class="hour-label">{{ String(hour).padStart(2, '0') }}:00</div>
-          <div class="hour-content" @dragover.prevent @drop="onHourDrop($event, selectedDate, hour)">
-            <div v-for="task in tasksAtHour(selectedDate, hour)" :key="task.id" class="hour-task">
-              <span class="task-priority-dot" :style="{ background: priorityColor(task.priority) }"></span>
+        <div v-for="hour in 24" :key="hour" class="hour-row" @dragover.prevent @drop="onHourDrop($event, selectedDate, hour)">
+          <div class="hour-label" :class="{ 'hour-now': hour === nowHour }">{{ String(hour).padStart(2, '0') }}:00</div>
+          <div class="hour-content">
+            <div v-for="task in tasksAtHour(selectedDate, hour)" :key="task.id" class="hour-task"
+                 draggable="true" @dragstart="onTaskDragStart($event, task)"
+                 :style="{ borderLeftColor: priorityColor(task.priority) }">
+              <span class="task-time">{{ formatTime(task.due_date) }}</span>
               {{ task.title }}
             </div>
+            <div v-if="tasksAtHour(selectedDate, hour).length === 0" class="hour-empty" @click="createTaskAtHour(selectedDate, hour)">+ 添加任务</div>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- 创建对话框 -->
+    <CreateDialog v-model="showCreate" :groups="[]" @created="onCreateTask" />
   </div>
 </template>
 
@@ -88,7 +94,9 @@ const selectedDate = ref(new Date())
 const currentView = ref(null)
 const showCreate = ref(false)
 const createDate = ref(null)
+const createHour = ref(null)
 const draggedTask = ref(null)
+const nowHour = ref(new Date().getHours())
 
 function onViewChanged(view) {
   currentView.value = view
@@ -181,15 +189,34 @@ function formatDateLong(date) {
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
 }
 
+function formatTime(ts) {
+  if (!ts) return ''
+  const d = new Date(ts * 1000)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 function createTask(date) {
   createDate.value = date
+  createHour.value = null
+  showCreate.value = true
+}
+
+function createTaskAtHour(date, hour) {
+  createDate.value = date
+  createHour.value = hour
   showCreate.value = true
 }
 
 async function onCreateTask(payload) {
   const { body, fields } = payload
   if (createDate.value) {
-    body.due_date = Math.floor(createDate.value.getTime() / 1000)
+    const d = new Date(createDate.value)
+    if (createHour.value !== null) {
+      d.setHours(createHour.value, 0, 0, 0)
+    } else {
+      d.setHours(12, 0, 0, 0)
+    }
+    body.due_date = Math.floor(d.getTime() / 1000)
   }
   const r = await api.create(body)
   if (r.code === 0) {
@@ -203,6 +230,7 @@ async function onCreateTask(payload) {
   }
   showCreate.value = false
   createDate.value = null
+  createHour.value = null
 }
 
 /* 拖拽 */
@@ -290,4 +318,18 @@ watch(currentDate, loadMonth)
 .task-title { font-size: 0.9em; font-weight: 500; }
 .task-meta { font-size: 0.8em; color: #999; margin-top: 2px; }
 .empty-tasks { text-align: center; color: #999; padding: 32px 0; font-size: 0.9em; }
+.day-add-btn { position: absolute; top: 2px; right: 4px; width: 18px; height: 18px; border-radius: 50%; background: #0078D4; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer; opacity: 0; transition: opacity 0.2s; line-height: 1; }
+.day-cell:hover .day-add-btn { opacity: 1; }
+.week-add-btn { position: absolute; top: 4px; right: 8px; width: 20px; height: 20px; border-radius: 50%; background: #0078D4; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer; opacity: 0; transition: opacity 0.2s; line-height: 1; }
+.week-day-cell:hover .week-add-btn { opacity: 1; }
+.hour-row { display: flex; border-bottom: 1px solid #eee; min-height: 48px; }
+.hour-row:hover { background: #fafafa; }
+.hour-label { width: 60px; padding: 4px 8px; font-size: 0.8em; color: #999; flex-shrink: 0; border-right: 1px solid #eee; }
+.hour-now { color: #0078D4; font-weight: 700; }
+.hour-content { flex: 1; padding: 2px 8px; display: flex; flex-direction: column; gap: 2px; }
+.hour-task { font-size: 0.8em; padding: 2px 6px; border-left: 3px solid; background: #f8f9fa; border-radius: 2px; cursor: grab; }
+.hour-task:hover { background: #eef; }
+.hour-empty { font-size: 0.75em; color: #ccc; padding: 4px 8px; cursor: pointer; }
+.hour-empty:hover { color: #0078D4; }
+.task-time { font-size: 0.85em; color: #666; margin-right: 4px; }
 </style>
