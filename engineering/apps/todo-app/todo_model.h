@@ -139,6 +139,26 @@ typedef struct {
 } comment_t;
 
 /* ============================================================
+ * 筛选/排序规则
+ * ============================================================ */
+#define FILTER_VALUE_MAX 256
+#define FILTER_OP_MAX 16
+
+typedef struct {
+    int64_t field_id;                    /* 字段 ID */
+    char    operator[FILTER_OP_MAX];      /* eq, ne, gt, lt, gte, lte, contains, is_empty, is_not_empty */
+    char    value[FILTER_VALUE_MAX];      /* 筛选值（字符串形式） */
+} filter_rule_t;
+
+#define MAX_FILTERS 16
+#define MAX_SORTS 8
+
+typedef struct {
+    int64_t field_id;
+    char    direction[4];                /* asc / desc */
+} sort_rule_t;
+
+/* ============================================================
  * 查询参数结构体
  * ============================================================ */
 typedef struct {
@@ -153,6 +173,13 @@ typedef struct {
     int         sort_desc;             /* 0=升序 1=降序 */
     int         page;
     int         per_page;
+
+    /* 新增 */
+    int64_t     view_id;               /* 视图 ID，非 0 时从视图配置加载 filter/sort */
+    int         filter_count;          /* filter_rules 中的有效数量 */
+    filter_rule_t filter_rules[MAX_FILTERS];
+    int         sort_count;            /* sort_rules 中的有效数量 */
+    sort_rule_t sort_rules[MAX_SORTS];
 } todo_query_t;
 
 /* ============================================================
@@ -437,6 +464,12 @@ int plan_item_update(const plan_item_t *item);
 int plan_item_delete(int64_t id);
 int plan_item_list_by_plan(int64_t plan_id, plan_item_t **items, int *count);
 void plan_item_list_free(plan_item_t *items, int count);
+
+/* ============================================================
+ * 批量操作
+ * ============================================================ */
+int todo_batch_update_status(const int64_t *ids, int count, const char *status);
+int todo_batch_delete(const int64_t *ids, int count);
 
 #ifdef __cplusplus
 }

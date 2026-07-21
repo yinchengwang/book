@@ -1,5 +1,6 @@
 #include "todo_model.h"
 #include "todo_db.h"
+#include "todo_view.h"
 #include "cjson/cJSON.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -275,6 +276,188 @@ int todo_delete(int64_t id) {
     return (rc == SQLITE_DONE) ? 0 : -1;
 }
 
+/* ============================================================
+ * 筛选/排序辅助函数（无需绑定参数，直接构建 SQL 片段）
+ * 使用安全转义，避免 SQL 注入
+ * ============================================================ */
+static void escape_sql_string(const char *in, char *out, size_t out_size) {
+    size_t j = 0;
+    for (size_t i = 0; in[i] && j < out_size - 2; i++) {
+        if (in[i] == '\'') {
+            if (j + 2 < out_size) { out[j++] = '\''; out[j++] = '\''; }
+        } else {
+            out[j++] = in[i];
+        }
+    }
+    out[j] = '\0';
+}
+
+static void append_filter_sql_inline(const filter_rule_t *rule, char *where, size_t where_size) {
+    char buf[1024];
+    char escaped[FILTER_VALUE_MAX * 2 + 1];
+
+    if (rule->field_id <= 9) {
+        const char *col = NULL;
+        switch (rule->field_id) {
+            case 1: col = "title"; break;
+            case 2: col = "description"; break;
+            case 3: col = "status"; break;
+            case 4: col = "priority"; break;
+            case 5: col = "due_date"; break;
+            case 6: col = "labels"; break;
+            case 7: col = "group_id"; break;
+            default: return;
+        }
+
+        if (strcmp(rule->operator, "eq") == 0) {
+            escape_sql_string(rule->value, escaped, sizeof(escaped));
+            snprintf(buf, sizeof(buf), " AND %s = '%s'", col, escaped);
+            strncat(where, buf, where_size - strlen(where) - 1);
+        } else if (strcmp(rule->operator, "ne") == 0) {
+            escape_sql_string(rule->value, escaped, sizeof(escaped));
+            snprintf(buf, sizeof(buf), " AND %s != '%s'", col, escaped);
+            strncat(where, buf, where_size - strlen(where) - 1);
+        } else if (strcmp(rule->operator, "gt") == 0) {
+            snprintf(buf, sizeof(buf), " AND %s > %lld", col, (long long)atoll(rule->value));
+            strncat(where, buf, where_size - strlen(where) - 1);
+        } else if (strcmp(rule->operator, "lt") == 0) {
+            snprintf(buf, sizeof(buf), " AND %s < %lld", col, (long long)atoll(rule->value));
+            strncat(where, buf, where_size - strlen(where) - 1);
+        } else if (strcmp(rule->operator, "contains") == 0) {
+            escape_sql_string(rule->value, escaped, sizeof(escaped));
+            snprintf(buf, sizeof(buf), " AND %s LIKE '%%%s%%'", col, escaped);
+            strncat(where, buf, where_size - strlen(where) - 1);
+        } else if (strcmp(rule->operator, "gte") == 0) {
+            snprintf(buf, sizeof(buf), " AND %s >= %lld", col, (long long)atoll(rule->value));
+            strncat(where, buf, where_size - strlen(where) - 1);
+        } else if (strcmp(rule->operator, "lte") == 0) {
+            snprintf(buf, sizeof(buf), " AND %s <= %lld", col, (long long)atoll(rule->value));
+            strncat(where, buf, where_size - strlen(where) - 1);
+        } else if (strcmp(rule->operator, "is_empty") == 0) {
+            snprintf(buf, sizeof(buf), " AND (%s = '' OR %s IS NULL)", col, col);
+            strncat(where, buf, where_size - strlen(where) - 1);
+        } else if (strcmp(rule->operator, "is_not_empty") == 0) {
+            snprintf(buf, sizeof(buf), " AND (%s != '' AND %s IS NOT NULL)", col, col);
+            strncat(where, buf, where_size - strlen(where) - 1);
+        }
+    } else {
+        if (strcmp(rule->operator, "eq") == 0) {
+            escape_sql_string(rule->value, escaped, sizeof(escaped));
+            snprintf(buf, sizeof(buf),
+                " AND EXISTS (SELECT 1 FROM field_values fv%lld WHERE fv%lld.todo_id = todos.id AND fv%lld.field_id = %lld AND fv%lld.value = '%s')",
+                (long long)rule->field_id, (long long)rule->field_id,
+                (long long)rule->field_id, (long long)rule->field_id,
+                escaped);
+            strncat(where, buf, where_size - strlen(where) - 1);
+        } else if (strcmp(rule->operator, "contains") == 0) {
+            escape_sql_string(rule->value, escaped, sizeof(escaped));
+            snprintf(buf, sizeof(buf),
+                " AND EXISTS (SELECT 1 FROM field_values fv%lld WHERE fv%lld.todo_id = todos.id AND fv%lld.field_id = %lld AND fv%lld.value LIKE '%%%s%%')",
+                (long long)rule->field_id, (long long)rule->field_id,
+                (long long)rule->field_id, (long long)rule->field_id,
+                escaped);
+            strncat(where, buf, where_size - strlen(where) - 1);
+        } else if (strcmp(rule->operator, "is_empty") == 0) {
+            snprintf(buf, sizeof(buf),
+                " AND NOT EXISTS (SELECT 1 FROM field_values fv%lld WHERE fv%lld.todo_id = todos.id AND fv%lld.field_id = %lld)",
+                (long long)rule->field_id, (long long)rule->field_id,
+                (long long)rule->field_id);
+            strncat(where, buf, where_size - strlen(where) - 1);
+        } else if (strcmp(rule->operator, "is_not_empty") == 0) {
+            snprintf(buf, sizeof(buf),
+                " AND EXISTS (SELECT 1 FROM field_values fv%lld WHERE fv%lld.todo_id = todos.id AND fv%lld.field_id = %lld AND fv%lld.value != '')",
+                (long long)rule->field_id, (long long)rule->field_id,
+                (long long)rule->field_id,
+                (long long)rule->field_id);
+            strncat(where, buf, where_size - strlen(where) - 1);
+        }
+    }
+}
+
+static void append_sort_sql_inline(const sort_rule_t *rules, int count, char *order_by, size_t order_by_size) {
+    for (int i = 0; i < count; i++) {
+        const char *dir = (strcmp(rules[i].direction, "desc") == 0) ? "DESC" : "ASC";
+        char buf[128];
+
+        if (rules[i].field_id <= 9) {
+            const char *col = NULL;
+            switch (rules[i].field_id) {
+                case 1: col = "title"; break;
+                case 2: col = "description"; break;
+                case 3: col = "status"; break;
+                case 4: col = "priority"; break;
+                case 5: col = "due_date"; break;
+                case 6: col = "labels"; break;
+                case 7: col = "group_id"; break;
+                case 8: col = "created_at"; break;
+                case 9: col = "updated_at"; break;
+                default: continue;
+            }
+            snprintf(buf, sizeof(buf), "%s %s %s", i > 0 ? "," : " ORDER BY", col, dir);
+        } else {
+            continue;
+        }
+        strncat(order_by, buf, order_by_size - strlen(order_by) - 1);
+    }
+}
+
+static void parse_view_config_filters(const char *config_json,
+                                       filter_rule_t *filters, int *count) {
+    *count = 0;
+    cJSON *jconfig = cJSON_Parse(config_json);
+    if (!jconfig) return;
+
+    cJSON *jfilters = cJSON_GetObjectItem(jconfig, "filters");
+    if (jfilters && cJSON_IsArray(jfilters)) {
+        int n = cJSON_GetArraySize(jfilters);
+        if (n > MAX_FILTERS) n = MAX_FILTERS;
+        for (int i = 0; i < n; i++) {
+            cJSON *jrule = cJSON_GetArrayItem(jfilters, i);
+            if (!jrule) continue;
+            cJSON *jfid = cJSON_GetObjectItem(jrule, "field_id");
+            cJSON *jop = cJSON_GetObjectItem(jrule, "operator");
+            cJSON *jval = cJSON_GetObjectItem(jrule, "value");
+            if (!jfid || !jop || !jval) continue;
+
+            filters[*count].field_id = (int64_t)cJSON_GetNumberValue(jfid);
+            const char *op_str = cJSON_GetStringValue(jop);
+            if (op_str) snprintf(filters[*count].operator, sizeof(filters[*count].operator), "%s", op_str);
+            const char *val_str = cJSON_GetStringValue(jval);
+            if (val_str) snprintf(filters[*count].value, sizeof(filters[*count].value), "%s", val_str);
+            (*count)++;
+        }
+    }
+
+    cJSON_Delete(jconfig);
+}
+
+static void parse_view_config_sorts(const char *config_json,
+                                    sort_rule_t *sorts, int *count) {
+    *count = 0;
+    cJSON *jconfig = cJSON_Parse(config_json);
+    if (!jconfig) return;
+
+    cJSON *jsort = cJSON_GetObjectItem(jconfig, "sort");
+    if (jsort && cJSON_IsArray(jsort)) {
+        int n = cJSON_GetArraySize(jsort);
+        if (n > MAX_SORTS) n = MAX_SORTS;
+        for (int i = 0; i < n; i++) {
+            cJSON *jrule = cJSON_GetArrayItem(jsort, i);
+            if (!jrule) continue;
+            cJSON *jfid = cJSON_GetObjectItem(jrule, "field_id");
+            cJSON *jdir = cJSON_GetObjectItem(jrule, "direction");
+            if (!jfid || !jdir) continue;
+
+            sorts[*count].field_id = (int64_t)cJSON_GetNumberValue(jfid);
+            const char *dir_str = cJSON_GetStringValue(jdir);
+            if (dir_str) snprintf(sorts[*count].direction, sizeof(sorts[*count].direction), "%s", dir_str);
+            (*count)++;
+        }
+    }
+
+    cJSON_Delete(jconfig);
+}
+
 int todo_list(const todo_query_t *query, todo_list_t *result) {
     memset(result, 0, sizeof(*result));
     sqlite3 *db = todo_db_handle();
@@ -282,12 +465,32 @@ int todo_list(const todo_query_t *query, todo_list_t *result) {
 
     /* 构建动态 SQL */
     char sql_base[4096];
-    char where[2048] = "WHERE 1=1";
+    char where[4096] = "WHERE 1=1";
     int param_idx = 1;
     /* 用于存储绑定值，避免临时变量生命周期问题 */
     char status_buf[64] = {0};
     char search_buf[512] = {0};
     char labels_buf[1024] = {0};
+
+    /* 如果指定了 view_id，从视图配置加载 filter/sort */
+    filter_rule_t filters[MAX_FILTERS];
+    sort_rule_t sorts[MAX_SORTS];
+    int filter_count = 0, sort_count = 0;
+
+    if (query->view_id > 0) {
+        view_t view;
+        if (view_get(query->view_id, &view) == 0 && view.config[0]) {
+            parse_view_config_filters(view.config, filters, &filter_count);
+            parse_view_config_sorts(view.config, sorts, &sort_count);
+        }
+    } else {
+        filter_count = query->filter_count;
+        sort_count = query->sort_count;
+        if (filter_count > 0)
+            memcpy(filters, query->filter_rules, sizeof(filter_rule_t) * (filter_count > MAX_FILTERS ? MAX_FILTERS : filter_count));
+        if (sort_count > 0)
+            memcpy(sorts, query->sort_rules, sizeof(sort_rule_t) * (sort_count > MAX_SORTS ? MAX_SORTS : sort_count));
+    }
 
     if (query->status && strcmp(query->status, "all") != 0 && query->status[0]) {
         strncpy(status_buf, query->status, sizeof(status_buf) - 1);
@@ -298,7 +501,6 @@ int todo_list(const todo_query_t *query, todo_list_t *result) {
     if (query->labels && query->labels[0]) {
         strncpy(labels_buf, query->labels, sizeof(labels_buf) - 1);
         char cond[256];
-        /* labels 存储为 JSON 数组字符串，用 LIKE 搜索 */
         snprintf(cond, sizeof(cond), " AND labels LIKE '%%' || ?%d || '%%'", param_idx++);
         strcat(where, cond);
     }
@@ -330,15 +532,28 @@ int todo_list(const todo_query_t *query, todo_list_t *result) {
         strcat(where, cond);
     }
 
-    /* 排序 */
-    const char *order_field = "sort_order";
-    if (query->sort) {
-        if (strcmp(query->sort, "priority") == 0) order_field = "priority";
-        else if (strcmp(query->sort, "due_date") == 0) order_field = "due_date";
-        else if (strcmp(query->sort, "created_at") == 0) order_field = "created_at";
-        else if (strcmp(query->sort, "sort_order") == 0) order_field = "sort_order";
+    /* 应用筛选规则（从视图配置加载的） */
+    for (int i = 0; i < filter_count; i++) {
+        append_filter_sql_inline(&filters[i], where, sizeof(where));
     }
-    const char *order_dir = query->sort_desc ? "DESC" : "ASC";
+
+    /* 排序 */
+    char order_clause[1024] = "";
+    if (sort_count > 0) {
+        /* 使用视图配置的排序规则 */
+        append_sort_sql_inline(sorts, sort_count, order_clause, sizeof(order_clause));
+    } else {
+        /* 使用 query 中的单字段排序 */
+        const char *order_field = "sort_order";
+        if (query->sort) {
+            if (strcmp(query->sort, "priority") == 0) order_field = "priority";
+            else if (strcmp(query->sort, "due_date") == 0) order_field = "due_date";
+            else if (strcmp(query->sort, "created_at") == 0) order_field = "created_at";
+            else if (strcmp(query->sort, "sort_order") == 0) order_field = "sort_order";
+        }
+        const char *order_dir = query->sort_desc ? "DESC" : "ASC";
+        snprintf(order_clause, sizeof(order_clause), " ORDER BY %s %s", order_field, order_dir);
+    }
 
     /* 先查询总数 */
     snprintf(sql_base, sizeof(sql_base), "SELECT COUNT(*) FROM todos %s", where);
@@ -374,8 +589,8 @@ int todo_list(const todo_query_t *query, todo_list_t *result) {
 
     /* 查询数据 */
     snprintf(sql_base, sizeof(sql_base),
-        "SELECT * FROM todos %s ORDER BY %s %s LIMIT ?%d OFFSET ?%d",
-        where, order_field, order_dir, param_idx, param_idx + 1);
+        "SELECT * FROM todos %s %s LIMIT ?%d OFFSET ?%d",
+        where, order_clause, param_idx, param_idx + 1);
 
     sqlite3_stmt *stmt = NULL;
     if (sqlite3_prepare_v2(db, sql_base, -1, &stmt, NULL) != SQLITE_OK) {
@@ -1207,4 +1422,64 @@ int plan_item_list_by_plan(int64_t plan_id, plan_item_t **items, int *count) {
 void plan_item_list_free(plan_item_t *items, int count) {
     (void)count;
     if (items) free(items);
+}
+
+/* ============================================================
+ * 批量操作
+ * ============================================================ */
+int todo_batch_update_status(const int64_t *ids, int count, const char *status) {
+    sqlite3 *db = todo_db_handle();
+    if (!db || !ids || count <= 0) return -1;
+
+    char sql[4096];
+    char placeholders[256] = "";
+    int n = count > 100 ? 100 : count;
+    for (int i = 0; i < n; i++) {
+        if (i > 0) strcat(placeholders, ",");
+        char buf[16];
+        snprintf(buf, sizeof(buf), "?%d", i + 2);
+        strcat(placeholders, buf);
+    }
+    snprintf(sql, sizeof(sql),
+        "UPDATE todos SET status = ?1, updated_at = CAST(strftime('%s','now') AS INTEGER) WHERE id IN (%s)",
+        placeholders);
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) return -1;
+
+    sqlite3_bind_text(stmt, 1, status, -1, SQLITE_STATIC);
+    for (int i = 0; i < n; i++) {
+        sqlite3_bind_int64(stmt, i + 2, ids[i]);
+    }
+
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? 0 : -1;
+}
+
+int todo_batch_delete(const int64_t *ids, int count) {
+    sqlite3 *db = todo_db_handle();
+    if (!db || !ids || count <= 0) return -1;
+
+    char sql[4096];
+    char placeholders[256] = "";
+    int n = count > 100 ? 100 : count;
+    for (int i = 0; i < n; i++) {
+        if (i > 0) strcat(placeholders, ",");
+        char buf[16];
+        snprintf(buf, sizeof(buf), "?%d", i + 1);
+        strcat(placeholders, buf);
+    }
+    snprintf(sql, sizeof(sql), "DELETE FROM todos WHERE id IN (%s)", placeholders);
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) return -1;
+
+    for (int i = 0; i < n; i++) {
+        sqlite3_bind_int64(stmt, i + 1, ids[i]);
+    }
+
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE) ? 0 : -1;
 }

@@ -243,6 +243,13 @@ static void handle_list(SOCKET client, const char *query_str) {
         g_todo_count);
     fflush(stderr); */
 
+    /* 新增：view_id 参数，加载视图配置的 filter/sort */
+    char buf_view_id[64];
+    const char *view_id_str = get_query_param(query_str, "view_id", buf_view_id, sizeof(buf_view_id));
+    if (view_id_str) {
+        query.view_id = atoll(view_id_str);
+    }
+
     todo_list_t result;
     memset(&result, 0, sizeof(result));
 
@@ -1403,6 +1410,195 @@ static void handle_views_sort(SOCKET client, int64_t id, const char *body) {
     send_success(client, cJSON_CreateObject());
 }
 
+/* PATCH /api/views/:id/config — 仅更新视图配置 */
+static void handle_view_config_update(SOCKET client, int64_t view_id, const char *body) {
+    if (!body || !body[0]) {
+        send_error(client, 1001, "请求体为空");
+        return;
+    }
+
+    cJSON *jbody = cJSON_Parse(body);
+    if (!jbody) {
+        send_error(client, 1002, "JSON 解析失败");
+        return;
+    }
+
+    cJSON *jconfig = cJSON_GetObjectItem(jbody, "config");
+    if (!jconfig || !cJSON_IsString(jconfig)) {
+        cJSON_Delete(jbody);
+        send_error(client, 1001, "缺少 config 字符串");
+        return;
+    }
+
+    view_update(view_id, NULL, jconfig->valuestring, NULL);
+
+    cJSON_Delete(jbody);
+
+    view_t view;
+    if (view_get(view_id, &view) == 0) {
+        send_success(client, view_to_json(&view));
+    } else {
+        send_success(client, cJSON_CreateObject());
+    }
+}
+
+/* ============================================================
+ * 批量操作 API
+ * ============================================================ */
+static void handle_batch_update(SOCKET client, const char *body) {
+    if (!body || !body[0]) { send_error(client, 1001, "请求体为空"); return; }
+    cJSON *jbody = cJSON_Parse(body);
+    if (!jbody) { send_error(client, 1002, "JSON 解析失败"); return; }
+    cJSON *jids = cJSON_GetObjectItem(jbody, "ids");
+    cJSON *jupdates = cJSON_GetObjectItem(jbody, "updates");
+    if (!jids || !cJSON_IsArray(jids) || !jupdates) {
+        cJSON_Delete(jbody);
+        send_error(client, 1001, "缺少 ids 或 updates");
+        return;
+    }
+    int count = cJSON_GetArraySize(jids);
+    if (count > 100) count = 100;
+    int64_t *ids = (int64_t *)calloc(count, sizeof(int64_t));
+    for (int i = 0; i < count; i++) {
+        cJSON *jitem = cJSON_GetArrayItem(jids, i);
+        ids[i] = (int64_t)cJSON_GetNumberValue(jitem);
+    }
+    cJSON *jstatus = cJSON_GetObjectItem(jupdates, "status");
+    int ret = -1;
+    if (jstatus && cJSON_IsString(jstatus)) {
+        ret = todo_batch_update_status(ids, count, jstatus->valuestring);
+    }
+    free(ids);
+    cJSON_Delete(jbody);
+    if (ret == 0) {
+        cJSON *data = cJSON_CreateObject();
+        cJSON_AddNumberToObject(data, "affected", count);
+        send_success(client, data);
+    } else {
+        send_error(client, 9001, "批量更新失败");
+    }
+}
+
+static void handle_batch_delete(SOCKET client, const char *body) {
+    if (!body || !body[0]) { send_error(client, 1001, "请求体为空"); return; }
+    cJSON *jbody = cJSON_Parse(body);
+    if (!jbody) { send_error(client, 1002, "JSON 解析失败"); return; }
+    cJSON *jids = cJSON_GetObjectItem(jbody, "ids");
+    if (!jids || !cJSON_IsArray(jids)) {
+        cJSON_Delete(jbody);
+        send_error(client, 1001, "缺少 ids");
+        return;
+    }
+    int count = cJSON_GetArraySize(jids);
+    if (count > 100) count = 100;
+    int64_t *ids = (int64_t *)calloc(count, sizeof(int64_t));
+    for (int i = 0; i < count; i++) {
+        cJSON *jitem = cJSON_GetArrayItem(jids, i);
+        ids[i] = (int64_t)cJSON_GetNumberValue(jitem);
+    }
+    int ret = todo_batch_delete(ids, count);
+    free(ids);
+    cJSON_Delete(jbody);
+    if (ret == 0) {
+        cJSON *data = cJSON_CreateObject();
+        cJSON_AddNumberToObject(data, "affected", count);
+        send_success(client, data);
+    } else {
+        send_error(client, 9001, "批量删除失败");
+    }
+}
+
+/* ============================================================
+ * 导出 API
+ * ============================================================ */
+static void handle_export(SOCKET client, const char *query_str) {
+    char buf_format[16], buf_view_id[64], buf_status[64], buf_per_page[16];
+    get_query_param(query_str, "format", buf_format, sizeof(buf_format));
+    get_query_param(query_str, "view_id", buf_view_id, sizeof(buf_view_id));
+    get_query_param(query_str, "status", buf_status, sizeof(buf_status));
+    get_query_param(query_str, "per_page", buf_per_page, sizeof(buf_per_page));
+
+    todo_query_t query;
+    memset(&query, 0, sizeof(query));
+    query.status = buf_status[0] ? buf_status : NULL;
+    query.per_page = buf_per_page[0] ? atoi(buf_per_page) : 10000;
+    if (query.per_page > 100000) query.per_page = 100000;
+    if (buf_view_id[0]) query.view_id = atoll(buf_view_id);
+
+    todo_list_t result;
+    if (todo_list(&query, &result) != 0) {
+        send_error(client, 9001, "导出失败");
+        return;
+    }
+
+    char *body = NULL;
+    const char *content_type = NULL;
+    const char *ext = "json";
+
+    if (strcmp(buf_format, "csv") == 0) {
+        size_t capacity = 65536;
+        size_t len = 0;
+        body = (char *)malloc(capacity);
+        if (!body) { todo_list_free(&result); return; }
+        const char *header = "id,title,description,status,priority,due_date,group_id,labels,created_at,updated_at\n";
+        len = strlen(header);
+        memcpy(body, header, len);
+        for (int i = 0; i < result.count; i++) {
+            char line[4096];
+            char title_esc[1024], desc_esc[1024];
+            snprintf(title_esc, sizeof(title_esc), "\"%s\"", result.items[i].title);
+            snprintf(desc_esc, sizeof(desc_esc), "\"%s\"", result.items[i].description);
+            int line_len = snprintf(line, sizeof(line),
+                "%lld,%s,%s,%s,%d,%lld,%lld,\"%s\",%lld,%lld\n",
+                (long long)result.items[i].id, title_esc, desc_esc,
+                result.items[i].status, result.items[i].priority,
+                (long long)result.items[i].due_date, (long long)result.items[i].group_id,
+                result.items[i].labels,
+                (long long)result.items[i].created_at, (long long)result.items[i].updated_at);
+            if (len + line_len >= capacity) {
+                capacity *= 2;
+                char *new_body = (char *)realloc(body, capacity);
+                if (!new_body) { free(body); todo_list_free(&result); return; }
+                body = new_body;
+            }
+            memcpy(body + len, line, line_len);
+            len += line_len;
+        }
+        body[len] = '\0';
+        content_type = "text/csv; charset=utf-8";
+        ext = "csv";
+    } else {
+        cJSON *jitems = cJSON_CreateArray();
+        for (int i = 0; i < result.count; i++)
+            cJSON_AddItemToArray(jitems, todo_to_json(&result.items[i]));
+        cJSON *jdata = cJSON_CreateObject();
+        cJSON_AddItemToObject(jdata, "items", jitems);
+        cJSON_AddNumberToObject(jdata, "total", result.total);
+        body = cJSON_PrintUnformatted(jdata);
+        cJSON_Delete(jdata);
+        content_type = "application/json; charset=utf-8";
+        ext = "json";
+    }
+
+    todo_list_free(&result);
+
+    if (!body) { send_error(client, 9001, "导出生成失败"); return; }
+
+    char resp_header[4096];
+    int hlen = snprintf(resp_header, sizeof(resp_header),
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: %s\r\n"
+        "Content-Length: %zu\r\n"
+        "Content-Disposition: attachment; filename=\"todo_export.%s\"\r\n"
+        "Connection: close\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "\r\n",
+        content_type, strlen(body), ext);
+    send(client, resp_header, hlen, 0);
+    send(client, body, (int)strlen(body), 0);
+    free(body);
+}
+
 /* PATCH /api/todos/:id/fields — 批量更新扩展字段值 */
 static void handle_todo_fields_update(SOCKET client, int64_t todo_id, const char *body) {
     todo_t todo;
@@ -1705,6 +1901,16 @@ static void handle_request(SOCKET client, const char *request) {
         handle_create(client, body);
         handled = 1;
     }
+    /* POST /api/todos/batch-update */
+    else if (strcmp(path, "/api/todos/batch-update") == 0 && strcmp(method, "POST") == 0) {
+        handle_batch_update(client, body);
+        handled = 1;
+    }
+    /* POST /api/todos/batch-delete */
+    else if (strcmp(path, "/api/todos/batch-delete") == 0 && strcmp(method, "POST") == 0) {
+        handle_batch_delete(client, body);
+        handled = 1;
+    }
     /* GET /api/todos/stats */
     else if (strcmp(path, "/api/todos/stats") == 0 && strcmp(method, "GET") == 0) {
         handle_stats(client);
@@ -1898,6 +2104,12 @@ static void handle_request(SOCKET client, const char *request) {
         }
     }
 
+    /* GET /api/export */
+    else if (strcmp(path, "/api/export") == 0 && strcmp(method, "GET") == 0) {
+        handle_export(client, query);
+        handled = 1;
+    }
+
     /* 分组路由 */
     /* GET /api/groups */
     else if (strcmp(path, "/api/groups") == 0) {
@@ -2006,6 +2218,14 @@ static void handle_request(SOCKET client, const char *request) {
             snprintf(expect, sizeof(expect), "/api/views/%lld/sort", (long long)id_a);
             if (strcmp(path, expect) == 0 && strcmp(method, "PATCH") == 0) {
                 handle_views_sort(client, id_a, body);
+                handled = 1;
+            }
+        }
+        /* PATCH /api/views/:id/config */
+        else if (sscanf(path, "/api/views/%lld/config", (long long *)&id_a) == 1) {
+            snprintf(expect, sizeof(expect), "/api/views/%lld/config", (long long)id_a);
+            if (strcmp(path, expect) == 0 && strcmp(method, "PATCH") == 0) {
+                handle_view_config_update(client, id_a, body);
                 handled = 1;
             }
         }
