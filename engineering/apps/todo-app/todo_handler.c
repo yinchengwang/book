@@ -2016,6 +2016,25 @@ static void handle_request(SOCKET client, const char *request) {
                 }
             }
         }
+        /* GET /api/todos/:id/checklist — 获取 checklist */
+        else if (sscanf(path, "/api/todos/%lld/checklist", (long long *)&id_a) == 1) {
+            char expect_check[128];
+            snprintf(expect_check, sizeof(expect_check), "/api/todos/%lld/checklist", (long long)id_a);
+            if (strcmp(path, expect_check) == 0 && strcmp(method, "GET") == 0) {
+                checklist_item_t *items = NULL;
+                int count = 0;
+                if (checklist_list(id_a, &items, &count) == 0) {
+                    cJSON *jarr = cJSON_CreateArray();
+                    for (int i = 0; i < count; i++)
+                        cJSON_AddItemToArray(jarr, checklist_to_json(&items[i]));
+                    checklist_list_free(items, count);
+                    send_success(client, jarr);
+                } else {
+                    send_success(client, cJSON_CreateArray());
+                }
+                handled = 1;
+            }
+        }
     }
 
     /* 任务系统路由 */

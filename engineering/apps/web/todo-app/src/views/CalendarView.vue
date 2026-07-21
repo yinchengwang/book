@@ -237,6 +237,7 @@ async function onCreateTask(payload) {
 function onTaskDragStart(e, task) {
   draggedTask.value = task
   e.dataTransfer.effectAllowed = 'move'
+  e.dataTransfer.setData('text/plain', String(task.id))
 }
 
 async function onDayDrop(e, date) {
@@ -247,6 +248,11 @@ async function onDayDrop(e, date) {
   await api.update(task.id, { due_date: ts })
   showToast('已调整日期')
   await loadMonth()
+}
+
+// 每周视图也增加拖拽
+async function onWeekDrop(e, date) {
+  await onDayDrop(e, date)
 }
 
 async function onHourDrop(e, date, hour) {

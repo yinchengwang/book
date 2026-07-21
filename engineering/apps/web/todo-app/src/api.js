@@ -16,6 +16,7 @@ const api = {
   addChecklist: (id, text) => fetch(`${BASE}/todos/${id}/checklist`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) }).then(r => r.json()),
   toggleChecklist: (id, itemId) => fetch(`${BASE}/todos/${id}/checklist/${itemId}`, { method: 'PATCH' }).then(r => r.json()),
   removeChecklist: (id, itemId) => fetch(`${BASE}/todos/${id}/checklist/${itemId}`, { method: 'DELETE' }).then(r => r.json()),
+  listChecklist: (id) => fetch(`${BASE}/todos/${id}/checklist`).then(r => r.json()),
 
   /* 评论 */
   listComments: (id) => fetch(`${BASE}/todos/${id}/comments`).then(r => r.json()),
