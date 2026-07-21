@@ -203,6 +203,13 @@ add_executable(test_double_write double_write_test.cpp)
 target_link_libraries(test_double_write db_storage project_includes gtest gtest_main)
 add_test(NAME test_double_write COMMAND test_double_write)
 
+# 两阶段提交 2PC 测试（W5.1）
+add_executable(test_twophase twophase_test.cpp)
+target_link_libraries(test_twophase db_storage project_includes gtest gtest_main)
+add_test(NAME test_twophase COMMAND test_twophase)
+
+# 所有 Storage 测试汇总
+
 # 所有 Storage 测试汇总
 add_custom_target(test_storage_all
     COMMAND test_btree

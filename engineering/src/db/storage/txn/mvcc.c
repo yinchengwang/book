@@ -140,6 +140,14 @@ TransactionId mvcc_get_xid_horizon(void)
  * ======================================================================== */
 
 /**
+ * @brief 标记事务为已预提交
+ */
+void mvcc_mark_prepared(TransactionId xid)
+{
+    clog_set_status(xid, CLOG_STATUS_PREPARED);
+}
+
+/**
  * @brief 标记事务为已提交
  */
 void mvcc_mark_committed(TransactionId xid)
@@ -168,8 +176,7 @@ transaction_status_t mvcc_get_status(TransactionId xid)
         case CLOG_STATUS_ABORTED:
             return TRANSACTION_STATUS_ABORTED;
         case CLOG_STATUS_PREPARED:
-            /* 简化：PREPARED 视为进行中 */
-            return TRANSACTION_STATUS_IN_PROGRESS;
+            return TRANSACTION_STATUS_PREPARED;
         default:
             return TRANSACTION_STATUS_IN_PROGRESS;
     }

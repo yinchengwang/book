@@ -70,7 +70,8 @@ typedef enum {
 typedef enum {
     TRANSACTION_STATUS_IN_PROGRESS = 0,   /**< 进行中 */
     TRANSACTION_STATUS_COMMITTED = 1,      /**< 已提交 */
-    TRANSACTION_STATUS_ABORTED = 2        /**< 已回滚 */
+    TRANSACTION_STATUS_ABORTED = 2,        /**< 已回滚 */
+    TRANSACTION_STATUS_PREPARED = 3        /**< 已预提交（两阶段提交） */
 } transaction_status_t;
 
 /** 元组 xmin/xmax 状态 */
@@ -160,6 +161,12 @@ void mvcc_mark_committed(TransactionId xid);
  * @param xid 事务 ID
  */
 void mvcc_mark_aborted(TransactionId xid);
+
+/**
+ * @brief 标记事务为已预提交（两阶段提交 PREPARE）
+ * @param xid 事务 ID
+ */
+void mvcc_mark_prepared(TransactionId xid);
 
 /**
  * @brief 获取事务状态

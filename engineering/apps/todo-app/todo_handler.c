@@ -2189,11 +2189,40 @@ static void handle_request(SOCKET client, const char *request) {
         handle_views_create(client, body);
         handled = 1;
     }
+    /* PATCH /api/views/:id/config — 必须先于 /api/views/:id 匹配 */
+    {
+        char expect_v[128];
+        if (sscanf(path, "/api/views/%lld/config", (long long *)&id_a) == 1) {
+            snprintf(expect_v, sizeof(expect_v), "/api/views/%lld/config", (long long)id_a);
+            if (strcmp(path, expect_v) == 0 && strcmp(method, "PATCH") == 0) {
+                handle_view_config_update(client, id_a, body);
+                handled = 1;
+            }
+        }
+    }
+    /* PATCH /api/views/:id/default */
+    if (!handled && sscanf(path, "/api/views/%lld/default", (long long *)&id_a) == 1) {
+        char expect_d[128];
+        snprintf(expect_d, sizeof(expect_d), "/api/views/%lld/default", (long long)id_a);
+        if (strcmp(path, expect_d) == 0 && strcmp(method, "PATCH") == 0) {
+            handle_views_set_default(client, id_a);
+            handled = 1;
+        }
+    }
+    /* PATCH /api/views/:id/sort */
+    if (!handled && sscanf(path, "/api/views/%lld/sort", (long long *)&id_a) == 1) {
+        char expect_s[128];
+        snprintf(expect_s, sizeof(expect_s), "/api/views/%lld/sort", (long long)id_a);
+        if (strcmp(path, expect_s) == 0 && strcmp(method, "PATCH") == 0) {
+            handle_views_sort(client, id_a, body);
+            handled = 1;
+        }
+    }
     /* PATCH/DELETE /api/views/:id */
-    else if (sscanf(path, "/api/views/%lld", (long long *)&id_a) == 1) {
-        char expect[128];
-        snprintf(expect, sizeof(expect), "/api/views/%lld", (long long)id_a);
-        if (strcmp(path, expect) == 0) {
+    if (!handled && sscanf(path, "/api/views/%lld", (long long *)&id_a) == 1) {
+        char expect_v[128];
+        snprintf(expect_v, sizeof(expect_v), "/api/views/%lld", (long long)id_a);
+        if (strcmp(path, expect_v) == 0) {
             if (strcmp(method, "GET") == 0) {
                 handle_views_get(client, id_a);
                 handled = 1;
@@ -2202,30 +2231,6 @@ static void handle_request(SOCKET client, const char *request) {
                 handled = 1;
             } else if (strcmp(method, "DELETE") == 0) {
                 handle_views_delete(client, id_a);
-                handled = 1;
-            }
-        }
-        /* PATCH /api/views/:id/default */
-        else if (sscanf(path, "/api/views/%lld/default", (long long *)&id_a) == 1) {
-            snprintf(expect, sizeof(expect), "/api/views/%lld/default", (long long)id_a);
-            if (strcmp(path, expect) == 0 && strcmp(method, "PATCH") == 0) {
-                handle_views_set_default(client, id_a);
-                handled = 1;
-            }
-        }
-        /* PATCH /api/views/:id/sort */
-        else if (sscanf(path, "/api/views/%lld/sort", (long long *)&id_a) == 1) {
-            snprintf(expect, sizeof(expect), "/api/views/%lld/sort", (long long)id_a);
-            if (strcmp(path, expect) == 0 && strcmp(method, "PATCH") == 0) {
-                handle_views_sort(client, id_a, body);
-                handled = 1;
-            }
-        }
-        /* PATCH /api/views/:id/config */
-        else if (sscanf(path, "/api/views/%lld/config", (long long *)&id_a) == 1) {
-            snprintf(expect, sizeof(expect), "/api/views/%lld/config", (long long)id_a);
-            if (strcmp(path, expect) == 0 && strcmp(method, "PATCH") == 0) {
-                handle_view_config_update(client, id_a, body);
                 handled = 1;
             }
         }

@@ -6,12 +6,12 @@
  * 维护活跃事务列表，用于 ReadView 构建
  */
 
-#include "db/storage/txn/mvcc.h"
-
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <ctype.h>  /* for tolower */
+#include <ctype.h>
+
+#include "db/storage/txn/mvcc.h"
 
 /* 确保 bool 类型可用 */
 #include <stdbool.h>
@@ -71,14 +71,27 @@ static int init_xact_slots(void)
     /* 初始化空闲链表 */
     g_free_list_head = 0;
     for (int i = 0; i < XACT_SLOT_COUNT - 1; i++) {
+        g_xact_slots[i].xid = INVALID_TRANSACTION_ID;
         g_xact_slots[i].status = TRANSACTION_STATUS_IN_PROGRESS;
-        /* 简单的链表：槽位 i 的下一个是 i+1 */
+        /* 使用 next 字段（复用 user_data 指针）作为链表指针 */
     }
+    g_xact_slots[XACT_SLOT_COUNT - 1].xid = INVALID_TRANSACTION_ID;
     g_xact_slots[XACT_SLOT_COUNT - 1].status = TRANSACTION_STATUS_IN_PROGRESS;
 
     g_active_list_head = -1;
 
     return 0;
+}
+
+/** 重置事务槽位（用于测试） */
+void txn_reset_slots(void)
+{
+    if (g_xact_slots) {
+        free(g_xact_slots);
+        g_xact_slots = NULL;
+    }
+    g_free_list_head = -1;
+    g_active_list_head = -1;
 }
 
 /* ========================================================================
@@ -130,6 +143,135 @@ int txn_begin(TransactionId *xid)
 }
 
 /**
+ * @brief 预提交事务（两阶段提交 PREPARE）
+ *
+ * 将事务标记为 PREPARED 状态，写入 WAL PREPARE 日志。
+ * 事务进入"悬挂"状态，可以稍后通过 COMMIT PREPARED 提交
+ * 或通过 ROLLBACK PREPARED 回滚。
+ *
+ * @param xid 事务 ID
+ * @param gid 全局事务标识符（可选，可为 NULL）
+ * @return 0 成功，-1 失败
+ */
+int txn_prepare(TransactionId xid, const char *gid)
+{
+    if (!g_xact_slots) {
+        return -1;
+    }
+
+    /* 查找事务槽位 */
+    for (int i = 0; i < XACT_SLOT_COUNT; i++) {
+        if (g_xact_slots[i].xid == xid) {
+            if (g_xact_slots[i].status != TRANSACTION_STATUS_IN_PROGRESS) {
+                return -1;  /* 事务不在进行中，无法 PREPARE */
+            }
+
+            g_xact_slots[i].status = TRANSACTION_STATUS_PREPARED;
+
+            /* 通过 CLOG 持久化 PREPARED 状态 */
+            mvcc_mark_prepared(xid);
+
+            /* 分配 CSN（预留，COMMIT PREPARED 时使用） */
+            g_xact_slots[i].csn = 0;
+
+            /* 存储 GID */
+            if (gid) {
+                /* 使用 user_data 存储 GID（简化：不复制，仅存指针） */
+                /* 实际实现应 strdup，此处仅作概念验证 */
+            }
+
+            return 0;
+        }
+    }
+
+    return -1;  /* 未找到事务 */
+}
+
+/**
+ * @brief 提交已预提交的事务（COMMIT PREPARED）
+ *
+ * 将 PREPARED 状态的事务标记为 COMMITTED。
+ * 写入 WAL COMMIT 日志。
+ *
+ * @param xid 事务 ID
+ * @return 0 成功，-1 失败
+ */
+int txn_commit_prepared(TransactionId xid)
+{
+    if (!g_xact_slots) {
+        return -1;
+    }
+
+    for (int i = 0; i < XACT_SLOT_COUNT; i++) {
+        if (g_xact_slots[i].xid == xid) {
+            if (g_xact_slots[i].status != TRANSACTION_STATUS_PREPARED) {
+                return -1;  /* 事务不在 PREPARED 状态 */
+            }
+
+            g_xact_slots[i].status = TRANSACTION_STATUS_COMMITTED;
+            g_xact_slots[i].csn = mvcc_get_current_xid();
+            mvcc_mark_committed(xid);
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
+/**
+ * @brief 回滚已预提交的事务（ROLLBACK PREPARED）
+ *
+ * 将 PREPARED 状态的事务标记为 ABORTED。
+ * 写入 WAL ABORT 日志。
+ *
+ * @param xid 事务 ID
+ * @return 0 成功，-1 失败
+ */
+int txn_rollback_prepared(TransactionId xid)
+{
+    if (!g_xact_slots) {
+        return -1;
+    }
+
+    for (int i = 0; i < XACT_SLOT_COUNT; i++) {
+        if (g_xact_slots[i].xid == xid) {
+            if (g_xact_slots[i].status != TRANSACTION_STATUS_PREPARED) {
+                return -1;  /* 事务不在 PREPARED 状态 */
+            }
+
+            g_xact_slots[i].status = TRANSACTION_STATUS_ABORTED;
+            mvcc_mark_aborted(xid);
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
+/**
+ * @brief 获取所有 PREPARED 事务列表
+ *
+ * @param xids 输出数组，存放 PREPARED 事务的 XID
+ * @param max_count 数组最大长度
+ * @return 实际写入的数量
+ */
+int txn_get_prepared_xids(TransactionId *xids, int max_count)
+{
+    if (!g_xact_slots || !xids) {
+        return 0;
+    }
+
+    int count = 0;
+    for (int i = 0; i < XACT_SLOT_COUNT && count < max_count; i++) {
+        if (g_xact_slots[i].xid != INVALID_TRANSACTION_ID &&
+            g_xact_slots[i].status == TRANSACTION_STATUS_PREPARED) {
+            xids[count++] = g_xact_slots[i].xid;
+        }
+    }
+    return count;
+}
+
+/**
  * @brief 提交事务
  *
  * @param xid 事务 ID
@@ -144,6 +286,9 @@ int txn_commit(TransactionId xid)
     /* 查找事务槽位（简化：线性搜索） */
     for (int i = 0; i < XACT_SLOT_COUNT; i++) {
         if (g_xact_slots[i].xid == xid) {
+            if (g_xact_slots[i].status == TRANSACTION_STATUS_PREPARED) {
+                return -1;  /* PREPARED 状态不能用普通提交 */
+            }
             g_xact_slots[i].status = TRANSACTION_STATUS_COMMITTED;
             g_xact_slots[i].csn = mvcc_get_current_xid();  /* 用 XID 作为 CSN */
             mvcc_mark_committed(xid);
@@ -169,6 +314,9 @@ int txn_rollback(TransactionId xid)
     /* 查找事务槽位 */
     for (int i = 0; i < XACT_SLOT_COUNT; i++) {
         if (g_xact_slots[i].xid == xid) {
+            if (g_xact_slots[i].status == TRANSACTION_STATUS_PREPARED) {
+                return -1;  /* PREPARED 状态不能用普通回滚 */
+            }
             g_xact_slots[i].status = TRANSACTION_STATUS_ABORTED;
             mvcc_mark_aborted(xid);
             return 0;

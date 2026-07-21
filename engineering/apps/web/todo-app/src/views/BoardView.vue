@@ -101,44 +101,6 @@ const columns = computed(() => {
   return [{ key: 'all', name: '全部', todos: todos.value.filter(t => t.status === 'open') }]
 })
 
-// 修复：columnsMap 应该在 computed 内部
-const columnsFixed = computed(() => {
-  const fid = groupFieldId.value
-  let result = []
-
-  if (fid === 3) {
-    result = [
-      { key: 'open', name: '📋 待办', todos: [] },
-      { key: 'closed', name: '✅ 已完成', todos: [] },
-      { key: 'archived', name: '📦 已归档', todos: [] },
-    ]
-  } else if (fid === 4) {
-    result = PRIORITY_NAMES.map((name, i) => ({ key: i, name, todos: [] }))
-  } else if (fid === 7) {
-    result = [{ key: 0, name: '未分组', todos: [] }]
-    groups.value.forEach(g => result.push({ key: g.id, name: g.name, todos: [] }))
-  } else {
-    result = [{ key: 'all', name: '全部', todos: [] }]
-  }
-
-  for (const todo of todos.value) {
-    let key
-    if (fid === 3) key = todo.status
-    else if (fid === 4) key = todo.priority
-    else if (fid === 7) key = todo.group_id
-    else if (fid >= 10) key = todo.fields?.[fid] || '_none_'
-    else key = 'all'
-
-    const col = result.find(c => String(c.key) === String(key))
-    if (col) col.todos.push(todo)
-    else result[0].todos.push(todo)
-  }
-
-  return result
-})
-
-const columns = computed(() => columnsFixed.value)
-
 async function loadData() {
   const r = await api.list({ status: 'all', per_page: 1000 })
   if (r.code === 0) todos.value = r.data.items

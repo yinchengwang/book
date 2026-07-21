@@ -504,6 +504,11 @@ uint64_t wal_write_delete(wal_t *wal, uint32_t txn_id,
                             key, key_len, old_value, old_len);
 }
 
+uint64_t wal_write_prepare(wal_t *wal, uint32_t txn_id) {
+    uint32_t prev_lsn = (uint32_t)(wal->current_lsn > 0 ? wal->current_lsn - 1 : 0);
+    return wal_write_record(wal, WAL_LOG_PREPARE, txn_id, prev_lsn, NULL, 0, NULL, 0);
+}
+
 uint64_t wal_write_commit(wal_t *wal, uint32_t txn_id) {
     uint32_t prev_lsn = (uint32_t)(wal->current_lsn > 0 ? wal->current_lsn - 1 : 0);
     return wal_write_record(wal, WAL_LOG_COMMIT, txn_id, prev_lsn, NULL, 0, NULL, 0);

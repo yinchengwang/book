@@ -81,7 +81,8 @@ typedef enum wal_log_type_e {
     WAL_LOG_COMMIT = 4,   /**< 事务提交 */
     WAL_LOG_ABORT = 5,    /**< 事务回滚 */
     WAL_LOG_CHECKPOINT = 6, /**< 检查点 */
-    WAL_LOG_BEGIN = 7     /**< 事务开始 */
+    WAL_LOG_BEGIN = 7,    /**< 事务开始 */
+    WAL_LOG_PREPARE = 8   /**< 两阶段提交 PREPARE */
 } wal_log_type_t;
 
 /* ============================================================
@@ -221,6 +222,14 @@ uint64_t wal_write_update(wal_t *wal, uint32_t txn_id,
 uint64_t wal_write_delete(wal_t *wal, uint32_t txn_id,
                           const void *key, size_t key_len,
                           const void *old_value, size_t old_len);
+
+/**
+ * @brief 写入事务预提交日志（两阶段提交 PREPARE）
+ * @param wal WAL 句柄
+ * @param txn_id 事务ID
+ * @return LSN，失败返回 0
+ */
+uint64_t wal_write_prepare(wal_t *wal, uint32_t txn_id);
 
 /**
  * @brief 写入事务提交日志
