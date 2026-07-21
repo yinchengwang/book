@@ -18,10 +18,12 @@
       <div class="days-grid">
         <div v-for="(day, idx) in monthDays" :key="idx"
              :class="['day-cell', { today: day.isToday, 'other-month': !day.isCurrentMonth, 'has-task': day.tasks.length > 0, 'weekend': day.isWeekend }]"
-             @click="selectDay(day.date)">
+             @dragover.prevent @drop="onDayDrop($event, day.date)">
           <span class="day-number">{{ day.dayNum }}</span>
+          <div class="day-add-btn" @click.stop="createTask(day.date)">+</div>
           <div class="day-tasks">
             <div v-for="task in day.tasks.slice(0, 3)" :key="task.id" class="mini-task"
+                 draggable="true" @dragstart="onTaskDragStart($event, task)"
                  :style="{ borderLeftColor: priorityColor(task.priority) }">
               ☐ {{ task.title }}
             </div>
@@ -36,13 +38,16 @@
       </div>
       <div class="week-grid">
         <div v-for="(day, idx) in weekDays" :key="idx" class="week-day-cell"
-             :class="{ today: day.isToday, weekend: day.isWeekend }">
+             :class="{ today: day.isToday, weekend: day.isWeekend }"
+             @dragover.prevent @drop="onDayDrop($event, day.date)">
           <div class="week-day-header">
             <span class="week-day-num">{{ day.dayNum }}</span>
             <span class="week-day-name">{{ ['日','一','二','三','四','五','六'][new Date(day.date).getDay()] }}</span>
           </div>
+          <div class="week-add-btn" @click.stop="createTask(day.date)">+</div>
           <div class="week-tasks">
             <div v-for="task in day.tasks" :key="task.id" class="mini-task"
+                 draggable="true" @dragstart="onTaskDragStart($event, task)"
                  :style="{ borderLeftColor: priorityColor(task.priority) }">
               ☐ {{ task.title }}
             </div>
@@ -54,31 +59,36 @@
       <div class="day-header">
         <h3>{{ formatDateLong(selectedDate) }}</h3>
       </div>
-      <div class="day-tasks-list">
-        <div v-for="task in dayTasks" :key="task.id" class="day-task-item"
-             :style="{ borderLeftColor: priorityColor(task.priority) }">
-          <div class="task-priority-dot" :style="{ background: priorityColor(task.priority) }"></div>
-          <div class="task-content">
-            <div class="task-title">{{ task.title }}</div>
-            <div class="task-meta" v-if="task.description">{{ task.description }}</div>
+      <div class="day-timeline">
+        <div v-for="hour in 24" :key="hour" class="hour-row">
+          <div class="hour-label">{{ String(hour).padStart(2, '0') }}:00</div>
+          <div class="hour-content" @dragover.prevent @drop="onHourDrop($event, selectedDate, hour)">
+            <div v-for="task in tasksAtHour(selectedDate, hour)" :key="task.id" class="hour-task">
+              <span class="task-priority-dot" :style="{ background: priorityColor(task.priority) }"></span>
+              {{ task.title }}
+            </div>
           </div>
         </div>
-        <div v-if="dayTasks.length === 0" class="empty-tasks">今天没有任务</div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, inject } from 'vue'
 import api from '../api.js'
 import ViewSelector from '../components/ViewSelector.vue'
+import CreateDialog from '../components/CreateDialog.vue'
 
+const showToast = inject('showToast')
 const view = ref('month')
 const currentDate = ref(new Date())
 const tasksByDate = ref({})
 const selectedDate = ref(new Date())
 const currentView = ref(null)
+const showCreate = ref(false)
+const createDate = ref(null)
+const draggedTask = ref(null)
 
 function onViewChanged(view) {
   currentView.value = view
@@ -169,6 +179,69 @@ function priorityColor(p) {
 function formatDateLong(date) {
   if (!date) return ''
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
+}
+
+function createTask(date) {
+  createDate.value = date
+  showCreate.value = true
+}
+
+async function onCreateTask(payload) {
+  const { body, fields } = payload
+  if (createDate.value) {
+    body.due_date = Math.floor(createDate.value.getTime() / 1000)
+  }
+  const r = await api.create(body)
+  if (r.code === 0) {
+    if (fields && Object.keys(fields).length > 0) {
+      await api.updateTodoFields(r.data.id, fields)
+    }
+    showToast('已创建')
+    await loadMonth()
+  } else {
+    showToast(r.msg || '创建失败', 'error')
+  }
+  showCreate.value = false
+  createDate.value = null
+}
+
+/* 拖拽 */
+function onTaskDragStart(e, task) {
+  draggedTask.value = task
+  e.dataTransfer.effectAllowed = 'move'
+}
+
+async function onDayDrop(e, date) {
+  if (!draggedTask.value || !date) return
+  const task = draggedTask.value
+  draggedTask.value = null
+  const ts = Math.floor(date.getTime() / 1000)
+  await api.update(task.id, { due_date: ts })
+  showToast('已调整日期')
+  await loadMonth()
+}
+
+async function onHourDrop(e, date, hour) {
+  if (!draggedTask.value || !date) return
+  const task = draggedTask.value
+  draggedTask.value = null
+  const d = new Date(date)
+  d.setHours(hour, 0, 0, 0)
+  const ts = Math.floor(d.getTime() / 1000)
+  await api.update(task.id, { due_date: ts })
+  showToast('已调整日期')
+  await loadMonth()
+}
+
+function tasksAtHour(date, hour) {
+  if (!date) return []
+  const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+  const tasks = tasksByDate.value[dateKey] || []
+  return tasks.filter(t => {
+    if (!t.due_date) return false
+    const d = new Date(t.due_date * 1000)
+    return d.getHours() === hour
+  })
 }
 
 onMounted(loadMonth)
