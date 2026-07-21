@@ -352,6 +352,15 @@ int field_value_set(int64_t todo_id, int64_t field_id, const char *value) {
     sqlite3 *db = todo_db_handle();
     if (!db) return -1;
 
+    /* 校验字段值类型 */
+    if (value && value[0]) {
+        if (field_value_validate(field_id, value) != 0) {
+            fprintf(stderr, "[field] 字段 %lld 值校验失败: %s\n",
+                    (long long)field_id, value);
+            return -1;
+        }
+    }
+
     const char *sql = "INSERT OR REPLACE INTO field_values (todo_id, field_id, value) "
                       "VALUES (?, ?, ?)";
 

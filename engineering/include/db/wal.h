@@ -66,7 +66,19 @@ extern "C" {
 /** 最大日志文件大小 (64MB) */
 #define WAL_MAX_FILE_SIZE (64 * 1024 * 1024)
 
-/** 默认 WAL 缓冲区大小 (1MB) */
+/** 默认 WAL 段大小 (16MB) */
+#define WAL_SEGMENT_SIZE (16 * 1024 * 1024)
+
+/** WAL 段目录名 */
+#define WAL_SEGMENT_DIR "pg_wal"
+
+/** WAL 段文件名格式：<timeline>_<segno> */
+#define WAL_SEGMENT_NAME_FORMAT "%08X_%08X"
+
+/** 默认时间线 ID */
+#define WAL_DEFAULT_TIMELINE 1
+
+/** 默认缓冲区大小 (1MB) */
 #define WAL_BUFFER_SIZE (1024 * 1024)
 
 /* ============================================================
@@ -257,8 +269,64 @@ uint64_t wal_write_abort(wal_t *wal, uint32_t txn_id);
 uint64_t wal_write_checkpoint(wal_t *wal, const uint32_t *dirty_pages, size_t num_pages);
 
 /* ============================================================
- * 恢复 API
+ * WAL 段文件管理 API
  * ============================================================ */
+
+/**
+ * @brief 设置 WAL 段目录
+ * @param wal WAL 句柄
+ * @param dir 段目录路径（如 "pg_wal"）
+ * @return 0 成功，-1 失败
+ */
+int wal_set_segment_dir(wal_t *wal, const char *dir);
+
+/**
+ * @brief 获取当前段文件路径
+ * @param wal WAL 句柄
+ * @return 段文件路径，NULL 表示无活动段
+ */
+const char *wal_current_segment_path(wal_t *wal);
+
+/**
+ * @brief 获取当前段序号
+ * @param wal WAL 句柄
+ * @return 段序号
+ */
+uint32_t wal_current_segment_no(wal_t *wal);
+
+/**
+ * @brief 强制切换 WAL 段文件
+ *
+ * 关闭当前段，创建新段，写入头部。
+ *
+ * @param wal WAL 句柄
+ * @return 0 成功，-1 失败
+ */
+int wal_switch_segment(wal_t *wal);
+
+/**
+ * @brief 获取指定 LSN 对应的段文件路径
+ * @param wal WAL 句柄
+ * @param lsn LSN
+ * @return 段文件路径，需要调用 free 释放
+ */
+char *wal_segment_path_for_lsn(wal_t *wal, uint64_t lsn);
+
+/**
+ * @brief 列出所有 WAL 段文件
+ * @param wal WAL 句柄
+ * @param segments 输出：段文件路径数组，需要调用 wal_free_segment_list 释放
+ * @param count 输出：段文件数量
+ * @return 0 成功，-1 失败
+ */
+int wal_list_segments(wal_t *wal, char ***segments, int *count);
+
+/**
+ * @brief 释放段文件列表
+ * @param segments 段文件路径数组
+ * @param count 数组长度
+ */
+void wal_free_segment_list(char **segments, int count);
 
 /**
  * @brief 恢复状态（用于崩溃恢复）

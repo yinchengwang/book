@@ -378,7 +378,7 @@ static void append_filter_sql_inline(const filter_rule_t *rule, char *where, siz
 static void append_sort_sql_inline(const sort_rule_t *rules, int count, char *order_by, size_t order_by_size) {
     for (int i = 0; i < count; i++) {
         const char *dir = (strcmp(rules[i].direction, "desc") == 0) ? "DESC" : "ASC";
-        char buf[128];
+        char buf[256];
 
         if (rules[i].field_id <= 9) {
             const char *col = NULL;
@@ -400,7 +400,7 @@ static void append_sort_sql_inline(const sort_rule_t *rules, int count, char *or
             field_def_t fdef;
             if (field_def_get(rules[i].field_id, &fdef) == 0) {
                 if (fdef.type == FIELD_TYPE_NUMBER) {
-                    snprintf(buf, sizeof(buf), "%s (SELECT CAST(value AS REAL) FROM field_values fv WHERE fv.todo_id = todos.id AND fv.field_id = %lld) %s",
+                    snprintf(buf, sizeof(buf), "%s CAST((SELECT value FROM field_values fv WHERE fv.todo_id = todos.id AND fv.field_id = %lld) AS REAL) %s",
                              i > 0 ? "," : " ORDER BY",
                              (long long)rules[i].field_id, dir);
                 } else {

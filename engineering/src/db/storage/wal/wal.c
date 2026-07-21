@@ -66,6 +66,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <sys/stat.h>
+#include <dirent.h>
 
 /* ============================================================
  * 内部数据结构
@@ -82,8 +84,14 @@ typedef struct wal_file_header_s {
 
 /** WAL 内部结构 */
 struct wal_s {
-    db_file_t *file;          /**< WAL 文件 */
-    char        *path;          /**< WAL 文件路径 */
+    db_file_t *file;          /**< 当前段文件 */
+    char        *path;          /**< WAL 段目录路径 */
+    char        *current_path;  /**< 当前段文件完整路径 */
+
+    /* 段管理 */
+    uint32_t    timeline_id;    /**< 时间线 ID */
+    uint32_t    segment_no;     /**< 当前段序号 */
+    uint64_t    segment_offset; /**< 当前段内的写入偏移（不含头） */
 
     /* 状态 */
     uint32_t    page_size;      /**< 数据库页面大小 */
@@ -123,6 +131,96 @@ static void wal_set_error(wal_t *wal, const char *msg) {
 static uint32_t wal_calc_checksum(const void *data, size_t len) {
     const uint8_t *p = (const uint8_t *)data;
     uint32_t crc = 0xFFFFFFFF;
+
+    for (size_t i = 0; i < len; i++) {
+        crc ^= p[i];
+        for (int j = 0; j < 8; j++) {
+            if (crc & 1) {
+                crc = (crc >> 1) ^ 0xEDB88320;
+            } else {
+                crc >>= 1;
+            }
+        }
+    }
+
+    return ~crc;
+}
+
+#ifdef _WIN32
+#define PATH_SEP "\\"
+#else
+#define PATH_SEP "/"
+#endif
+
+/** 构造段文件名 */
+static int wal_build_segment_path(wal_t *wal, uint32_t segno, char *buf, size_t bufsize) {
+    if (!wal || !buf) return -1;
+    const char *dir = wal->path ? wal->path : ".";
+    snprintf(buf, bufsize, "%s" PATH_SEP WAL_SEGMENT_NAME_FORMAT,
+             dir, wal->timeline_id, segno);
+    return 0;
+}
+
+/** 检查段文件是否需要切换（超过段大小限制） */
+static bool wal_need_switch_segment(const wal_t *wal) {
+    if (!wal) return false;
+    uint64_t written = wal->segment_offset + wal->buffer_used;
+    return written >= WAL_SEGMENT_SIZE;
+}
+
+/** 写入段文件头部 */
+static int wal_write_segment_header(wal_t *wal) {
+    wal_file_header_t header;
+    memset(&header, 0, sizeof(header));
+    header.magic = WAL_MAGIC;
+    header.version = WAL_VERSION;
+    header.page_size = wal->page_size;
+    header.checksum = wal_calc_checksum(&header, offsetof(wal_file_header_t, checksum));
+
+    if (disk_pwrite(wal->file, 0, &header, sizeof(header)) != sizeof(header)) {
+        return -1;
+    }
+    return 0;
+}
+
+/** 打开新段文件 */
+static int wal_open_segment_file(wal_t *wal, uint32_t segno, bool create) {
+    if (wal->file) {
+        disk_close(wal->file);
+        wal->file = NULL;
+    }
+
+    char seg_path[512];
+    if (wal_build_segment_path(wal, segno, seg_path, sizeof(seg_path)) != 0) {
+        return -1;
+    }
+
+    if (wal->current_path) free(wal->current_path);
+    wal->current_path = strdup(seg_path);
+
+    if (create) {
+        wal->file = disk_open(seg_path, wal->page_size);
+        if (!wal->file) return -1;
+        if (wal_write_segment_header(wal) != 0) {
+            disk_close(wal->file);
+            wal->file = NULL;
+            return -1;
+        }
+        wal->segment_offset = 0;
+    } else {
+        wal->file = disk_open_raw(seg_path);
+        if (!wal->file) return -1;
+        uint64_t file_size = disk_get_size(wal->file);
+        if (file_size > WAL_HEADER_SIZE) {
+            wal->segment_offset = file_size - WAL_HEADER_SIZE;
+        } else {
+            wal->segment_offset = 0;
+        }
+    }
+
+    wal->segment_no = segno;
+    return 0;
+}
 
     for (size_t i = 0; i < len; i++) {
         crc ^= p[i];

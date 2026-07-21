@@ -54,7 +54,12 @@
                       <template v-else-if="col.id === 6">{{ todo.labels }}</template>
                       <template v-else-if="col.id === 8">{{ formatDate(todo.created_at) }}</template>
                       <template v-else-if="col.id === 9">{{ formatDate(todo.updated_at) }}</template>
-                      <template v-else-if="col.id >= 10">{{ todo.fields?.[col.id] || '-' }}</template>
+                      <template v-else-if="col.id >= 10">
+                        <template v-if="todo.fields && todo.fields[col.id] !== undefined && todo.fields[col.id] !== ''">
+                          <FieldCellDisplay :field="getFieldDef(col.id)" :value="todo.fields[col.id]" />
+                        </template>
+                        <template v-else>-</template>
+                      </template>
                       <template v-else>-</template>
                     </td>
                   </tr>
@@ -95,7 +100,12 @@
                   <template v-else-if="col.id === 6">{{ todo.labels }}</template>
                   <template v-else-if="col.id === 8">{{ formatDate(todo.created_at) }}</template>
                   <template v-else-if="col.id === 9">{{ formatDate(todo.updated_at) }}</template>
-                  <template v-else-if="col.id >= 10">{{ todo.fields?.[col.id] || '-' }}</template>
+                  <template v-else-if="col.id >= 10">
+                    <template v-if="todo.fields && todo.fields[col.id] !== undefined && todo.fields[col.id] !== ''">
+                      <FieldCellDisplay :field="getFieldDef(col.id)" :value="todo.fields[col.id]" />
+                    </template>
+                    <template v-else>-</template>
+                  </template>
                   <template v-else>-</template>
                 </td>
               </tr>
@@ -149,6 +159,7 @@ import SkeletonLoader from '../components/SkeletonLoader.vue'
 import EmptyState from '../components/EmptyState.vue'
 import BatchActions from '../components/BatchActions.vue'
 import FieldCell from '../components/FieldCell.vue'
+import FieldCellDisplay from '../components/FieldCellDisplay.vue'
 
 const showToast = inject('showToast')
 const todos = ref([])
