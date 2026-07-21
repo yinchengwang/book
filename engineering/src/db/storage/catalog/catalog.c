@@ -259,6 +259,14 @@ Oid catalog_create_table(const char *name, column_def_t *columns, int ncolumns) 
     entry->info.has_index = false;
     entry->info.has_pkey = false;
 
+    /* 分区表初始值 */
+    entry->info.part_strategy = PARTITION_STRATEGY_NONE;
+    entry->info.partnatts = 0;
+    memset(entry->info.partattrs, 0, sizeof(entry->info.partattrs));
+    entry->info.parent_oid = InvalidOid;
+    entry->info.part_oids = NULL;
+    entry->info.nparts = 0;
+
     /* 插入哈希表 */
     uint32_t bucket = oid_hash(table_oid);
     entry->next = catalog_cache->tables[bucket];
@@ -806,4 +814,227 @@ void catalog_invalidate_all(void) {
 void catalog_get_cache_stats(uint64_t *hits, uint64_t *misses) {
     if (hits) *hits = catalog_cache ? catalog_cache->hits : 0;
     if (misses) *misses = catalog_cache ? catalog_cache->misses : 0;
+}
+
+/* ============================================================
+ * 分区表操作
+ * ============================================================ */
+
+Oid catalog_create_partitioned_table(const char *name,
+                                     column_def_t *columns, int ncolumns,
+                                     PartitionStrategy strategy,
+                                     int16_t *part_attrs, int npart_attrs) {
+    if (!catalog_initialized || !name) {
+        return InvalidOid;
+    }
+
+    /* 检查是否已存在同名表 */
+    Oid existing = catalog_lookup_table(name);
+    if (existing != InvalidOid) {
+        return InvalidOid;
+    }
+
+    if (npart_attrs <= 0 || npart_attrs > 4) {
+        return InvalidOid;
+    }
+
+    /* 分配新 OID */
+    Oid table_oid = catalog_cache->next_oid++;
+
+    /* 创建表缓存条目 */
+    catalog_entry_t *entry = (catalog_entry_t *)malloc(sizeof(catalog_entry_t));
+    if (!entry) {
+        return InvalidOid;
+    }
+
+    entry->oid = table_oid;
+    entry->info.oid = table_oid;
+    strncpy(entry->info.name, name, NAMEDATALEN - 1);
+    entry->info.name[NAMEDATALEN - 1] = '\0';
+    entry->info.namespace_oid = 1;
+    entry->info.type_oid = table_oid + 10000;
+    entry->info.relkind = 'p';  /* 分区表 */
+    entry->info.natts = ncolumns;
+    entry->info.filenode = table_oid;
+    entry->info.tablespace = 0;
+    entry->info.npages = 0;
+    entry->info.ntupes = 0;
+    entry->info.owner = 1;
+    entry->info.persistence = 'p';
+    entry->info.nchecks = 0;
+    entry->info.has_index = false;
+    entry->info.has_pkey = false;
+
+    /* 分区信息 */
+    entry->info.part_strategy = strategy;
+    entry->info.partnatts = npart_attrs;
+    memset(entry->info.partattrs, 0, sizeof(entry->info.partattrs));
+    for (int i = 0; i < npart_attrs && i < 4; i++) {
+        entry->info.partattrs[i] = part_attrs[i];
+    }
+    entry->info.parent_oid = InvalidOid;
+    entry->info.part_oids = NULL;
+    entry->info.nparts = 0;
+
+    /* 插入哈希表 */
+    uint32_t bucket = oid_hash(table_oid);
+    entry->next = catalog_cache->tables[bucket];
+    catalog_cache->tables[bucket] = entry;
+
+    /* 创建列缓存条目 */
+    for (int i = 0; i < ncolumns; i++) {
+        column_entry_t *col_entry = (column_entry_t *)malloc(sizeof(column_entry_t));
+        if (!col_entry) continue;
+
+        col_entry->table_oid = table_oid;
+        col_entry->attnum = i + 1;
+        strncpy(col_entry->info.name, columns[i].name, NAMEDATALEN - 1);
+        col_entry->info.name[NAMEDATALEN - 1] = '\0';
+        col_entry->info.type_oid = columns[i].type_oid;
+        col_entry->info.table_oid = table_oid;
+        col_entry->info.attnum = i + 1;
+        col_entry->info.len = 0;
+        col_entry->info.typmod = columns[i].typmod;
+        col_entry->info.attnotnull = columns[i].not_null;
+        col_entry->info.has_default = columns[i].has_default;
+        col_entry->info.is_dropped = false;
+
+        uint32_t col_bucket = oid_hash(table_oid);
+        col_entry->next = catalog_cache->columns[col_bucket];
+        catalog_cache->columns[col_bucket] = col_entry;
+    }
+
+    return table_oid;
+}
+
+Oid catalog_create_partition(Oid parent_oid, const char *part_name,
+                             int64_t bound_val) {
+    if (!catalog_initialized || !part_name) {
+        return InvalidOid;
+    }
+
+    /* 查找父表 */
+    table_info_t *parent = catalog_get_table(parent_oid);
+    if (!parent || parent->relkind != 'p') {
+        return InvalidOid;
+    }
+
+    /* 分配新 OID */
+    Oid part_oid = catalog_cache->next_oid++;
+
+    /* 创建分区条目 */
+    catalog_entry_t *entry = (catalog_entry_t *)malloc(sizeof(catalog_entry_t));
+    if (!entry) {
+        return InvalidOid;
+    }
+
+    entry->oid = part_oid;
+    entry->info.oid = part_oid;
+    strncpy(entry->info.name, part_name, NAMEDATALEN - 1);
+    entry->info.name[NAMEDATALEN - 1] = '\0';
+    entry->info.namespace_oid = 1;
+    entry->info.type_oid = part_oid + 10000;
+    entry->info.relkind = 'r';  /* 分区子表（物理存储） */
+    entry->info.natts = parent->natts;  /* 继承父表列数 */
+    entry->info.filenode = part_oid;
+    entry->info.tablespace = 0;
+    entry->info.npages = 0;
+    entry->info.ntupes = 0;
+    entry->info.owner = 1;
+    entry->info.persistence = 'p';
+    entry->info.nchecks = 0;
+    entry->info.has_index = false;
+    entry->info.has_pkey = false;
+
+    /* 分区信息 */
+    entry->info.part_strategy = PARTITION_STRATEGY_NONE;
+    entry->info.partnatts = 0;
+    memset(entry->info.partattrs, 0, sizeof(entry->info.partattrs));
+    entry->info.parent_oid = parent_oid;  /* 指向父表 */
+    entry->info.part_oids = NULL;
+    entry->info.nparts = 0;
+
+    (void)bound_val;  /* 边界值暂存在调用方管理 */
+
+    /* 插入哈希表 */
+    uint32_t bucket = oid_hash(part_oid);
+    entry->next = catalog_cache->tables[bucket];
+    catalog_cache->tables[bucket] = entry;
+
+    /* 将分区添加到父表的分区列表 */
+    /* 扩展父表的分区 OID 数组 */
+    int new_nparts = parent->nparts + 1;
+    Oid *new_part_oids = (Oid *)realloc(parent->part_oids,
+                                         new_nparts * sizeof(Oid));
+    if (new_part_oids) {
+        new_part_oids[parent->nparts] = part_oid;
+        parent->part_oids = new_part_oids;
+        parent->nparts = new_nparts;
+    }
+
+    /* 从父表复制列定义到分区 */
+    int ncols = 0;
+    column_info_t *cols = catalog_get_columns(parent_oid, &ncols);
+    if (cols) {
+        for (int i = 0; i < ncols; i++) {
+            column_entry_t *col_entry = (column_entry_t *)malloc(sizeof(column_entry_t));
+            if (!col_entry) continue;
+
+            col_entry->table_oid = part_oid;
+            col_entry->attnum = cols[i].attnum;
+            strncpy(col_entry->info.name, cols[i].name, NAMEDATALEN - 1);
+            col_entry->info.name[NAMEDATALEN - 1] = '\0';
+            col_entry->info.type_oid = cols[i].type_oid;
+            col_entry->info.table_oid = part_oid;
+            col_entry->info.attnum = cols[i].attnum;
+            col_entry->info.len = cols[i].len;
+            col_entry->info.typmod = cols[i].typmod;
+            col_entry->info.attnotnull = cols[i].attnotnull;
+            col_entry->info.has_default = cols[i].has_default;
+            col_entry->info.is_dropped = false;
+
+            uint32_t col_bucket = oid_hash(part_oid);
+            col_entry->next = catalog_cache->columns[col_bucket];
+            catalog_cache->columns[col_bucket] = col_entry;
+        }
+        catalog_free_columns(cols);
+    }
+
+    return part_oid;
+}
+
+Oid *catalog_get_partitions(Oid table_oid, int *nparts) {
+    if (!catalog_initialized || !nparts) {
+        return NULL;
+    }
+
+    table_info_t *info = catalog_get_table(table_oid);
+    if (!info || info->relkind != 'p') {
+        *nparts = 0;
+        return NULL;
+    }
+
+    *nparts = info->nparts;
+    if (info->nparts == 0) {
+        return NULL;
+    }
+
+    Oid *result = (Oid *)malloc(info->nparts * sizeof(Oid));
+    if (result) {
+        memcpy(result, info->part_oids, info->nparts * sizeof(Oid));
+    }
+    return result;
+}
+
+Oid catalog_get_partition_parent(Oid part_oid) {
+    if (!catalog_initialized) {
+        return InvalidOid;
+    }
+
+    table_info_t *info = catalog_get_table(part_oid);
+    if (!info) {
+        return InvalidOid;
+    }
+
+    return info->parent_oid;
 }

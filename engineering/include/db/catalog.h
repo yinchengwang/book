@@ -46,6 +46,16 @@ typedef struct column_def_s column_def_t;
  * ============================================================ */
 
 /**
+ * 分区类型
+ */
+typedef enum PartitionStrategy {
+    PARTITION_STRATEGY_NONE = 0,   /**< 非分区表 */
+    PARTITION_STRATEGY_RANGE,      /**< 范围分区 */
+    PARTITION_STRATEGY_LIST,       /**< 列表分区 */
+    PARTITION_STRATEGY_HASH,       /**< 哈希分区 */
+} PartitionStrategy;
+
+/**
  * @brief 表信息结构
  *
  * 对应 pg_class 系统表
@@ -55,7 +65,7 @@ struct table_info_s {
     char        name[NAMEDATALEN]; /**< 表名 */
     Oid         namespace_oid;   /**< 命名空间 OID */
     Oid         type_oid;        /**< 行类型 OID */
-    char        relkind;         /**< 种类：r=表, i=索引, v=视图 */
+    char        relkind;         /**< 种类：r=表, i=索引, v=视图, p=分区表 */
     int16_t       natts;           /**< 用户列数 */
     Oid         filenode;        /**< 物理文件节点 */
     Oid         tablespace;      /**< 表空间 OID */
@@ -66,6 +76,14 @@ struct table_info_s {
     int16_t       nchecks;         /**< CHECK 约束数 */
     bool        has_index;       /**< 是否有索引 */
     bool        has_pkey;        /**< 是否有主键 */
+
+    /* 分区表相关 */
+    PartitionStrategy part_strategy; /**< 分区策略 */
+    int16_t           partnatts;     /**< 分区键列数 */
+    int16_t           partattrs[4];  /**< 分区键列号（最多 4 列） */
+    Oid               parent_oid;    /**< 父表 OID（分区表为父表，分区为子表） */
+    Oid               *part_oids;    /**< 分区子表 OID 数组 */
+    int               nparts;        /**< 分区子表数量 */
 };
 
 /* ============================================================
@@ -302,6 +320,54 @@ void catalog_invalidate_all(void);
  * @param misses 输出未命中次数
  */
 void catalog_get_cache_stats(uint64_t *hits, uint64_t *misses);
+
+/* ============================================================
+ * 分区表操作
+ * ============================================================ */
+
+/**
+ * @brief 创建分区表
+ *
+ * @param name       分区表名
+ * @param columns    列定义数组
+ * @param ncolumns   列数
+ * @param strategy   分区策略
+ * @param part_attrs 分区键列号数组（1-based）
+ * @param npart_attrs 分区键列数
+ * @return 表 OID，失败返回 InvalidOid
+ */
+Oid catalog_create_partitioned_table(const char *name,
+                                     column_def_t *columns, int ncolumns,
+                                     PartitionStrategy strategy,
+                                     int16_t *part_attrs, int npart_attrs);
+
+/**
+ * @brief 创建分区（分区子表）
+ *
+ * @param parent_oid  父分区表 OID
+ * @param part_name   分区名
+ * @param bound_val   分区边界值
+ * @return 分区 OID，失败返回 InvalidOid
+ */
+Oid catalog_create_partition(Oid parent_oid, const char *part_name,
+                             int64_t bound_val);
+
+/**
+ * @brief 获取分区表的子分区列表
+ *
+ * @param table_oid  分区表 OID
+ * @param nparts     输出分区数量
+ * @return 分区 OID 数组，调用者负责释放；失败返回 NULL
+ */
+Oid *catalog_get_partitions(Oid table_oid, int *nparts);
+
+/**
+ * @brief 获取分区所属的父表 OID
+ *
+ * @param part_oid 分区 OID
+ * @return 父表 OID，非分区表返回 InvalidOid
+ */
+Oid catalog_get_partition_parent(Oid part_oid);
 
 #ifdef __cplusplus
 }
