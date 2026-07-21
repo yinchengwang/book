@@ -80,3 +80,8 @@ if(BUILD_TESTING AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/code-solutions/c/test/C
 endif()
 
 message(STATUS "Learning track: ${PROJECT_NAME} v${PROJECT_VERSION}")
+
+# C++ 学习笔记（learning/notes/language/CPP）
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/notes/language/CPP/CMakeLists.txt")
+    add_subdirectory(notes/language/CPP)
+endif()

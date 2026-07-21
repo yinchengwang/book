@@ -68,12 +68,18 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 #include <errno.h>
 
 #ifdef _WIN32
     #include <direct.h>
     #define mkdir_p(path) _mkdir(path)
     #define PATH_SEP "\\"
+    #ifdef _MSC_VER
+        #define getcwd _getcwd
+    #else
+        #define getcwd getcwd
+    #endif
 #else
     #include <dirent.h>
     #define PATH_SEP "/"
@@ -182,6 +188,26 @@ static int wal_build_segment_path(wal_t *wal, uint32_t segno, char *buf, size_t 
     return 0;
 }
 
+/** 获取完整段文件路径（包含当前工作目录解析） */
+static int wal_build_full_segment_path(wal_t *wal, uint32_t segno, char *buf, size_t bufsize) {
+    if (!wal || !buf) return -1;
+
+    /* 如果路径已经是绝对路径，直接使用 */
+    const char *dir = wal->path ? wal->path : ".";
+    if (dir[0] == '/' || dir[0] == '\\' || (dir[0] && dir[1] == ':')) {
+        return wal_build_segment_path(wal, segno, buf, bufsize);
+    }
+
+    /* 相对路径：获取当前工作目录并拼接 */
+    char cwd[1024];
+    if (!getcwd(cwd, sizeof(cwd))) {
+        return wal_build_segment_path(wal, segno, buf, bufsize);
+    }
+    snprintf(buf, bufsize, "%s" PATH_SEP "%s" PATH_SEP WAL_SEGMENT_NAME_FORMAT,
+             cwd, dir, wal->timeline_id, segno);
+    return 0;
+}
+
 /** 检查段文件是否需要切换（超过段大小限制） */
 static bool wal_need_switch_segment(const wal_t *wal) {
     if (!wal) return false;
@@ -195,7 +221,7 @@ static int wal_write_segment_header(wal_t *wal) {
     memset(&header, 0, sizeof(header));
     header.magic = WAL_MAGIC;
     header.version = WAL_VERSION;
-    header.page_size = wal->page_size;
+    header.page_size = wal->page_size ? wal->page_size : 8192;
     header.checksum = wal_calc_checksum(&header, offsetof(wal_file_header_t, checksum));
 
     if (disk_pwrite(wal->file, 0, &header, sizeof(header)) != sizeof(header)) {
@@ -220,7 +246,8 @@ static int wal_open_segment_file(wal_t *wal, uint32_t segno, bool create) {
     wal->current_path = strdup(seg_path);
 
     if (create) {
-        wal->file = disk_open(seg_path, wal->page_size);
+        /* 新段文件使用 disk_open_raw（不写 DB 头部），然后手动写 WAL 头部 */
+        wal->file = disk_open_raw(seg_path);
         if (!wal->file) return -1;
         if (wal_write_segment_header(wal) != 0) {
             disk_close(wal->file);
@@ -1000,7 +1027,7 @@ void wal_recovery_info_free(wal_recovery_info_t *info) {
 }
 
 /* ============================================================
- * 段文件管理 API
+ * WAL 段文件管理 API
  * ============================================================ */
 
 int wal_set_segment_dir(wal_t *wal, const char *dir) {
@@ -1025,6 +1052,9 @@ int wal_switch_segment(wal_t *wal) {
 
     /* 刷盘当前缓冲 */
     if (wal_flush(wal) != 0) return -1;
+
+    /* 确保段目录存在 */
+    mkdir_p(wal->path);
 
     /* 打开下一个段 */
     uint32_t next_seg = wal->segment_no + 1;

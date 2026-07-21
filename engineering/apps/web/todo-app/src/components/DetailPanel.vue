@@ -18,7 +18,10 @@
 
       <!-- 扩展字段 -->
       <div v-if="extFieldValues.length > 0" class="ext-fields-section">
-        <h4 class="section-title">扩展字段</h4>
+        <h4 class="section-title">
+          <span>扩展字段</span>
+          <SaveStatusBar :status="saveStatus" />
+        </h4>
         <div v-for="item in extFieldValues" :key="item.id" class="ext-field-row">
           <span class="ext-field-name">{{ item.name }}：</span>
           <span class="ext-field-value">{{ item.value }}</span>
@@ -60,10 +63,17 @@ import { computed, ref, inject, watch } from 'vue'
 import api from '../api.js'
 import Checklist from './Checklist.vue'
 import Comments from './Comments.vue'
+import SaveStatusBar from './SaveStatusBar.vue'
+import { useAutoSave } from '../composables/useAutoSave.js'
 
 const props = defineProps({ todo: Object })
 const emit = defineEmits(['updated', 'close'])
 const showToast = inject('showToast')
+
+const { saveStatus, scheduleSave, forceFlush } = useAutoSave({
+  delay: 800,
+  onFlush: () => emit('updated')
+})
 
 const PRIORITY_LABELS = ['🔴紧急', '🟡高', '🔵中', '🟢低', '⚪无']
 const priorityLabel = computed(() => PRIORITY_LABELS[props.todo?.priority] || '⚪无')
