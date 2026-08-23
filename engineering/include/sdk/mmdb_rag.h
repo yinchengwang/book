@@ -19,6 +19,7 @@
 #include <stddef.h>
 
 #include "sdk/mmdb_types.h"
+#include "sdk/mmdb_embedding.h"  /* P4-T4.1：为 mmdb_rag_query_t.embedding 提供类型 */
 
 #ifdef __cplusplus
 extern "C" {
@@ -45,13 +46,18 @@ typedef struct {
 /* RAG 查询参数。
  * ABI 注意：rerank 字段于 T4.2 追加到结构体末尾，旧调用方
  * （T4.1 之前的代码）按字段名或 memset 后访问不受影响；C++ 聚合初始
- * 化（按顺序列出所有字段）仍兼容。 */
+ * 化（按顺序列出所有字段）仍兼容。P4-T4.1 又于末尾追加 embedding 字
+ * 段；同样不影响既有调用方。 */
 typedef struct {
     const char* query_text;        /* 必填：用户原始查询文本 */
     const char* filter_json;       /* 可选：metadata 过滤（NULL 跳过） */
     size_t      top_k;              /* 候选数（0 → 默认 5） */
     size_t      max_context_chars;  /* context 字符串最大字节数（0 → 默认 8000） */
     mmdb_rag_rerank_config_t rerank; /* rerank 配置（默认 NONE，等价于不重排） */
+    mmdb_embedding_t* embedding;   /* P4-T4.1 新增：per-call embedding 覆盖；
+                                    *   NULL 时 fallback 到 collection-level（通过
+                                    *   mmdb_rag_set_embedding 注入），仍为 NULL 则
+                                    *   使用 HASH 默认 embedding。 */
 } mmdb_rag_query_t;
 
 /* RAG 结果 */
@@ -82,6 +88,24 @@ int mmdb_rag_retrieve(
  * 调用后 items.count=0 / items.items=NULL / context=NULL / context_len=0
  */
 void mmdb_rag_result_free(mmdb_rag_result_t* r);
+
+/**
+ * @brief 为 collection 注入默认 embedding（P4-T4.1 新增）
+ *
+ * 用于在 collection 级别持久化 embedding 选择，避免每次 mmdb_rag_retrieve
+ * 都显式传入 q.embedding。优先级链：q.embedding > coll->embedding >
+ * fallback HASH。
+ *
+ * 所有权约定：coll 仅持有指针（不复制、不接管生命周期）；调用方需自行
+ * 保证 embedding 在 collection 关闭之前有效。可重复调用以更换；旧指针
+ * 不会被自动 drop（调用方负责前一次的释放）。
+ *
+ * @param coll      目标 collection
+ * @param embedding embedding 句柄（可为 NULL：等价于清除当前注入）
+ * @return MMDB_OK；MMDB_ERR_INVALID（coll == NULL）
+ */
+int mmdb_rag_set_embedding(mmdb_collection_t* coll,
+                           mmdb_embedding_t* embedding);
 
 #ifdef __cplusplus
 }

@@ -209,6 +209,16 @@ static void apply_bm25_rerank(mmdb_result_t* hout,
 }
 
 /* ---------- 公开 API ---------- */
+
+/* P4-T4.1 新增：将 embedding 注入 collection（持久化为 collection
+ * metadata）。所有权不转移；调用方负责前一次的释放。 */
+int mmdb_rag_set_embedding(mmdb_collection_t* coll,
+                           mmdb_embedding_t* embedding) {
+    if (!coll) return MMDB_ERR_INVALID;
+    coll->embedding = embedding;
+    return MMDB_OK;
+}
+
 int mmdb_rag_retrieve(
     mmdb_collection_t* c,
     const mmdb_rag_query_t* q,
@@ -230,26 +240,39 @@ int mmdb_rag_retrieve(
     if (dim == 0) dim = 64;
     if (dim > RAG_MAX_EMBED_DIM) return MMDB_ERR_INVALID;
 
-    /* 2. 创建 hash embedding */
-    mmdb_embedding_t* emb = mmdb_embedding_create(MMDB_EMBED_HASH, dim);
-    if (!emb) return MMDB_ERR_NOMEM;
+    /* 2. embedding 选择优先级（P4-T4.1）：
+     *    q.embedding (per-call) > coll->embedding (collection-level) >
+     *    fallback MMDB_EMBED_HASH。任一非空路径都需自行 drop 临时句柄。 */
+    mmdb_embedding_t* emb = NULL;
+    int emb_owned = 0;  /* 是否需要 mmdb_embedding_drop(emb) */
+    if (q->embedding) {
+        emb = q->embedding;
+        emb_owned = 0;
+    } else if (c->embedding) {
+        emb = c->embedding;
+        emb_owned = 0;
+    } else {
+        emb = mmdb_embedding_create(MMDB_EMBED_HASH, dim);
+        if (!emb) return MMDB_ERR_NOMEM;
+        emb_owned = 1;
+    }
 
     /* 3. 编码 query_text → query_vec */
     float query_vec[RAG_MAX_EMBED_DIM];
     int embed_rc = mmdb_embed_text(emb, q->query_text, strlen(q->query_text),
                                    query_vec, dim);
-    mmdb_embedding_drop(emb);
+    if (emb_owned) mmdb_embedding_drop(emb);
     if (embed_rc != 0) return MMDB_ERR_IO;
 
     /* 4. hybrid search（向量 + FTS5 + RRF） */
-    mmdb_hybrid_query_t hq = {};
+    mmdb_hybrid_query_t hq = {0};
     hq.vector      = query_vec;
     hq.dim         = dim;
     hq.text_query  = q->query_text;
     hq.filter_json = q->filter_json;
     hq.top_k       = top_k;
 
-    mmdb_result_t hout = {};
+    mmdb_result_t hout = {0};
     int rc = mmdb_hybrid_search(c, &hq, &hout);
     if (rc != MMDB_OK) return rc;  /* hout 已 free */
 

@@ -19,6 +19,7 @@ set(SDK_TESTS
     xquery_test   # P3-T3.1：跨 collection join（text→vector）测试，源码位于 xquery/ 子目录
     rag_test   # P3-T4.1：RAG retrieve 测试，源码位于 rag/ 子目录
     rerank_test   # P3-T4.2：RAG BM25 rerank 占位测试，源码位于 rag/ 子目录
+    rag_embedding_test   # P4-T4.1：RAG embedding 配置入口测试，源码位于 rag/ 子目录
 )
 
 # 为每个测试源文件创建可执行文件
@@ -33,7 +34,7 @@ foreach(test_name IN LISTS SDK_TESTS)
         add_executable(${test_name} embedding/${test_name}.cpp)
     elseif(test_name STREQUAL "xquery_test")
         add_executable(${test_name} xquery/${test_name}.cpp)
-    elseif(test_name STREQUAL "rag_test" OR test_name STREQUAL "rerank_test")
+    elseif(test_name STREQUAL "rag_test" OR test_name STREQUAL "rerank_test" OR test_name STREQUAL "rag_embedding_test")
         add_executable(${test_name} rag/${test_name}.cpp)
     else()
         add_executable(${test_name} ${test_name}.cpp)
