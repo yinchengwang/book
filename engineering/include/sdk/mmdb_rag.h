@@ -24,12 +24,34 @@
 extern "C" {
 #endif
 
-/* RAG 查询参数 */
+/* Rerank 配置：NONE = 不重排（hybrid 默认顺序）；BM25 = 用词频打
+ * 分与 RRF score 加权混合（占位实现，真实交叉编码器 rerank 留待后续
+ * plan）。注意：BM25 是简化的词频版本，非 FTS5 真实 BM25，便于零依
+ * 赖单测验证。 */
+typedef enum {
+    MMDB_RAG_RERANK_NONE  = 0,
+    MMDB_RAG_RERANK_BM25  = 1,
+} mmdb_rag_rerank_kind_t;
+
+/* rerank 混合权重配置：final_score = (1 - weight) * orig - weight * bm25
+ * 其中 orig 为 hybrid RRF 得分（取负号），bm25 为 query_text 在 text
+ * 字段上的简化词频分数。weight=0 等价于 NONE，weight=1 完全由 BM25
+ * 主导，默认 0.5。 */
+typedef struct {
+    mmdb_rag_rerank_kind_t kind;
+    double                 weight;
+} mmdb_rag_rerank_config_t;
+
+/* RAG 查询参数。
+ * ABI 注意：rerank 字段于 T4.2 追加到结构体末尾，旧调用方
+ * （T4.1 之前的代码）按字段名或 memset 后访问不受影响；C++ 聚合初始
+ * 化（按顺序列出所有字段）仍兼容。 */
 typedef struct {
     const char* query_text;        /* 必填：用户原始查询文本 */
     const char* filter_json;       /* 可选：metadata 过滤（NULL 跳过） */
     size_t      top_k;              /* 候选数（0 → 默认 5） */
     size_t      max_context_chars;  /* context 字符串最大字节数（0 → 默认 8000） */
+    mmdb_rag_rerank_config_t rerank; /* rerank 配置（默认 NONE，等价于不重排） */
 } mmdb_rag_query_t;
 
 /* RAG 结果 */

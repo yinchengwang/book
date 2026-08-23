@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <sys/types.h>
 
 /* ---------- 常量 ---------- */
@@ -117,6 +118,92 @@ static int backfill_text_field(mmdb_collection_t* c, mmdb_result_t* items) {
     return rc;
 }
 
+/* ---------- 简易 BM25 rerank 占位 ---------- */
+/* 真实交叉编码器 rerank 需外部 ML 模型（P3 不引入依赖）。本实现用 query
+ * 词在 text 字段上的出现次数除以 sqrt(text 长度) 作为简化 BM25 分数，
+ * 与原 RRF score 按 weight 加权混合：
+ *     final = (1 - weight) * (-distance) - weight * bm25
+ * distance 越大越差（hybrid 约定），所以 bm25 用减号。 */
+/* 把字符串切成空格分隔的小写 token（写入 out_tokens，每个为 NUL 终止串）。
+ * 返回 token 数。max_tokens 上限保护。 */
+static size_t tokenize_lower(const char* s, char** out_tokens, size_t max_tokens) {
+    if (!s) return 0;
+    size_t n = 0;
+    const char* p = s;
+    while (*p && n < max_tokens) {
+        /* 跳过空白 */
+        while (*p && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) {
+            p++;
+        }
+        if (!*p) break;
+        const char* start = p;
+        while (*p && *p != ' ' && *p != '\t' && *p != '\n' && *p != '\r') {
+            p++;
+        }
+        size_t len = (size_t)(p - start);
+        if (len == 0) continue;
+        char* tok = (char*)malloc(len + 1);
+        if (!tok) break;
+        for (size_t i = 0; i < len; i++) {
+            char c = start[i];
+            if (c >= 'A' && c <= 'Z') c = (char)(c + ('a' - 'A'));
+            tok[i] = c;
+        }
+        tok[len] = '\0';
+        out_tokens[n++] = tok;
+    }
+    return n;
+}
+
+/* 计算 text 中 query 词的简易 BM25 分数：
+ *   bm25 = sum_over_terms(count(term in text)) / sqrt(text_len + 1)
+ * 单测可验证：含 query 词的 text 得 > 0；不含得 = 0。 */
+static double bm25_score(const char* text, const char* query_text) {
+    if (!text || !query_text) return 0.0;
+    size_t tlen = strlen(text);
+    /* tokenize query */
+    char* q_toks[64];
+    size_t qn = tokenize_lower(query_text, q_toks, 64);
+    if (qn == 0) return 0.0;
+
+    /* 对每个 query token，在 text 中扫描计数（忽略大小写） */
+    double total_hits = 0.0;
+    for (size_t i = 0; i < qn; i++) {
+        const char* needle = q_toks[i];
+        size_t nlen = strlen(needle);
+        const char* p = text;
+        while (*p) {
+            const char* hit = strstr(p, needle);
+            if (!hit) break;
+            total_hits += 1.0;
+            p = hit + nlen;
+        }
+    }
+    /* 释放 token */
+    for (size_t i = 0; i < qn; i++) free(q_toks[i]);
+
+    /* 简化 BM25：term 命中次数 / sqrt(text_len + 1) */
+    return total_hits / sqrt((double)(tlen + 1));
+}
+
+/* 在 hout.items 上应用 BM25 rerank（修改 distance 字段）。 */
+static void apply_bm25_rerank(mmdb_result_t* hout,
+                              const char* query_text, double weight) {
+    if (!hout || hout->count == 0 || !query_text) return;
+    double w = weight;
+    /* 防御：clamp 到 [0, 1] */
+    if (w < 0.0) w = 0.0;
+    if (w > 1.0) w = 1.0;
+    for (size_t i = 0; i < hout->count; i++) {
+        const char* text = hout->items[i].text
+                         ? hout->items[i].text : "";
+        double bm25 = bm25_score(text, query_text);
+        double orig = -((double)hout->items[i].distance);  /* RRF score */
+        double final = (1.0 - w) * orig - w * bm25;
+        hout->items[i].distance = (float)final;
+    }
+}
+
 /* ---------- 公开 API ---------- */
 int mmdb_rag_retrieve(
     mmdb_collection_t* c,
@@ -174,6 +261,18 @@ int mmdb_rag_retrieve(
     if (brc != MMDB_OK) {
         free_items(hout.items, hout.count);
         return brc;
+    }
+
+    /* 6.5 BM25 rerank 占位（仅当 query_text 非空且 rerank.kind == BM25）
+     *     必须放在 text 回填之后（依赖 text 字段）、context 拼接之前
+     *     （rerank 结果需要影响最终输出顺序）。再次按 distance 升序
+     *     排序使最终 context 拼接与 rerank 顺序一致。 */
+    if (q->rerank.kind == MMDB_RAG_RERANK_BM25) {
+        apply_bm25_rerank(&hout, q->query_text, q->rerank.weight);
+        if (hout.count > 1) {
+            qsort(hout.items, hout.count,
+                  sizeof(mmdb_result_item_t), cmp_by_distance);
+        }
     }
 
     /* 7. 拼接 context：按 distance 升序，"\n---\n" 分隔，截断到 max_ctx */
