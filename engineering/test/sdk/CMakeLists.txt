@@ -14,12 +14,13 @@ set(SDK_TESTS
     mmdb_filter_test
     mmdb_raii_test
     rrf_test   # P3-T1.1：RRF 融合测试，源码位于 hybrid/ 子目录
+    hybrid_search_test   # P3-T1.2：hybrid search 公共 API 测试，源码位于 hybrid/ 子目录
 )
 
 # 为每个测试源文件创建可执行文件
 foreach(test_name IN LISTS SDK_TESTS)
-    # rrf_test 源码位于 hybrid/ 子目录（P3-T1.1 混合检索分类）
-    if(test_name STREQUAL "rrf_test")
+    # rrf_test / hybrid_search_test 源码位于 hybrid/ 子目录
+    if(test_name STREQUAL "rrf_test" OR test_name STREQUAL "hybrid_search_test")
         add_executable(${test_name} hybrid/${test_name}.cpp)
     else()
         add_executable(${test_name} ${test_name}.cpp)
