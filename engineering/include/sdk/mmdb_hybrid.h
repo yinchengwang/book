@@ -9,6 +9,12 @@
  *   - MMDB_MODEL_VECTOR: 启用向量通道（需 q->vector != NULL && q->dim > 0）
  *   - MMDB_MODEL_TEXT  : 启用文本通道（需 q->text_query != NULL）
  *   - 其他模型         : 当前不支持 hybrid
+ *
+ * 重要限制（P3 当前实现）：
+ *   hybrid_search 当前为单通道路由策略：根据 c->model 决定启用哪个通道，
+ *   不匹配的通道会被静默忽略。即 VECTOR 集合上提供 text_query 或 TEXT
+ *   集合上提供 vector 都不会参与融合。这是 P3 阶段的设计妥协，
+ *   真正的双通道融合留待后续 plan。
  */
 #ifndef SDK_MMDB_HYBRID_H
 #define SDK_MMDB_HYBRID_H

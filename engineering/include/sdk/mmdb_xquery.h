@@ -11,6 +11,12 @@
  *   - 当前 SDK 的 HNSW 路径要求 filter == ""，因此本接口采用 flat 路径
  *     遍历候选（候选数已限制 ≤ max_source_candidates，默认 100）。
  *   - HNSW 支持 filter 是更大工程，留作后续独立 Task。
+ *
+ * 重要限制：
+ *   当前实现内部 id 缓冲为 64 字节（见 xquery.c::xq_cand_t.id）。
+ *   若 source (text) 集合返回的 id 超过 64 字节，该候选会被静默跳过，
+ *   同时通过 stderr 输出警告（包含 collection 名 + 跳过的 id 长度）。
+ *   调用方应注意 out.count 可能小于 source 实际命中数。
  */
 #ifndef SDK_MMDB_XQUERY_H
 #define SDK_MMDB_XQUERY_H

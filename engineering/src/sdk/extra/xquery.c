@@ -184,8 +184,14 @@ int mmdb_xquery_text_to_vector(
     for (size_t i = 0; i < src_hits.count; i++) {
         const mmdb_result_item_t* hit = &src_hits.items[i];
         if (!hit->id || hit->id_len == 0) continue;
-        /* 跳过 id 超过堆内 id[64] 容量的（极少见，文本 id 应短） */
-        if (hit->id_len > sizeof(heap[0].id)) continue;
+        /* 跳过 id 超过堆内 id[64] 容量的（极少见，文本 id 应短）
+         * 命中此分支时通过 stderr 输出警告，便于运维定位异常数据。 */
+        if (hit->id_len > sizeof(heap[0].id)) {
+            fprintf(stderr,
+                    "[mmdb_xquery] WARN: candidate id_len=%zu > 64-byte limit, skipped (collection=%s)\n",
+                    hit->id_len, xq->source->name ? xq->source->name : "(unnamed)");
+            continue;
+        }
 
         sqlite3_stmt* stmt = mmdb_sqlite_prepare(
             xq->target->sdb, sql, NULL, 0);
