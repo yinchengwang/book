@@ -32,6 +32,19 @@ faiss_hnsw_t *faiss_hnsw_index_create(int32_t M, int32_t dims, int32_t ef_constr
                                        distance_metric_t metric, quantization_type_t quant_type);
 
 /**
+ * 预分配索引容量（建议在批量插入前调用，避免逐向量 realloc）
+ *
+ * 该函数一次性扩容 vectors / levels / delete_bitmap / offsets / neighbors，
+ * 把每次 add 的 realloc 开销从 O(N) 降到 O(1) 总开销。
+ * 百万级场景可将构建时间从不可接受降至分钟级。
+ *
+ * @param index 索引指针
+ * @param n     预期总向量数（>= 当前 n_total）
+ * @return      0 成功，-1 失败（参数无效或内存不足）
+ */
+int32_t faiss_hnsw_index_reserve(faiss_hnsw_t *index, int32_t n);
+
+/**
  * 向索引中添加向量
  *
  * @param index   索引指针

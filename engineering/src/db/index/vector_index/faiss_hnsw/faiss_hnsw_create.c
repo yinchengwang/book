@@ -104,6 +104,10 @@ faiss_hnsw_t *faiss_hnsw_index_create(int32_t M,
     idx->max_level = -1;
     idx->entry_point = -1;
 
+    // 容量参数（初始为 0，按需增长；faiss_hnsw_index_reserve 可一次性扩到目标容量）
+    idx->capacity = 0;
+    idx->neighbors_capacity = 0;
+
     // 数据指针（lazy 分配）
     idx->vectors = NULL;
     idx->codes = NULL;

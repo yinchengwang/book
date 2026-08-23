@@ -69,6 +69,10 @@ struct faiss_hnsw {
     int32_t max_level;         // 当前最大层号（0-indexed，初始为 -1）
     int32_t entry_point;       // 入口节点 ID（初始为 -1）
 
+    // 容量管理：避免每次 add 都 realloc（百万级场景 O(N²)→O(N)）
+    int32_t capacity;          // vectors/levels/delete_bitmap/offsets 的节点容量（>= n_total）
+    int32_t neighbors_capacity; // neighbors 数组已分配容量（元素数）
+
     // 向量存储（内存连续 float 数组，长度 = n_total * dims）
     float *vectors;
 
