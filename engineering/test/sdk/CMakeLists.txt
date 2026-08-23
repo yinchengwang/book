@@ -13,11 +13,17 @@ set(SDK_TESTS
     mmdb_text_test
     mmdb_filter_test
     mmdb_raii_test
+    rrf_test   # P3-T1.1：RRF 融合测试，源码位于 hybrid/ 子目录
 )
 
 # 为每个测试源文件创建可执行文件
 foreach(test_name IN LISTS SDK_TESTS)
-    add_executable(${test_name} ${test_name}.cpp)
+    # rrf_test 源码位于 hybrid/ 子目录（P3-T1.1 混合检索分类）
+    if(test_name STREQUAL "rrf_test")
+        add_executable(${test_name} hybrid/${test_name}.cpp)
+    else()
+        add_executable(${test_name} ${test_name}.cpp)
+    endif()
     target_link_libraries(${test_name} PRIVATE mmsdk gtest_main)
     target_include_directories(${test_name} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../../include
