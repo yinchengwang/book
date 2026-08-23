@@ -11,10 +11,13 @@
  *   3. 用最大堆（堆顶最大）维护 top_k 最近邻；候选数 ≤ top_k 时全保留。
  *   4. 按距离升序填充 out->items，id 深拷贝，distance 字段填 L2 平方距离。
  *
- * 约束：
- *   - 当前 HNSW 路径要求 filter == ""，故本接口只能走 flat 路径
- *     （遍历候选 id 逐个读向量）。候选数已限制 ≤ max_source_candidates。
- *   - HNSW + filter 是后续独立 Task。
+ * 约束（P4-T4.5 更新）：
+ *   - 候选数已限制 ≤ max_source_candidates，本接口对候选集合做全量距离计算，
+ *     无需借助 HNSW 全局索引（HNSW 用于无候选约束的大规模全局搜索）。
+ *   - target 集合的 metadata filter 在 P4-T4.5 后已可走 HNSW 路径
+ *     （见 vectors.c::mmdb_vectors_search），但 xquery 自身不受影响：
+ *     xquery 直接遍历候选 id，filter 由调用方在 source/target
+ *     集合上分别独立处理。
  */
 #include "sdk/mmdb_xquery.h"
 #include "sdk/mmdb_vectors.h"

@@ -99,6 +99,48 @@ int32_t faiss_hnsw_index_max_level(const faiss_hnsw_t *index);
  */
 int32_t faiss_hnsw_index_entry_point(const faiss_hnsw_t *index);
 
+/**
+ * Filter 谓词回调：判断给定的 HNSW 内部 vec_id 是否通过过滤。
+ *
+ * 由调用方实现（典型场景：从 SQLite metadata 表查询该 vec_id 对应的
+ * metadata，判断是否满足 filter_json 条件）。
+ *
+ * @param vec_id     HNSW 内部向量 ID（0-indexed）
+ * @param user_data  调用方自定义数据指针
+ * @return           非 0 表示通过（保留），0 表示被过滤
+ */
+typedef int (*faiss_hnsw_filter_fn)(int32_t vec_id, void *user_data);
+
+/**
+ * 带 filter 的 HNSW 搜索（P4-T4.5 新增，末尾 append，ABI 零破坏）。
+ *
+ * 与 faiss_hnsw_index_search() 等价的搜索语义，但允许对候选 ID
+ * 应用自定义谓词过滤：
+ *   1. 调 faiss_hnsw_search_layer() 在 level 0 取 K*5+50 个候选
+ *   2. 对每个候选调用 filter 回调（filter 非 NULL 时）；
+ *      回调返回 0 的候选被丢弃
+ *   3. 重读 idx->vectors 中的原始向量，重算 L2 平方距离，取 top-K
+ *
+ * filter_json 为空时（filter == NULL）行为等同 faiss_hnsw_index_search()。
+ *
+ * @param idx         HNSW 索引
+ * @param query       查询向量（长度 dims）
+ * @param k           返回最近邻数量
+ * @param filter      filter 回调；NULL 表示不过滤
+ * @param user_data   透传给 filter 回调的自定义数据
+ * @param out_ids     输出 id 数组（容量 k）
+ * @param out_distances 输出距离数组（容量 k）
+ * @return            实际命中数（≥ 0）；失败返回 -1
+ */
+int32_t faiss_hnsw_search_filtered(
+    faiss_hnsw_t *idx,
+    const float *query,
+    int32_t k,
+    faiss_hnsw_filter_fn filter,
+    void *user_data,
+    int32_t *out_ids,
+    float *out_distances);
+
 #ifdef __cplusplus
 }
 #endif

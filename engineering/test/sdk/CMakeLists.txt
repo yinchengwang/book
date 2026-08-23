@@ -22,6 +22,7 @@ set(SDK_TESTS
     rerank_test   # P3-T4.2：RAG BM25 rerank 占位测试，源码位于 rag/ 子目录
     rag_embedding_test   # P4-T4.1：RAG embedding 配置入口测试，源码位于 rag/ 子目录
     hybrid_dual_channel_test   # P4-T4.2：双通道真正融合测试，源码位于 hybrid/ 子目录
+    hnsw_filter_test   # P4-T4.5：HNSW + filter 公开 API 测试，源码位于 hnsw/ 子目录
 )
 
 # 为每个测试源文件创建可执行文件
@@ -38,6 +39,12 @@ foreach(test_name IN LISTS SDK_TESTS)
         add_executable(${test_name} xquery/${test_name}.cpp)
     elseif(test_name STREQUAL "rag_test" OR test_name STREQUAL "rerank_test" OR test_name STREQUAL "rag_embedding_test")
         add_executable(${test_name} rag/${test_name}.cpp)
+    elseif(test_name STREQUAL "hnsw_filter_test")
+        add_executable(${test_name} hnsw/${test_name}.cpp)
+        target_link_libraries(${test_name} PRIVATE faiss_hnsw)
+        target_include_directories(${test_name} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../../src
+        )
     else()
         add_executable(${test_name} ${test_name}.cpp)
     endif()

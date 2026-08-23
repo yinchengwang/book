@@ -165,6 +165,22 @@ typedef struct {
     size_t          deleted_count;   /* 已标记删除的条目数 */
 } hnsw_wrapper_t;
 
+/* P4-T4.5：HNSW filter 谓词上下文。
+ * bitmap[i] = 1 表示 HNSW vec_id i 通过 metadata filter；0 表示被过滤。
+ * 通过一次性 SQLite 查询构建，避免每个候选单独查询 metadata。 */
+typedef struct {
+    int8_t* bitmap;
+    size_t  bitmap_size;  /* bitmap 元素数（与 HNSW 当前向量数一致） */
+} hnsw_filter_ctx_t;
+
+/* P4-T4.5：HNSW filter 谓词回调（faiss_hnsw_filter_fn 类型） */
+static int hnsw_filter_predicate(int32_t vec_id, void* user_data) {
+    hnsw_filter_ctx_t* ctx = (hnsw_filter_ctx_t*)user_data;
+    if (!ctx || !ctx->bitmap) return 1;  /* 无 filter ctx 时全部通过 */
+    if (vec_id < 0 || (size_t)vec_id >= ctx->bitmap_size) return 0;
+    return ctx->bitmap[vec_id];
+}
+
 static hnsw_wrapper_t* hnsw_wrapper_create(void) {
     hnsw_wrapper_t* w = (hnsw_wrapper_t*)calloc(1, sizeof(hnsw_wrapper_t));
     return w;
@@ -175,6 +191,86 @@ static void hnsw_wrapper_free(hnsw_wrapper_t* w) {
     if (w->index) faiss_hnsw_index_drop(w->index);
     hnsw_id_map_free(w->id_map);
     free(w);
+}
+
+/* P4-T4.5：从 SQLite 查询符合 filter 的 SDK ID，写入 bitmap（按 HNSW vec_id 索引）。
+ * 用于 HNSW 加速路径下的 metadata 过滤：bitmap[i] = 1 表示 HNSW vec_id i 通过 filter。
+ *
+ * 注意：此函数必须在已持有 coll_lock 读锁的情况下调用（SQLite 操作需要稳定快照）。
+ *
+ * @param c       collection
+ * @param where   mmdb_filter_compile 生成的 WHERE 片段
+ * @param fp      filter 绑定参数
+ * @param ctx     输出上下文（调用方负责 free_filter_ctx）
+ * @return        MMDB_OK 或错误码
+ */
+/* build_table_name 前向声明（定义在文件后半部分） */
+static int build_table_name(char* out, size_t out_cap, const char* coll);
+
+static int build_filter_ctx(mmdb_collection_t* c, const char* where,
+                             mmdb_filter_params_t* fp,
+                             hnsw_filter_ctx_t* ctx) {
+    hnsw_wrapper_t* w = (hnsw_wrapper_t*)c->hnsw;
+    memset(ctx, 0, sizeof(*ctx));
+    ctx->bitmap_size = w->id_map->count;
+    if (ctx->bitmap_size == 0) return MMDB_OK;
+
+    ctx->bitmap = (int8_t*)calloc(ctx->bitmap_size, sizeof(int8_t));
+    if (!ctx->bitmap) return MMDB_ERR_NOMEM;
+
+    char tname[128];
+    build_table_name(tname, sizeof(tname), c->name);
+
+    char sql[512];
+    int n = snprintf(sql, sizeof(sql), "SELECT id FROM %s WHERE %s;", tname, where);
+    if (n < 0 || (size_t)n >= sizeof(sql)) {
+        free(ctx->bitmap);
+        ctx->bitmap = NULL;
+        return MMDB_ERR_INVALID;
+    }
+
+    sqlite3_stmt* stmt = mmdb_sqlite_prepare(c->sdb, sql, NULL, 0);
+    if (!stmt) {
+        free(ctx->bitmap);
+        ctx->bitmap = NULL;
+        return MMDB_ERR_IO;
+    }
+    int bind_idx = mmdb_filter_bind(stmt, fp, 1);
+    if (bind_idx < 0) {
+        sqlite3_finalize(stmt);
+        free(ctx->bitmap);
+        ctx->bitmap = NULL;
+        return MMDB_ERR_INVALID;
+    }
+
+    /* 对每个匹配的 SDK ID，查找对应 HNSW vec_id 并置位 bitmap */
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const void* id_blob = sqlite3_column_blob(stmt, 0);
+        int id_bytes = sqlite3_column_bytes(stmt, 0);
+        if (id_bytes <= 0) continue;
+        /* id_map 是小数组（N <= 100K），线性查找足够快 */
+        for (size_t i = 0; i < w->id_map->count; i++) {
+            if (w->id_map->sdk_ids[i] != NULL &&
+                w->id_map->sdk_id_lens[i] == (size_t)id_bytes &&
+                memcmp(w->id_map->sdk_ids[i], id_blob, id_bytes) == 0) {
+                ctx->bitmap[i] = 1;
+                break;
+            }
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    return MMDB_OK;
+}
+
+/* P4-T4.5：释放 filter 上下文 */
+static void free_filter_ctx(hnsw_filter_ctx_t* ctx) {
+    if (!ctx) return;
+    if (ctx->bitmap) {
+        free(ctx->bitmap);
+        ctx->bitmap = NULL;
+    }
+    ctx->bitmap_size = 0;
 }
 
 /* 释放 collection 的 HNSW 索引内存 */
@@ -686,10 +782,27 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
 
     size_t top_k = q->top_k > 0 ? q->top_k : 10;
 
-    /* Phase 2: HNSW 加速搜索路径 */
-    if (c->hnsw && where[0] == '\0') {
+    /* Phase 2: HNSW 加速搜索路径（P4-T4.5：支持 metadata filter）
+     * 当 HNSW 可用且 N >= 阈值时，filter 为空走原路径，filter 非空走 filter 路径。
+     * 两者最终都使用 faiss_hnsw_search_filtered()：filter 为空时传 NULL 谓词。 */
+    if (c->hnsw) {
         hnsw_wrapper_t* w = (hnsw_wrapper_t*)c->hnsw;
         if (w->index && faiss_hnsw_index_size(w->index) > 0) {
+            /* P4-T4.5：filter 非空 → 构建 bitmap 谓词；filter 为空 → NULL 谓词 */
+            hnsw_filter_ctx_t filter_ctx;
+            int has_filter = (where[0] != '\0');
+            int filter_rc = MMDB_OK;
+            if (has_filter) {
+                pthread_rwlock_rdlock(c->coll_lock);
+                filter_rc = build_filter_ctx(c, where, &fp, &filter_ctx);
+                pthread_rwlock_unlock(c->coll_lock);
+                if (filter_rc != MMDB_OK) {
+                    free(where);
+                    mmdb_filter_params_free(&fp);
+                    return filter_rc;
+                }
+            }
+
             /* HNSW 搜索：获取候选 ID 和距离 */
             int32_t search_k = (int32_t)(top_k * 2);  /* 多取一些候选以补偿删除标记 */
             float* distances = (float*)calloc(search_k, sizeof(float));
@@ -698,22 +811,26 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
                 free(distances);
                 free(hnsw_ids);
                 free(where);
+                free_filter_ctx(&filter_ctx);
                 mmdb_filter_params_free(&fp);
                 return MMDB_ERR_NOMEM;
             }
 
             /* 读操作：获取读锁（支持并发读） */
             pthread_rwlock_rdlock(c->coll_lock);
-            int32_t found = faiss_hnsw_index_search(
+            int32_t found = faiss_hnsw_search_filtered(
                 w->index, (const float*)q->query_vector,
-                search_k, HNSW_DEFAULT_EF_S,
-                distances, hnsw_ids);
+                search_k,
+                has_filter ? hnsw_filter_predicate : NULL,
+                has_filter ? (void*)&filter_ctx : NULL,
+                hnsw_ids, distances);
             pthread_rwlock_unlock(c->coll_lock);
 
             if (found <= 0) {
                 free(distances);
                 free(hnsw_ids);
                 free(where);
+                free_filter_ctx(&filter_ctx);
                 mmdb_filter_params_free(&fp);
                 return MMDB_OK;  /* 无结果 */
             }
@@ -724,6 +841,7 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
                 free(distances);
                 free(hnsw_ids);
                 free(where);
+                free_filter_ctx(&filter_ctx);
                 mmdb_filter_params_free(&fp);
                 return MMDB_ERR_NOMEM;
             }
@@ -759,6 +877,7 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
             free(distances);
             free(hnsw_ids);
             free(where);
+            free_filter_ctx(&filter_ctx);
 
             /* 排序候选（按距离升序） */
             qsort(heap, heap_size, sizeof(knn_cand_t), cand_cmp);
