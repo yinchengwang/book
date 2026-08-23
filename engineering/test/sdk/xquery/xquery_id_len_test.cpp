@@ -4,7 +4,7 @@
 // xquery 应升级为返回 MMDB_ERR_INVALID（不再静默跳过）。
 //
 // 测试场景：
-//   1. OversizedIdReturnsInvalid — source 含 1 个 300B id 的 doc，调用
+//   1. OversizedIdReturnsInvalid — source 含 1 个 305B id 的 doc，调用
 //      mmdb_xquery_text_to_vector 必须返回 MMDB_ERR_INVALID。
 #include <gtest/gtest.h>
 #include <cstdio>
@@ -43,7 +43,7 @@ protected:
          * id 是无内嵌 '\0' 的 ASCII 字符串（FTS5/SQLite TEXT 类型安全）。
          * text 包含 "test" 以便 FTS5 检索命中。 */
         oversized_id_.assign(kOversizedIdLen, 'a');
-        oversized_id_ += "_tail";  /* 302 字节，确保 > 256 */
+        oversized_id_ += "_tail";  /* 305 字节（300 + "_tail"），确保 > 256 */
         oversized_id_len_ = oversized_id_.size();
 
         mmdb_text_entry_t e = {
