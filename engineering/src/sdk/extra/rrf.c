@@ -8,6 +8,7 @@
  * 默认 k=60 是论文推荐值。
  */
 #include "sdk/impl/hybrid_search.h"
+#include "sdk/mmdb_error.h"
 
 /* 初始化 RRF 配置：默认 k=60 */
 void mmdb_rrf_config_init(mmdb_rrf_config_t* cfg) {
@@ -18,9 +19,9 @@ void mmdb_rrf_config_init(mmdb_rrf_config_t* cfg) {
 /* 就地融合多通道排名到单一 RRF 得分 */
 int mmdb_rrf_fuse(mmdb_rrf_doc_t* docs, size_t doc_count,
                   const mmdb_rrf_config_t* cfg) {
-    if (!cfg) return -1;
+    if (!cfg) return MMDB_ERR_INVALID;
     if (doc_count == 0) return 0;
-    if (!docs) return -1;
+    if (!docs) return MMDB_ERR_INVALID;
 
     double k = (double)cfg->k;
     /* source_ranks 固定容量为 8，循环上限取 min(source_count, 8) */

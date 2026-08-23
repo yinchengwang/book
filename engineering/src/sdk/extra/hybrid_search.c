@@ -119,7 +119,7 @@ int mmdb_hybrid_search(
     /* === 向量通道（仅 VECTOR 模型启用） === */
     if (q->vector && q->dim > 0 && c->model == MMDB_MODEL_VECTOR) {
         mmdb_query_t vq = {q->vector, q->dim, cand_per_channel, q->filter_json};
-        mmdb_result_t vout = {};
+        mmdb_result_t vout = {0};
         int vrc = mmdb_vectors_search(c, &vq, &vout);
         if (vrc == MMDB_OK) {
             for (size_t i = 0; i < vout.count; i++) {
@@ -144,7 +144,7 @@ int mmdb_hybrid_search(
     /* === 文本通道（仅 TEXT 模型启用） === */
     if (q->text_query && c->model == MMDB_MODEL_TEXT) {
         mmdb_text_query_t tq = {q->text_query, cand_per_channel, q->filter_json};
-        mmdb_result_t tout = {};
+        mmdb_result_t tout = {0};
         int trc = mmdb_text_search(c, &tq, &tout);
         if (trc == MMDB_OK) {
             for (size_t i = 0; i < tout.count; i++) {

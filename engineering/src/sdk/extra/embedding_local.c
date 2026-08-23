@@ -4,6 +4,7 @@
  *   - AVERAGE_POOL / OPENAI: 占位返回错误码，后续 Task 补完
  */
 #include "sdk/mmdb_embedding.h"
+#include "sdk/mmdb_error.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -52,8 +53,8 @@ int mmdb_embed_text(
     mmdb_embedding_t* emb,
     const char* text, size_t text_len,
     float* out_vec, size_t out_dim) {
-    if (!emb || !text || !out_vec) return -1;
-    if (out_dim != emb->dim) return -1;
+    if (!emb || !text || !out_vec) return MMDB_ERR_INVALID;
+    if (out_dim != emb->dim) return MMDB_ERR_INVALID;
 
     switch (emb->kind) {
         case MMDB_EMBED_HASH: {
@@ -77,10 +78,10 @@ int mmdb_embed_text(
             return 0;
         }
         case MMDB_EMBED_AVERAGE_POOL:
-            return -2;
+            return MMDB_ERR_NOT_IMPLEMENTED;
         case MMDB_EMBED_OPENAI:
-            return -3;
+            return MMDB_ERR_NOT_IMPLEMENTED;
         default:
-            return -1;
+            return MMDB_ERR_INVALID;
     }
 }

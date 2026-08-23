@@ -161,10 +161,13 @@ static size_t tokenize_lower(const char* s, char** out_tokens, size_t max_tokens
 static double bm25_score(const char* text, const char* query_text) {
     if (!text || !query_text) return 0.0;
     size_t tlen = strlen(text);
-    /* tokenize query */
-    char* q_toks[64];
-    size_t qn = tokenize_lower(query_text, q_toks, 64);
-    if (qn == 0) return 0.0;
+    /* tokenize query（动态分配：按 query 长度计算 max_tokens，上限 1024） */
+    size_t max_tokens = strlen(query_text) / 2 + 16;
+    if (max_tokens > 1024) max_tokens = 1024;
+    char** q_toks = (char**)malloc(max_tokens * sizeof(char*));
+    if (!q_toks) return 0.0;
+    size_t qn = tokenize_lower(query_text, q_toks, max_tokens);
+    if (qn == 0) { free(q_toks); return 0.0; }
 
     /* 对每个 query token，在 text 中扫描计数（忽略大小写） */
     double total_hits = 0.0;
@@ -179,8 +182,9 @@ static double bm25_score(const char* text, const char* query_text) {
             p = hit + nlen;
         }
     }
-    /* 释放 token */
+    /* 释放 token + token 数组 */
     for (size_t i = 0; i < qn; i++) free(q_toks[i]);
+    free(q_toks);
 
     /* 简化 BM25：term 命中次数 / sqrt(text_len + 1) */
     return total_hits / sqrt((double)(tlen + 1));
