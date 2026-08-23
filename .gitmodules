@@ -12,25 +12,25 @@
 	url = https://gitee.com/yinchengwang_admin/pgvector.git
 [submodule "reference/open-source/postgres"]
 	path = reference/open-source/postgres
-	url = https://gitee.com/yinchengwang_admin/postgres.git
+	url = https://github.com/postgres/postgres.git
 [submodule "reference/open-source/sqlite3"]
 	path = reference/open-source/sqlite3
-	url = https://gitee.com/yinchengwang_admin/sqlite.git
+	url = https://github.com/sqlite/sqlite.git
 [submodule "reference/open-source/elasticsearch"]
 	path = reference/open-source/elasticsearch
 	url = https://gitee.com/yinchengwang_admin/elasticsearch.git
 [submodule "reference/open-source/chroma"]
 	path = reference/open-source/chroma
-	url = https://gitee.com/yinchengwang_admin/chroma.git
+	url = https://github.com/chroma-core/chroma.git
 [submodule "reference/open-source/milvus"]
 	path = reference/open-source/milvus
-	url = https://gitee.com/yinchengwang_admin/milvus.git
+	url = https://github.com/milvus-io/milvus.git
 [submodule "reference/open-source/ann-benchmarks"]
 	path = reference/open-source/ann-benchmarks
 	url = https://gitee.com/yinchengwang_admin/ann-benchmarks.git
 [submodule "reference/open-source/neo4j"]
 	path = reference/open-source/neo4j
-	url = https://gitee.com/yinchengwang_admin/neo4j.git
+	url = https://github.com/neo4j/neo4j.git
 [submodule "reference/open-source/openGauss"]
 	path = reference/open-source/openGauss
 	url = https://gitee.com/opengauss/openGauss-server.git
