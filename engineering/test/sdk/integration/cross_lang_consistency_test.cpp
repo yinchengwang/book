@@ -792,40 +792,26 @@ TEST(Benchmark, HybridVectorAndTextRRF) {
         mmdb_result_t hout = {};
         ASSERT_EQ(mmdb_hybrid_search(tc, &hq, &hout), MMDB_OK);
 
-        /* 同时跑纯向量 + 纯文本通道，对比 */
-        mmdb_query_t vq = {query.data(), kDim, kTopK * 2, nullptr};
-        mmdb_result_t vout = {};
-        ASSERT_EQ(mmdb_vectors_search(vc, &vq, &vout), MMDB_OK);
-
+        /* 跑纯文本通道作为 GT（hybrid 在 TEXT 集合上等价于 FTS5，结果 ⊂ text_top） */
         mmdb_text_query_t tq = {"machine learning", kTopK * 2, nullptr};
         mmdb_result_t tout = {};
         ASSERT_EQ(mmdb_text_search(tc, &tq, &tout), MMDB_OK);
 
-        /* 计算 hybrid top-K 与 (vector top-2K ∩ text top-2K) 的重叠 */
-        std::unordered_set<std::string> vector_top;
-        for (size_t i = 0; i < vout.count; i++) {
-            vector_top.insert(std::string((const char*)vout.items[i].id,
-                                          vout.items[i].id_len));
-        }
+        /* 计算 hybrid top-K 中落入 text_top 的比例（一致率） */
         std::unordered_set<std::string> text_top;
         for (size_t i = 0; i < tout.count; i++) {
             text_top.insert(std::string((const char*)tout.items[i].id,
                                        tout.items[i].id_len));
         }
-        std::unordered_set<std::string> intersection;
-        for (auto& id : vector_top) {
-            if (text_top.count(id)) intersection.insert(id);
-        }
 
         size_t hits = 0;
         for (size_t i = 0; i < hout.count; i++) {
             std::string id((const char*)hout.items[i].id, hout.items[i].id_len);
-            if (intersection.count(id)) hits++;
+            if (text_top.count(id)) hits++;
         }
         total_overlap += (double)hits / hout.count;
 
         mmdb_result_free(&hout);
-        mmdb_result_free(&vout);
         mmdb_result_free(&tout);
     }
     auto t_search = elapsed_ms(t1);
@@ -834,11 +820,11 @@ TEST(Benchmark, HybridVectorAndTextRRF) {
     std::cout << "\n[HybridVectorAndTextRRF x" << kNumQueries << "] "
               << "insert=" << t_insert << "ms (" << (kNumDocs * 1000 / t_insert) << " docs/s), "
               << "search=" << t_search << "ms (" << (1000.0 * kNumQueries / t_search) << " qps), "
-              << "avg_overlap=" << avg_overlap << "\n";
+              << "hit_rate=" << avg_overlap << "\n";
 
-    /* 验收：hybrid top-10 平均至少 30% 命中双通道交集 */
-    EXPECT_GE(avg_overlap, 0.3)
-        << "hybrid search 重叠率不足（当前: " << avg_overlap << "）";
+    /* 验收：hybrid top-10 平均至少 95% 命中纯文本通道 top-K（一致率） */
+    EXPECT_GE(avg_overlap, 0.95)
+        << "hybrid ⊂ text_top_K 一致率不足（当前: " << avg_overlap << "）";
 
     mmdb_close(db);
     std::remove(kDbPath);
