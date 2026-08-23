@@ -17,6 +17,7 @@ set(SDK_TESTS
     hybrid_search_test   # P3-T1.2：hybrid search 公共 API 测试，源码位于 hybrid/ 子目录
     embedding_test   # P3-T2.1：embedding 接口测试，源码位于 embedding/ 子目录
     xquery_test   # P3-T3.1：跨 collection join（text→vector）测试，源码位于 xquery/ 子目录
+    xquery_id_len_test   # P4-T4.3：id 超长升级为 MMDB_ERR_INVALID 测试，源码位于 xquery/ 子目录
     rag_test   # P3-T4.1：RAG retrieve 测试，源码位于 rag/ 子目录
     rerank_test   # P3-T4.2：RAG BM25 rerank 占位测试，源码位于 rag/ 子目录
     rag_embedding_test   # P4-T4.1：RAG embedding 配置入口测试，源码位于 rag/ 子目录
@@ -32,7 +33,7 @@ foreach(test_name IN LISTS SDK_TESTS)
         add_executable(${test_name} hybrid/${test_name}.cpp)
     elseif(test_name STREQUAL "embedding_test")
         add_executable(${test_name} embedding/${test_name}.cpp)
-    elseif(test_name STREQUAL "xquery_test")
+    elseif(test_name STREQUAL "xquery_test" OR test_name STREQUAL "xquery_id_len_test")
         add_executable(${test_name} xquery/${test_name}.cpp)
     elseif(test_name STREQUAL "rag_test" OR test_name STREQUAL "rerank_test" OR test_name STREQUAL "rag_embedding_test")
         add_executable(${test_name} rag/${test_name}.cpp)

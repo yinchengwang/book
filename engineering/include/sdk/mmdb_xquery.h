@@ -13,10 +13,14 @@
  *   - HNSW 支持 filter 是更大工程，留作后续独立 Task。
  *
  * 重要限制：
- *   当前实现内部 id 缓冲为 64 字节（见 xquery.c::xq_cand_t.id）。
- *   若 source (text) 集合返回的 id 超过 64 字节，该候选会被静默跳过，
- *   同时通过 stderr 输出警告（包含 collection 名 + 跳过的 id 长度）。
- *   调用方应注意 out.count 可能小于 source 实际命中数。
+ *   当前实现内部 id 缓冲为 256 字节（见 xquery.c::xq_cand_t.id 与
+ *   XQUERY_MAX_ID_LEN）。若 source (text) 集合返回的候选 id 超过
+ *   256 字节，本接口立即返回 MMDB_ERR_INVALID，不再静默跳过：
+ *     - 通过 stderr 输出 ERROR 级诊断（含 collection 名 + 越界 id 长度）
+ *     - 调用方收到 MMDB_ERR_INVALID 后应修正源数据（缩短 id）或拆分集合
+ *
+ * 设计取舍：将静默跳过升级为硬错误，是因为静默跳过会丢失数据，调用方
+ * 难以察觉；改为错误后，行为是显式的、可测试的、可被运维告警捕获的。
  */
 #ifndef SDK_MMDB_XQUERY_H
 #define SDK_MMDB_XQUERY_H

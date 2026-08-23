@@ -35,6 +35,10 @@
 /* target 向量表名最大长度（与 vectors.c 中的 build_table_name 对齐） */
 #define XQUERY_TABLE_NAME_MAX      128
 
+/* 候选 id 最大长度（字节）。命中 id 超过此长度立即返回 MMDB_ERR_INVALID，
+ * 不再静默跳过（P4-T4.3：关闭 CI-3）。缓冲对齐设置，避免栈占用过大。 */
+#define XQUERY_MAX_ID_LEN          256
+
 /* ====================================================================== */
 /* 内部辅助                                                              */
 /* ====================================================================== */
@@ -60,7 +64,7 @@ static int build_target_table_name(char* out, size_t out_cap,
 /* 候选条目（含 id 指针、距离） */
 typedef struct {
     float          dist;
-    uint8_t        id[64];
+    uint8_t        id[XQUERY_MAX_ID_LEN];
     size_t         id_len;
 } xq_cand_t;
 
@@ -184,13 +188,19 @@ int mmdb_xquery_text_to_vector(
     for (size_t i = 0; i < src_hits.count; i++) {
         const mmdb_result_item_t* hit = &src_hits.items[i];
         if (!hit->id || hit->id_len == 0) continue;
-        /* 跳过 id 超过堆内 id[64] 容量的（极少见，文本 id 应短）
-         * 命中此分支时通过 stderr 输出警告，便于运维定位异常数据。 */
-        if (hit->id_len > sizeof(heap[0].id)) {
+        /* P4-T4.3：id 超过 XQUERY_MAX_ID_LEN (256B) 不再静默跳过，
+         * 升级为返回 MMDB_ERR_INVALID。先 stderr ERROR 警告，再按
+         * 清理顺序释放 src_hits / heap / vec_buf 与读锁。 */
+        if (hit->id_len > XQUERY_MAX_ID_LEN) {
             fprintf(stderr,
-                    "[mmdb_xquery] WARN: candidate id_len=%zu > 64-byte limit, skipped (collection=%s)\n",
-                    hit->id_len, xq->source->name ? xq->source->name : "(unnamed)");
-            continue;
+                    "[mmdb_xquery] ERROR: id_len=%zu > %d-byte limit (collection=%s)\n",
+                    hit->id_len, XQUERY_MAX_ID_LEN,
+                    xq->source->name ? xq->source->name : "(unnamed)");
+            free(vec_buf);
+            free(heap);
+            pthread_rwlock_unlock(xq->target->coll_lock);
+            mmdb_result_free(&src_hits);
+            return MMDB_ERR_INVALID;
         }
 
         sqlite3_stmt* stmt = mmdb_sqlite_prepare(
