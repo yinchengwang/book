@@ -16,6 +16,8 @@ add_subdirectory(kbase)            # kbase 知识库测试
 add_subdirectory(db/consensus)   # Raft 共识模块测试（Phase11）
 add_subdirectory(db/index/vector_index)  # 向量索引测试（S7 修复 algo → algo-prod 后重启）
 add_subdirectory(apps)            # 独立应用测试（游戏、工具等）
+add_subdirectory(sdk)            # 多模态嵌入式 SDK测试
+add_subdirectory(sdk/integration) # 跨语言一致性 + 性能基准
 
 # 创建一个聚合测试目标
 add_custom_target(all_tests
@@ -55,6 +57,13 @@ set(_test_targets
     test_vector_query
     vector_delete_test
     vector_reranker_test
+    mmdb_core_test
+    mmdb_vectors_test
+    mmdb_graph_test
+    mmdb_timeseries_test
+    mmdb_text_test
+    mmdb_filter_test
+    cross_lang_consistency_test
 )
 
 foreach(_t IN LISTS _test_targets)
