@@ -1,20 +1,25 @@
 /**
  * @file mmdb_hybrid.h
- * @brief 混合检索公共 API（向量 + FTS5 + filter → RRF 重排）
+ * @brief 混合检索公共 API（主+次通道 → RRF 重排）
  *
  * 三通道中任意一个为可选：未填的通道不参与融合。
  * 至少需要填一个通道（vector 或 text_query），否则返回 MMDB_ERR_INVALID。
  *
- * 集合路由策略：根据入参 collection c 的模型（c->model）自动选择可用通道：
- *   - MMDB_MODEL_VECTOR: 启用向量通道（需 q->vector != NULL && q->dim > 0）
- *   - MMDB_MODEL_TEXT  : 启用文本通道（需 q->text_query != NULL）
- *   - 其他模型         : 当前不支持 hybrid
+ * 双通道路由策略（P4-T4.2，关闭 CI-1 单通道路由限制）：
+ *   1. 主通道由 c->model 决定：
+ *      - MMDB_MODEL_VECTOR + q->vector           → mmdb_vectors_search
+ *      - MMDB_MODEL_TEXT   + q->text_query       → mmdb_text_search
+ *      - 其它模型                                → 主通道关闭
+ *   2. 次通道：若 q 同时提供非主通道字段（且满足基础条件）则尝试启用：
+ *      - MMDB_MODEL_VECTOR + q->text_query（strlen > 0）→ 次通道 text
+ *      - MMDB_MODEL_TEXT   + q->vector（dim > 0）       → 次通道 vector
+ *      - 其它模型                                → 不启用次通道
+ *   3. 主+次通道结果共享去重逻辑后统一 RRF 融合（既有 mmdb_rrf_fuse / rrf.c）
  *
- * 重要限制（P3 当前实现）：
- *   hybrid_search 当前为单通道路由策略：根据 c->model 决定启用哪个通道，
- *   不匹配的通道会被静默忽略。即 VECTOR 集合上提供 text_query 或 TEXT
- *   集合上提供 vector 都不会参与融合。这是 P3 阶段的设计妥协，
- *   真正的双通道融合留待后续 plan。
+ * 注：当前 SDK 架构下，mmdb_text_search 仅接受 TEXT 集合，mmdb_vectors_search
+ *     仅接受 VECTOR 集合；次通道在底层 API 拒绝时会静默返回 0 候选，主通道
+ *     结果不受影响。若后续 SDK 支持 VECTOR 集合内置 FTS5 或 TEXT 集合内置
+ *     向量索引，本路由策略将自动激活完整双通道融合（无需修改 hybrid 层）。
  */
 #ifndef SDK_MMDB_HYBRID_H
 #define SDK_MMDB_HYBRID_H
@@ -40,14 +45,17 @@ typedef struct {
 } mmdb_hybrid_query_t;
 
 /**
- * @brief hybrid search：向量通道 + 文本通道 + filter → RRF 重排 → top_k
+ * @brief hybrid search：主通道 + 次通道 → RRF 重排 → top_k
  *
- * 路由策略：根据 c->model 选择可用通道：
- *   - VECTOR 模型 + q->vector  → 调 mmdb_vectors_search
- *   - TEXT   模型 + q->text_query → 调 mmdb_text_search
- *   - VECTOR 模型 + q->text_query / TEXT 模型 + q->vector → 静默忽略不匹配通道
+ * 路由策略（P4-T4.2 双通道真正融合）：
+ *   主通道（由 c->model 决定）：
+ *     - VECTOR 模型 + q->vector           → mmdb_vectors_search
+ *     - TEXT   模型 + q->text_query       → mmdb_text_search
+ *   次通道（若 q 同时提供非主通道字段则尝试，底层失败时静默忽略）：
+ *     - VECTOR 模型 + q->text_query（>0） → mmdb_text_search（一般 model 不匹配）
+ *     - TEXT   模型 + q->vector（dim>0）  → mmdb_vectors_search（一般 model 不匹配）
  *
- * @param c   目标 collection（必须非空；模型决定启用哪个通道）
+ * @param c   目标 collection（必须非空；模型决定主通道）
  * @param q   查询参数（至少填一个通道；rrf=NULL 走默认 k=60）
  * @param out 输出结果（调用方负责 mmdb_result_free）
  * @return MMDB_OK 成功；MMDB_ERR_INVALID 参数非法；MMDB_ERR_NOMEM 内存不足

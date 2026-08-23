@@ -21,6 +21,7 @@ set(SDK_TESTS
     rag_test   # P3-T4.1：RAG retrieve 测试，源码位于 rag/ 子目录
     rerank_test   # P3-T4.2：RAG BM25 rerank 占位测试，源码位于 rag/ 子目录
     rag_embedding_test   # P4-T4.1：RAG embedding 配置入口测试，源码位于 rag/ 子目录
+    hybrid_dual_channel_test   # P4-T4.2：双通道真正融合测试，源码位于 hybrid/ 子目录
 )
 
 # 为每个测试源文件创建可执行文件
@@ -29,7 +30,7 @@ foreach(test_name IN LISTS SDK_TESTS)
     # embedding_test 源码位于 embedding/ 子目录
     # xquery_test 源码位于 xquery/ 子目录
     # rag_test 源码位于 rag/ 子目录
-    if(test_name STREQUAL "rrf_test" OR test_name STREQUAL "hybrid_search_test")
+    if(test_name STREQUAL "rrf_test" OR test_name STREQUAL "hybrid_search_test" OR test_name STREQUAL "hybrid_dual_channel_test")
         add_executable(${test_name} hybrid/${test_name}.cpp)
     elseif(test_name STREQUAL "embedding_test")
         add_executable(${test_name} embedding/${test_name}.cpp)
