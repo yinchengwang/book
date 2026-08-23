@@ -23,6 +23,7 @@
 #include "sdk/mmdb_vectors.h"
 #include "sdk/mmdb_timeseries.h"
 #include "sdk/mmdb_text.h"
+#include "sdk/mmdb_hybrid.h"
 
 namespace fs = std::filesystem;
 using clk = std::chrono::high_resolution_clock;
@@ -703,6 +704,141 @@ TEST(ErrorHandling, NonExistentCollection) {
 
     mmdb_collection_t* c = mmdb_collection_get(db, "does_not_exist");
     EXPECT_EQ(c, nullptr);
+
+    mmdb_close(db);
+    std::remove(kDbPath);
+}
+
+// ========================================================================
+// 7. hybrid search 端到端基准（P3-T1.3）
+//
+// 验证：1000 个文档（共享 id）同时写入 vector 与 text collection，
+// 然后对每条查询跑 hybrid search，并与"双通道 top-2K 交集"做 overlap 比较。
+// ========================================================================
+
+TEST(Benchmark, HybridVectorAndTextRRF) {
+    std::remove(kDbPath);
+
+    mmdb_t* db = mmdb_open(kDbPath, nullptr);
+    ASSERT_NE(db, nullptr);
+
+    /* 双 collection：vector + text，共享相同 ids */
+    mmdb_schema_t vs = {MMDB_MODEL_VECTOR, 0, nullptr, 128};
+    mmdb_collection_t* vc = mmdb_collection_create(db, "bench_hybrid_v", &vs);
+    mmdb_schema_t ts = {MMDB_MODEL_TEXT, 0, nullptr, 0};
+    mmdb_collection_t* tc = mmdb_collection_create(db, "bench_hybrid_t", &ts);
+    ASSERT_NE(vc, nullptr);
+    ASSERT_NE(tc, nullptr);
+
+    constexpr size_t kNumDocs = 1000;
+    constexpr size_t kDim = 128;
+    constexpr size_t kNumQueries = 50;
+    constexpr int kTopK = 10;
+
+    /* 词表：从预定义词表随机抽 5-20 个词拼接为文档文本 */
+    const char* vocab[] = {
+        "machine", "learning", "deep", "neural", "network", "algorithm",
+        "vector", "database", "index", "query", "embedding", "transformer",
+        "training", "inference", "model", "feature", "loss", "gradient",
+        "cooking", "recipe", "pasta", "bread", "soup", "cake",
+        "sports", "football", "basketball", "tennis", "olympics", "medal",
+        "music", "guitar", "piano", "concert", "album", "song",
+        "travel", "flight", "hotel", "beach", "mountain", "city"
+    };
+    constexpr size_t kVocabSize = sizeof(vocab) / sizeof(vocab[0]);
+
+    std::mt19937 rng(42);
+    std::uniform_int_distribution<size_t> vocab_dist(0, kVocabSize - 1);
+    std::uniform_int_distribution<int> word_count_dist(5, 20);
+
+    /* 批量插入 */
+    auto t0 = clk::now();
+    for (size_t i = 0; i < kNumDocs; i++) {
+        std::string id = "doc" + std::to_string(i);
+        int n_words = word_count_dist(rng);
+        std::string text;
+        for (int w = 0; w < n_words; w++) {
+            if (w > 0) text += " ";
+            text += vocab[vocab_dist(rng)];
+        }
+
+        /* 随机向量 */
+        auto vec = random_vector(kDim, rng);
+        mmdb_vector_t v = {
+            (const uint8_t*)id.data(), id.size(),
+            vec.data(), kDim, nullptr, nullptr
+        };
+        ASSERT_EQ(mmdb_vectors_add(vc, &v, 1), MMDB_OK);
+
+        /* mmdb_text_entry_t 字段为 {id, text, metadata_json}（3 字段） */
+        mmdb_text_entry_t e = {
+            id.c_str(), text.c_str(), nullptr
+        };
+        ASSERT_EQ(mmdb_text_add(tc, &e), MMDB_OK);
+    }
+    auto t_insert = elapsed_ms(t0);
+
+    /* 50 次查询 */
+    double total_overlap = 0.0;
+    auto t1 = clk::now();
+    for (size_t q = 0; q < kNumQueries; q++) {
+        auto query = random_vector(kDim, rng);
+        mmdb_hybrid_query_t hq = {};
+        hq.vector = query.data();
+        hq.dim = kDim;
+        hq.text_query = "machine learning";
+        hq.top_k = kTopK;
+
+        mmdb_result_t hout = {};
+        ASSERT_EQ(mmdb_hybrid_search(tc, &hq, &hout), MMDB_OK);
+
+        /* 同时跑纯向量 + 纯文本通道，对比 */
+        mmdb_query_t vq = {query.data(), kDim, kTopK * 2, nullptr};
+        mmdb_result_t vout = {};
+        ASSERT_EQ(mmdb_vectors_search(vc, &vq, &vout), MMDB_OK);
+
+        mmdb_text_query_t tq = {"machine learning", kTopK * 2, nullptr};
+        mmdb_result_t tout = {};
+        ASSERT_EQ(mmdb_text_search(tc, &tq, &tout), MMDB_OK);
+
+        /* 计算 hybrid top-K 与 (vector top-2K ∩ text top-2K) 的重叠 */
+        std::unordered_set<std::string> vector_top;
+        for (size_t i = 0; i < vout.count; i++) {
+            vector_top.insert(std::string((const char*)vout.items[i].id,
+                                          vout.items[i].id_len));
+        }
+        std::unordered_set<std::string> text_top;
+        for (size_t i = 0; i < tout.count; i++) {
+            text_top.insert(std::string((const char*)tout.items[i].id,
+                                       tout.items[i].id_len));
+        }
+        std::unordered_set<std::string> intersection;
+        for (auto& id : vector_top) {
+            if (text_top.count(id)) intersection.insert(id);
+        }
+
+        size_t hits = 0;
+        for (size_t i = 0; i < hout.count; i++) {
+            std::string id((const char*)hout.items[i].id, hout.items[i].id_len);
+            if (intersection.count(id)) hits++;
+        }
+        total_overlap += (double)hits / hout.count;
+
+        mmdb_result_free(&hout);
+        mmdb_result_free(&vout);
+        mmdb_result_free(&tout);
+    }
+    auto t_search = elapsed_ms(t1);
+    double avg_overlap = total_overlap / kNumQueries;
+
+    std::cout << "\n[HybridVectorAndTextRRF x" << kNumQueries << "] "
+              << "insert=" << t_insert << "ms (" << (kNumDocs * 1000 / t_insert) << " docs/s), "
+              << "search=" << t_search << "ms (" << (1000.0 * kNumQueries / t_search) << " qps), "
+              << "avg_overlap=" << avg_overlap << "\n";
+
+    /* 验收：hybrid top-10 平均至少 30% 命中双通道交集 */
+    EXPECT_GE(avg_overlap, 0.3)
+        << "hybrid search 重叠率不足（当前: " << avg_overlap << "）";
 
     mmdb_close(db);
     std::remove(kDbPath);
