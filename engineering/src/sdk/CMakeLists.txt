@@ -56,6 +56,7 @@ set(SDK_EXTRA_SOURCES
     extra/rag.c
     extra/rrf.c   # P3-T1.1 新增：RRF 多通道融合
     extra/hybrid_search.c   # P3-T1.2 新增：hybrid search 公共 API（向量+FTS5+RRF）
+    extra/embedding_local.c   # P3-T2.1 新增：embedding 接口抽象 + hash/average-pool/openai 占位
 )
 
 # 创建静态库
