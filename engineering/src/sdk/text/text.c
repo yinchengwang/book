@@ -89,7 +89,8 @@ int mmdb_text_add_batch(mmdb_collection_t* c,
     sqlite3_stmt* stmt = mmdb_sqlite_prepare(c->sdb, sql, NULL, 0);
     if (!stmt) return MMDB_ERR_IO;
 
-    pthread_mutex_lock(c->coll_lock);
+    /* 写操作：获取写锁 */
+    pthread_rwlock_wrlock(c->coll_lock);
     int err = MMDB_OK;
     for (size_t i = 0; i < n; i++) {
         const mmdb_text_entry_t* e = &entries[i];
@@ -114,7 +115,7 @@ int mmdb_text_add_batch(mmdb_collection_t* c,
         }
     }
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(c->coll_lock);
+    pthread_rwlock_unlock(c->coll_lock);
     return err;
 }
 
@@ -137,7 +138,8 @@ int mmdb_text_get(mmdb_collection_t* c, const char* id,
 
     mmdb_sqlite_bind_text(stmt, 1, id);
 
-    pthread_mutex_lock(c->coll_lock);
+    /* 读操作：获取读锁（支持并发读） */
+    pthread_rwlock_rdlock(c->coll_lock);
     rc = MMDB_ERR_NOT_FOUND;
     if (sqlite3_step(stmt) == SQLITE_ROW) {
         const char* txt = (const char*)sqlite3_column_text(stmt, 1);
@@ -148,7 +150,7 @@ int mmdb_text_get(mmdb_collection_t* c, const char* id,
         rc = MMDB_OK;
     }
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(c->coll_lock);
+    pthread_rwlock_unlock(c->coll_lock);
     return rc;
 }
 
@@ -170,10 +172,11 @@ int mmdb_text_delete(mmdb_collection_t* c, const char* id) {
 
     mmdb_sqlite_bind_text(stmt, 1, id);
 
-    pthread_mutex_lock(c->coll_lock);
+    /* 写操作：获取写锁（delete 会修改底层数据） */
+    pthread_rwlock_wrlock(c->coll_lock);
     rc = (sqlite3_step(stmt) == SQLITE_DONE) ? MMDB_OK : MMDB_ERR_IO;
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(c->coll_lock);
+    pthread_rwlock_unlock(c->coll_lock);
     return rc;
 }
 
@@ -200,14 +203,15 @@ int mmdb_text_search(mmdb_collection_t* c, const mmdb_text_query_t* q,
     /* 绑定搜索关键词 */
     mmdb_sqlite_bind_text(stmt, 1, q->query);
 
-    pthread_mutex_lock(c->coll_lock);
+    /* 读操作：获取读锁（支持并发读） */
+    pthread_rwlock_rdlock(c->coll_lock);
 
     /* 扫描结果 */
     size_t cap = 16;
     out->items = (mmdb_result_item_t*)calloc(cap, sizeof(mmdb_result_item_t));
     if (!out->items) {
         sqlite3_finalize(stmt);
-        pthread_mutex_unlock(c->coll_lock);
+        pthread_rwlock_unlock(c->coll_lock);
         return MMDB_ERR_NOMEM;
     }
 
@@ -219,7 +223,7 @@ int mmdb_text_search(mmdb_collection_t* c, const mmdb_text_query_t* q,
                 out->items, sizeof(mmdb_result_item_t) * cap);
             if (!out->items) {
                 sqlite3_finalize(stmt);
-                pthread_mutex_unlock(c->coll_lock);
+                pthread_rwlock_unlock(c->coll_lock);
                 return MMDB_ERR_NOMEM;
             }
         }
@@ -239,6 +243,6 @@ int mmdb_text_search(mmdb_collection_t* c, const mmdb_text_query_t* q,
     }
 
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(c->coll_lock);
+    pthread_rwlock_unlock(c->coll_lock);
     return MMDB_OK;
 }

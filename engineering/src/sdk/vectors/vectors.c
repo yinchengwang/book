@@ -86,7 +86,7 @@ static float l2_distance_scalar(const float* a, const float* b, size_t dim) {
 #define HNSW_BUILD_THRESHOLD  10000
 #define HNSW_DEFAULT_M        16
 #define HNSW_DEFAULT_EF_C     128
-#define HNSW_DEFAULT_EF_S     64
+#define HNSW_DEFAULT_EF_S     128
 
 /* HNSW ID 映射表：int32_t HNSW ID ↔ 可变长 SDK ID (BLOB) */
 typedef struct {
@@ -760,23 +760,18 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
             free(hnsw_ids);
             free(where);
 
-            /* 回查 SQLite 获取 metadata 和 text */
-            char tname[128];
-            build_table_name(tname, sizeof(tname), c->name);
-            char back_sql[256];
-            snprintf(back_sql, sizeof(back_sql),
-                     "SELECT id, metadata, text FROM %s WHERE id = ?;", tname);
-
-            /* 排序并填充结果 */
+            /* 排序候选（按距离升序） */
             qsort(heap, heap_size, sizeof(knn_cand_t), cand_cmp);
 
             out->items = (mmdb_result_item_t*)calloc(heap_size, sizeof(mmdb_result_item_t));
             if (!out->items) {
                 free(heap);
+                mmdb_filter_params_free(&fp);
                 return MMDB_ERR_NOMEM;
             }
             out->count = heap_size;
 
+            /* 复制 ID + distance（不依赖 SQLite） */
             for (size_t i = 0; i < heap_size; i++) {
                 out->items[i].id = (uint8_t*)malloc(heap[i].id_len);
                 if (!out->items[i].id) {
@@ -784,6 +779,7 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
                     free(out->items);
                     out->items = NULL;
                     free(heap);
+                    mmdb_filter_params_free(&fp);
                     return MMDB_ERR_NOMEM;
                 }
                 memcpy((void*)out->items[i].id, heap[i].id, heap[i].id_len);
@@ -791,20 +787,59 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
                 out->items[i].distance = heap[i].dist;
                 out->items[i].metadata_json = NULL;
                 out->items[i].text = NULL;
+            }
 
-                /* 读操作：获取读锁（支持并发读） */
+            /* 批量回查 SQLite：一次查询取所有 metadata/text（O(1) round-trip） */
+            if (heap_size > 0) {
+                char tname[128];
+                build_table_name(tname, sizeof(tname), c->name);
+
+                /* 构造 WHERE id IN (?, ?, ?, ...) SQL */
+                char back_sql[512];
+                int pos = snprintf(back_sql, sizeof(back_sql),
+                                   "SELECT id, metadata, text FROM %s WHERE id IN (",
+                                   tname);
+                for (size_t i = 0; i < heap_size && pos < (int)sizeof(back_sql) - 4; i++) {
+                    int n = snprintf(back_sql + pos, sizeof(back_sql) - pos,
+                                     "%s?", (i == 0) ? "" : ",");
+                    if (n < 0 || n >= (int)sizeof(back_sql) - pos) break;
+                    pos += n;
+                }
+                if (pos < (int)sizeof(back_sql) - 2) {
+                    back_sql[pos++] = ')';
+                    back_sql[pos++] = ';';
+                    back_sql[pos] = '\0';
+                }
+
+                /* 读操作：单次获取读锁，整批回查 */
                 pthread_rwlock_rdlock(c->coll_lock);
                 sqlite3_stmt* back_stmt = mmdb_sqlite_prepare(c->sdb, back_sql, NULL, 0);
                 if (back_stmt) {
-                    mmdb_sqlite_bind_blob(back_stmt, 1, heap[i].id, heap[i].id_len);
-                    if (sqlite3_step(back_stmt) == SQLITE_ROW) {
+                    /* 绑定所有 ID */
+                    for (size_t i = 0; i < heap_size; i++) {
+                        sqlite3_bind_blob(back_stmt, (int)(i + 1),
+                                          heap[i].id, (int)heap[i].id_len,
+                                          SQLITE_TRANSIENT);
+                    }
+                    /* 单次扫描建立 id → (metadata, text) 映射 */
+                    while (sqlite3_step(back_stmt) == SQLITE_ROW) {
+                        const void* row_id = sqlite3_column_blob(back_stmt, 0);
+                        int row_id_len = sqlite3_column_bytes(back_stmt, 0);
                         const char* meta = (const char*)sqlite3_column_text(back_stmt, 1);
                         const char* txt = (const char*)sqlite3_column_text(back_stmt, 2);
-                        if (meta && meta[0] != '\0') {
-                            out->items[i].metadata_json = strdup(meta);
-                        }
-                        if (txt && txt[0] != '\0') {
-                            out->items[i].text = strdup(txt);
+
+                        /* 在 out->items 中查找匹配的 ID（线性扫描，K 通常 <= 10） */
+                        for (size_t i = 0; i < heap_size; i++) {
+                            if (out->items[i].id_len == (size_t)row_id_len &&
+                                memcmp(out->items[i].id, row_id, row_id_len) == 0) {
+                                if (meta && meta[0] != '\0') {
+                                    out->items[i].metadata_json = strdup(meta);
+                                }
+                                if (txt && txt[0] != '\0') {
+                                    out->items[i].text = strdup(txt);
+                                }
+                                break;
+                            }
                         }
                     }
                     sqlite3_finalize(back_stmt);
