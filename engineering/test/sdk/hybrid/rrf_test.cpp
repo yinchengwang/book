@@ -28,10 +28,12 @@ TEST(RRF, FuseTwoChannels) {
     ASSERT_EQ(mmdb_rrf_fuse(docs, 3, &cfg), 0);
 
     /* A 得分 = 1/61 + 1/63 ≈ 0.0323
-       B 得分 = 1/62 + 1/61 ≈ 0.0323
+       B 得分 = 1/62 + 1/61 ≈ 0.0325（B 在更浅通道排名靠前，得分略高）
        C 得分 = 1/63 ≈ 0.0159 */
     EXPECT_GT(docs[0].rrf_score, docs[2].rrf_score);
     EXPECT_GT(docs[1].rrf_score, docs[2].rrf_score);
+    /* 数学上 B (rank 2 + rank 1) > A (rank 1 + rank 3)：B ≈ 0.0325，A ≈ 0.0323 */
+    EXPECT_GT(docs[1].rrf_score, docs[0].rrf_score);
 }
 
 TEST(RRF, EmptyInput) {
@@ -60,10 +62,12 @@ TEST(RRF, ExceedsEightChannels) {
     /* source_ranks[8] 容量上限：超过 8 个通道时只融合前 8 个 */
     mmdb_rrf_doc_t doc = {};
     doc.id = (const uint8_t*)"Z"; doc.id_len = 1;
-    for (size_t i = 0; i < 12; i++) {
-        doc.source_ranks[i] = 1;  /* 前 8 个填 rank=1，其余应被忽略 */
-    }
-    doc.source_count = 12;  /* 故意超过 8 */
+    /* 用独立 buffer 写入 12 个 rank=1，再 memcpy 8 个到结构体数组：
+     * 避免直接写 source_ranks[8]~[11] 触发越界写 UB */
+    size_t ranks[12];
+    for (size_t i = 0; i < 12; i++) ranks[i] = 1;
+    memcpy(doc.source_ranks, ranks, 8 * sizeof(size_t));  /* 仅拷贝前 8 个 */
+    doc.source_count = 12;  /* 故意超过 8，应被 cap 截断 */
 
     mmdb_rrf_config_t cfg;
     mmdb_rrf_config_init(&cfg);
