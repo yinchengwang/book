@@ -5,6 +5,10 @@
  * 测试场景：
  *   1. CustomEmbeddingTakesPrecedence — 注入 collection-level embedding 后，
  *      retrieve 使用该 embedding（而非默认 HASH）
+ *   2. NullCollectionReturnsInvalid — 传 NULL collection 给 set_embedding 应报错
+ *   3. RepeatedSetEmbedding — 连续多次 set_embedding 应返回 OK（后者覆盖前者）
+ *   4. NullEmbeddingClearsCollectionLevel — set_embedding(coll, NULL) 应清空
+ *      collection-level embedding，retrieve 走 HASH fallback
  */
 #include <gtest/gtest.h>
 #include <cstdio>
@@ -87,4 +91,59 @@ TEST_F(RagEmbeddingTest, CustomEmbeddingTakesPrecedence) {
 
     /* 所有权提示：collection 仅持指针，调用方负责 destroy */
     mmdb_embedding_drop(my_emb);
+}
+
+/* 负向用例：NULL collection 应返回 MMDB_ERR_INVALID */
+TEST_F(RagEmbeddingTest, NullCollectionReturnsInvalid) {
+    mmdb_embedding_t* emb = mmdb_embedding_create(MMDB_EMBED_HASH, kDim);
+    ASSERT_NE(emb, nullptr);
+    EXPECT_EQ(mmdb_rag_set_embedding(nullptr, emb), MMDB_ERR_INVALID);
+    mmdb_embedding_drop(emb);
+}
+
+/* 负向用例：连续多次 set_embedding 不报错，第二次覆盖前者 */
+TEST_F(RagEmbeddingTest, RepeatedSetEmbedding) {
+    mmdb_embedding_t* emb_a = mmdb_embedding_create(MMDB_EMBED_HASH, kDim);
+    mmdb_embedding_t* emb_b = mmdb_embedding_create(MMDB_EMBED_HASH, kDim);
+    ASSERT_NE(emb_a, nullptr);
+    ASSERT_NE(emb_b, nullptr);
+
+    /* 两次设置都应成功（API 契约：后者覆盖，无自动 drop） */
+    EXPECT_EQ(mmdb_rag_set_embedding(tc_, emb_a), MMDB_OK);
+    EXPECT_EQ(mmdb_rag_set_embedding(tc_, emb_b), MMDB_OK);
+
+    /* retrieve 仍可工作（行为正确性的间接验证） */
+    mmdb_rag_query_t q = {0};
+    q.query_text = "deep learning";
+    q.top_k = 3;
+    mmdb_rag_result_t r = {0};
+    EXPECT_EQ(mmdb_rag_retrieve(tc_, &q, &r), MMDB_OK);
+    EXPECT_EQ(r.items.count, q.top_k);
+
+    mmdb_rag_result_free(&r);
+    /* 所有权归调用方：手动释放两次设置的 embedding */
+    mmdb_embedding_drop(emb_a);
+    mmdb_embedding_drop(emb_b);
+}
+
+/* 负向用例：set_embedding(coll, NULL) 应清空 collection-level embedding，
+ * 此后 retrieve 走 HASH fallback（q.embedding == NULL && coll->embedding == NULL） */
+TEST_F(RagEmbeddingTest, NullEmbeddingClearsCollectionLevel) {
+    mmdb_embedding_t* emb = mmdb_embedding_create(MMDB_EMBED_HASH, kDim);
+    ASSERT_NE(emb, nullptr);
+
+    EXPECT_EQ(mmdb_rag_set_embedding(tc_, emb), MMDB_OK);
+    /* 传 NULL 等价于清除（API 契约） */
+    EXPECT_EQ(mmdb_rag_set_embedding(tc_, nullptr), MMDB_OK);
+
+    /* 清除后 retrieve 仍可工作（走 HASH fallback） */
+    mmdb_rag_query_t q = {0};
+    q.query_text = "vector database";
+    q.top_k = 3;
+    mmdb_rag_result_t r = {0};
+    EXPECT_EQ(mmdb_rag_retrieve(tc_, &q, &r), MMDB_OK);
+    EXPECT_EQ(r.items.count, q.top_k);
+
+    mmdb_rag_result_free(&r);
+    mmdb_embedding_drop(emb);
 }
