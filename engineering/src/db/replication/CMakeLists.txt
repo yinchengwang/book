@@ -8,6 +8,9 @@ if(REPL_SOURCE_FILES)
         ${ENGINEERING_SOURCE_DIR}/include
         ${ENGINEERING_SOURCE_DIR}/include/db
         ${ENGINEERING_SOURCE_DIR}/include/db/replication
+        ${ENGINEERING_SOURCE_DIR}/include/sdk
+        ${ENGINEERING_SOURCE_DIR}/include/sdk/impl
     )
-    target_link_libraries(db_replication PRIVATE project_includes)
+    # Task 12：复制模块迁移到 MemoryContext，依赖 SDK 兼容层
+    target_link_libraries(db_replication PRIVATE project_includes mmsdk)
 endif()

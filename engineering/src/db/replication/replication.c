@@ -8,6 +8,7 @@
 #include <time.h>
 
 #include <db/replication/replication.h>
+#include "sdk/impl/mmdb_memctx.h"  /* Task 12：迁移 manager/config 到 MemoryContext */
 
 /* ─────────────────────────────────────────────────────────────────
  * 复制连接结构
@@ -20,6 +21,8 @@ struct repl_connection {
     uint64_t last_wal_lsn;      /* 最后接收的 WAL LSN */
     uint64_t last_sent_lsn;     /* 最后发送的 LSN */
     time_t last_heartbeat;      /* 最后心跳时间 */
+    /* Task 12：连接级内存上下文（owner 字段，所有分配走 ctx） */
+    MemoryContext mem_ctx;
 };
 
 /* ─────────────────────────────────────────────────────────────────
@@ -35,6 +38,8 @@ struct repl_manager {
     repl_connection_t **connections;  /* 活跃连接 */
     int connection_count;        /* 连接数 */
     time_t start_time;          /* 启动时间 */
+    /* Task 12：管理器级内存上下文（顶层 ctx，所有下属分配走 ctx） */
+    MemoryContext mem_ctx;
 };
 
 /* ─────────────────────────────────────────────────────────────────
@@ -50,9 +55,16 @@ repl_connection_t *repl_connect_primary(repl_manager_t *manager,
 
     if (manager == NULL || host == NULL) return NULL;
 
-    repl_connection_t *conn = (repl_connection_t *)calloc(1, sizeof(repl_connection_t));
+    /*
+     * Task 12：连接分配走 manager->mem_ctx，
+     * 不再单独 free(conn)；由 ctx 销毁时统一回收。
+     */
+    MemoryContext parent = manager->mem_ctx;
+    repl_connection_t *conn = (repl_connection_t *)mmdb_mem_calloc(
+        parent, 1, sizeof(repl_connection_t));
     if (conn == NULL) return NULL;
 
+    conn->mem_ctx = parent;
     conn->fd = -1;
     conn->role = REPL_ROLE_REPLICA;
     conn->state = REPL_STATE_DISCONNECTED;
@@ -77,7 +89,8 @@ void repl_connection_close(repl_connection_t *conn)
         conn->fd = -1;
     }
 
-    free(conn);
+    /* Task 12：连接本身由 ctx 分配，关闭时仅清理字段，不再单独 free(conn)。
+     * 完整释放由 manager 销毁时 ctx 一并回收。 */
 }
 
 repl_message_t *repl_recv(repl_connection_t *conn, int timeout_ms)
@@ -105,12 +118,27 @@ repl_manager_t *repl_manager_create(const repl_config_t *config)
 {
     if (config == NULL) return NULL;
 
-    repl_manager_t *manager = (repl_manager_t *)calloc(1, sizeof(repl_manager_t));
-    if (manager == NULL) return NULL;
+    /*
+     * Task 12：manager 本身与 config 字段均由 mem_ctx 分配，
+     * 创建失败时由 ctx 销毁统一回收（不再单独 free）。
+     *
+     * mem_ctx 以 NULL 为父（根 ctx），由 SDK 层 memctx_create 创建。
+     */
+    MemoryContext root_ctx = mmdb_memctx_create(NULL, "ReplManagerContext", 0);
+    if (!root_ctx) return NULL;
 
-    manager->config = (repl_config_t *)malloc(sizeof(repl_config_t));
+    repl_manager_t *manager = (repl_manager_t *)mmdb_mem_calloc(
+        root_ctx, 1, sizeof(repl_manager_t));
+    if (manager == NULL) {
+        mmdb_memctx_delete(root_ctx);
+        return NULL;
+    }
+
+    manager->mem_ctx = root_ctx;
+
+    manager->config = (repl_config_t *)mmdb_mem_alloc(root_ctx, sizeof(repl_config_t));
     if (manager->config == NULL) {
-        free(manager);
+        mmdb_memctx_delete(root_ctx);
         return NULL;
     }
 
@@ -134,9 +162,12 @@ void repl_manager_destroy(repl_manager_t *manager)
 
     repl_stop(manager);
 
-    if (manager->config) free(manager->config);
-    if (manager->connections) free(manager->connections);
-    free(manager);
+    /*
+     * Task 12：manager / config / connections 数组均由 mem_ctx 分配，
+     * 销毁时统一由 ctx 删除回收（不再单独 free）。
+     */
+    MemoryContext ctx = manager->mem_ctx;
+    mmdb_memctx_delete(ctx);
 }
 
 int repl_start(repl_manager_t *manager)
@@ -278,6 +309,16 @@ int repl_do_failover(repl_manager_t *manager)
 
 repl_config_t *repl_config_create(repl_role_t role)
 {
+    /*
+     * Task 12 决策：repl_config_t 是公有结构（replication.h），
+     * 对外暴露的 create/destroy 配对契约要求调用方拿到指针后
+     * 通过 repl_config_destroy 显式释放。若改用 mmdb_mem_alloc，
+     * 调用方再调用 destroy 内的 free() 会触发未定义行为。
+     *
+     * 故保持 calloc + free 配对不变，仅在文件头注释里记录本约束。
+     * 真正的 MemoryContext 迁移留给 P2 任务改造 repl_config_t
+     * 内部结构后实现。
+     */
     repl_config_t *config = (repl_config_t *)calloc(1, sizeof(repl_config_t));
     if (config == NULL) return NULL;
 
@@ -295,7 +336,7 @@ repl_config_t *repl_config_create(repl_role_t role)
 
 void repl_config_destroy(repl_config_t *config)
 {
-    free(config);
+    if (config) free(config);
 }
 
 const char *repl_state_name(repl_state_t state)

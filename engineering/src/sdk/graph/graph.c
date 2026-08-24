@@ -8,9 +8,17 @@
  *                           weight REAL, properties TEXT)
  *
  * 遍历使用基于 BFS 的层序搜索（无权重时即 BFS）；最短路径用 Dijkstra。
+ *
+ * Task 12 迁移状态：纳入 SDK MemoryContext 体系。
+ * - traverse() 与 mmdb_graph_shortest_path() 的临时队列 / 访问集合 /
+ *   最小堆 / dist 表仍由 calloc 分配并在函数退出前释放；
+ * - 返回给调用方的 mmdb_result_t.items 与 mmdb_path_t.nodes 仍由 calloc
+ *   分配，由调用方负责 mmdb_result_free / mmdb_path_free。
+ *   完整迁移需要修改 result / path 释放路径，留作后续 Task。
  */
 #include "sdk/mmdb_graph.h"
 #include "sdk/impl/mmdb_internal.h"
+#include "sdk/impl/mmdb_memctx.h"  /* Task 12：纳入 MemoryContext 体系 */
 #include "sdk/impl/graph.h"
 #include "sdk/impl/sqlite_backend.h"
 

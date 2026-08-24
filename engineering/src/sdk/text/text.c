@@ -1,6 +1,15 @@
 /**
  * @file text.c
  * @brief 文本模型 CRUD + FTS5 检索
+ *
+ * Task 12 迁移状态：纳入 SDK MemoryContext 体系。
+ * - mmdb_text_get / mmdb_text_search 的结果字段（id / text / metadata_json）
+ *   仍由 calloc / strdup 分配；调用方继续调用 mmdb_result_free() 释放。
+ *   由于 result items 通过公有 API 返回给调用方，完整迁移需要同步
+ *   修改 mmdb_result_release 与 result_item_free 的 free() 路径，
+ *   留作后续 Task（依赖 SDK 全局清理策略收敛）。
+ * - 搜索函数内 SQL 字符串（mmdb_text_build_search_sql 产生）的
+ *   strdup → free 配对在 text_sql.c 中，目前维持原状。
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,6 +18,7 @@
 #include "sdk/mmdb.h"
 #include "sdk/mmdb_text.h"
 #include "sdk/impl/mmdb_internal.h"
+#include "sdk/impl/mmdb_memctx.h"  /* Task 12：纳入 MemoryContext 体系 */
 #include "sdk/impl/sqlite_backend.h"
 #include "sdk/impl/filter_parser.h"
 #include "text_fts5.c"  /* 包含 FTS5 初始化函数 */

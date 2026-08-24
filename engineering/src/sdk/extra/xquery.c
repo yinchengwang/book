@@ -23,6 +23,7 @@
 #include "sdk/mmdb_vectors.h"
 #include "sdk/mmdb_text.h"
 #include "sdk/impl/mmdb_internal.h"
+#include "sdk/impl/mmdb_memctx.h"  /* Task 12：纳入 MemoryContext 体系 */
 #include "sdk/impl/sqlite_backend.h"
 #include "algo-prod/distance/distance.h"
 
