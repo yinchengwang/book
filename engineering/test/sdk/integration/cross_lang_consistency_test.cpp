@@ -16,6 +16,7 @@
 #include <vector>
 #include <random>
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <unordered_set>
 
@@ -24,6 +25,8 @@
 #include "sdk/mmdb_timeseries.h"
 #include "sdk/mmdb_text.h"
 #include "sdk/mmdb_hybrid.h"
+
+#include "recall_helper.h"
 
 namespace fs = std::filesystem;
 using clk = std::chrono::high_resolution_clock;
@@ -38,29 +41,6 @@ std::vector<float> random_vector(size_t dim, std::mt19937& rng) {
     std::vector<float> v(dim);
     for (size_t i = 0; i < dim; i++) v[i] = dist(rng);
     return v;
-}
-
-// 在子集上做暴力 L2 搜索，返回 top-10 的子集内索引
-std::vector<size_t> brute_force_top10(
-    const std::vector<std::vector<float>>& subset,
-    const std::vector<float>& query,
-    size_t dim)
-{
-    std::vector<std::pair<float, size_t>> dists;
-    dists.reserve(subset.size());
-    for (size_t i = 0; i < subset.size(); i++) {
-        float dist = 0.0f;
-        for (size_t d = 0; d < dim; d++) {
-            float diff = query[d] - subset[i][d];
-            dist += diff * diff;
-        }
-        dists.push_back({dist, i});
-    }
-    size_t top_n = std::min((size_t)10, dists.size());
-    std::partial_sort(dists.begin(), dists.begin() + top_n, dists.end());
-    std::vector<size_t> top10;
-    for (size_t i = 0; i < top_n; i++) top10.push_back(dists[i].second);
-    return top10;
 }
 
 double elapsed_ms(std::chrono::time_point<clk> start) {
@@ -490,7 +470,8 @@ TEST(Benchmark, VectorKNN1M) {
         ASSERT_EQ(mmdb_vectors_search(c, &qry, &result), MMDB_OK);
         latencies.push_back(elapsed_ms(q0));
 
-        EXPECT_EQ(result.count, (size_t)kTopK)
+        /* 返回结果数必须等于 kTopK，否则测试立即失败 */
+        ASSERT_TRUE(result.count == (size_t)kTopK)
             << "查询 " << q << " 应返回 " << kTopK << " 个结果";
 
         /* 在 1K 子集上做暴力搜索得到 GT top-10 */
@@ -500,13 +481,24 @@ TEST(Benchmark, VectorKNN1M) {
         size_t hits = 0;
         for (size_t i = 0; i < result.count && i < 10; i++) {
             std::string id((const char*)result.items[i].id, result.items[i].id_len);
-            if (id.size() > 1 && id[0] == 'v') {
-                size_t orig_idx = std::stoul(id.substr(1));
-                for (size_t j = 0; j < gt_top10.size(); j++) {
-                    if (subset_indices[gt_top10[j]] == orig_idx) {
-                        hits++;
-                        break;
-                    }
+
+            /* 验证 ID 格式：必须以 'v' 开头且后续全是数字 */
+            ASSERT_TRUE(id.size() > 1 && id[0] == 'v')
+                << "查询 " << q << " 结果 " << i << " ID 格式异常: '" << id << "'";
+            ASSERT_TRUE(std::all_of(id.begin() + 1, id.end(), ::isdigit))
+                << "查询 " << q << " 结果 " << i << " ID 非法（'v' 后非纯数字）: '" << id << "'";
+
+            size_t orig_idx;
+            try {
+                orig_idx = std::stoul(id.substr(1));
+            } catch (const std::exception& e) {
+                FAIL() << "查询 " << q << " 结果 " << i << " std::stoul 失败: " << e.what();
+                continue;
+            }
+            for (size_t j = 0; j < gt_top10.size(); j++) {
+                if (subset_indices[gt_top10[j]] == orig_idx) {
+                    hits++;
+                    break;
                 }
             }
         }
