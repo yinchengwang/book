@@ -121,3 +121,14 @@ set_target_properties(sharding_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
 )
 add_test(NAME sharding_test COMMAND sharding_test)
+
+# P6-M3.3：命名空间隔离与资源配额测试
+add_executable(namespace_test namespace_test.cpp)
+target_link_libraries(namespace_test PRIVATE mmsdk gtest_main)
+target_include_directories(namespace_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../include
+)
+set_target_properties(namespace_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
+)
+add_test(NAME namespace_test COMMAND namespace_test)

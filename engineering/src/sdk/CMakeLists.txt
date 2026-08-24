@@ -26,6 +26,7 @@ set(SDK_CORE_SOURCES
     core/backup.c    # P6-M2.1：数据库备份/恢复
     core/replication.c  # P6-M3.1：Raft 复制协议
     core/sharding.c  # P6-M3.2：一致性哈希分片
+    core/namespace.c  # P6-M3.3：命名空间隔离与资源配额
 )
 
 # 向量模块
