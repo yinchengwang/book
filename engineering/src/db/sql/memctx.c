@@ -50,6 +50,15 @@ static const MemoryContextMethods g_allocset_methods = {
  * ======================================================================== */
 
 /**
+ * @brief 释放大对象链表中的所有块并更新统计
+ */
+static void allocset_free_large_blocks(AllocSetContext *set)
+{
+    (void)set;
+    /* 当前 AllocSet 实现未使用 large_blocks 链表，此处预留接口 */
+}
+
+/**
  * @brief 计算下一个块大小（指数增长，至 maxBlockSize 上限）
  *
  * 采用饱和逻辑：current * 2 若发生无符号回绕则钳制到 maxBlockSize；
@@ -178,20 +187,28 @@ static void allocset_reset(MemoryContext ctx)
         child = next;
     }
 
-    /* 保留首块，重置其 free 指针；释放其余块 */
+    /* 保留首块，重置其 free 指针；释放其余块并累加 total_freed */
     AllocSetBlock *first = set->blocks;
+    Size freed_bytes = 0;
     if (first) {
         AllocSetBlock *cur = first->next;
         first->next = NULL;
         first->free = first->size - ALLOCSET_BLOCK_HDR_SIZE;
         while (cur) {
             AllocSetBlock *next = cur->next;
+            freed_bytes += cur->size;
             free(cur);
             cur = next;
         }
     }
 
+    /* 释放大对象链表并累加统计 */
+    Size large_freed = 0;
+    /* 当前实现无 large_blocks，预留统计逻辑 */
+    (void)large_freed;
+
     set->header.current_bytes = 0;
+    set->header.total_freed += freed_bytes;
     set->header.is_reset = true;
     set->header.reset_count++;
 }
@@ -224,6 +241,9 @@ static void allocset_delete(MemoryContext ctx)
         block = next;
     }
     set->blocks = NULL;
+
+    /* 释放大对象链表 */
+    allocset_free_large_blocks(set);
 
     /* 从父上下文的子链表中移除 */
     if (set->header.parent) {
