@@ -79,7 +79,7 @@ target_include_directories(mmsdk PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/..  # Phase 2: faiss_hnsw.h 等 db 模块头文件
 )
 
-target_link_libraries(mmsdk PUBLIC sqlite3 faiss_hnsw)
+target_link_libraries(mmsdk PUBLIC sqlite3 faiss_hnsw vector_index)
 
 # 编译选项
 if(MSVC)

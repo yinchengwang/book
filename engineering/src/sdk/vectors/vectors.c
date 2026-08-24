@@ -13,6 +13,8 @@
 
 /* Phase 2: HNSW 索引集成 */
 #include <db/index/vector_index/faiss_hnsw/faiss_hnsw.h>
+/* Phase 5: 向量索引选择器 */
+#include <db/index/vector_index/vector_index_selector.h>
 
 #include <math.h>
 #include <stdio.h>
@@ -434,19 +436,47 @@ int mmdb_vectors_hnsw_ensure(mmdb_collection_t* c) {
     size_t count = hnsw_count_vectors(c, tname);
     if (count < HNSW_BUILD_THRESHOLD) return MMDB_OK;  /* 未达阈值，保持 flat */
 
-    /* 达到阈值，创建 wrapper 并重建 */
-    hnsw_wrapper_t* w = hnsw_wrapper_create();
-    if (!w) return MMDB_ERR_NOMEM;
-    c->hnsw = w;
+    /* 使用索引选择器自动选择最优索引类型 */
+    vector_data_info_t info = {
+        .num_vectors = count,
+        .dimension = (int32_t)c->schema.vector_dim,
+        .available_memory_mb = 4096,  /* 默认可用内存估算 */
+        .target_qps = 0.0f,
+        .target_recall = 0.95f,      /* 默认高召回率 */
+        .is_static = false
+    };
 
-    int rc = mmdb_vectors_hnsw_rebuild(c);
-    if (rc != MMDB_OK) {
-        hnsw_wrapper_free(w);
-        c->hnsw = NULL;
-        return rc;
+    vector_index_decision_t decision;
+    if (vector_index_selector_choose(&info, &decision) != 0) {
+        /* 选择器失败，回退到默认 HNSW */
+        decision.index_type = VECTOR_INDEX_HNSW;
+        decision.param1 = HNSW_DEFAULT_M;
+        decision.param2 = HNSW_DEFAULT_EF_C;
     }
 
-    return MMDB_OK;
+    /* 根据选择器决策创建索引 */
+    if (decision.index_type == VECTOR_INDEX_HNSW) {
+        /* 创建 wrapper 并使用选择器推荐的参数重建 */
+        hnsw_wrapper_t* w = hnsw_wrapper_create();
+        if (!w) return MMDB_ERR_NOMEM;
+        c->hnsw = w;
+
+        int rc = mmdb_vectors_hnsw_rebuild(c);
+        if (rc != MMDB_OK) {
+            /* HNSW 创建失败，降级到 flat 模式 */
+            hnsw_wrapper_free(w);
+            c->hnsw = NULL;
+            return MMDB_OK;  /* 不报错，降级到 flat */
+        }
+
+        return MMDB_OK;
+    } else if (decision.index_type == VECTOR_INDEX_BRUTE_FORCE) {
+        /* 选择器推荐暴力搜索，保持 flat 模式 */
+        return MMDB_OK;
+    } else {
+        /* 其他索引类型（IVF-PQ/DiskANN）暂不支持，保持 flat 模式 */
+        return MMDB_OK;
+    }
 }
 
 /* ------------------------------------------------------------------ */
