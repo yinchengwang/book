@@ -88,3 +88,25 @@ set_target_properties(txn_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
 )
 add_test(NAME txn_test COMMAND txn_test)
+
+# P6-M2.1：数据库备份/恢复测试
+add_executable(backup_test backup_test.cpp)
+target_link_libraries(backup_test PRIVATE mmsdk gtest_main)
+target_include_directories(backup_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../include
+)
+set_target_properties(backup_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
+)
+add_test(NAME backup_test COMMAND backup_test)
+
+# P6-M3.1：Raft 复制协议测试
+add_executable(replication_test replication_test.cpp)
+target_link_libraries(replication_test PRIVATE mmsdk gtest_main)
+target_include_directories(replication_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../include
+)
+set_target_properties(replication_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
+)
+add_test(NAME replication_test COMMAND replication_test)
