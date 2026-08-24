@@ -93,6 +93,50 @@ static float l2_distance_scalar(const float* a, const float* b, size_t dim) {
 }
 
 /* ================================================================== */
+/* P6-M1.1：分页辅助函数                                                  */
+/* ================================================================== */
+
+/**
+ * @brief 在已填充的 mmdb_result_t 上应用 offset/limit 分页
+ *
+ * 前置条件：out->items 已分配，out->count 已设置为 top-K 结果数。
+ * 后置条件：out->count 被裁剪到分页窗口，total_count/has_more/returned 被填充。
+ *
+ * 向后兼容：当 offset=0 且 limit=0 时，total_count = count，has_more = false，
+ * returned = count，行为与分页 API 引入前完全一致。
+ */
+static void apply_pagination(mmdb_result_t* out, const mmdb_query_t* q) {
+    if (!out || !q) return;
+
+    if (q->offset > 0 || q->limit > 0) {
+        uint32_t total = (uint32_t)out->count;
+        uint32_t skip = q->offset;
+        uint32_t take = q->limit > 0 ? q->limit : total;
+
+        /* 计算实际返回数量（处理越界） */
+        uint32_t actual_count =
+            (skip >= total) ? 0
+            : ((skip + take > total) ? (total - skip) : take);
+
+        out->total_count = total;
+        out->has_more = (skip + actual_count < total);
+        out->returned = actual_count;
+
+        /* 移动结果数组（跳过 offset 条）；只在确实需要移动时调用 memmove */
+        if (skip > 0 && skip < total && actual_count > 0) {
+            memmove(out->items, out->items + skip,
+                    actual_count * sizeof(mmdb_result_item_t));
+        }
+        out->count = actual_count;
+    } else {
+        /* 向后兼容：offset=0, limit=0 时行为不变 */
+        out->total_count = (uint32_t)out->count;
+        out->has_more = false;
+        out->returned = (uint32_t)out->count;
+    }
+}
+
+/* ================================================================== */
 /* Phase 2: HNSW 集成                                                  */
 /* ================================================================== */
 
@@ -1225,6 +1269,8 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
 
             free(heap);
             mmdb_filter_params_free(&fp);
+            /* P6-M1.1：在返回前应用 offset/limit 分页 */
+            apply_pagination(out, q);
             return MMDB_OK;
         }
     }
@@ -1339,6 +1385,8 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
         out->items[i].text = NULL;
     }
     free(heap);
+    /* P6-M1.1：在返回前应用 offset/limit 分页 */
+    apply_pagination(out, q);
     return MMDB_OK;
 }
 /* ------------------------------------------------------------------ */

@@ -44,3 +44,14 @@ set_target_properties(roaring_bitmap_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
 )
 add_test(NAME roaring_bitmap_test COMMAND roaring_bitmap_test)
+
+# P6-M1.1：分页 API 测试
+add_executable(pagination_test pagination_test.cpp)
+target_link_libraries(pagination_test PRIVATE mmsdk gtest_main)
+target_include_directories(pagination_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../include
+)
+set_target_properties(pagination_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
+)
+add_test(NAME pagination_test COMMAND pagination_test)
