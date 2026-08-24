@@ -314,7 +314,7 @@ static size_t hnsw_count_vectors(mmdb_collection_t* c, const char* tname) {
 static int build_table_name(char* out, size_t out_cap, const char* coll);
 
 /* 从 SQLite 重建 HNSW 索引（在 coll_lock 已持有的情况下调用） */
-int mmdb_vectors_hnsw_rebuild(mmdb_collection_t* c) {
+int mmdb_vectors_hnsw_rebuild(mmdb_collection_t* c, int32_t hnsw_m, int32_t hnsw_ef_c) {
     hnsw_wrapper_t* w = (hnsw_wrapper_t*)c->hnsw;
     if (!w) return MMDB_ERR_INVALID;
 
@@ -382,8 +382,10 @@ int mmdb_vectors_hnsw_rebuild(mmdb_collection_t* c) {
     }
 
     /* 创建新的 HNSW 索引并批量插入 */
+    int32_t use_m = (hnsw_m > 0) ? hnsw_m : HNSW_DEFAULT_M;
+    int32_t use_ef = (hnsw_ef_c > 0) ? hnsw_ef_c : HNSW_DEFAULT_EF_C;
     w->index = faiss_hnsw_index_create(
-        HNSW_DEFAULT_M, (int32_t)dim, HNSW_DEFAULT_EF_C,
+        use_m, (int32_t)dim, use_ef,
         DISTANCE_METRIC_L2_SQUARED, QUANTIZATION_TYPE_NONE);
     if (!w->index) {
         free(all_vectors);
@@ -461,7 +463,7 @@ int mmdb_vectors_hnsw_ensure(mmdb_collection_t* c) {
         if (!w) return MMDB_ERR_NOMEM;
         c->hnsw = w;
 
-        int rc = mmdb_vectors_hnsw_rebuild(c);
+        int rc = mmdb_vectors_hnsw_rebuild(c, decision.param1, decision.param2);
         if (rc != MMDB_OK) {
             /* HNSW 创建失败，降级到 flat 模式 */
             hnsw_wrapper_free(w);
