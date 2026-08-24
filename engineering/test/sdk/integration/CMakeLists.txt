@@ -110,3 +110,14 @@ set_target_properties(replication_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
 )
 add_test(NAME replication_test COMMAND replication_test)
+
+# P6-M3.2：一致性哈希分片测试
+add_executable(sharding_test sharding_test.cpp)
+target_link_libraries(sharding_test PRIVATE mmsdk gtest_main)
+target_include_directories(sharding_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../include
+)
+set_target_properties(sharding_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
+)
+add_test(NAME sharding_test COMMAND sharding_test)
