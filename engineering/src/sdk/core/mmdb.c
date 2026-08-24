@@ -245,3 +245,65 @@ void mmdb_version(int* major, int* minor, int* patch) {
     if (minor) *minor = MMDB_VERSION_MINOR;
     if (patch) *patch = MMDB_VERSION_PATCH;
 }
+
+/* ========================================================================
+ * 请求级内存上下文作用域（Task 9）
+ * ======================================================================== */
+
+/**
+ * @brief 开始请求级内存作用域
+ *
+ * 在 connection_context 下创建请求上下文并切换为当前上下文。
+ * 后续所有 palloc 操作将在 scope->context 中进行。
+ *
+ * 失败语义：
+ * - db/scope 为 NULL → MMDB_ERR_INVALID
+ * - db->connection_context 未初始化 → MMDB_ERR_INVALID
+ * - AllocSetContextCreate 失败 → MMDB_ERR_NOMEM
+ */
+int mmdb_request_begin(mmdb_t* db, const char* name, mmdb_request_scope_t* scope) {
+    if (!db || !scope) {
+        return MMDB_ERR_INVALID;
+    }
+    if (!db->connection_context) {
+        return MMDB_ERR_INVALID;
+    }
+
+    scope->db = db;
+    scope->previous = MemoryContextCurrent();
+    scope->context = AllocSetContextCreate(
+        db->connection_context,   /* parent */
+        name,                     /* name */
+        0,                        /* minContextSize */
+        8192,                     /* initBlockSize */
+        1024 * 1024               /* maxBlockSize */
+    );
+    if (!scope->context) {
+        return MMDB_ERR_NOMEM;
+    }
+
+    scope->active = 1;
+    MemoryContextSwitchTo(scope->context);
+    return MMDB_OK;
+}
+
+/**
+ * @brief 结束请求级内存作用域
+ *
+ * 恢复之前的内存上下文，销毁请求上下文（自动释放所有分配）。
+ * 对非活跃或 NULL 作用域安全（no-op）。
+ */
+void mmdb_request_end(mmdb_request_scope_t* scope) {
+    if (!scope || !scope->active) {
+        return;
+    }
+
+    /* 恢复之前的上下文 */
+    MemoryContextSwitchTo(scope->previous);
+
+    /* 销毁请求上下文及其所有子上下文（资源析构 + 块释放） */
+    MemoryContextDelete(scope->context);
+
+    scope->context = NULL;
+    scope->active = 0;
+}
