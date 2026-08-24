@@ -27,6 +27,7 @@ set(SDK_CORE_SOURCES
     core/replication.c  # P6-M3.1：Raft 复制协议
     core/sharding.c  # P6-M3.2：一致性哈希分片
     core/namespace.c  # P6-M3.3：命名空间隔离与资源配额
+    core/mmdb_memctx.c  # Task 7：SDK 兼容层内存上下文
 )
 
 # 向量模块
@@ -95,7 +96,7 @@ target_include_directories(mmsdk PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../..
 )
 
-target_link_libraries(mmsdk PUBLIC sqlite3 faiss_hnsw vector_index)
+target_link_libraries(mmsdk PUBLIC sqlite3 faiss_hnsw vector_index sql_engine)
 
 # 编译选项
 if(MSVC)

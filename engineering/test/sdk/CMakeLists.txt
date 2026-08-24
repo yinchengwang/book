@@ -4,6 +4,9 @@ cmake_minimum_required(VERSION 3.20)
 # 注意：googletest 已被 engineering/CMakeLists.txt 添加，gtest target 在父作用域可见
 # 注意：src/sdk 已被 src/CMakeLists.txt 添加，mmsdk target 在父作用域可见
 
+# 引入子目录（Task 7：SDK 兼容层 mmdb_mem_* API 测试）
+add_subdirectory(memory)
+
 # 测试用例列表
 set(SDK_TESTS
     mmdb_core_test
