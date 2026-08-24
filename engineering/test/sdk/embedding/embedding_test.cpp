@@ -44,7 +44,7 @@ TEST(Embedding, HashDifferentTextDifferentVector) {
     mmdb_embedding_drop(emb);
 }
 
-// AVERAGE_POOL 占位：返回 -2
+// AVERAGE_POOL 占位：返回 MMDB_ERR_NOT_IMPLEMENTED
 TEST(Embedding, AveragePoolNotImplemented) {
     auto* emb = mmdb_embedding_create(MMDB_EMBED_AVERAGE_POOL, 128);
     ASSERT_NE(emb, nullptr);
@@ -53,7 +53,7 @@ TEST(Embedding, AveragePoolNotImplemented) {
     mmdb_embedding_drop(emb);
 }
 
-// OPENAI 占位：返回 -3
+// OPENAI 占位：返回 MMDB_ERR_NOT_IMPLEMENTED
 TEST(Embedding, OpenAINotImplemented) {
     auto* emb = mmdb_embedding_create(MMDB_EMBED_OPENAI, 128);
     ASSERT_NE(emb, nullptr);
