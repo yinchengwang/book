@@ -58,7 +58,7 @@ typedef struct Instrumentation       Instrumentation;
 typedef struct SnapshotData          Snapshot;
 typedef struct Bitmapset             Bitmapset;
 typedef struct List                  List;
-typedef struct Relation              Relation;
+typedef struct RelationData         *Relation;
 #endif
 
 /* 解析期类型（Oid 和 CommandId 在 sql_types.h 中已定义） */

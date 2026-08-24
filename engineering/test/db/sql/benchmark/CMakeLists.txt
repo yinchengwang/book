@@ -4,7 +4,7 @@
 add_executable(sql_benchmark
     benchmark_main.cpp
     benchmark_scan.cpp
-    benchmark_join.cpp
+    # benchmark_join.cpp — 暂时排除，Oid/TupleDescData 头文件冲突待修复
     benchmark_aggregate.cpp
     benchmark_vector.cpp
 )
