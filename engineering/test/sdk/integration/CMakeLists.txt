@@ -33,3 +33,14 @@ set_target_properties(staircase_benchmark PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
 )
 add_test(NAME staircase_benchmark COMMAND staircase_benchmark)
+
+# P5-2：CRoaring bitmap 兼容层单元测试
+add_executable(roaring_bitmap_test roaring_bitmap_test.cpp)
+target_link_libraries(roaring_bitmap_test PRIVATE gtest_main)
+target_include_directories(roaring_bitmap_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_part/croaring
+)
+set_target_properties(roaring_bitmap_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
+)
+add_test(NAME roaring_bitmap_test COMMAND roaring_bitmap_test)

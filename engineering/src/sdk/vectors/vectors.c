@@ -15,6 +15,8 @@
 #include <db/index/vector_index/faiss_hnsw/faiss_hnsw.h>
 /* Phase 5: 向量索引选择器 */
 #include <db/index/vector_index/vector_index_selector.h>
+/* P5-2: CRoaring bitmap 兼容层 */
+#include "third_part/croaring/roaring_bitmap.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -348,14 +350,24 @@ typedef struct {
  * bitmap[i] = 1 表示 HNSW vec_id i 通过 metadata filter；0 表示被过滤。
  * 通过一次性 SQLite 查询构建，避免每个候选单独查询 metadata。 */
 typedef struct {
-    int8_t* bitmap;
-    size_t  bitmap_size;  /* bitmap 元素数（与 HNSW 当前向量数一致） */
+    int8_t* bitmap;         /* 兼容：小数据集仍用原始 bitmap */
+    size_t  bitmap_size;    /* bitmap 元素数（与 HNSW 当前向量数一致） */
+    void*   roaring;        /* P5-2：roaring bitmap 句柄（NULL 表示未启用） */
 } hnsw_filter_ctx_t;
 
 /* P4-T4.5：HNSW filter 谓词回调（faiss_hnsw_filter_fn 类型） */
 static int hnsw_filter_predicate(int32_t vec_id, void* user_data) {
     hnsw_filter_ctx_t* ctx = (hnsw_filter_ctx_t*)user_data;
-    if (!ctx || !ctx->bitmap) return 1;  /* 无 filter ctx 时全部通过 */
+    if (!ctx) return 1;  /* 无 filter ctx 时全部通过 */
+
+    /* P5-2：大数据集优先使用 roaring bitmap */
+    if (ctx->roaring) {
+        return roaring_bitmap_contains((const roaring_bitmap_t*)ctx->roaring,
+                                       (uint32_t)vec_id);
+    }
+
+    /* 兼容：原始 bitmap */
+    if (!ctx->bitmap) return 1;
     if (vec_id < 0 || (size_t)vec_id >= ctx->bitmap_size) return 0;
     return ctx->bitmap[vec_id];
 }
@@ -387,6 +399,9 @@ static void hnsw_wrapper_free(hnsw_wrapper_t* w) {
 /* build_table_name 前向声明（定义在文件后半部分） */
 static int build_table_name(char* out, size_t out_cap, const char* coll);
 
+/* P5-2：roaring bitmap 启用阈值（超过此数量时切换到压缩存储） */
+#define ROARING_THRESHOLD 100000
+
 static int build_filter_ctx(mmdb_collection_t* c, const char* where,
                              mmdb_filter_params_t* fp,
                              hnsw_filter_ctx_t* ctx) {
@@ -395,8 +410,17 @@ static int build_filter_ctx(mmdb_collection_t* c, const char* where,
     ctx->bitmap_size = w->id_map->count;
     if (ctx->bitmap_size == 0) return MMDB_OK;
 
-    ctx->bitmap = (int8_t*)calloc(ctx->bitmap_size, sizeof(int8_t));
-    if (!ctx->bitmap) return MMDB_ERR_NOMEM;
+    /* P5-2：大数据集启用 roaring bitmap 压缩存储 */
+    int use_roaring = (ctx->bitmap_size > ROARING_THRESHOLD);
+
+    if (use_roaring) {
+        ctx->roaring = roaring_bitmap_create();
+        if (!ctx->roaring) return MMDB_ERR_NOMEM;
+        /* bitmap 字段保持 NULL，不分配原始数组 */
+    } else {
+        ctx->bitmap = (int8_t*)calloc(ctx->bitmap_size, sizeof(int8_t));
+        if (!ctx->bitmap) return MMDB_ERR_NOMEM;
+    }
 
     char tname[128];
     build_table_name(tname, sizeof(tname), c->name);
@@ -404,26 +428,26 @@ static int build_filter_ctx(mmdb_collection_t* c, const char* where,
     char sql[512];
     int n = snprintf(sql, sizeof(sql), "SELECT id FROM %s WHERE %s;", tname, where);
     if (n < 0 || (size_t)n >= sizeof(sql)) {
-        free(ctx->bitmap);
-        ctx->bitmap = NULL;
+        if (ctx->roaring) { roaring_bitmap_free(ctx->roaring); ctx->roaring = NULL; }
+        else { free(ctx->bitmap); ctx->bitmap = NULL; }
         return MMDB_ERR_INVALID;
     }
 
     sqlite3_stmt* stmt = mmdb_sqlite_prepare(c->sdb, sql, NULL, 0);
     if (!stmt) {
-        free(ctx->bitmap);
-        ctx->bitmap = NULL;
+        if (ctx->roaring) { roaring_bitmap_free(ctx->roaring); ctx->roaring = NULL; }
+        else { free(ctx->bitmap); ctx->bitmap = NULL; }
         return MMDB_ERR_IO;
     }
     int bind_idx = mmdb_filter_bind(stmt, fp, 1);
     if (bind_idx < 0) {
         sqlite3_finalize(stmt);
-        free(ctx->bitmap);
-        ctx->bitmap = NULL;
+        if (ctx->roaring) { roaring_bitmap_free(ctx->roaring); ctx->roaring = NULL; }
+        else { free(ctx->bitmap); ctx->bitmap = NULL; }
         return MMDB_ERR_INVALID;
     }
 
-    /* 对每个匹配的 SDK ID，通过哈希表 O(1) 查找对应 HNSW vec_id 并置位 bitmap */
+    /* 对每个匹配的 SDK ID，通过哈希表 O(1) 查找对应 HNSW vec_id 并置位 */
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         const void* id_blob = sqlite3_column_blob(stmt, 0);
         int id_bytes = sqlite3_column_bytes(stmt, 0);
@@ -432,7 +456,11 @@ static int build_filter_ctx(mmdb_collection_t* c, const char* where,
         int32_t vec_id = sdk_id_hash_lookup(w->sdk_id_hash,
                                             (const uint8_t*)id_blob, (size_t)id_bytes);
         if (vec_id >= 0 && (size_t)vec_id < ctx->bitmap_size) {
-            ctx->bitmap[vec_id] = 1;
+            if (ctx->roaring) {
+                roaring_bitmap_add((roaring_bitmap_t*)ctx->roaring, (uint32_t)vec_id);
+            } else {
+                ctx->bitmap[vec_id] = 1;
+            }
         }
     }
 
@@ -443,6 +471,10 @@ static int build_filter_ctx(mmdb_collection_t* c, const char* where,
 /* P4-T4.5：释放 filter 上下文 */
 static void free_filter_ctx(hnsw_filter_ctx_t* ctx) {
     if (!ctx) return;
+    if (ctx->roaring) {
+        roaring_bitmap_free((roaring_bitmap_t*)ctx->roaring);
+        ctx->roaring = NULL;
+    }
     if (ctx->bitmap) {
         free(ctx->bitmap);
         ctx->bitmap = NULL;

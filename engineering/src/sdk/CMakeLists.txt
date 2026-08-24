@@ -78,6 +78,10 @@ target_include_directories(mmsdk PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
     ${CMAKE_CURRENT_SOURCE_DIR}/..  # Phase 2: faiss_hnsw.h 等 db 模块头文件
 )
+# P5-2: 添加 third_part 路径，用于 roaring_bitmap.h
+target_include_directories(mmsdk PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../..
+)
 
 target_link_libraries(mmsdk PUBLIC sqlite3 faiss_hnsw vector_index)
 
