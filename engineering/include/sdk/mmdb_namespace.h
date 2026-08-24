@@ -48,13 +48,29 @@ int mmdb_namespace_get(mmdb_t* db, const char* name, mmdb_namespace_t** out_ns);
 int mmdb_namespace_set_quota(mmdb_namespace_t* ns, const char* quota);
 
 /**
- * @brief 获取命名空间资源使用量
+ * @brief 获取命名空间资源使用量（JSON 格式）
  * @param ns        命名空间句柄
- * @param json_out  输出 JSON 缓冲区
+ * @param json_out  输出：JSON 字符串缓冲区
  * @param json_size 缓冲区大小
  * @return MMDB_OK 成功；MMDB_ERR_INVALID 参数非法
  */
 int mmdb_namespace_usage(mmdb_namespace_t* ns, char* json_out, size_t json_size);
+
+/**
+ * @brief 检查写操作是否超出配额
+ * @param ns            命名空间句柄
+ * @param extra_vectors  本次操作新增的向量数（0 表示不增加）
+ * @return MMDB_OK 未超出；MMDB_ERR_FULL 超出配额；MMDB_ERR_INVALID 参数非法
+ */
+int mmdb_namespace_check_quota(mmdb_namespace_t* ns, uint64_t extra_vectors);
+
+/**
+ * @brief 增加命名空间的向量计数（插入向量时调用）
+ * @param ns         命名空间句柄
+ * @param add_count  新增向量数
+ * @return MMDB_OK 成功
+ */
+int mmdb_namespace_add_vectors(mmdb_namespace_t* ns, uint64_t add_count);
 
 /**
  * @brief 删除命名空间
@@ -62,6 +78,13 @@ int mmdb_namespace_usage(mmdb_namespace_t* ns, char* json_out, size_t json_size)
  * @return MMDB_OK 成功；MMDB_ERR_INVALID 参数非法
  */
 int mmdb_namespace_drop(mmdb_namespace_t* ns);
+
+/**
+ * @brief 获取命名空间名称
+ * @param ns 命名空间句柄
+ * @return 名称字符串（句柄生命周期内有效）；ns 为 NULL 返回 NULL
+ */
+const char* mmdb_namespace_name(const mmdb_namespace_t* ns);
 
 #ifdef __cplusplus
 }
