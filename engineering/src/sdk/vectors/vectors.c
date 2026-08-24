@@ -123,6 +123,8 @@ static uint64_t fnv1a_hash(const uint8_t* data, size_t len) {
 /* sdk_id → vec_id 哈希表（open addressing + 线性探测） */
 typedef struct {
     uint64_t*  hashes;     /* sdk_id 的 FNV-1a 哈希值 */
+    uint8_t**  sdk_id_keys;/* sdk_id 原始字节（碰撞校验用） */
+    size_t*    sdk_id_lens;/* sdk_id 字节长度 */
     int32_t*   vec_ids;    /* 对应的 HNSW vec_id */
     uint8_t*   states;     /* 空/已用/已删除 */
     size_t     capacity;   /* 槽数（2 的幂） */
@@ -139,10 +141,14 @@ static sdk_id_hash_t* sdk_id_hash_create(size_t initial_cap) {
     if (!h) return NULL;
     h->capacity = cap;
     h->hashes = (uint64_t*)calloc(cap, sizeof(uint64_t));
+    h->sdk_id_keys = (uint8_t**)calloc(cap, sizeof(uint8_t*));
+    h->sdk_id_lens = (size_t*)calloc(cap, sizeof(size_t));
     h->vec_ids = (int32_t*)malloc(cap * sizeof(int32_t));
     h->states = (uint8_t*)calloc(cap, sizeof(uint8_t));
-    if (!h->hashes || !h->vec_ids || !h->states) {
+    if (!h->hashes || !h->sdk_id_keys || !h->sdk_id_lens || !h->vec_ids || !h->states) {
         free(h->hashes);
+        free(h->sdk_id_keys);
+        free(h->sdk_id_lens);
         free(h->vec_ids);
         free(h->states);
         free(h);
@@ -154,7 +160,14 @@ static sdk_id_hash_t* sdk_id_hash_create(size_t initial_cap) {
 
 static void sdk_id_hash_free(sdk_id_hash_t* h) {
     if (!h) return;
+    for (size_t i = 0; i < h->capacity; i++) {
+        if (h->states[i] == HASH_SLOT_USED && h->sdk_id_keys[i]) {
+            free(h->sdk_id_keys[i]);
+        }
+    }
     free(h->hashes);
+    free(h->sdk_id_keys);
+    free(h->sdk_id_lens);
     free(h->vec_ids);
     free(h->states);
     free(h);
@@ -168,10 +181,12 @@ static int sdk_id_hash_insert(sdk_id_hash_t* h, const uint8_t* sdk_id,
     if (h->count * 4 >= h->capacity * 3) {
         size_t new_cap = h->capacity << 1;
         uint64_t* new_hashes = (uint64_t*)calloc(new_cap, sizeof(uint64_t));
+        uint8_t** new_keys = (uint8_t**)calloc(new_cap, sizeof(uint8_t*));
+        size_t* new_lens = (size_t*)calloc(new_cap, sizeof(size_t));
         int32_t* new_ids = (int32_t*)malloc(new_cap * sizeof(int32_t));
         uint8_t* new_states = (uint8_t*)calloc(new_cap, sizeof(uint8_t));
-        if (!new_hashes || !new_ids || !new_states) {
-            free(new_hashes); free(new_ids); free(new_states);
+        if (!new_hashes || !new_keys || !new_lens || !new_ids || !new_states) {
+            free(new_hashes); free(new_keys); free(new_lens); free(new_ids); free(new_states);
             return -1;
         }
         for (size_t i = 0; i < new_cap; i++) new_ids[i] = -1;
@@ -185,12 +200,16 @@ static int sdk_id_hash_insert(sdk_id_hash_t* h, const uint8_t* sdk_id,
                     idx = (idx + 1) & mask;
                 }
                 new_hashes[idx] = h->hashes[i];
+                new_keys[idx] = h->sdk_id_keys[i];
+                new_lens[idx] = h->sdk_id_lens[i];
                 new_ids[idx] = h->vec_ids[i];
                 new_states[idx] = HASH_SLOT_USED;
             }
         }
-        free(h->hashes); free(h->vec_ids); free(h->states);
+        free(h->hashes); free(h->sdk_id_keys); free(h->sdk_id_lens); free(h->vec_ids); free(h->states);
         h->hashes = new_hashes;
+        h->sdk_id_keys = new_keys;
+        h->sdk_id_lens = new_lens;
         h->vec_ids = new_ids;
         h->states = new_states;
         h->capacity = new_cap;
@@ -202,6 +221,10 @@ static int sdk_id_hash_insert(sdk_id_hash_t* h, const uint8_t* sdk_id,
         idx = (idx + 1) & mask;
     }
     h->hashes[idx] = hash;
+    h->sdk_id_keys[idx] = (uint8_t*)malloc(sdk_id_len);
+    if (!h->sdk_id_keys[idx]) return -1;
+    memcpy(h->sdk_id_keys[idx], sdk_id, sdk_id_len);
+    h->sdk_id_lens[idx] = sdk_id_len;
     h->vec_ids[idx] = vec_id;
     h->states[idx] = HASH_SLOT_USED;
     h->count++;
@@ -216,8 +239,13 @@ static void sdk_id_hash_delete(sdk_id_hash_t* h, const uint8_t* sdk_id,
     uint64_t mask = h->capacity - 1;
     size_t idx = hash & mask;
     while (h->states[idx] != HASH_SLOT_EMPTY) {
-        if (h->states[idx] == HASH_SLOT_USED && h->hashes[idx] == hash) {
-            /* 哈希匹配，进一步比对 id_map 确认（处理碰撞） */
+        if (h->states[idx] == HASH_SLOT_USED && h->hashes[idx] == hash &&
+            h->sdk_id_lens[idx] == sdk_id_len &&
+            memcmp(h->sdk_id_keys[idx], sdk_id, sdk_id_len) == 0) {
+            /* 完全匹配（哈希 + 字节），标记删除 */
+            free(h->sdk_id_keys[idx]);
+            h->sdk_id_keys[idx] = NULL;
+            h->sdk_id_lens[idx] = 0;
             h->states[idx] = HASH_SLOT_DELETED;
             h->vec_ids[idx] = -1;
             h->count--;
@@ -235,7 +263,9 @@ static int32_t sdk_id_hash_lookup(const sdk_id_hash_t* h, const uint8_t* sdk_id,
     uint64_t mask = h->capacity - 1;
     size_t idx = hash & mask;
     while (h->states[idx] != HASH_SLOT_EMPTY) {
-        if (h->states[idx] == HASH_SLOT_USED && h->hashes[idx] == hash) {
+        if (h->states[idx] == HASH_SLOT_USED && h->hashes[idx] == hash &&
+            h->sdk_id_lens[idx] == sdk_id_len &&
+            memcmp(h->sdk_id_keys[idx], sdk_id, sdk_id_len) == 0) {
             return h->vec_ids[idx];
         }
         idx = (idx + 1) & mask;
@@ -296,13 +326,6 @@ static int32_t hnsw_id_map_add(hnsw_id_map_t* m, const uint8_t* id, size_t id_le
     m->sdk_id_lens[hnsw_id] = id_len;
     m->count++;
     return hnsw_id;
-}
-
-/* 根据 HNSW ID 查找 SDK ID（用于搜索结果映射） */
-static const uint8_t* hnsw_id_map_lookup(const hnsw_id_map_t* m, int32_t hnsw_id, size_t* out_len) {
-    if (hnsw_id < 0 || (size_t)hnsw_id >= m->count) return NULL;
-    *out_len = m->sdk_id_lens[hnsw_id];
-    return m->sdk_ids[hnsw_id];
 }
 
 /* 标记某 HNSW ID 为已删除（释放其 SDK ID 内存，设为 NULL） */
