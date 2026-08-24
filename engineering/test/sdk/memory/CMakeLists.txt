@@ -19,3 +19,7 @@ target_link_libraries(sdk_core_memctx_test PRIVATE mmsdk project_includes)
 # Task 11：Vectors 模块 MemoryContext 迁移测试
 add_project_test(sdk_vectors_memctx_test VAR)
 target_link_libraries(sdk_vectors_memctx_test PRIVATE mmsdk project_includes)
+
+# Task 12：内存泄漏检测测试
+add_project_test(memory_leak_detection_test VAR)
+target_link_libraries(memory_leak_detection_test PRIVATE mmsdk project_includes)
