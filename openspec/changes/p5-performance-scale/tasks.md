@@ -9,7 +9,7 @@
   - X2: pthread_rwlock → 跨平台 wrapper（Windows SRWLOCK / POSIX pthread）
 
 ### Phase 1：SIMD + 跨平台
-- [ ] **T5.5** SIMD AVX2 完整族 + HNSW/xquery 路径集成
+- [x] **T5.5** SIMD AVX2 完整族 + HNSW/xquery 路径集成
   - L2 + 内积 + 余弦 全部 AVX2 加速
   - HNSW 搜索路径 + xquery 候选重排调用 SIMD
   - 跨平台编译验证（MSVC/GCC/Clang）
@@ -21,10 +21,10 @@
   - fallback 策略：索引创建失败 → flat
 
 ### Phase 3：Recall + 阶梯
-- [ ] **T5.7** 1M×128 Recall@10 验证
+- [x] **T5.7** 1M×128 Recall@10 验证
   - 1K 子集采样 GT，Recall@10 ≥ 0.85
   - 20 queries 全 GT 计算
-- [ ] **T5.8** 100K/1M/10M 阶梯基准 + 性能报告
+- [x] **T5.8** 100K/1M/10M 阶梯基准 + 性能报告
   - staircase_benchmark 脚本
   - `docs/performance-scale-report.md`
 
@@ -56,6 +56,9 @@
 |------|------|--------|
 | T5.0 解 block | ✅ | (Phase 0 commit) |
 | T5.4 selector 集成 | ✅ | (Phase 2 commit) |
+| T5.5 SIMD AVX2 完整族 | ✅ | 3e86aade3 |
+| T5.7 1M Recall@10 | ✅ | f6e9b21c6 |
+| T5.8 阶梯基准 | ✅ | 1c97c039a |
 | T5.9 性能优化 (P5-1/3/5) | ✅ | (Phase 4 commit) |
 | P5-2 roaring bitmap | ✅ | e342ce181 |
-| P5-6 双模同集合 SDK | ✅ | (P5-6 commit) |
+| P5-6 双模同集合 SDK | ✅ | e09d49441 |
