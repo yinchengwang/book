@@ -326,22 +326,25 @@ void FreeExprContext(ExprContext *context, bool isCommit) {
 /**
  * @brief 创建元组槽
  *
- * 推荐传入 EState 关联的 MemoryContext，以便纳入查询级生命周期管理。
- * 若 mcxt == NULL 则回退到全局堆（适用于独立测试路径，但需调用方负责释放）。
+ * 使用 MemoryContext 分配（Task 10：消除手动 calloc）。
+ * - 若传入 mcxt，则在该上下文中分配；
+ * - 否则回退到当前线程的 CurrentMemoryContext（palloc0）。
+ * 配合 FreeTupleTableSlot（实为 no-op），生命周期由所属 MemoryContext 统一管理。
  *
- * @param mcxt  所属内存上下文（可为 NULL，此时回退到 calloc）
+ * @param mcxt  所属内存上下文（可为 NULL，此时使用 CurrentMemoryContext）
  *
  * @return 新创建的 TupleTableSlot；失败返回 NULL
  */
 TupleTableSlot *MakeTupleTableSlotWithMCxt(MemoryContext mcxt) {
     TupleTableSlot *slot;
 
-    if (mcxt != NULL) {
-        slot = (TupleTableSlot *)palloc0(mcxt, sizeof(TupleTableSlot));
-    } else {
-        slot = (TupleTableSlot *)calloc(1, sizeof(TupleTableSlot));
+    /* Task 10: 即使传入 NULL，也走 MemoryContext 路径，确保生命周期统一管理。
+     * 调用者可通过 MemoryContextSwitchTo 控制 Context。 */
+    if (mcxt == NULL) {
+        mcxt = MemoryContextCurrent();
     }
 
+    slot = (TupleTableSlot *)palloc0(mcxt, sizeof(TupleTableSlot));
     if (slot == NULL) {
         return NULL;
     }
@@ -376,32 +379,17 @@ TupleTableSlot *MakeTupleTableSlot(void) {
 /**
  * @brief 释放元组槽
  *
- * 若槽在 MemoryContext 中分配（tts_mcxt != 0），由所属上下文统一释放；
- * 否则回退到 free。
+ * Task 10: TupleTableSlot 现已统一通过 MemoryContext 分配，
+ * 生命周期由所属上下文管理，本函数为 no-op。
+ * 保留调用入口是为了 API 兼容（旧代码无需修改）。
  *
  * @param slot 待释放的 TupleTableSlot（可为 NULL）
  */
 void FreeTupleTableSlot(TupleTableSlot *slot) {
-    if (slot == NULL) {
-        return;
-    }
-
-    /* 若有所属 MemoryContext，则不单独释放字段和结构本身，
-     * 由上下文统一重置（PostgreSQL 标准行为）。 */
-    if (slot->tts_mcxt != 0) {
-        return;
-    }
-
-    /* 释放字段 */
-    if (slot->tts_values != NULL) {
-        free(slot->tts_values);
-    }
-    if (slot->tts_isnull != NULL) {
-        free(slot->tts_isnull);
-    }
-
-    /* 释放结构本身 */
-    free(slot);
+    /* Task 10: 内存由 MemoryContext 统一管理，不再单独释放
+     * tts_values/tts_isnull/slot */
+    (void)slot;
+    return;
 }
 
 /**
@@ -458,10 +446,13 @@ static void dest_destroy_stub(DestReceiver *self) {
 /**
  * @brief 创建 DestReceiver
  *
+ * Task 10：迁移到 CurrentMemoryContext 分配。
+ *
  * @return 新创建的 DestReceiver；失败返回 NULL
  */
 DestReceiver *CreateDestReceiverObj(void) {
-    DestReceiver *self = (DestReceiver *)calloc(1, sizeof(DestReceiver));
+    /* Task 10：使用 palloc0 在 CurrentMemoryContext 中分配 */
+    DestReceiver *self = (DestReceiver *)palloc0(MemoryContextCurrent(), sizeof(DestReceiver));
     if (self == NULL) {
         return NULL;
     }
@@ -479,6 +470,9 @@ DestReceiver *CreateDestReceiverObj(void) {
 /**
  * @brief 销毁 DestReceiver
  *
+ * Task 10：DestReceiver 由 MemoryContext 分配，自身不释放。
+ * 仅调用 rDestroy 回调以便子类清理外部资源。
+ *
  * @param self 待销毁的 DestReceiver（可为 NULL）
  */
 void DestReceiverDestroy(DestReceiver *self) {
@@ -486,13 +480,12 @@ void DestReceiverDestroy(DestReceiver *self) {
         return;
     }
 
-    /* 调用 rDestroy 回调 */
+    /* 调用 rDestroy 回调（子类清理外部资源） */
     if (self->rDestroy != NULL) {
         self->rDestroy(self);
     }
 
-    /* 释放结构本身 */
-    free(self);
+    /* Task 10: DestReceiver 自身由 MemoryContext 管理，无需 free */
 }
 
 /* ========================================================================
@@ -502,7 +495,7 @@ void DestReceiverDestroy(DestReceiver *self) {
 /**
  * @brief 创建 QueryDesc
  *
- * 使用 malloc 分配，调用方需通过 FreeQueryDesc 释放。
+ * Task 10：迁移到 CurrentMemoryContext 分配。
  *
  * @param plannedstmt 计划树（可为 NULL）
  * @param planstate   运行时状态（可为 NULL）
@@ -510,7 +503,8 @@ void DestReceiverDestroy(DestReceiver *self) {
  * @return 新创建的 QueryDesc；失败返回 NULL
  */
 QueryDesc *CreateQueryDesc(Plan *plannedstmt, PlanState *planstate) {
-    QueryDesc *qdesc = (QueryDesc *)calloc(1, sizeof(QueryDesc));
+    /* Task 10：使用 palloc0 在 CurrentMemoryContext 中分配 */
+    QueryDesc *qdesc = (QueryDesc *)palloc0(MemoryContextCurrent(), sizeof(QueryDesc));
     if (qdesc == NULL) {
         return NULL;
     }
@@ -519,7 +513,7 @@ QueryDesc *CreateQueryDesc(Plan *plannedstmt, PlanState *planstate) {
     qdesc->plannedstmt = plannedstmt;
     qdesc->planstate = planstate;
     qdesc->estate = NULL;
-    /* snapshot 已由 calloc 清零（Snapshot 是 struct 值） */
+    /* snapshot 已由 palloc0 清零（Snapshot 是 struct 值） */
     (void)qdesc->snapshot;
     qdesc->direction = ForwardScanDirection;
     qdesc->count = 0;
@@ -533,6 +527,7 @@ QueryDesc *CreateQueryDesc(Plan *plannedstmt, PlanState *planstate) {
  * @brief 释放 QueryDesc
  *
  * 注意：不会释放 plannedstmt、planstate 和 estate。
+ * Task 10：QueryDesc 自身由 MemoryContext 管理，不调用 free。
  *
  * @param qdesc 待释放的 QueryDesc（可为 NULL）
  */
@@ -541,16 +536,13 @@ void FreeQueryDesc(QueryDesc *qdesc) {
         return;
     }
 
-    /* 释放 DestReceiver */
+    /* 释放 DestReceiver（其自身也是 MemoryContext 分配，仅调用 rDestroy） */
     if (qdesc->dest != NULL) {
         DestReceiverDestroy(qdesc->dest);
+        qdesc->dest = NULL;
     }
 
-    /* 清零结构 */
-    memset(qdesc, 0, sizeof(QueryDesc));
-
-    /* 释放结构本身 */
-    free(qdesc);
+    /* Task 10：QueryDesc 自身由 MemoryContext 统一管理，不再 memset / free */
 }
 
 /* ========================================================================
@@ -795,21 +787,23 @@ void ExecEndNode(PlanState *node) {
         node->ps_ResultTupleSlot = NULL;
     }
 
-    /* 5. 释放诊断信息 */
+    /* 5. 释放诊断信息
+     * Task 10：instrument 由所属 MemoryContext 管理，不再单独 free。
+     *     若调用方仍用 malloc 分配 instrument，需自行在外层重置。 */
     if (node->instrument != NULL) {
-        free(node->instrument);
+        /* instrument 生命周期改由所属 EState QueryContext 统一管理 */
         node->instrument = NULL;
     }
 
-    /* 6. 释放 chgParam */
+    /* 6. 释放 chgParam
+     * Task 10：chgParam 由所属 MemoryContext 管理，不再单独 free。 */
     if (node->chgParam != NULL) {
-        free(node->chgParam);
         node->chgParam = NULL;
     }
 
-    /* 7. 释放 PlanState 本身（简化：使用 free） */
-    /* 注意：实际应由 EState 的 es_query_cxt 统一管理 */
-    free(node);
+    /* 7. 释放 PlanState 本身
+     * Task 10：PlanState 由所属 EState QueryContext 统一管理，不调用 free(node)。
+     *     保留后续由 EState 销毁时统一回收的语义。 */
 }
 
 /**
@@ -889,7 +883,8 @@ TupleTableSlot *exec_result_volcano(PlanState *pstate) {
  * @return 新框架 PlanState；失败返回 NULL
  */
 PlanState *executor_create_plan_state_by_phys_type(int phys_plan_type) {
-    PlanState *state = (PlanState *)calloc(1, sizeof(PlanState));
+    /* Task 10: 迁移到 CurrentMemoryContext 分配 */
+    PlanState *state = (PlanState *)palloc0(MemoryContextCurrent(), sizeof(PlanState));
     if (!state) return NULL;
 
     /* 使用 PHYS_RESULT 枚举值（而非硬编码数字 45）保持与 sql_planner.h 同步 */

@@ -17,9 +17,43 @@
 
 extern "C" {
 #include "db/sql/executor.h"
+#include "db/sql/memctx.h"
 }
 
 namespace {
+
+/**
+ * @brief Task 10: 全局测试 fixture，为所有测试提供 CurrentMemoryContext
+ *
+ * 由于 MakeTupleTableSlot()、CreateQueryDesc() 等 API 现在统一走 MemoryContext 分配，
+ * 必须在测试开始前设置 CurrentMemoryContext，否则 palloc 会因为 NULL context 失败。
+ * 同时在测试结束前释放测试上下文，避免内存泄漏。
+ */
+class ExecutorMemctxEnvironment : public ::testing::Environment {
+public:
+    MemoryContext old_cxt;
+    MemoryContext test_cxt;
+
+    void SetUp() override {
+        old_cxt = MemoryContextCurrent();
+        test_cxt = AllocSetContextCreate(
+            old_cxt, "ExecutorTest",
+            0, ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE);
+        MemoryContextSwitchTo(test_cxt);
+    }
+
+    void TearDown() override {
+        MemoryContextSwitchTo(old_cxt);
+        if (test_cxt) {
+            MemoryContextDelete(test_cxt);
+            test_cxt = nullptr;
+        }
+    }
+};
+
+/* 注册全局环境：必须在 main() 启动前注册 */
+::testing::Environment* const executor_env =
+    ::testing::AddGlobalTestEnvironment(new ExecutorMemctxEnvironment);
 
 /**
  * @brief 测试 EState 创建和销毁
@@ -399,14 +433,13 @@ TEST(VolcanoBridgeTest, CreateByPhysType) {
     /* Result 节点应挂载占位执行函数 */
     EXPECT_NE(state->ExecProcNode, nullptr);
 
-    free(state);
+    /* Task 10: state 由 MemoryContext 管理，不再 free(state) */
 
     /* 其他节点类型 */
     state = executor_create_plan_state_by_phys_type(0 /* PHYS_SEQ_SCAN */);
     ASSERT_NE(state, nullptr);
     EXPECT_EQ(state->ExecProcNode, nullptr);
-
-    free(state);
+    /* Task 10: 不再 free(state) */
 }
 
 }  /* namespace */

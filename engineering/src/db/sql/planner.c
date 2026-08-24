@@ -7,6 +7,27 @@
  * - 物理计划生成
  * - 代价估算
  * - 优化规则应用
+ *
+ * Task 10 内存管理说明：
+ *   当前文件保留 malloc/calloc/free 公开 API 路径，原因如下：
+ *     1. 公开 API（planner_create / planner_destroy / planner_logical_plan /
+ *        planner_physical_plan / planner_free_logical_plan / planner_free_physical_plan）
+ *        被 test_planner.cpp 等多处测试直接调用 free(plan)，与 MemoryContext
+ *        路径不兼容；
+ *     2. 内部 list_make_cell / list_make / list_append 生成的 ListCell/List
+ *        必须依赖 makefuncs.c 中的 list_free 释放，list_free 内部使用 free；
+ *     3. Expr / LogicalPlan / PhysPlan 被 free_logical_plan_recursive 中的
+ *        free(plan->qual) 等释放，已与测试代码隐式耦合。
+ *
+ *   Task 10 的可行迁移路径（后续任务执行）：
+ *     A. 改造 test_planner.cpp：将 free(plan) 替换为 planner_free_logical_plan(plan)；
+ *     B. 改造 makefuncs.c：list_free 切换为基于 MemoryContext 的版本；
+ *     C. 在完成 A、B 后，planner.c 内部可全面切换到 CurrentMemoryContext，
+ *        删除 free 调用。
+ *
+ *   当前保留 22 处手工 alloc/free（包括 PlannerContext 配置、LogicalPlan、
+ *   PhysPlan、Expr、ListCell、List），由上述公开 API 兼容性决定。
+ *   本文件保留 db/sql/memctx.h 包含以便后续 Task 接入。
  */
 
 #include "db/sql/sql_planner.h"
@@ -14,6 +35,7 @@
 #include "db/parser/sql/parsenodes.h"
 #include "db/parser/sql/makefuncs.h"  /* 引入 list_free */
 #include "db/sql/sql_executor.h"      /* 引入 PlanState 定义 */
+#include "db/sql/memctx.h"            /* Task 10 候选迁移头文件 */
 
 #include <stdlib.h>
 #include <string.h>

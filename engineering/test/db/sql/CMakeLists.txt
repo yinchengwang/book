@@ -121,6 +121,11 @@ add_executable(test_jit_perf test_jit_perf.cpp)
 target_include_directories(test_jit_perf PRIVATE ${GTEST_INCLUDE_DIRS})
 target_link_libraries(test_jit_perf sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
 
+# SQL Executor MemoryContext 迁移验证测试（Task 10）
+add_executable(test_sql_executor_memctx sql_executor_memctx_test.cpp)
+target_include_directories(test_sql_executor_memctx PRIVATE ${GTEST_INCLUDE_DIRS})
+target_link_libraries(test_sql_executor_memctx sql_engine db_parser_sql_simplified db_storage project_includes gtest gtest_main)
+
 # 基准测试（Task 5.3）
 add_subdirectory(benchmark)
 
@@ -148,5 +153,6 @@ add_custom_target(test_sql
     COMMAND test_sql_storage_integration
     COMMAND test_storage_integration
     COMMAND test_jit_perf
-    DEPENDS test_memctx test_sql_parser test_sql_planner test_sql_executor test_indexscan test_seqscan test_nestloop test_hashagg test_hashjoin test_parallel test_tuple_queue test_worker_pool test_trigger test_trigger_functions test_partition test_sort test_limit test_modifytable test_sql_storage_integration test_storage_integration test_jit_perf
+    COMMAND test_sql_executor_memctx
+    DEPENDS test_memctx test_sql_parser test_sql_planner test_sql_executor test_indexscan test_seqscan test_nestloop test_hashagg test_hashjoin test_parallel test_tuple_queue test_worker_pool test_trigger test_trigger_functions test_partition test_sort test_limit test_modifytable test_sql_storage_integration test_storage_integration test_jit_perf test_sql_executor_memctx
 )
