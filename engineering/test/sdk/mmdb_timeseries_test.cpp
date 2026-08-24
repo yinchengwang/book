@@ -5,6 +5,7 @@
 
 #include "sdk/mmdb.h"
 #include "sdk/mmdb_timeseries.h"
+#include "sdk/mmdb_aggregate.h"
 
 namespace {
 constexpr const char* kDbPath = "test_mmdb_timeseries.db";
@@ -147,4 +148,120 @@ TEST_F(MmdbTimeseriesTest, WrongCollectionModelFails) {
 
     mmdb_datapoint_t dp = {1000, 42.0, nullptr};
     EXPECT_NE(mmdb_timeseries_append(v, &dp), MMDB_OK);
+}
+
+/* ======================================================================== */
+/* 滑动窗口聚合测试（P6-M4.2）                                               */
+/* ======================================================================== */
+
+TEST_F(MmdbTimeseriesTest, AggregateCountNoSlide) {
+    /* 插入 3 个点，窗口 1000ms，不滑动 → 1 个窗口，count=3 */
+    uint64_t base = 1000;
+    for (int i = 0; i < 3; i++) {
+        mmdb_datapoint_t dp = {(int64_t)(base + i * 100), (double)(10 + i), nullptr};
+        ASSERT_EQ(mmdb_timeseries_append(coll_, &dp), MMDB_OK);
+    }
+
+    mmdb_ts_agg_expr_t agg = {NULL, MMDB_AGG_COUNT, 1000, 0};
+    mmdb_ts_aggregate_query_t q = {base, base + 1000, {agg}, 1, false};
+    mmdb_aggregate_result_set_t* rs = NULL;
+    ASSERT_EQ(mmdb_ts_aggregate(coll_, &q, &rs), MMDB_OK);
+    ASSERT_NE(rs, nullptr);
+    EXPECT_EQ(rs->group_count, 1u);
+    EXPECT_EQ(rs->groups[0].count, 3u);
+    mmdb_aggregate_result_free(rs);
+}
+
+TEST_F(MmdbTimeseriesTest, AggregateSumWithSlide) {
+    /* 滑动窗口：窗口 200ms，步长 100ms */
+    uint64_t base = 1000;
+    /* ts=1000 val=10, ts=1050 val=20, ts=1100 val=30, ts=1150 val=40 */
+    double vals[] = {10, 20, 30, 40};
+    uint64_t ts[]  = {1000, 1050, 1100, 1150};
+    for (int i = 0; i < 4; i++) {
+        mmdb_datapoint_t dp = {(int64_t)ts[i], vals[i], nullptr};
+        ASSERT_EQ(mmdb_timeseries_append(coll_, &dp), MMDB_OK);
+    }
+
+    /* 窗口 [1000,1200) 步长 100 → 3 个窗口：[1000,1200), [1100,1300), [1200,1300) */
+    mmdb_ts_agg_expr_t agg = {NULL, MMDB_AGG_SUM, 200, 100};
+    mmdb_ts_aggregate_query_t q = {base, base + 300, {agg}, 1, true};
+    mmdb_aggregate_result_set_t* rs = NULL;
+    ASSERT_EQ(mmdb_ts_aggregate(coll_, &q, &rs), MMDB_OK);
+    ASSERT_NE(rs, nullptr);
+    /* 至少应有 3 个窗口 */
+    EXPECT_GE(rs->group_count, 2u);
+    mmdb_aggregate_result_free(rs);
+}
+
+TEST_F(MmdbTimeseriesTest, AggregateFillEmptyZero) {
+    /* 仅 ts=1000 有数据，窗口 [1000,3000) 步长 1000 → 2 个窗口，第 2 个空 */
+    mmdb_datapoint_t dp = {1000, 99.0, nullptr};
+    ASSERT_EQ(mmdb_timeseries_append(coll_, &dp), MMDB_OK);
+
+    mmdb_ts_agg_expr_t agg = {NULL, MMDB_AGG_COUNT, 1000, 0};
+    mmdb_ts_aggregate_query_t q = {1000, 3000, {agg}, 1, true};  /* fill_empty=true */
+    mmdb_aggregate_result_set_t* rs = NULL;
+    ASSERT_EQ(mmdb_ts_aggregate(coll_, &q, &rs), MMDB_OK);
+    ASSERT_NE(rs, nullptr);
+    /* 2 个窗口 */
+    EXPECT_EQ(rs->group_count, 2u);
+    mmdb_aggregate_result_free(rs);
+}
+
+TEST_F(MmdbTimeseriesTest, AggregateFillEmptySkip) {
+    /* 同上，fill_empty=false → 只返回有数据的窗口 */
+    mmdb_datapoint_t dp = {1000, 99.0, nullptr};
+    ASSERT_EQ(mmdb_timeseries_append(coll_, &dp), MMDB_OK);
+
+    mmdb_ts_agg_expr_t agg = {NULL, MMDB_AGG_COUNT, 1000, 0};
+    mmdb_ts_aggregate_query_t q = {1000, 2000, {agg}, 1, false};  /* 改为 [1000,2000) 只有 1 个窗口 */
+    mmdb_aggregate_result_set_t* rs = NULL;
+    ASSERT_EQ(mmdb_ts_aggregate(coll_, &q, &rs), MMDB_OK);
+    ASSERT_NE(rs, nullptr);
+    /* 只有 1 个窗口有数据 */
+    EXPECT_EQ(rs->group_count, 1u);
+    mmdb_aggregate_result_free(rs);
+}
+
+TEST_F(MmdbTimeseriesTest, AggregateMultiExpr) {
+    /* 同时做 COUNT 和 SUM */
+    uint64_t base = 5000;
+    double vals[] = {1.0, 2.0, 3.0};
+    uint64_t ts[]  = {5000, 5100, 5200};
+    for (int i = 0; i < 3; i++) {
+        mmdb_datapoint_t dp = {(int64_t)ts[i], vals[i], nullptr};
+        ASSERT_EQ(mmdb_timeseries_append(coll_, &dp), MMDB_OK);
+    }
+
+    mmdb_ts_agg_expr_t agg1 = {NULL, MMDB_AGG_COUNT, 1000, 0};
+    mmdb_ts_agg_expr_t agg2 = {NULL, MMDB_AGG_SUM,   1000, 0};
+    mmdb_ts_aggregate_query_t q = {base, base + 1000, {agg1, agg2}, 2, false};
+    mmdb_aggregate_result_set_t* rs = NULL;
+    ASSERT_EQ(mmdb_ts_aggregate(coll_, &q, &rs), MMDB_OK);
+    ASSERT_NE(rs, nullptr);
+    /* 2 个表达式 × 1 个窗口 = 2 个 group */
+    EXPECT_EQ(rs->group_count, 2u);
+    mmdb_aggregate_result_free(rs);
+}
+
+TEST_F(MmdbTimeseriesTest, AggregateInvalidParams) {
+    EXPECT_EQ(mmdb_ts_aggregate(NULL, NULL, NULL), MMDB_ERR_INVALID);
+
+    mmdb_ts_aggregate_query_t q = {0, 1000, {}, 0, false};
+    EXPECT_EQ(mmdb_ts_aggregate(coll_, &q, NULL), MMDB_ERR_INVALID);
+
+    q.agg_count = 5; /* 超过 4 个 */
+    EXPECT_EQ(mmdb_ts_aggregate(coll_, &q, NULL), MMDB_ERR_INVALID);
+}
+
+TEST_F(MmdbTimeseriesTest, AggregateEmptyTable) {
+    /* 空表聚合不崩溃 */
+    mmdb_ts_agg_expr_t agg = {NULL, MMDB_AGG_COUNT, 1000, 0};
+    mmdb_ts_aggregate_query_t q = {0, 1000, {agg}, 1, false};
+    mmdb_aggregate_result_set_t* rs = NULL;
+    ASSERT_EQ(mmdb_ts_aggregate(coll_, &q, &rs), MMDB_OK);
+    ASSERT_NE(rs, nullptr);
+    EXPECT_EQ(rs->group_count, 0u);
+    mmdb_aggregate_result_free(rs);
 }
