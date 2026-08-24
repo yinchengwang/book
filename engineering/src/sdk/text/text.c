@@ -27,7 +27,7 @@ int mmdb_text_build_search_sql(const char* collection_name,
 /* ------------------------------------------------------------------ */
 
 static int ensure_text_table(mmdb_collection_t* c) {
-    if (!c || c->model != MMDB_MODEL_TEXT) return MMDB_ERR_INVALID;
+    if (!c || !c->has_text) return MMDB_ERR_INVALID;
 
     /* 检查表是否已存在 */
     char check_sql[256];
@@ -73,7 +73,7 @@ int mmdb_text_add_batch(mmdb_collection_t* c,
                          const mmdb_text_entry_t* entries, size_t n) {
     if (!c || (!entries && n > 0)) return MMDB_ERR_INVALID;
     if (n == 0) return MMDB_OK;
-    if (c->model != MMDB_MODEL_TEXT) return MMDB_ERR_INVALID;
+    if (!c->has_text) return MMDB_ERR_INVALID;
 
     /* 确保表存在 */
     int rc = ensure_text_table(c);
@@ -122,7 +122,7 @@ int mmdb_text_add_batch(mmdb_collection_t* c,
 int mmdb_text_get(mmdb_collection_t* c, const char* id,
                    mmdb_text_entry_t* out) {
     if (!c || !id || !out) return MMDB_ERR_INVALID;
-    if (c->model != MMDB_MODEL_TEXT) return MMDB_ERR_INVALID;
+    if (!c->has_text) return MMDB_ERR_INVALID;
 
     /* 确保表存在 */
     int rc = ensure_text_table(c);
@@ -156,7 +156,7 @@ int mmdb_text_get(mmdb_collection_t* c, const char* id,
 
 int mmdb_text_delete(mmdb_collection_t* c, const char* id) {
     if (!c || !id) return MMDB_ERR_INVALID;
-    if (c->model != MMDB_MODEL_TEXT) return MMDB_ERR_INVALID;
+    if (!c->has_text) return MMDB_ERR_INVALID;
 
     /* 确保表存在 */
     int rc = ensure_text_table(c);
@@ -183,7 +183,7 @@ int mmdb_text_delete(mmdb_collection_t* c, const char* id) {
 int mmdb_text_search(mmdb_collection_t* c, const mmdb_text_query_t* q,
                       mmdb_result_t* out) {
     if (!c || !q || !q->query || !out) return MMDB_ERR_INVALID;
-    if (c->model != MMDB_MODEL_TEXT) return MMDB_ERR_INVALID;
+    if (!c->has_text) return MMDB_ERR_INVALID;
 
     memset(out, 0, sizeof(*out));
 
@@ -245,4 +245,24 @@ int mmdb_text_search(mmdb_collection_t* c, const mmdb_text_query_t* q,
     sqlite3_finalize(stmt);
     mmdb_rwlock_unlock(c->coll_lock, 0);
     return MMDB_OK;
+}
+
+/* ------------------------------------------------------------------ */
+/* P5-6：能力开关 API                                                  */
+/* ------------------------------------------------------------------ */
+
+/* 为非 TEXT 集合启用文本检索能力。
+ *
+ * 行为：
+ *   1. 集合 has_text 已为 1：幂等返回 MMDB_OK
+ *   2. 集合 has_text 为 0：置位 has_text = 1 并立即创建 mmdb_text_<name> 表
+ *      与 FTS5 虚表，使后续 mmdb_text_add/search/get/delete 在该集合上生效
+ *
+ * 注：此 API 不会修改 collection->model，仅切换运行时 capability 标志。
+ *     TEXT 集合调用此 API 也是幂等的（has_text 早已为 1）。 */
+int mmdb_text_enable(mmdb_collection_t* c) {
+    if (!c) return MMDB_ERR_INVALID;
+    if (c->has_text) return MMDB_OK;
+    c->has_text = 1;
+    return ensure_text_table(c);
 }

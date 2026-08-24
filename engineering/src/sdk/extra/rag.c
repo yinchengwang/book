@@ -57,8 +57,18 @@ static void free_items(mmdb_result_item_t* items, size_t count) {
 static int backfill_text_field(mmdb_collection_t* c, mmdb_result_t* items) {
     if (!c || !items || items->count == 0) return MMDB_OK;
 
-    const char* tname = (c->model == MMDB_MODEL_VECTOR)
-                        ? "mmdb_vec" : "mmdb_text";
+    /* P5-6：根据 capability 标志选择表名
+     * - has_text 为 1：优先查 mmdb_text_<name>（TEXT 集合默认 / VECTOR+text_enable）
+     * - has_text 为 0 且 has_vector 为 1：查 mmdb_vec_<name>（VECTOR 集合）
+     * - 其他情况：fallback mmdb_text_<name>（无 text 字段时回查为空，不破坏整体） */
+    const char* tname;
+    if (c->has_text) {
+        tname = "mmdb_text";
+    } else if (c->model == MMDB_MODEL_VECTOR) {
+        tname = "mmdb_vec";
+    } else {
+        tname = "mmdb_text";
+    }
     char sql[256];
     int n = snprintf(sql, sizeof(sql),
                      "SELECT text FROM %s_%s WHERE id = ?;", tname, c->name);

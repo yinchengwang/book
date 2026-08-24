@@ -171,6 +171,9 @@ int mmdb_collection_load_all(mmdb_t* db) {
         c->coll_lock = &db->lock;
         c->name = mmdb_strdup_internal(name);
         c->model = (mmdb_model_t)model_i;
+        /* P5-6：基于 model 初始化 capability 标志 */
+        c->has_text = (c->model == MMDB_MODEL_TEXT) ? 1 : 0;
+        c->has_vector = (c->model == MMDB_MODEL_VECTOR) ? 1 : 0;
         c->schema.vector_dim = (size_t)vdim;
         if (!c->name) {
             free(c);
@@ -193,10 +196,11 @@ int mmdb_collection_load_all(mmdb_t* db) {
     }
     sqlite3_finalize(stmt);
 
-    /* Phase 2: 启动时为向量 collection 预构建 HNSW 索引（N >= 阈值） */
+    /* Phase 2: 启动时为向量 collection 预构建 HNSW 索引（N >= 阈值）
+     * P5-6：使用 has_vector 标志位，TEXT 集合启用向量能力后也能预构建 */
     for (size_t i = 0; i < db->collection_count; i++) {
         mmdb_collection_t* c = db->collections[i];
-        if (c->model == MMDB_MODEL_VECTOR) {
+        if (c->has_vector) {
             mmdb_vectors_hnsw_ensure(c);
         }
     }
@@ -285,6 +289,11 @@ mmdb_collection_t* mmdb_collection_create(mmdb_t* db, const char* name,
         return NULL;
     }
     c->model = schema->model;
+    /* P5-6：基于 model 初始化 capability 标志
+     * MMDB_MODEL_TEXT 默认开启文本检索；MMDB_MODEL_VECTOR 默认开启向量检索；
+     * 用户可通过 mmdb_text_enable() / mmdb_vectors_enable() 动态开启另一能力。 */
+    c->has_text = (schema->model == MMDB_MODEL_TEXT) ? 1 : 0;
+    c->has_vector = (schema->model == MMDB_MODEL_VECTOR) ? 1 : 0;
     if (schema_deep_copy(&c->schema, schema) != MMDB_OK) {
         mmdb_rwlock_unlock(&db->lock, 1);
         mmdb_collection_delete_meta(db, name);

@@ -63,15 +63,21 @@ int mmdb_rwlock_destroy(mmdb_rwlock_t *lock);
 
 - **现状**：`build_filter_ctx` 分配 `id_map->count` 字节 bitmap
 - **问题**：N=1亿时 = 100MB 内存
-- **方案**：集成 CRoaring， bitmap 压缩到 ~10-20% 原始大小
-- **ABI**：`hnsw_filter_ctx_t` 结构体末尾 append roaring 指针
+- **方案**：sorted array 实现的轻量级 CRoaring 兼容层（`third_part/croaring/roaring_bitmap.h`）
+- **ABI**：`hnsw_filter_ctx_t` 结构体末尾 append roaring 指针（void* roaring）
+- **阈值**：`ROARING_THRESHOLD = 100000`，bitmap_size 超过此值时切换到 roaring 路径
 
 ### 4. 双模同集合（P5-6）
 
 - **现状**：VECTOR 集合无 FTS5，TEXT 集合无向量索引
 - **问题**：T4.2 hybrid 次通道必然返回 0 候选
-- **方案**：collection 支持多索引类型并存
-- **架构**：`mmdb_collection_t` 末尾 append `vector_index` + `text_index` 字段
+- **方案**：collection 通过 capability 标志位支持多索引类型并存
+- **架构**：`mmdb_collection_t` 末尾 append `has_text` + `has_vector` capability 标志（int）
+  - `MMDB_MODEL_TEXT` 集合默认 `has_text=1, has_vector=0`
+  - `MMDB_MODEL_VECTOR` 集合默认 `has_text=0, has_vector=1`
+  - 用户可通过 `mmdb_text_enable()` / `mmdb_vectors_enable()` 动态开启另一能力（幂等）
+- **API**：`mmdb_text_enable(c)` / `mmdb_vectors_enable(c)`，置位 capability 后自动创建对应数据表
+- **次通道路由**：text.c / vectors.c 中所有 `c->model != X` 检查替换为 `!c->has_X`，使 hybrid 次通道真正激活
 
 ## 验收标准
 

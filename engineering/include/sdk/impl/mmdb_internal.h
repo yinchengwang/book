@@ -41,6 +41,9 @@ struct mmdb_collection_s {
     mmdb_embedding_t*       embedding;      /* P4-T4.1 新增：collection-level embedding；
                                             *   非 NULL 时 mmdb_rag_retrieve 默认用它。
                                             *   所有权归调用方，collection 不接管释放。 */
+    /* P5-6：双模同集合能力标志（末尾 append，不破坏 ABI） */
+    int                     has_text;       /* 1 = 具备 FTS5 文本检索能力 */
+    int                     has_vector;     /* 1 = 具备向量检索能力 */
 };
 
 /* 错误信息缓冲最大长度（含末尾 \0） */

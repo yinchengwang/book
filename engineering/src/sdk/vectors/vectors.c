@@ -634,7 +634,7 @@ int mmdb_vectors_hnsw_rebuild(mmdb_collection_t* c, int32_t hnsw_m, int32_t hnsw
 /* ------------------------------------------------------------------ */
 
 int mmdb_vectors_hnsw_ensure(mmdb_collection_t* c) {
-    if (!c || c->model != MMDB_MODEL_VECTOR) return MMDB_ERR_INVALID;
+    if (!c || !c->has_vector) return MMDB_ERR_INVALID;
 
     /* 已有 HNSW 索引，直接返回 */
     if (c->hnsw) return MMDB_OK;
@@ -703,7 +703,7 @@ static int build_table_name(char* out, size_t out_cap, const char* coll) {
 }
 
 int mmdb_vectors_ensure_table(mmdb_collection_t* coll) {
-    if (!coll || coll->model != MMDB_MODEL_VECTOR) return MMDB_ERR_INVALID;
+    if (!coll || !coll->has_vector) return MMDB_ERR_INVALID;
 
     char tname[128];
     if (build_table_name(tname, sizeof(tname), coll->name) != MMDB_OK)
@@ -738,7 +738,7 @@ int mmdb_vectors_ensure_table(mmdb_collection_t* coll) {
 
 int mmdb_vectors_add(mmdb_collection_t* c, const mmdb_vector_t* vecs, size_t n) {
     if (!c || !vecs || n == 0) return MMDB_ERR_INVALID;
-    if (c->model != MMDB_MODEL_VECTOR) return MMDB_ERR_INVALID;
+    if (!c->has_vector) return MMDB_ERR_INVALID;
     if (mmdb_vectors_ensure_table(c) != MMDB_OK) return MMDB_ERR_IO;
 
     /* 写操作：获取写锁 */
@@ -818,7 +818,7 @@ int mmdb_vectors_upsert(mmdb_collection_t* c, const mmdb_vector_t* vecs,
                         size_t n) {
     /* 使用 INSERT OR REPLACE 实现 upsert 语义 */
     if (!c || !vecs || n == 0) return MMDB_ERR_INVALID;
-    if (c->model != MMDB_MODEL_VECTOR) return MMDB_ERR_INVALID;
+    if (!c->has_vector) return MMDB_ERR_INVALID;
     if (mmdb_vectors_ensure_table(c) != MMDB_OK) return MMDB_ERR_IO;
 
     /* 写操作：获取写锁 */
@@ -888,7 +888,7 @@ int mmdb_vectors_upsert(mmdb_collection_t* c, const mmdb_vector_t* vecs,
 
 int mmdb_vectors_delete(mmdb_collection_t* c, const uint8_t* id, size_t id_len) {
     if (!c || !id || id_len == 0) return MMDB_ERR_INVALID;
-    if (c->model != MMDB_MODEL_VECTOR) return MMDB_ERR_INVALID;
+    if (!c->has_vector) return MMDB_ERR_INVALID;
 
     char tname[128];
     build_table_name(tname, sizeof(tname), c->name);
@@ -933,7 +933,7 @@ int mmdb_vectors_delete(mmdb_collection_t* c, const uint8_t* id, size_t id_len) 
 int mmdb_vectors_get(mmdb_collection_t* c, const uint8_t* id, size_t id_len,
                      mmdb_vector_t* out) {
     if (!c || !id || !out) return MMDB_ERR_INVALID;
-    if (c->model != MMDB_MODEL_VECTOR) return MMDB_ERR_INVALID;
+    if (!c->has_vector) return MMDB_ERR_INVALID;
 
     char tname[128];
     build_table_name(tname, sizeof(tname), c->name);
@@ -1020,7 +1020,7 @@ static int cand_cmp(const void* a, const void* b) {
 int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
                         mmdb_result_t* out) {
     if (!c || !q || !out || !q->query_vector) return MMDB_ERR_INVALID;
-    if (c->model != MMDB_MODEL_VECTOR) return MMDB_ERR_INVALID;
+    if (!c->has_vector) return MMDB_ERR_INVALID;
     if (q->dim != c->schema.vector_dim) return MMDB_ERR_INVALID;
     memset(out, 0, sizeof(*out));
 
@@ -1340,4 +1340,23 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
     }
     free(heap);
     return MMDB_OK;
+}
+/* ------------------------------------------------------------------ */
+/* P5-6：能力开关 API                                                  */
+/* ------------------------------------------------------------------ */
+
+/* 为非 VECTOR 集合启用向量检索能力。
+ *
+ * 行为：
+ *   1. 集合 has_vector 已为 1：幂等返回 MMDB_OK
+ *   2. 集合 has_vector 为 0：置位 has_vector = 1 并立即创建 mmdb_vec_<name> 表，
+ *      使后续 mmdb_vectors_add/search/get/delete/upsert 在该集合上生效
+ *
+ * 注：此 API 不会修改 collection->model，仅切换运行时 capability 标志。
+ *     VECTOR 集合调用此 API 也是幂等的（has_vector 早已为 1）。*/
+int mmdb_vectors_enable(mmdb_collection_t* c) {
+    if (!c) return MMDB_ERR_INVALID;
+    if (c->has_vector) return MMDB_OK;
+    c->has_vector = 1;
+    return mmdb_vectors_ensure_table(c);
 }

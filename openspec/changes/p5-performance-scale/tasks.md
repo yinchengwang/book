@@ -36,11 +36,15 @@
   - Review 修复：hash collision safety（memcmp 校验）+ 未使用函数清理
 
 ### Phase 5：亿级 + 双模
-- [ ] **P5-2** roaring bitmap 亿级优化
-  - CRoaring 集成，bitmap 内存 -80%
-- [ ] **P5-6** 双模同集合 SDK 架构
+- [x] **P5-2** roaring bitmap 亿级优化
+  - CRoaring 兼容层（sorted array），bitmap 内存压缩
+  - ROARING_THRESHOLD=100000，超过此数量切换到 roaring 路径
+  - 6/6 测试通过（SmallBitmap/LargeBitmap/MemoryComparison/DuplicateInsert/EmptyBitmap/NullSafety）
+  - commit: e342ce181
+- [x] **P5-6** 双模同集合 SDK 架构
   - collection 支持多索引类型并存
   - VECTOR+TEXT 并存，hybrid 次通道真正激活
+  - 6/6 测试通过（VectorCollectionWithTextEnabled/TextCollectionWithVectorEnabled/DualChannelRRFBoost/RegressionVectorOnly/RegressionTextOnly/EnableIdempotent）
 
 ### Phase 6：Review + 归档
 - [ ] **Whole-Branch Review**
@@ -48,4 +52,10 @@
 
 ## 完成记录
 
-（待填充）
+| Task | 状态 | Commit |
+|------|------|--------|
+| T5.0 解 block | ✅ | (Phase 0 commit) |
+| T5.4 selector 集成 | ✅ | (Phase 2 commit) |
+| T5.9 性能优化 (P5-1/3/5) | ✅ | (Phase 4 commit) |
+| P5-2 roaring bitmap | ✅ | e342ce181 |
+| P5-6 双模同集合 SDK | ✅ | (P5-6 commit) |

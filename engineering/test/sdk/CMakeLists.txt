@@ -22,6 +22,7 @@ set(SDK_TESTS
     rerank_test   # P3-T4.2：RAG BM25 rerank 占位测试，源码位于 rag/ 子目录
     rag_embedding_test   # P4-T4.1：RAG embedding 配置入口测试，源码位于 rag/ 子目录
     hybrid_dual_channel_test   # P4-T4.2：双通道真正融合测试，源码位于 hybrid/ 子目录
+    hybrid_dual_channel_enabled_test   # P5-6：双模同集合 SDK 架构测试，源码位于 hybrid/ 子目录
     hnsw_filter_test   # P4-T4.5：HNSW + filter 公开 API 测试，源码位于 hnsw/ 子目录
 )
 
@@ -31,7 +32,7 @@ foreach(test_name IN LISTS SDK_TESTS)
     # embedding_test 源码位于 embedding/ 子目录
     # xquery_test 源码位于 xquery/ 子目录
     # rag_test 源码位于 rag/ 子目录
-    if(test_name STREQUAL "rrf_test" OR test_name STREQUAL "hybrid_search_test" OR test_name STREQUAL "hybrid_dual_channel_test")
+    if(test_name STREQUAL "rrf_test" OR test_name STREQUAL "hybrid_search_test" OR test_name STREQUAL "hybrid_dual_channel_test" OR test_name STREQUAL "hybrid_dual_channel_enabled_test")
         add_executable(${test_name} hybrid/${test_name}.cpp)
     elseif(test_name STREQUAL "embedding_test")
         add_executable(${test_name} embedding/${test_name}.cpp)
