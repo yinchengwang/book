@@ -10,6 +10,7 @@
 #include "sdk/mmdb_error.h"
 #include "sdk/mmdb_embedding.h"  /* P4-T4.1：mmdb_collection_s 新增 embedding 字段 */
 #include "sdk/impl/mmdb_lock.h"
+#include "sdk/impl/mmdb_memctx.h"  /* Task 8：SDK 兼容层内存上下文 */
 
 #include <stdint.h>
 #include <sqlite3.h>
@@ -28,6 +29,11 @@ struct mmdb_s {
     mmdb_rwlock_t         lock;           /* 写操作全局锁（支持并发读） */
     mmdb_collection_t**     collections;    /* 已打开的 collection 缓存 */
     size_t                  collection_count;
+
+    /* Task 8：内存上下文层次（末尾追加，不破坏现有 ABI） */
+    MemoryContext          memory_context;     /* DatabaseContext：数据库级根上下文 */
+    MemoryContext          connection_context; /* ConnectionContext：连接级上下文 */
+    MemoryContext          cache_context;      /* CacheContext：缓存级上下文 */
 };
 
 struct mmdb_collection_s {

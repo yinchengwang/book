@@ -6,6 +6,7 @@
 #include "sdk/mmdb_error.h"
 #include "sdk/mmdb_version.h"
 #include "sdk/impl/mmdb_internal.h"
+#include "sdk/impl/mmdb_memctx.h"  /* Task 8：SDK 兼容层内存上下文 */
 #include "sdk/impl/sqlite_backend.h"
 #include "sdk/impl/collection.h"
 
@@ -26,21 +27,103 @@ char* mmdb_strdup_internal(const char* s) {
     return p;
 }
 
+/**
+ * @brief 初始化数据库三层内存上下文
+ *
+ * 创建 DatabaseContext / ConnectionContext / CacheContext 三层结构。
+ * ConnectionContext 和 CacheContext 都是 DatabaseContext 的子节点。
+ * 创建顺序为根先建，子节点后建；任一子节点创建失败即触发根节点统一回滚。
+ *
+ * @param db 数据库句柄（不可为 NULL）
+ * @return MMDB_OK 成功；MMDB_ERR_INVALID 入参无效；MMDB_ERR_NOMEM 分配失败
+ */
+static int mmdb_init_contexts(mmdb_t* db) {
+    if (!db) return MMDB_ERR_INVALID;
+
+    /* DatabaseContext — 根上下文 */
+    db->memory_context = mmdb_memctx_create(NULL, "DatabaseContext", 0);
+    if (!db->memory_context) return MMDB_ERR_NOMEM;
+
+    /* ConnectionContext — 数据库连接级上下文 */
+    db->connection_context = mmdb_memctx_create(db->memory_context,
+                                                 "ConnectionContext", 0);
+    if (!db->connection_context) {
+        mmdb_memctx_delete(db->memory_context);
+        db->memory_context = NULL;
+        return MMDB_ERR_NOMEM;
+    }
+
+    /* CacheContext — 缓存级上下文（与 ConnectionContext 同级） */
+    db->cache_context = mmdb_memctx_create(db->memory_context,
+                                            "CacheContext", 0);
+    if (!db->cache_context) {
+        mmdb_memctx_delete(db->connection_context);
+        db->connection_context = NULL;
+        mmdb_memctx_delete(db->memory_context);
+        db->memory_context = NULL;
+        return MMDB_ERR_NOMEM;
+    }
+
+    return MMDB_OK;
+}
+
+/**
+ * @brief 销毁数据库三层内存上下文
+ *
+ * 通过删除根上下文（DatabaseContext）触发 LIFO 递归销毁所有子上下文。
+ * 所有在上下文中分配的内存（包括 path / last_err_msg / collections 等）
+ * 统一回收，调用方无需手动释放。
+ *
+ * @param db 数据库句柄（NULL 安全）
+ */
+static void mmdb_destroy_contexts(mmdb_t* db) {
+    if (!db) return;
+    if (db->memory_context) {
+        MemoryContextDelete(db->memory_context);
+        db->memory_context = NULL;
+    }
+    db->connection_context = NULL;
+    db->cache_context = NULL;
+}
+
+/**
+ * @brief SQLite 句柄析构器（注册到 connection_context）
+ *
+ * 通过 mmdb_mem_register_resource 注册后，在 context delete 时由 LIFO 顺序
+ * 自动调用，实现 SQLite 句柄随 memory_context 生命周期统一回收。
+ *
+ * @param resource 资源指针（实际为 sqlite3*）
+ * @param arg      附加参数（未使用）
+ */
+static void mmdb_destroy_sqlite_handle(void* resource, void* arg) {
+    (void)arg;
+    if (resource) {
+        sqlite3_close((sqlite3*)resource);
+    }
+}
+
 void mmdb_set_error(mmdb_t* db, int code, const char* msg) {
     if (!db) return;
     db->last_err = code;
-    if (db->last_err_msg) {
-        free(db->last_err_msg);
-        db->last_err_msg = NULL;
-    }
-    if (msg) {
-        size_t n = strlen(msg);
-        if (n >= MMDB_ERR_MSG_MAX) n = MMDB_ERR_MSG_MAX - 1;
-        db->last_err_msg = (char*)malloc(n + 1);
-        if (db->last_err_msg) {
-            memcpy(db->last_err_msg, msg, n);
-            db->last_err_msg[n] = '\0';
-        }
+
+    /*
+     * 释放旧错误信息：path / last_err_msg 由 memory_context 统一管理，
+     * 不再单独 free；将指针置 NULL 让后续覆盖分配时 ctx 自然覆盖旧块。
+     */
+    db->last_err_msg = NULL;
+
+    if (!msg || !db->memory_context) return;
+
+    size_t n = strlen(msg);
+    if (n == 0) return;
+    /* 长度裁剪到 MMDB_ERR_MSG_MAX-1 保留末尾 \0 空间 */
+    if (n >= MMDB_ERR_MSG_MAX) n = MMDB_ERR_MSG_MAX - 1;
+
+    char* buf = (char*)mmdb_mem_alloc(db->memory_context, n + 1);
+    if (buf) {
+        memcpy(buf, msg, n);
+        buf[n] = '\0';
+        db->last_err_msg = buf;
     }
 }
 
@@ -56,8 +139,17 @@ mmdb_t* mmdb_open(const char* path, const mmdb_options_t* opts) {
     mmdb_t* db = (mmdb_t*)calloc(1, sizeof(mmdb_t));
     if (!db) return NULL;
 
-    db->path = mmdb_strdup_internal(path);
+    /* 1. 优先创建三层内存上下文（Task 8 集成） */
+    int ctx_rc = mmdb_init_contexts(db);
+    if (ctx_rc != MMDB_OK) {
+        free(db);
+        return NULL;
+    }
+
+    /* 2. path 由 memory_context 统一管理（末尾 \0 含在 strdup 中） */
+    db->path = mmdb_mem_strdup(db->memory_context, path);
     if (!db->path) {
+        mmdb_destroy_contexts(db);
         free(db);
         return NULL;
     }
@@ -65,7 +157,7 @@ mmdb_t* mmdb_open(const char* path, const mmdb_options_t* opts) {
     db->last_err = MMDB_OK;
 
     if (mmdb_rwlock_init(&db->lock) != 0) {
-        free(db->path);
+        mmdb_destroy_contexts(db);
         free(db);
         return NULL;
     }
@@ -75,17 +167,19 @@ mmdb_t* mmdb_open(const char* path, const mmdb_options_t* opts) {
     if (rc != MMDB_OK) {
         mmdb_set_error(db, rc, err_buf[0] ? err_buf : "open failed");
         mmdb_rwlock_destroy(&db->lock);
-        free(db->path);
+        mmdb_destroy_contexts(db);
         free(db);
         return NULL;
     }
 
+    /* 注册 SQLite 句柄到 connection_context，由 context delete 自动回收 */
+    mmdb_mem_register_resource(db->connection_context, db->db,
+                               mmdb_destroy_sqlite_handle, NULL, "sqlite3");
+
     rc = mmdb_sqlite_bootstrap(db->db);
     if (rc != MMDB_OK) {
         mmdb_set_error(db, rc, "bootstrap failed");
-        mmdb_sqlite_close(db->db);
-        mmdb_rwlock_destroy(&db->lock);
-        free(db->path);
+        mmdb_destroy_contexts(db);
         free(db);
         return NULL;
     }
@@ -93,9 +187,7 @@ mmdb_t* mmdb_open(const char* path, const mmdb_options_t* opts) {
     rc = mmdb_collection_init(db);
     if (rc != MMDB_OK) {
         mmdb_set_error(db, rc, "collection init failed");
-        mmdb_sqlite_close(db->db);
-        mmdb_rwlock_destroy(&db->lock);
-        free(db->path);
+        mmdb_destroy_contexts(db);
         free(db);
         return NULL;
     }
@@ -104,9 +196,7 @@ mmdb_t* mmdb_open(const char* path, const mmdb_options_t* opts) {
     if (rc != MMDB_OK) {
         mmdb_set_error(db, rc, "load collections failed");
         mmdb_collection_dispose(db);
-        mmdb_sqlite_close(db->db);
-        mmdb_rwlock_destroy(&db->lock);
-        free(db->path);
+        mmdb_destroy_contexts(db);
         free(db);
         return NULL;
     }
@@ -117,11 +207,21 @@ mmdb_t* mmdb_open(const char* path, const mmdb_options_t* opts) {
 void mmdb_close(mmdb_t* db) {
     if (!db) return;
 
+    /*
+     * 关闭顺序：
+     * 1. 释放所有 collection（collection 自身持有 HNSW 等资源）
+     * 2. 销毁内存上下文（递归释放 path / last_err_msg /
+     *    collections 数组 / SQLite 句柄 注册资源等所有由 ctx 分配的内存）
+     * 3. 销毁读写锁（必须在所有读操作结束后释放）
+     *
+     * 关键变化：
+     * - 不再单独 free(db->path) 与 free(db->last_err_msg)，由 memory_context 回收
+     * - 不再单独调用 sqlite3_close(db->db)，由 connection_context 资源析构回收
+     * - 不再单独 free(db->collections) 与 free(col)，由 memory_context 回收
+     */
     mmdb_collection_dispose(db);
-    mmdb_sqlite_close(db->db);
+    mmdb_destroy_contexts(db);
     mmdb_rwlock_destroy(&db->lock);
-    free(db->path);
-    free(db->last_err_msg);
     free(db);
 }
 
