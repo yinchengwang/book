@@ -66,3 +66,14 @@ set_target_properties(metrics_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
 )
 add_test(NAME metrics_test COMMAND metrics_test)
+
+# P6-M4.1：通用聚合框架测试
+add_executable(aggregate_test aggregate_test.cpp)
+target_link_libraries(aggregate_test PRIVATE mmsdk gtest_main)
+target_include_directories(aggregate_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../include
+)
+set_target_properties(aggregate_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
+)
+add_test(NAME aggregate_test COMMAND aggregate_test)

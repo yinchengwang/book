@@ -63,6 +63,11 @@ set(SDK_EXTRA_SOURCES
     extra/xquery.c   # P3-T3.1 新增：跨 collection join（text→vector）接口与实现
 )
 
+# P6-M4.1：通用聚合框架
+set(SDK_AGGREGATE_SOURCES
+    aggregation/aggregate.c
+)
+
 # 创建静态库
 add_library(mmsdk STATIC
     ${SDK_CORE_SOURCES}
@@ -71,6 +76,7 @@ add_library(mmsdk STATIC
     ${SDK_TIMESERIES_SOURCES}
     ${SDK_TEXT_SOURCES}
     ${SDK_EXTRA_SOURCES}
+    ${SDK_AGGREGATE_SOURCES}
 )
 
 # 公共包含路径（必须在 add_library 之后）
