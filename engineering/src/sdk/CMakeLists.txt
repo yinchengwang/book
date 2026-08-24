@@ -21,6 +21,7 @@ set(SDK_CORE_SOURCES
     core/filter_parser.c
     core/result.c
     core/mmdb_lock.c
+    core/metrics.c   # P6-M1.2：运行时监控指标
 )
 
 # 向量模块

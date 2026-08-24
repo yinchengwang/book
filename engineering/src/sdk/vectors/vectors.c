@@ -10,6 +10,7 @@
 #include "sdk/impl/vectors.h"
 #include "sdk/impl/sqlite_backend.h"
 #include "sdk/impl/filter_parser.h"
+#include "sdk/impl/metrics_internal.h"  /* P6-M1.2：监控埋点 */
 
 /* Phase 2: HNSW 索引集成 */
 #include <db/index/vector_index/faiss_hnsw/faiss_hnsw.h>
@@ -575,6 +576,10 @@ int mmdb_vectors_hnsw_rebuild(mmdb_collection_t* c, int32_t hnsw_m, int32_t hnsw
         return MMDB_OK;
     }
 
+    /* P6-M1.2：记录 HNSW 构建耗时 */
+    struct timespec t_start, t_end;
+    clock_gettime(CLOCK_MONOTONIC, &t_start);
+
     /* 一次性分配所有向量数据（连续内存，faiss_hnsw_index_add 要求） */
     float* all_vectors = (float*)calloc(total * dim, sizeof(float));
     if (!all_vectors) {
@@ -668,6 +673,13 @@ int mmdb_vectors_hnsw_rebuild(mmdb_collection_t* c, int32_t hnsw_m, int32_t hnsw
         w->index = NULL;
         return MMDB_OK;  /* 不报错，降级到 flat */
     }
+
+    /* 记录 HNSW 构建耗时 */
+    clock_gettime(CLOCK_MONOTONIC, &t_end);
+    double build_time_ms =
+        (double)(t_end.tv_sec - t_start.tv_sec) * 1000.0 +
+        (double)(t_end.tv_nsec - t_start.tv_nsec) / 1e6;
+    mmdb_metrics_record_hnsw_build(build_time_ms);
 
     w->deleted_count = 0;
     return MMDB_OK;
@@ -847,6 +859,8 @@ int mmdb_vectors_add(mmdb_collection_t* c, const mmdb_vector_t* vecs, size_t n) 
 
     if (rc == MMDB_OK) {
         sqlite3_exec(c->sdb, "COMMIT;", NULL, NULL, NULL);
+        /* P6-M1.2：成功插入的向量数计入总数 */
+        mmdb_metrics_inc_vectors_total(n);
     } else {
         sqlite3_exec(c->sdb, "ROLLBACK;", NULL, NULL, NULL);
     }
@@ -945,6 +959,11 @@ int mmdb_vectors_delete(mmdb_collection_t* c, const uint8_t* id, size_t id_len) 
     mmdb_sqlite_bind_blob(stmt, 1, id, id_len);
     int rc = (sqlite3_step(stmt) == SQLITE_DONE) ? MMDB_OK : MMDB_ERR_IO;
     sqlite3_finalize(stmt);
+
+    /* P6-M1.2：成功删除的向量从总数扣除 */
+    if (rc == MMDB_OK) {
+        mmdb_metrics_dec_vectors_total(1);
+    }
 
     /* Phase 2: HNSW 同步 — 在 ID 映射表中标记删除，后续 rebuild 自然过滤 */
     if (rc == MMDB_OK && c->hnsw) {
@@ -1070,6 +1089,10 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
 
     if (mmdb_vectors_ensure_table(c) != MMDB_OK) return MMDB_ERR_IO;
 
+    /* P6-M1.2：监控埋点 - 记录查询延迟与成功/失败 */
+    struct timespec q_start, q_end;
+    clock_gettime(CLOCK_MONOTONIC, &q_start);
+
     /* selector：自动决策是否启用 HNSW 索引 */
     mmdb_vectors_hnsw_ensure(c);
 
@@ -1133,6 +1156,11 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
                 free(where);
                 free_filter_ctx(&filter_ctx);
                 mmdb_filter_params_free(&fp);
+                /* P6-M1.2：记录查询（空结果也算成功） */
+                clock_gettime(CLOCK_MONOTONIC, &q_end);
+                mmdb_metrics_record_query(
+                    (double)(q_end.tv_sec - q_start.tv_sec) * 1000.0 +
+                    (double)(q_end.tv_nsec - q_start.tv_nsec) / 1e6, 1);
                 return MMDB_OK;  /* 无结果 */
             }
 
@@ -1271,6 +1299,11 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
             mmdb_filter_params_free(&fp);
             /* P6-M1.1：在返回前应用 offset/limit 分页 */
             apply_pagination(out, q);
+            /* P6-M1.2：记录查询成功 */
+            clock_gettime(CLOCK_MONOTONIC, &q_end);
+            mmdb_metrics_record_query(
+                (double)(q_end.tv_sec - q_start.tv_sec) * 1000.0 +
+                (double)(q_end.tv_nsec - q_start.tv_nsec) / 1e6, 1);
             return MMDB_OK;
         }
     }
@@ -1387,6 +1420,11 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
     free(heap);
     /* P6-M1.1：在返回前应用 offset/limit 分页 */
     apply_pagination(out, q);
+    /* P6-M1.2：记录查询成功 */
+    clock_gettime(CLOCK_MONOTONIC, &q_end);
+    mmdb_metrics_record_query(
+        (double)(q_end.tv_sec - q_start.tv_sec) * 1000.0 +
+        (double)(q_end.tv_nsec - q_start.tv_nsec) / 1e6, 1);
     return MMDB_OK;
 }
 /* ------------------------------------------------------------------ */

@@ -55,3 +55,14 @@ set_target_properties(pagination_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
 )
 add_test(NAME pagination_test COMMAND pagination_test)
+
+# P6-M1.2：监控指标测试
+add_executable(metrics_test metrics_test.cpp)
+target_link_libraries(metrics_test PRIVATE mmsdk gtest_main)
+target_include_directories(metrics_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../include
+)
+set_target_properties(metrics_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
+)
+add_test(NAME metrics_test COMMAND metrics_test)
