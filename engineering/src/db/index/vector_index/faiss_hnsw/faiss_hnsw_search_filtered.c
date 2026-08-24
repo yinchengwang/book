@@ -15,25 +15,11 @@
 //     vectors.c 中封装 filter_json 解析 + SQLite metadata 查询）
 
 #include "faiss_hnsw_internal.h"
+#include "algo-prod/distance/distance.h"
 
 #include <float.h>
 #include <stdlib.h>
 #include <string.h>
-
-// 计算两点间 L2 平方距离（与 faiss_hnsw_search.c 行为一致）
-static float compute_l2_squared(const faiss_hnsw_t *idx, const float *query,
-                                int32_t vec_id) {
-    if (vec_id < 0 || vec_id >= idx->n_total || !idx->vectors || !query) {
-        return FLT_MAX;
-    }
-    const float *v = idx->vectors + (size_t)vec_id * (size_t)idx->dims;
-    float dist = 0.0f;
-    for (int32_t i = 0; i < idx->dims; i++) {
-        float d = query[i] - v[i];
-        dist += d * d;
-    }
-    return dist;
-}
 
 int32_t faiss_hnsw_search_filtered(
     faiss_hnsw_t *idx,
@@ -111,7 +97,7 @@ int32_t faiss_hnsw_search_filtered(
         }
         // 重算精确 L2 距离（避免 beam search 距离近似）
         pass_ids[n_pass] = vid;
-        pass_dists[n_pass] = compute_l2_squared(idx, query, vid);
+        pass_dists[n_pass] = distance_l2sqr_from_query(query, idx->vectors, idx->dims, vid);
         n_pass++;
     }
 

@@ -24,6 +24,7 @@
 #include "sdk/mmdb_text.h"
 #include "sdk/impl/mmdb_internal.h"
 #include "sdk/impl/sqlite_backend.h"
+#include "algo-prod/distance/distance.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,15 +46,7 @@
 /* 内部辅助                                                              */
 /* ====================================================================== */
 
-/* L2 平方距离（标量实现，与 vectors.c 中的 flat 路径一致） */
-static float xquery_l2_sq(const float* a, const float* b, size_t dim) {
-    float s = 0.0f;
-    for (size_t i = 0; i < dim; i++) {
-        float d = a[i] - b[i];
-        s += d * d;
-    }
-    return s;
-}
+/* L2 平方距离：使用 algo-prod/distance 中的 SIMD 加速实现 */
 
 /* 构造 target 向量表名（与 vectors.c::build_table_name 保持一致） */
 static int build_target_table_name(char* out, size_t out_cap,
@@ -228,7 +221,7 @@ int mmdb_xquery_text_to_vector(
         memcpy(vec_buf, vec_blob, vec_bytes);
 
         /* 计算 L2 平方距离 */
-        float dist = xquery_l2_sq(vec_buf, xq->query_vector, xq->dim);
+        float dist = distance_l2sqr(vec_buf, xq->query_vector, (int32_t)xq->dim);
 
         sqlite3_finalize(stmt);
 
