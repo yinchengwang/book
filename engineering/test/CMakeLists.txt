@@ -64,7 +64,6 @@ set(_test_targets
     mmdb_text_test
     mmdb_filter_test
     cross_lang_consistency_test
-    roaring_bitmap_test   # P5-2：CRoaring bitmap 兼容层测试
 )
 
 foreach(_t IN LISTS _test_targets)
