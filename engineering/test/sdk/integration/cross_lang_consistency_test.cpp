@@ -40,6 +40,29 @@ std::vector<float> random_vector(size_t dim, std::mt19937& rng) {
     return v;
 }
 
+// 在子集上做暴力 L2 搜索，返回 top-10 的子集内索引
+std::vector<size_t> brute_force_top10(
+    const std::vector<std::vector<float>>& subset,
+    const std::vector<float>& query,
+    size_t dim)
+{
+    std::vector<std::pair<float, size_t>> dists;
+    dists.reserve(subset.size());
+    for (size_t i = 0; i < subset.size(); i++) {
+        float dist = 0.0f;
+        for (size_t d = 0; d < dim; d++) {
+            float diff = query[d] - subset[i][d];
+            dist += diff * diff;
+        }
+        dists.push_back({dist, i});
+    }
+    size_t top_n = std::min((size_t)10, dists.size());
+    std::partial_sort(dists.begin(), dists.begin() + top_n, dists.end());
+    std::vector<size_t> top10;
+    for (size_t i = 0; i < top_n; i++) top10.push_back(dists[i].second);
+    return top10;
+}
+
 double elapsed_ms(std::chrono::time_point<clk> start) {
     auto end = clk::now();
     return std::chrono::duration<double, std::milli>(end - start).count();
@@ -258,27 +281,7 @@ TEST(Benchmark, VectorKNN10000x200) {
 
 namespace {
 
-// 计算 Recall@K：比较搜索结果与暴力精确 top-K 的重合度
-double compute_recall(const mmdb_result_t& search_result,
-                      const std::vector<std::pair<float, size_t>>& gt_sorted,
-                      size_t /*gt_total*/, int K) {
-    // 从搜索结果中提取 ID → rank 映射
-    std::unordered_set<std::string> search_ids;
-    for (size_t i = 0; i < search_result.count && i < (size_t)K; i++) {
-        search_ids.insert(std::string((const char*)search_result.items[i].id,
-                                      search_result.items[i].id_len));
-    }
-
-    // 暴力精确 top-K 的 ID 集合
-    size_t hits = 0;
-    for (size_t i = 0; i < gt_sorted.size() && i < (size_t)K; i++) {
-        std::string gt_id = std::to_string(gt_sorted[i].second);
-        if (search_ids.count(gt_id)) hits++;
-    }
-    return (double)hits / K;
-}
-
-// 暴力精确 top-K：对所有向量计算 L2 距离并排序
+// 暴力精确 top-K：对所有向量计算 L2 距离并排序（VectorKNN100K 使用）
 std::vector<std::pair<float, size_t>> brute_force_topk(
     const std::vector<std::vector<float>>& all_vecs,
     const std::vector<float>& query, size_t dim, int K) {
@@ -449,6 +452,19 @@ TEST(Benchmark, VectorKNN1M) {
     }
     auto t_insert = elapsed_ms(t0);
 
+    /* 生成 1K 子集用于 Ground Truth 计算（从 0~999999 中随机选 1000 个） */
+    constexpr size_t kSubsetSize = 1000;
+    std::vector<size_t> subset_indices(kNumVectors);
+    for (size_t i = 0; i < kNumVectors; i++) subset_indices[i] = i;
+    std::shuffle(subset_indices.begin(), subset_indices.end(), rng);
+    subset_indices.resize(kSubsetSize);
+
+    /* 提取子集向量 */
+    std::vector<std::vector<float>> subset_vecs(kSubsetSize);
+    for (size_t i = 0; i < kSubsetSize; i++) {
+        subset_vecs[i] = vectors[subset_indices[i]];
+    }
+
     /* 触发 HNSW 构建（一次构建后查询走 HNSW 加速路径） */
     std::cout << "[1M progress] 触发 HNSW 构建...\n" << std::flush;
     {
@@ -462,10 +478,9 @@ TEST(Benchmark, VectorKNN1M) {
         mmdb_result_free(&result);
     }
 
-    /* 20 次查询（性能 + 健全性验证） */
+    /* 20 次查询（性能 + Recall@10 验证） */
     std::vector<double> latencies;
-    size_t total_hits = 0;
-    size_t valid_id_hits = 0;
+    std::vector<double> recalls;
     t0 = clk::now();
     for (size_t q = 0; q < kNumQueries; q++) {
         auto query = random_vector(kDim, rng);
@@ -475,56 +490,53 @@ TEST(Benchmark, VectorKNN1M) {
         ASSERT_EQ(mmdb_vectors_search(c, &qry, &result), MMDB_OK);
         latencies.push_back(elapsed_ms(q0));
 
-        /*
-         * 健全性验证：
-         *   1. 每次查询应返回 top_k 个结果（除非数据集极小）
-         *   2. 返回的 SDK ID 应该是合法的 "v数字" 格式
-         *   3. 不计算精确 Recall@10 —— 1M 规模下暴力 GT 计算成本过高，
-         *      而采样 GT（1000 随机）很可能不包含真实 top-10，会误判 Recall=0。
-         *      HNSW 算法正确性已由 VectorKNN100K 测试的 Recall@10=1.0 验证。
-         */
         EXPECT_EQ(result.count, (size_t)kTopK)
             << "查询 " << q << " 应返回 " << kTopK << " 个结果";
 
-        for (size_t i = 0; i < result.count; i++) {
-            std::string id((const char*)result.items[i].id,
-                           result.items[i].id_len);
-            /* ID 应当形如 "v<index>"，index < 1M */
-            if (id.size() > 0 && id[0] == 'v') {
-                bool all_digit = true;
-                for (size_t j = 1; j < id.size(); j++) {
-                    if (id[j] < '0' || id[j] > '9') { all_digit = false; break; }
-                }
-                if (all_digit && id.size() > 1) {
-                    size_t idx = std::stoul(id.substr(1));
-                    if (idx < kNumVectors) {
-                        valid_id_hits++;
+        /* 在 1K 子集上做暴力搜索得到 GT top-10 */
+        auto gt_top10 = brute_force_top10(subset_vecs, query, kDim);
+
+        /* 计算 Recall@10：HNSW 结果与 GT 的交集大小 / 10 */
+        size_t hits = 0;
+        for (size_t i = 0; i < result.count && i < 10; i++) {
+            std::string id((const char*)result.items[i].id, result.items[i].id_len);
+            if (id.size() > 1 && id[0] == 'v') {
+                size_t orig_idx = std::stoul(id.substr(1));
+                for (size_t j = 0; j < gt_top10.size(); j++) {
+                    if (subset_indices[gt_top10[j]] == orig_idx) {
+                        hits++;
+                        break;
                     }
                 }
             }
-            total_hits++;
         }
+        double recall = (double)hits / std::min(result.count, (size_t)10);
+        recalls.push_back(recall);
+
         mmdb_result_free(&result);
     }
     auto t_search = elapsed_ms(t0);
 
+    /* 计算延迟百分位 */
     std::sort(latencies.begin(), latencies.end());
     double avg_qps = 1000.0 * kNumQueries / t_search;
     double p50 = latencies[latencies.size() / 2];
     double p99 = latencies[(size_t)(latencies.size() * 0.99)];
 
+    /* 计算平均 Recall@10 */
+    double avg_recall = 0.0;
+    for (double r : recalls) avg_recall += r;
+    avg_recall /= recalls.size();
+
     std::cout << "\n[VectorKNN1Mx20] "
               << "insert=" << t_insert << "ms (" << (kNumVectors * 1000 / t_insert) << " vec/s), "
               << "search=" << t_search << "ms (" << avg_qps << " qps), "
               << "latency p50=" << p50 << "ms p99=" << p99 << "ms, "
-              << "results=" << total_hits << "/" << (kNumQueries * kTopK)
-              << ", valid_ids=" << valid_id_hits << "\n";
+              << "Recall@10=" << avg_recall << " (avg over " << kNumQueries << " queries)\n";
 
-    /* 验收：返回结果数量与 ID 合法性 */
-    EXPECT_EQ(total_hits, kNumQueries * kTopK)
-        << "总返回结果数量不符预期";
-    EXPECT_EQ(valid_id_hits, total_hits)
-        << "存在非法 ID（SDK ID 映射可能损坏）";
+    /* 验收：Recall@10 ≥ 0.85 */
+    EXPECT_GE(avg_recall, 0.85)
+        << "Recall@10 未达 0.85 目标（当前: " << avg_recall << "）";
 
     mmdb_close(db);
     std::remove(kDbPath);
