@@ -3,13 +3,13 @@
 //
 // 算法流程：
 //   1. 从 entry_point 贪婪下降到 level 0 的局部最优节点
-//   2. 调 faiss_hnsw_search_layer(level=0, query, ef=K*5+50, ...) 取候选
+//   2. 调 faiss_hnsw_search_layer(level=0, query, ef=caller_k*5+50, ...) 取候选
 //   3. 对每个候选调 filter 回调（filter 非 NULL 时）；回调返回 0 的候选被丢弃
 //   4. 重读 idx->vectors 中的原始向量，重算 L2 平方距离
 //   5. 用 MinimaxHeap 取 top-K（P5-3：替换原有选择排序 O(K·ef) → O(K·log K)）
 //
 // 设计取舍：
-//   - ef = K*5+50 保证有足够候选通过 filter（filter 严格时 ef 需更大）
+//   - ef 使用调用方指定的 k 值（k = top_k * 50 + 50），确保足够的搜索宽度
 //   - 用 faiss_hnsw_search_layer 的 beam search 距离作初筛，重算精确 L2 取 top-K
 //     （避免 beam search 距离被四舍五入或量化失真影响最终排序）
 //   - faiss_hnsw 模块零依赖 SQLite：filter 回调由调用方实现（典型：
@@ -50,12 +50,9 @@ int32_t faiss_hnsw_search_filtered(
         return 0;
     }
 
-    // ef 取值：保证有足够候选覆盖 filter 拒绝后仍能取到 K 个
-    // P6-M1.3：ef_search = 500（k*30+200）
-    //   ef_search=200 时 Recall 仅 0.72（不够）
-    //   ef_search=500 时 Recall 0.93（达标），QPS ~150（在 100K 上）
-    //   1M 验收目标：Recall ≥ 0.85，QPS ≥ 1000，P99 ≤ 20ms
-    int32_t ef = 500;
+    // ef 取值：使用调用方指定的 k（search_k）按公式计算，确保足够的搜索宽度
+    // 公式：ef = k * 5 + 50；小数据集 ef=n_total；ef 不得小于 k
+    int32_t ef = k * 5 + 50;
     if (ef > idx->n_total) {
         ef = idx->n_total;
     }
