@@ -35,6 +35,10 @@ static bool mmdb_mem_check_limit(mmdb_memctx_t ctx, Size size) {
     if (ctx->max_bytes == 0) {
         return true;
     }
+    /* 单次分配即超过限额时直接拒绝（同时防止后续减法下溢） */
+    if (size > ctx->max_bytes) {
+        return false;
+    }
     /* 使用减法避免 current_bytes + size 溢出 */
     if (ctx->current_bytes > ctx->max_bytes - size) {
         return false;
