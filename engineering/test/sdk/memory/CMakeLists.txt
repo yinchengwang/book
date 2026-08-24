@@ -11,3 +11,11 @@ target_link_libraries(mmdb_root_context_test PRIVATE mmsdk project_includes)
 # 请求级内存作用域测试（Task 9）
 add_project_test(mmdb_request_scope_test VAR)
 target_link_libraries(mmdb_request_scope_test PRIVATE mmsdk project_includes)
+
+# Task 11：Core 模块 MemoryContext 迁移测试
+add_project_test(sdk_core_memctx_test VAR)
+target_link_libraries(sdk_core_memctx_test PRIVATE mmsdk project_includes)
+
+# Task 11：Vectors 模块 MemoryContext 迁移测试
+add_project_test(sdk_vectors_memctx_test VAR)
+target_link_libraries(sdk_vectors_memctx_test PRIVATE mmsdk project_includes)

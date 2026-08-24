@@ -18,7 +18,30 @@
 /* 内部辅助                                                            */
 /* ------------------------------------------------------------------ */
 
+/*
+ * Task 11：在指定 MemoryContext 上 strdup，失败返回 NULL。
+ * 主导出形式：Core 与 Vectors 等新代码应当用此 API 进入 db 的内存上下文层级。
+ */
+char* mmdb_strdup_in_ctx(MemoryContext ctx, const char* s) {
+    if (!s) return NULL;
+    if (!ctx) {
+        /* 兼容降级：ctx 为空时回退到 malloc（仅用于初始化前场景） */
+        size_t n = strlen(s);
+        char* p = (char*)malloc(n + 1);
+        if (!p) return NULL;
+        memcpy(p, s, n + 1);
+        return p;
+    }
+    return mmdb_mem_strdup(ctx, s);
+}
+
+/*
+ * 旧的 strdup 入口，Task 11 之后保留作为兼容层：仅用于 graph.c / filter_parser.c
+ * 等未迁移模块。Core 与 Vectors 等迁移完成的代码请改用 mmdb_strdup_in_ctx()。
+ */
 char* mmdb_strdup_internal(const char* s) {
+    /* 直接退回 malloc，调用方负责 free。
+     * Task 11 备注：graph.c / filter_parser.c 中尚未迁移的 13 处调用仍依赖此行为。 */
     if (!s) return NULL;
     size_t n = strlen(s);
     char* p = (char*)malloc(n + 1);

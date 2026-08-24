@@ -58,7 +58,13 @@ struct mmdb_collection_s {
 /* 设置当前线程错误码与信息（内部使用） */
 void mmdb_set_error(mmdb_t* db, int code, const char* msg);
 
-/* 分配并复制字符串（失败时返回 NULL） */
+/* 分配并复制字符串（失败时返回 NULL；使用指定内存上下文，Task 11 升级版） */
+char* mmdb_strdup_in_ctx(MemoryContext ctx, const char* s);
+
+/*
+ * 分配并复制字符串（失败时返回 NULL；旧接口，Task 11 之后仅供未迁移模块使用）。
+ * 新代码请使用 mmdb_strdup_in_ctx()，由 ctx 统一管理生命周期。
+ */
 char* mmdb_strdup_internal(const char* s);
 
 /* 释放 mmdb_result_t 内部所有堆内存 */
