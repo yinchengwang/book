@@ -68,7 +68,7 @@ static int backfill_text_field(mmdb_collection_t* c, mmdb_result_t* items) {
     if (!stmt) return MMDB_ERR_IO;
 
     /* 读操作：获取读锁（支持并发读） */
-    pthread_rwlock_rdlock(c->coll_lock);
+    mmdb_rwlock_rdlock(c->coll_lock);
 
     int rc = MMDB_OK;
     /* VECTOR 模型 id 列是 BLOB；TEXT 模型 id 列是 TEXT。
@@ -114,7 +114,7 @@ static int backfill_text_field(mmdb_collection_t* c, mmdb_result_t* items) {
     }
 
     sqlite3_finalize(stmt);
-    pthread_rwlock_unlock(c->coll_lock);
+    mmdb_rwlock_unlock(c->coll_lock, 0);
     return rc;
 }
 

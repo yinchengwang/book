@@ -4,6 +4,7 @@
 #include <cstring>
 extern "C" {
 #include "sdk/mmdb_embedding.h"
+#include "sdk/mmdb_error.h"
 }
 
 // Hash 实现：同文本同向量，且 L2 归一化
@@ -48,7 +49,7 @@ TEST(Embedding, AveragePoolNotImplemented) {
     auto* emb = mmdb_embedding_create(MMDB_EMBED_AVERAGE_POOL, 128);
     ASSERT_NE(emb, nullptr);
     float v[128];
-    EXPECT_EQ(mmdb_embed_text(emb, "x", 1, v, 128), -2);
+    EXPECT_EQ(mmdb_embed_text(emb, "x", 1, v, 128), MMDB_ERR_NOT_IMPLEMENTED);
     mmdb_embedding_drop(emb);
 }
 
@@ -57,7 +58,7 @@ TEST(Embedding, OpenAINotImplemented) {
     auto* emb = mmdb_embedding_create(MMDB_EMBED_OPENAI, 128);
     ASSERT_NE(emb, nullptr);
     float v[128];
-    EXPECT_EQ(mmdb_embed_text(emb, "x", 1, v, 128), -3);
+    EXPECT_EQ(mmdb_embed_text(emb, "x", 1, v, 128), MMDB_ERR_NOT_IMPLEMENTED);
     mmdb_embedding_drop(emb);
 }
 

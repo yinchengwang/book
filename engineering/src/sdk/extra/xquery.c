@@ -25,7 +25,6 @@
 #include "sdk/impl/mmdb_internal.h"
 #include "sdk/impl/sqlite_backend.h"
 
-#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -162,7 +161,7 @@ int mmdb_xquery_text_to_vector(
     }
 
     /* 取读锁（target 集合，遍历候选是只读） */
-    pthread_rwlock_rdlock(xq->target->coll_lock);
+    mmdb_rwlock_rdlock(xq->target->coll_lock);
 
     char sql[256];
     snprintf(sql, sizeof(sql),
@@ -173,7 +172,7 @@ int mmdb_xquery_text_to_vector(
     xq_cand_t* heap = (xq_cand_t*)calloc(heap_cap > 0 ? heap_cap : 1,
                                          sizeof(xq_cand_t));
     if (!heap) {
-        pthread_rwlock_unlock(xq->target->coll_lock);
+        mmdb_rwlock_unlock(xq->target->coll_lock, 0);
         mmdb_result_free(&src_hits);
         return MMDB_ERR_NOMEM;
     }
@@ -183,7 +182,7 @@ int mmdb_xquery_text_to_vector(
     float* vec_buf = (float*)calloc(xq->dim, sizeof(float));
     if (!vec_buf) {
         free(heap);
-        pthread_rwlock_unlock(xq->target->coll_lock);
+        mmdb_rwlock_unlock(xq->target->coll_lock, 0);
         mmdb_result_free(&src_hits);
         return MMDB_ERR_NOMEM;
     }
@@ -201,7 +200,7 @@ int mmdb_xquery_text_to_vector(
                     xq->source->name ? xq->source->name : "(unnamed)");
             free(vec_buf);
             free(heap);
-            pthread_rwlock_unlock(xq->target->coll_lock);
+            mmdb_rwlock_unlock(xq->target->coll_lock, 0);
             mmdb_result_free(&src_hits);
             return MMDB_ERR_INVALID;
         }
@@ -250,7 +249,7 @@ int mmdb_xquery_text_to_vector(
     }
 
     free(vec_buf);
-    pthread_rwlock_unlock(xq->target->coll_lock);
+    mmdb_rwlock_unlock(xq->target->coll_lock, 0);
 
     /* ----------------------------------------------------------------
      * Step 3: 按距离升序填充 out

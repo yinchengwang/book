@@ -18,19 +18,29 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 /* SIMD 加速（AVX2） */
 #if defined(__AVX2__) || defined(_MSC_VER)
 #include <immintrin.h>
-#include <cpuid.h>
 
-/* 运行时检测 AVX2 支持 */
-static int has_avx2_support(void) {
+/* 跨平台 AVX2 运行时检测 */
+static int cpu_has_avx2(void) {
+#if defined(__AVX2__)
+    return 1;  /* 编译时已启用 AVX2 */
+#elif defined(_MSC_VER)
+    int regs[4];
+    __cpuidex(regs, 7, 0);
+    return (regs[1] & (1 << 5)) != 0;
+#elif defined(__GNUC__) || defined(__clang__)
     unsigned int eax, ebx, ecx, edx;
     if (__get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx)) {
         return (ebx >> 5) & 1;  /* EBX bit 5 = AVX2 */
     }
     return 0;
+#else
+    return 0;
+#endif
 }
 
 /* 水平求和 __m256 */
@@ -489,7 +499,7 @@ int mmdb_vectors_add(mmdb_collection_t* c, const mmdb_vector_t* vecs, size_t n) 
     if (mmdb_vectors_ensure_table(c) != MMDB_OK) return MMDB_ERR_IO;
 
     /* 写操作：获取写锁 */
-    pthread_rwlock_wrlock(c->coll_lock);
+    mmdb_rwlock_wrlock(c->coll_lock);
 
     /* 优化：批量写入前临时禁用自动 checkpoint，完成后恢复 */
     sqlite3_exec(c->sdb, "PRAGMA wal_autocheckpoint=0;", NULL, NULL, NULL);
@@ -507,7 +517,7 @@ int mmdb_vectors_add(mmdb_collection_t* c, const mmdb_vector_t* vecs, size_t n) 
     sqlite3_stmt* stmt = mmdb_sqlite_prepare(c->sdb, sql, NULL, 0);
     if (!stmt) {
         sqlite3_exec(c->sdb, "ROLLBACK;", NULL, NULL, NULL);
-        pthread_rwlock_unlock(c->coll_lock);
+        mmdb_rwlock_unlock(c->coll_lock, 1);
         sqlite3_exec(c->sdb, "PRAGMA wal_autocheckpoint=1000;", NULL, NULL, NULL);
         return MMDB_ERR_IO;
     }
@@ -557,7 +567,7 @@ int mmdb_vectors_add(mmdb_collection_t* c, const mmdb_vector_t* vecs, size_t n) 
     /* 恢复自动 checkpoint */
     sqlite3_exec(c->sdb, "PRAGMA wal_autocheckpoint=1000;", NULL, NULL, NULL);
 
-    pthread_rwlock_unlock(c->coll_lock);
+    mmdb_rwlock_unlock(c->coll_lock, 1);
     return rc;
 }
 
@@ -569,7 +579,7 @@ int mmdb_vectors_upsert(mmdb_collection_t* c, const mmdb_vector_t* vecs,
     if (mmdb_vectors_ensure_table(c) != MMDB_OK) return MMDB_ERR_IO;
 
     /* 写操作：获取写锁 */
-    pthread_rwlock_wrlock(c->coll_lock);
+    mmdb_rwlock_wrlock(c->coll_lock);
 
     /* 批量写入前临时禁用自动 checkpoint，完成后恢复 */
     sqlite3_exec(c->sdb, "PRAGMA wal_autocheckpoint=0;", NULL, NULL, NULL);
@@ -587,7 +597,7 @@ int mmdb_vectors_upsert(mmdb_collection_t* c, const mmdb_vector_t* vecs,
     sqlite3_stmt* stmt = mmdb_sqlite_prepare(c->sdb, sql, NULL, 0);
     if (!stmt) {
         sqlite3_exec(c->sdb, "ROLLBACK;", NULL, NULL, NULL);
-        pthread_rwlock_unlock(c->coll_lock);
+        mmdb_rwlock_unlock(c->coll_lock, 1);
         sqlite3_exec(c->sdb, "PRAGMA wal_autocheckpoint=1000;", NULL, NULL, NULL);
         return MMDB_ERR_IO;
     }
@@ -629,7 +639,7 @@ int mmdb_vectors_upsert(mmdb_collection_t* c, const mmdb_vector_t* vecs,
 
     sqlite3_exec(c->sdb, "PRAGMA wal_autocheckpoint=1000;", NULL, NULL, NULL);
 
-    pthread_rwlock_unlock(c->coll_lock);
+    mmdb_rwlock_unlock(c->coll_lock, 1);
     return rc;
 }
 
@@ -644,7 +654,7 @@ int mmdb_vectors_delete(mmdb_collection_t* c, const uint8_t* id, size_t id_len) 
     sqlite3_stmt* stmt = mmdb_sqlite_prepare(c->sdb, sql, NULL, 0);
     if (!stmt) return MMDB_ERR_IO;
     /* 写操作：获取写锁 */
-    pthread_rwlock_wrlock(c->coll_lock);
+    mmdb_rwlock_wrlock(c->coll_lock);
     mmdb_sqlite_bind_blob(stmt, 1, id, id_len);
     int rc = (sqlite3_step(stmt) == SQLITE_DONE) ? MMDB_OK : MMDB_ERR_IO;
     sqlite3_finalize(stmt);
@@ -669,7 +679,7 @@ int mmdb_vectors_delete(mmdb_collection_t* c, const uint8_t* id, size_t id_len) 
         }
     }
 
-    pthread_rwlock_unlock(c->coll_lock);
+    mmdb_rwlock_unlock(c->coll_lock, 1);
     return rc;
 }
 
@@ -687,7 +697,7 @@ int mmdb_vectors_get(mmdb_collection_t* c, const uint8_t* id, size_t id_len,
     if (!stmt) return MMDB_ERR_NOT_FOUND;
 
     /* 读操作：获取读锁（支持并发读） */
-    pthread_rwlock_rdlock(c->coll_lock);
+    mmdb_rwlock_rdlock(c->coll_lock);
     mmdb_sqlite_bind_blob(stmt, 1, id, id_len);
     int rc = MMDB_ERR_NOT_FOUND;
     if (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -703,7 +713,7 @@ int mmdb_vectors_get(mmdb_collection_t* c, const uint8_t* id, size_t id_len,
         rc = MMDB_OK;
     }
     sqlite3_finalize(stmt);
-    pthread_rwlock_unlock(c->coll_lock);
+    mmdb_rwlock_unlock(c->coll_lock, 0);
     return rc;
 }
 
@@ -793,9 +803,9 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
             int has_filter = (where[0] != '\0');
             int filter_rc = MMDB_OK;
             if (has_filter) {
-                pthread_rwlock_rdlock(c->coll_lock);
+                mmdb_rwlock_rdlock(c->coll_lock);
                 filter_rc = build_filter_ctx(c, where, &fp, &filter_ctx);
-                pthread_rwlock_unlock(c->coll_lock);
+                mmdb_rwlock_unlock(c->coll_lock, 0);
                 if (filter_rc != MMDB_OK) {
                     free(where);
                     mmdb_filter_params_free(&fp);
@@ -817,14 +827,14 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
             }
 
             /* 读操作：获取读锁（支持并发读） */
-            pthread_rwlock_rdlock(c->coll_lock);
+            mmdb_rwlock_rdlock(c->coll_lock);
             int32_t found = faiss_hnsw_search_filtered(
                 w->index, (const float*)q->query_vector,
                 search_k,
                 has_filter ? hnsw_filter_predicate : NULL,
                 has_filter ? (void*)&filter_ctx : NULL,
                 hnsw_ids, distances);
-            pthread_rwlock_unlock(c->coll_lock);
+            mmdb_rwlock_unlock(c->coll_lock, 0);
 
             if (found <= 0) {
                 free(distances);
@@ -931,7 +941,7 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
                 }
 
                 /* 读操作：单次获取读锁，整批回查 */
-                pthread_rwlock_rdlock(c->coll_lock);
+                mmdb_rwlock_rdlock(c->coll_lock);
                 sqlite3_stmt* back_stmt = mmdb_sqlite_prepare(c->sdb, back_sql, NULL, 0);
                 if (back_stmt) {
                     /* 绑定所有 ID */
@@ -963,7 +973,7 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
                     }
                     sqlite3_finalize(back_stmt);
                 }
-                pthread_rwlock_unlock(c->coll_lock);
+                mmdb_rwlock_unlock(c->coll_lock, 0);
             }
 
             free(heap);
@@ -1002,7 +1012,7 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
     size_t heap_size = 0;
 
     /* 读操作：获取读锁（支持并发读） */
-    pthread_rwlock_rdlock(c->coll_lock);
+    mmdb_rwlock_rdlock(c->coll_lock);
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         const void* id_blob = sqlite3_column_blob(stmt, 0);
         size_t id_len = (size_t)sqlite3_column_bytes(stmt, 0);
@@ -1021,7 +1031,7 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
         static int avx2_checked = 0;
         static int avx2_available = 0;
         if (!avx2_checked) {
-            avx2_available = has_avx2_support();
+            avx2_available = cpu_has_avx2();
             avx2_checked = 1;
         }
         if (avx2_available) {
@@ -1053,7 +1063,7 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
         }
     }
     sqlite3_finalize(stmt);
-    pthread_rwlock_unlock(c->coll_lock);
+    mmdb_rwlock_unlock(c->coll_lock, 0);
 
     /* 排序并填充结果 */
     qsort(heap, heap_size, sizeof(knn_cand_t), cand_cmp);

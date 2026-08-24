@@ -38,9 +38,8 @@ void mmdb_embedding_drop(mmdb_embedding_t* emb);
  * @param out_vec    输出向量缓冲区
  * @param out_dim    输出向量维度（必须等于 emb 创建时的 dim）
  * @return 0 成功；负数错误码
- *   -1: 参数无效 / dim 不匹配
- *   -2: AVERAGE_POOL 暂未实现
- *   -3: OPENAI 暂未实现
+ *   MMDB_ERR_INVALID (-1): 参数无效 / dim 不匹配
+ *   MMDB_ERR_NOT_IMPLEMENTED (-11): AVERAGE_POOL / OPENAI 占位未实现
  */
 int mmdb_embed_text(
     mmdb_embedding_t* emb,

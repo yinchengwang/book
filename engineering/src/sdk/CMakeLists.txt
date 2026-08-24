@@ -20,6 +20,7 @@ set(SDK_CORE_SOURCES
     core/collection.c
     core/filter_parser.c
     core/result.c
+    core/mmdb_lock.c
 )
 
 # 向量模块

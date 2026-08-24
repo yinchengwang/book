@@ -97,13 +97,14 @@ int mmdb_graph_add_node(mmdb_collection_t* c, const mmdb_node_t* node) {
     sqlite3_stmt* stmt = mmdb_sqlite_prepare(c->sdb, sql, NULL, 0);
     if (!stmt) return MMDB_ERR_IO;
 
-    pthread_mutex_lock(c->coll_lock);
+    /* 写操作：获取写锁 */
+    mmdb_rwlock_wrlock(c->coll_lock);
     mmdb_sqlite_bind_text(stmt, 1, node->id);
     mmdb_sqlite_bind_text(stmt, 2, node->label ? node->label : "");
     mmdb_sqlite_bind_text(stmt, 3, node->properties_json ? node->properties_json : "");
     int rc = (sqlite3_step(stmt) == SQLITE_DONE) ? MMDB_OK : MMDB_ERR_IO;
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(c->coll_lock);
+    mmdb_rwlock_unlock(c->coll_lock, 1);
     return rc;
 }
 
@@ -123,7 +124,8 @@ int mmdb_graph_add_edge(mmdb_collection_t* c, const mmdb_edge_t* edge) {
     sqlite3_stmt* stmt = mmdb_sqlite_prepare(c->sdb, sql, NULL, 0);
     if (!stmt) return MMDB_ERR_IO;
 
-    pthread_mutex_lock(c->coll_lock);
+    /* 写操作：获取写锁 */
+    mmdb_rwlock_wrlock(c->coll_lock);
     mmdb_sqlite_bind_text(stmt, 1, edge->source_id);
     mmdb_sqlite_bind_text(stmt, 2, edge->target_id);
     mmdb_sqlite_bind_text(stmt, 3, edge->label ? edge->label : "");
@@ -131,7 +133,7 @@ int mmdb_graph_add_edge(mmdb_collection_t* c, const mmdb_edge_t* edge) {
     mmdb_sqlite_bind_text(stmt, 5, edge->properties_json ? edge->properties_json : "");
     int rc = (sqlite3_step(stmt) == SQLITE_DONE) ? MMDB_OK : MMDB_ERR_IO;
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(c->coll_lock);
+    mmdb_rwlock_unlock(c->coll_lock, 1);
     return rc;
 }
 
@@ -143,7 +145,8 @@ int mmdb_graph_delete_node(mmdb_collection_t* c, const char* node_id) {
     char nt[128], et[128];
     table_names(nt, sizeof(nt), et, sizeof(et), c->name);
 
-    pthread_mutex_lock(c->coll_lock);
+    /* 写操作：获取写锁 */
+    mmdb_rwlock_wrlock(c->coll_lock);
     char sql[256];
     /* 先删除关联边 */
     snprintf(sql, sizeof(sql), "DELETE FROM %s WHERE source_id = ? OR target_id = ?;", et);
@@ -158,13 +161,13 @@ int mmdb_graph_delete_node(mmdb_collection_t* c, const char* node_id) {
     snprintf(sql, sizeof(sql), "DELETE FROM %s WHERE id = ?;", nt);
     stmt = mmdb_sqlite_prepare(c->sdb, sql, NULL, 0);
     if (!stmt) {
-        pthread_mutex_unlock(c->coll_lock);
+        mmdb_rwlock_unlock(c->coll_lock, 1);
         return MMDB_ERR_IO;
     }
     mmdb_sqlite_bind_text(stmt, 1, node_id);
     int rc = (sqlite3_step(stmt) == SQLITE_DONE) ? MMDB_OK : MMDB_ERR_IO;
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(c->coll_lock);
+    mmdb_rwlock_unlock(c->coll_lock, 1);
     return rc;
 }
 
@@ -189,13 +192,14 @@ int mmdb_graph_delete_edge(mmdb_collection_t* c, const char* source_id,
     }
     sqlite3_stmt* stmt = mmdb_sqlite_prepare(c->sdb, sql, NULL, 0);
     if (!stmt) return MMDB_ERR_IO;
-    pthread_mutex_lock(c->coll_lock);
+    /* 写操作：获取写锁 */
+    mmdb_rwlock_wrlock(c->coll_lock);
     mmdb_sqlite_bind_text(stmt, 1, source_id);
     mmdb_sqlite_bind_text(stmt, 2, target_id);
     if (edge_label) mmdb_sqlite_bind_text(stmt, 3, edge_label);
     int rc = (sqlite3_step(stmt) == SQLITE_DONE) ? MMDB_OK : MMDB_ERR_IO;
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(c->coll_lock);
+    mmdb_rwlock_unlock(c->coll_lock, 1);
     return rc;
 }
 
@@ -331,17 +335,18 @@ static int traverse(mmdb_collection_t* c, const char* start_id, size_t max_depth
 
     if (max_depth == 0) max_depth = 100;
 
-    pthread_mutex_lock(c->coll_lock);
+    /* 读操作：获取读锁（支持并发读） */
+    mmdb_rwlock_rdlock(c->coll_lock);
 
     visited_t visited;
     if (visited_init(&visited, 1024) != 0) {
-        pthread_mutex_unlock(c->coll_lock);
+        mmdb_rwlock_unlock(c->coll_lock, 0);
         return MMDB_ERR_NOMEM;
     }
     queue_t q;
     if (queue_init(&q, 4096) != 0) {
         visited_free(&visited);
-        pthread_mutex_unlock(c->coll_lock);
+        mmdb_rwlock_unlock(c->coll_lock, 0);
         return MMDB_ERR_NOMEM;
     }
 
@@ -394,7 +399,7 @@ static int traverse(mmdb_collection_t* c, const char* start_id, size_t max_depth
         free(depths);
         queue_free(&q);
         visited_free(&visited);
-        pthread_mutex_unlock(c->coll_lock);
+        mmdb_rwlock_unlock(c->coll_lock, 0);
         return MMDB_ERR_NOMEM;
     }
     out->count = result_count;
@@ -409,7 +414,7 @@ static int traverse(mmdb_collection_t* c, const char* start_id, size_t max_depth
     free(depths);
     queue_free(&q);
     visited_free(&visited);
-    pthread_mutex_unlock(c->coll_lock);
+    mmdb_rwlock_unlock(c->coll_lock, 0);
     return MMDB_OK;
 }
 
@@ -499,13 +504,14 @@ int mmdb_graph_shortest_path(mmdb_collection_t* c, const char* from_id,
     char nt[128], et[128];
     table_names(nt, sizeof(nt), et, sizeof(et), c->name);
 
-    pthread_mutex_lock(c->coll_lock);
+    /* 读操作：获取读锁（支持并发读） */
+    mmdb_rwlock_rdlock(c->coll_lock);
 
     /* dist/parent 表（线性数组） */
     typedef struct { char* id; double dist; char* parent; int settled; } dist_entry_t;
     dist_entry_t* dist = (dist_entry_t*)calloc(4096, sizeof(dist_entry_t));
     if (!dist) {
-        pthread_mutex_unlock(c->coll_lock);
+        mmdb_rwlock_unlock(c->coll_lock, 0);
         return MMDB_ERR_NOMEM;
     }
     size_t dist_count = 0, dist_cap = 4096;
@@ -513,7 +519,7 @@ int mmdb_graph_shortest_path(mmdb_collection_t* c, const char* from_id,
     min_heap_t heap;
     if (heap_init(&heap, 8192) != 0) {
         free(dist);
-        pthread_mutex_unlock(c->coll_lock);
+        mmdb_rwlock_unlock(c->coll_lock, 0);
         return MMDB_ERR_NOMEM;
     }
 
@@ -638,7 +644,7 @@ int mmdb_graph_shortest_path(mmdb_collection_t* c, const char* from_id,
     }
     free(dist);
     heap_free(&heap);
-    pthread_mutex_unlock(c->coll_lock);
+    mmdb_rwlock_unlock(c->coll_lock, 0);
 
     if (!found_target) return MMDB_ERR_NOT_FOUND;
     return MMDB_OK;

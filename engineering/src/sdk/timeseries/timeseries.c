@@ -83,7 +83,8 @@ int mmdb_timeseries_append_batch(mmdb_collection_t* c,
     sqlite3_stmt* stmt = mmdb_sqlite_prepare(c->sdb, sql, NULL, 0);
     if (!stmt) return MMDB_ERR_IO;
 
-    pthread_mutex_lock(c->coll_lock);
+    /* 写操作：获取写锁 */
+    mmdb_rwlock_wrlock(c->coll_lock);
     int err = MMDB_OK;
     for (size_t i = 0; i < n; i++) {
         const mmdb_datapoint_t* dp = &dps[i];
@@ -104,7 +105,7 @@ int mmdb_timeseries_append_batch(mmdb_collection_t* c,
         }
     }
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(c->coll_lock);
+    mmdb_rwlock_unlock(c->coll_lock, 1);
     return err;
 }
 
@@ -136,7 +137,8 @@ int mmdb_timeseries_query(mmdb_collection_t* c, const mmdb_ts_query_t* q,
     /* 绑定 filter 参数（如果有） */
     /* TODO: 实现 filter 参数绑定 */
 
-    pthread_mutex_lock(c->coll_lock);
+    /* 读操作：获取读锁（支持并发读） */
+    mmdb_rwlock_rdlock(c->coll_lock);
 
     if (is_agg) {
         /* 聚合模式：返回单行结果 */
@@ -145,7 +147,7 @@ int mmdb_timeseries_query(mmdb_collection_t* c, const mmdb_ts_query_t* q,
             out->items = (mmdb_result_item_t*)calloc(1, sizeof(mmdb_result_item_t));
             if (!out->items) {
                 sqlite3_finalize(stmt);
-                pthread_mutex_unlock(c->coll_lock);
+                mmdb_rwlock_unlock(c->coll_lock, 0);
                 return MMDB_ERR_NOMEM;
             }
             out->items[0].distance = (float)sqlite3_column_double(stmt, 0);
@@ -159,7 +161,7 @@ int mmdb_timeseries_query(mmdb_collection_t* c, const mmdb_ts_query_t* q,
         out->items = (mmdb_result_item_t*)calloc(cap, sizeof(mmdb_result_item_t));
         if (!out->items) {
             sqlite3_finalize(stmt);
-            pthread_mutex_unlock(c->coll_lock);
+            mmdb_rwlock_unlock(c->coll_lock, 0);
             return MMDB_ERR_NOMEM;
         }
 
@@ -170,7 +172,7 @@ int mmdb_timeseries_query(mmdb_collection_t* c, const mmdb_ts_query_t* q,
                     out->items, sizeof(mmdb_result_item_t) * cap);
                 if (!out->items) {
                     sqlite3_finalize(stmt);
-                    pthread_mutex_unlock(c->coll_lock);
+                    mmdb_rwlock_unlock(c->coll_lock, 0);
                     return MMDB_ERR_NOMEM;
                 }
             }
@@ -181,7 +183,7 @@ int mmdb_timeseries_query(mmdb_collection_t* c, const mmdb_ts_query_t* q,
             it->id = (uint8_t*)malloc(sizeof(int64_t));
             if (!it->id) {
                 sqlite3_finalize(stmt);
-                pthread_mutex_unlock(c->coll_lock);
+                mmdb_rwlock_unlock(c->coll_lock, 0);
                 return MMDB_ERR_NOMEM;
             }
             memcpy(it->id, &ts, sizeof(int64_t));
@@ -195,6 +197,6 @@ int mmdb_timeseries_query(mmdb_collection_t* c, const mmdb_ts_query_t* q,
     }
 
     sqlite3_finalize(stmt);
-    pthread_mutex_unlock(c->coll_lock);
+    mmdb_rwlock_unlock(c->coll_lock, 0);
     return MMDB_OK;
 }

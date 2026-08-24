@@ -9,8 +9,8 @@
 #include "sdk/mmdb_types.h"
 #include "sdk/mmdb_error.h"
 #include "sdk/mmdb_embedding.h"  /* P4-T4.1：mmdb_collection_s 新增 embedding 字段 */
+#include "sdk/impl/mmdb_lock.h"
 
-#include <pthread.h>
 #include <stdint.h>
 #include <sqlite3.h>
 
@@ -25,7 +25,7 @@ struct mmdb_s {
     mmdb_options_t          options;        /* 配置（拷贝） */
     int                     last_err;       /* 线程局部错误码副本（仅供非持有线程读） */
     char*                   last_err_msg;   /* 错误信息字符串 */
-    pthread_rwlock_t         lock;           /* 写操作全局锁（支持并发读） */
+    mmdb_rwlock_t         lock;           /* 写操作全局锁（支持并发读） */
     mmdb_collection_t**     collections;    /* 已打开的 collection 缓存 */
     size_t                  collection_count;
 };
@@ -36,7 +36,7 @@ struct mmdb_collection_s {
     mmdb_model_t            model;          /* 模型类型 */
     mmdb_schema_t           schema;         /* Schema 拷贝（含 vector_dim） */
     sqlite3*                sdb;            /* SQLite 句柄（db->db 的别名，加速访问） */
-    pthread_rwlock_t*        coll_lock;      /* 指向 db->lock（读写锁，支持并发读） */
+    mmdb_rwlock_t*        coll_lock;      /* 指向 db->lock（读写锁，支持并发读） */
     void*                   hnsw;           /* HNSW 索引指针（Phase 2，内存索引） */
     mmdb_embedding_t*       embedding;      /* P4-T4.1 新增：collection-level embedding；
                                             *   非 NULL 时 mmdb_rag_retrieve 默认用它。
