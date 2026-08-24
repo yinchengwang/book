@@ -188,6 +188,7 @@ typedef struct MemoryContextData {
 
     /* 资源析构 */
     struct MemoryResource   *resources;         /**< 资源析构回调链表 */
+    Size                     resource_count;    /**< 资源析构回调数量 */
 
     /* OOM 策略 */
     void (*on_oom)(MemoryContext context, Size requested, void *arg); /**< OOM 回调 */
@@ -311,6 +312,43 @@ MemoryContext MemoryContextCurrent(void);
 
 /* 切换当前上下文，返回旧上下文 */
 MemoryContext MemoryContextSwitchTo(MemoryContext context);
+
+/* ========================================================================
+ * 资源析构 API
+ * ======================================================================== */
+
+/**
+ * @brief 注册资源析构回调（LIFO 顺序执行）
+ *
+ * 注册一个外部资源，当上下文 Reset 或 Delete 时按 LIFO 顺序自动调用析构函数。
+ * 资源节点通过 palloc 在当前上下文中分配，由 Reset/Delete 统一回收。
+ *
+ * @param context    内存上下文
+ * @param resource   资源指针
+ * @param destructor 析构回调函数
+ * @param arg        析构回调参数（可为 NULL）
+ * @param name       资源名称（调试用，可为 NULL）
+ *
+ * @return 0 成功，-1 参数无效
+ */
+int mmdb_mem_register_resource(
+    MemoryContext context,
+    void *resource,
+    void (*destructor)(void *resource, void *arg),
+    void *arg,
+    const char *name);
+
+/**
+ * @brief 取消注册资源析构回调
+ *
+ * 从链表中移除指定资源，后续 Reset/Delete 不再调用其析构函数。
+ *
+ * @param context  内存上下文
+ * @param resource 资源指针
+ *
+ * @return 0 成功，-1 参数无效或未找到
+ */
+int mmdb_mem_unregister_resource(MemoryContext context, void *resource);
 
 #ifdef __cplusplus
 }

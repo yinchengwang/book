@@ -59,6 +59,27 @@ static void allocset_free_large_blocks(AllocSetContext *set)
 }
 
 /**
+ * @brief 执行资源析构（LIFO 顺序）
+ *
+ * 按链表顺序遍历所有已注册的资源析构回调，依次调用后清空链表。
+ * 链表采用首部插入，因此遍历顺序天然为 LIFO（后进先出）。
+ */
+static void allocset_execute_resources(MemoryContext ctx)
+{
+    AllocSetContext *set = (AllocSetContext *)ctx;
+    MemoryResource *res = set->header.resources;
+    while (res) {
+        MemoryResource *next = res->next;
+        if (res->destructor) {
+            res->destructor(res->resource, res->arg);
+        }
+        res = next;
+    }
+    set->header.resources = NULL;
+    set->header.resource_count = 0;
+}
+
+/**
  * @brief 计算下一个块大小（指数增长，至 maxBlockSize 上限）
  *
  * 采用饱和逻辑：current * 2 若发生无符号回绕则钳制到 maxBlockSize；
@@ -187,6 +208,9 @@ static void allocset_reset(MemoryContext ctx)
         child = next;
     }
 
+    /* 执行资源析构回调（LIFO 顺序） */
+    allocset_execute_resources(ctx);
+
     /* 保留首块，重置其 free 指针；释放其余块并累加 total_freed */
     AllocSetBlock *first = set->blocks;
     Size freed_bytes = 0;
@@ -232,6 +256,9 @@ static void allocset_delete(MemoryContext ctx)
         }
         child = next;
     }
+
+    /* 执行资源析构回调（LIFO 顺序） */
+    allocset_execute_resources(ctx);
 
     /* 释放全部块 */
     AllocSetBlock *block = set->blocks;
@@ -313,6 +340,7 @@ MemoryContext AllocSetContextCreate(
     set->header.oom_count = 0;
     set->header.invalid_free_count = 0;
     set->header.double_free_count = 0;
+    set->header.resource_count = 0;
     set->header.is_reset = false;
 
     set->blocks = NULL;
@@ -427,4 +455,64 @@ void delete_memory(MemoryContext ctx)
         return;
     }
     ctx->methods->delete_ctx(ctx);
+}
+
+/* ========================================================================
+ * 资源析构 API
+ * ======================================================================== */
+
+/**
+ * @brief 注册资源析构回调（LIFO 顺序执行）
+ */
+int mmdb_mem_register_resource(
+    MemoryContext context,
+    void *resource,
+    void (*destructor)(void *resource, void *arg),
+    void *arg,
+    const char *name)
+{
+    if (!context || !resource || !destructor) {
+        return -1;
+    }
+
+    /* 分配资源节点（使用当前上下文） */
+    MemoryResource *res = (MemoryResource *)palloc(context, sizeof(MemoryResource));
+    if (!res) {
+        return -1;
+    }
+
+    res->resource = resource;
+    res->destructor = destructor;
+    res->arg = arg;
+    res->name = name;
+
+    /* 插入链表首部（LIFO 语义：后注册的在前） */
+    res->next = context->resources;
+    context->resources = res;
+    context->resource_count++;
+
+    return 0;
+}
+
+/**
+ * @brief 取消注册资源析构回调
+ */
+int mmdb_mem_unregister_resource(MemoryContext context, void *resource)
+{
+    if (!context || !resource) {
+        return -1;
+    }
+
+    MemoryResource **pp = &context->resources;
+    while (*pp) {
+        if ((*pp)->resource == resource) {
+            MemoryResource *found = *pp;
+            *pp = found->next;
+            context->resource_count--;
+            /* 注意：不释放 found 节点本身，由 Reset/Delete 统一回收 */
+            return 0;
+        }
+        pp = &(*pp)->next;
+    }
+    return -1;  /* 未找到 */
 }

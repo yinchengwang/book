@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 #include <cstring>
+#include <cstdlib>
 #include <vector>
 
 extern "C" {
@@ -309,6 +310,168 @@ TEST(MemoryContextTest, SwitchToAlloc) {
     MemoryContextSwitchTo(parent);
 
     delete_memory(parent);
+}
+
+/* ========================================================================
+ * 资源析构机制测试
+ * ======================================================================== */
+
+/**
+ * @brief 资源析构测试夹具
+ *
+ * 提供 parent 上下文和全局析构计数器，用于验证资源注册、取消注册和析构行为。
+ */
+class ResourceDestructionTest : public ::testing::Test {
+public:
+    void SetUp() override {
+        parent = AllocSetContextCreate(NULL, "res_parent", 0, 8192, 8192);
+        ASSERT_NE(parent, nullptr);
+        destructor_call_count = 0;
+        last_destroyed_resource = nullptr;
+        destruction_order_idx = 0;
+        memset(destruction_order, 0, sizeof(destruction_order));
+    }
+
+    void TearDown() override {
+        delete_memory(parent);
+        parent = nullptr;
+    }
+
+    MemoryContext parent;
+
+    /* 全局析构统计 */
+    int destructor_call_count;
+    void *last_destroyed_resource;
+
+    /* LIFO 顺序验证 */
+    int destruction_order_idx;
+    int destruction_order[10];
+};
+
+/**
+ * @brief 测试析构回调：记录调用次数和资源指针
+ */
+static void test_res_destructor(void *resource, void *arg)
+{
+    ResourceDestructionTest *fixture =
+        static_cast<ResourceDestructionTest *>(arg);
+    fixture->destructor_call_count++;
+    fixture->last_destroyed_resource = resource;
+}
+
+/**
+ * @brief 测试析构回调：记录资源 ID 到 order 数组（用于 LIFO 验证）
+ */
+static void test_res_destructor_order(void *resource, void *arg)
+{
+    ResourceDestructionTest *fixture =
+        static_cast<ResourceDestructionTest *>(arg);
+    int res_id = *static_cast<int *>(resource);
+    fixture->destruction_order[fixture->destruction_order_idx++] = res_id;
+}
+
+/**
+ * @brief 测试注册和取消注册资源
+ */
+TEST_F(ResourceDestructionTest, RegisterResource) {
+    int resource1 = 42;
+    int resource2 = 99;
+
+    EXPECT_EQ(0, mmdb_mem_register_resource(parent, &resource1,
+                                            test_res_destructor, this, "res1"));
+    EXPECT_EQ(parent->resource_count, 1u);
+
+    EXPECT_EQ(0, mmdb_mem_register_resource(parent, &resource2,
+                                            test_res_destructor, this, "res2"));
+    EXPECT_EQ(parent->resource_count, 2u);
+
+    /* 取消注册 res1 */
+    EXPECT_EQ(0, mmdb_mem_unregister_resource(parent, &resource1));
+    EXPECT_EQ(parent->resource_count, 1u);
+
+    /* 再次取消注册应返回 -1（已不在链表中） */
+    EXPECT_EQ(-1, mmdb_mem_unregister_resource(parent, &resource1));
+
+    /* 取消注册 res2 */
+    EXPECT_EQ(0, mmdb_mem_unregister_resource(parent, &resource2));
+    EXPECT_EQ(parent->resource_count, 0u);
+
+    /* 资源不在链表中时取消注册返回 -1 */
+    int dummy = 0;
+    EXPECT_EQ(-1, mmdb_mem_unregister_resource(parent, &dummy));
+}
+
+/**
+ * @brief 测试 Reset 时自动执行资源析构
+ */
+TEST_F(ResourceDestructionTest, ResourceDestructionOnReset) {
+    void *resource1 = malloc(100);
+    void *resource2 = malloc(200);
+    ASSERT_NE(resource1, nullptr);
+    ASSERT_NE(resource2, nullptr);
+
+    EXPECT_EQ(0, mmdb_mem_register_resource(parent, resource1,
+                                            test_res_destructor, this, "heap1"));
+    EXPECT_EQ(0, mmdb_mem_register_resource(parent, resource2,
+                                            test_res_destructor, this, "heap2"));
+    EXPECT_EQ(parent->resource_count, 2u);
+
+    /* Reset 应触发析构 */
+    reset_memory(parent);
+
+    EXPECT_EQ(destructor_call_count, 2);
+    EXPECT_EQ(parent->resource_count, 0u);
+
+    free(resource1);
+    free(resource2);
+}
+
+/**
+ * @brief 测试 Delete 时自动执行资源析构
+ */
+TEST_F(ResourceDestructionTest, ResourceDestructionOnDelete) {
+    void *resource = malloc(100);
+    ASSERT_NE(resource, nullptr);
+
+    EXPECT_EQ(0, mmdb_mem_register_resource(parent, resource,
+                                            test_res_destructor, this, "heap"));
+    EXPECT_EQ(parent->resource_count, 1u);
+
+    /* Delete 应触发析构 */
+    delete_memory(parent);
+    parent = nullptr;
+
+    EXPECT_EQ(destructor_call_count, 1);
+    EXPECT_EQ(last_destroyed_resource, resource);
+
+    free(resource);
+}
+
+/**
+ * @brief 测试 LIFO 析构顺序
+ *
+ * 注册 3 个资源，验证 Reset 时按 LIFO（后进先出）顺序析构。
+ */
+TEST_F(ResourceDestructionTest, ResourceDestructionLIFO) {
+    int res1 = 1, res2 = 2, res3 = 3;
+
+    /* 按 1 -> 2 -> 3 顺序注册 */
+    EXPECT_EQ(0, mmdb_mem_register_resource(parent, &res1,
+                                            test_res_destructor_order, this, "r1"));
+    EXPECT_EQ(0, mmdb_mem_register_resource(parent, &res2,
+                                            test_res_destructor_order, this, "r2"));
+    EXPECT_EQ(0, mmdb_mem_register_resource(parent, &res3,
+                                            test_res_destructor_order, this, "r3"));
+    EXPECT_EQ(parent->resource_count, 3u);
+
+    /* Reset 应按 LIFO 顺序析构：3 -> 2 -> 1 */
+    reset_memory(parent);
+
+    EXPECT_EQ(destruction_order_idx, 3);
+    EXPECT_EQ(destruction_order[0], 3);  /* 最后注册，最先析构 */
+    EXPECT_EQ(destruction_order[1], 2);
+    EXPECT_EQ(destruction_order[2], 1);  /* 最先注册，最后析构 */
+    EXPECT_EQ(parent->resource_count, 0u);
 }
 
 }  // namespace
