@@ -11,7 +11,6 @@ add_library(sql_engine STATIC
 #   sql_driver.c
     nodeSeqscan.c
     nodeIndexscan.c
-    memctx.c
     expr.c
     expr_interp.c
     executor.c
@@ -37,10 +36,19 @@ add_library(sql_engine STATIC
     jit.c
 )
 
+# MemoryContext 独立库（Task 3）
+add_library(db_sql_memctx STATIC
+    memctx.c
+)
+
 # 添加头文件搜索路径
 target_include_directories(sql_engine PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include
     ${ENGINEERING_SOURCE_DIR}/include/db/parser
+)
+
+target_include_directories(db_sql_memctx PUBLIC
+    ${ENGINEERING_SOURCE_DIR}/include
 )
 
 # 链接依赖库
@@ -51,5 +59,9 @@ target_link_libraries(sql_engine PRIVATE
 
 # 设置输出目录
 set_target_properties(sql_engine PROPERTIES
+    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+)
+
+set_target_properties(db_sql_memctx PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
 )

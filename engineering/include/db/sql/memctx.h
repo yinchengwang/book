@@ -17,6 +17,10 @@
 
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdint.h>
+
+/* 前向声明 */
+typedef struct MemoryContextData *MemoryContext;
 
 /* 复用 parser 层的公共 NodeTag（其中已扩展 T_MemoryContext / T_AllocSetContext），
  * 避免另建独立枚举值域造成契约偏离与潜在冲突。 */
@@ -48,6 +52,30 @@ typedef unsigned long Size;
 
 /** Size 类型可表示的最大值（用于溢出检查） */
 #define ALLOCSET_MAX_SIZE (~(Size)0)
+
+/* ========================================================================
+ * 内存分配头结构
+ * ======================================================================== */
+
+/** 分配头魔数 */
+#define MEMORY_ALLOCATION_HEADER_MAGIC  0x4D454D435458ULL  /* "MEMCTX" */
+
+/** 分配头标志：已释放 */
+#define MEMORY_ALLOCATION_FLAG_FREED    0x1
+
+/**
+ * @brief 内存分配头
+ *
+ * 每次用户分配前插入隐藏头部，用于校验和调试。
+ */
+typedef struct MemoryAllocationHeader {
+    uint64_t           magic;           /**< 魔数校验 */
+    Size               requested_size;  /**< 用户请求大小 */
+    Size               allocated_size;  /**< 实际分配大小（含对齐） */
+    MemoryContext      owner;           /**< 所属上下文 */
+    uint64_t           generation;      /**< 分配时的 generation */
+    uint32_t           flags;           /**< 标志位 */
+} MemoryAllocationHeader;
 
 /* ========================================================================
  * 内存上下文方法表
@@ -84,7 +112,25 @@ typedef struct MemoryContextData {
     const MemoryContextMethods *methods;    /**< 方法表 */
     const char              *name;          /**< 上下文名称（调试用） */
     Size                     mem_allocated; /**< 已分配字节数（应用层累计） */
-    bool                     isReset;       /**< 是否已重置 */
+
+    /* 统计字段 */
+    Size                     current_bytes;     /**< 当前已分配字节数（含 header） */
+    Size                     peak_bytes;        /**< 历史峰值分配字节数 */
+    Size                     total_allocated;   /**< 累计分配字节数 */
+    Size                     total_freed;       /**< 累计释放字节数 */
+    Size                     allocation_count;  /**< 累计分配次数 */
+    Size                     free_count;        /**< 累计释放次数 */
+    Size                     reset_count;       /**< reset 次数 */
+    Size                     oom_count;         /**< OOM 次数 */
+    Size                     invalid_free_count;/**< 无效释放次数 */
+    Size                     double_free_count; /**< 双重释放次数 */
+
+    /* 校验与生命周期 */
+    uint64_t                 generation;        /**< 代次计数器，用于校验 */
+    uint32_t                 flags;             /**< 标志位 */
+
+    /* 状态 */
+    bool                     isReset;           /**< 是否已重置 */
 } MemoryContextData;
 
 /* ========================================================================
@@ -111,6 +157,7 @@ typedef struct AllocSetBlock {
 typedef struct AllocSetContext {
     MemoryContextData   header;     /**< 公共头 */
     AllocSetBlock      *blocks;     /**< 块链表（首块） */
+    AllocSetBlock      *large_blocks; /**< 大对象块链表（独立分配） */
     Size                initBlockSize; /**< 初始块大小 */
     Size                maxBlockSize;  /**< 最大块大小 */
 } AllocSetContext;
@@ -162,7 +209,7 @@ void *palloc0(MemoryContext ctx, Size size);
 /**
  * @brief 释放内存
  *
- * AllocSet 实现为空操作；实际释放由 reset/delete 完成。
+ * AllocSet 实现逻辑释放（含校验）；实际释放由 reset/delete 完成。
  * 保留接口以兼容 PostgreSQL 风格 API。
  *
  * @param ctx 内存上下文

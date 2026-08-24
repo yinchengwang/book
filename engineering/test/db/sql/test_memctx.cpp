@@ -36,7 +36,7 @@ TEST(MemoryContextTest, BasicAlloc) {
     ASSERT_NE(p, nullptr);
 
     /* 验证分配大小 */
-    EXPECT_EQ(ctx->mem_allocated, 100);
+    EXPECT_EQ(ctx->current_bytes, ALLOCSET_ALIGN(sizeof(MemoryAllocationHeader)) + ALLOCSET_ALIGN(100));
 
     pfree(ctx, p);
     delete_memory(ctx);
@@ -70,8 +70,8 @@ TEST(MemoryContextTest, PallocZero) {
  */
 TEST(MemoryContextTest, ResetFreesChildBlocks) {
     MemoryContext parent = AllocSetContextCreate(NULL, "parent", 0, 8192, 8192);
-    /* 子上下文用小块（1024），便于用少量分配触发新块 */
-    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 1024, 1024);
+    /* 子上下文用适中块（4096），header 开销后 512 字节分配不会触发大对象阈值 */
+    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 4096, 4096);
     ASSERT_NE(parent, nullptr);
     ASSERT_NE(child, nullptr);
 
@@ -82,9 +82,9 @@ TEST(MemoryContextTest, ResetFreesChildBlocks) {
     /* 初始只有预分配的首块 */
     EXPECT_EQ(CountBlocks(child), 1);
 
-    /* 连续分配多次 512 字节，1024 的块放不下两个 512+对齐，必然触发额外块 */
+    /* 连续分配多次 512 字节，总开销约 560/次，4096 块放不下 7 次，必然触发额外块 */
     std::vector<void *> ptrs;
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 12; ++i) {
         void *p = palloc(child, 512);
         ASSERT_NE(p, nullptr);
         memset(p, 0xAA, 512);
@@ -94,14 +94,14 @@ TEST(MemoryContextTest, ResetFreesChildBlocks) {
     /* 此时应已产生多个块 */
     EXPECT_GT(CountBlocks(child), 1);
 
-    Size child_alloc_before = child->mem_allocated;
+    Size child_alloc_before = child->current_bytes;
     EXPECT_GT(child_alloc_before, 0u);
 
     /* 重置子上下文 */
     reset_memory(child);
 
     /* 子上下文的已分配计数应被清零 */
-    EXPECT_EQ(child->mem_allocated, 0u);
+    EXPECT_EQ(child->current_bytes, 0u);
     /* reset 后应只保留首块，其余块被释放 */
     EXPECT_EQ(CountBlocks(child), 1);
 
@@ -228,6 +228,107 @@ TEST(MemoryContextTest, MinContextSizeHonored) {
     void *p = palloc(ctx, min_size);
     ASSERT_NE(p, nullptr);
     EXPECT_EQ(CountBlocks(ctx), blocks_before);
+
+    delete_memory(ctx);
+}
+
+/**
+ * @brief 测试 AllocationHeader 正确写入
+ */
+TEST(MemoryContextTest, AllocationHeaderMagic) {
+    MemoryContext ctx = AllocSetContextCreate(NULL, "test_header", 0, 8192, 8192);
+    ASSERT_NE(ctx, nullptr);
+
+    void *ptr = palloc(ctx, 100);
+    ASSERT_NE(ptr, nullptr);
+
+    /* 访问隐藏 header */
+    Size header_size = ALLOCSET_ALIGN(sizeof(MemoryAllocationHeader));
+    MemoryAllocationHeader *hdr = (MemoryAllocationHeader *)((char *)ptr - header_size);
+    EXPECT_EQ(hdr->magic, MEMORY_ALLOCATION_HEADER_MAGIC);
+    EXPECT_EQ(hdr->requested_size, 100u);
+    EXPECT_EQ(hdr->owner, ctx);
+    EXPECT_EQ(hdr->flags & MEMORY_ALLOCATION_FLAG_FREED, 0u);
+
+    delete_memory(ctx);
+}
+
+/**
+ * @brief 测试 pfree 逻辑释放更新统计
+ */
+TEST(MemoryContextTest, PfreeLogicalFree) {
+    MemoryContext ctx = AllocSetContextCreate(NULL, "test_free", 0, 8192, 8192);
+    ASSERT_NE(ctx, nullptr);
+
+    void *ptr = palloc(ctx, 100);
+    ASSERT_NE(ptr, nullptr);
+
+    Size before = ctx->current_bytes;
+    pfree(ctx, ptr);
+    Size after = ctx->current_bytes;
+
+    EXPECT_LT(after, before);
+    EXPECT_EQ(ctx->free_count, 1u);
+    EXPECT_EQ(ctx->total_freed, ctx->total_allocated);
+
+    delete_memory(ctx);
+}
+
+/**
+ * @brief 测试双重释放检测
+ */
+TEST(MemoryContextTest, DoubleFreeDetected) {
+    MemoryContext ctx = AllocSetContextCreate(NULL, "test_double", 0, 8192, 8192);
+    ASSERT_NE(ctx, nullptr);
+
+    void *ptr = palloc(ctx, 100);
+    pfree(ctx, ptr);
+    pfree(ctx, ptr);  /* 重复释放 */
+
+    EXPECT_EQ(ctx->double_free_count, 1u);
+
+    delete_memory(ctx);
+}
+
+/**
+ * @brief 测试跨上下文释放检测
+ */
+TEST(MemoryContextTest, CrossContextFreeDetected) {
+    MemoryContext parent = AllocSetContextCreate(NULL, "parent", 0, 8192, 8192);
+    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 8192, 8192);
+    ASSERT_NE(parent, nullptr);
+    ASSERT_NE(child, nullptr);
+
+    /* 在 child 中分配内存 */
+    void *ptr = palloc(child, 100);
+    ASSERT_NE(ptr, nullptr);
+
+    /* 在 parent 中释放 child 的指针 */
+    pfree(parent, ptr);
+    EXPECT_EQ(parent->invalid_free_count, 1u);
+
+    delete_memory(parent);
+}
+
+/**
+ * @brief 测试大对象独立分配
+ */
+TEST(MemoryContextTest, LargeObjectAllocation) {
+    MemoryContext ctx = AllocSetContextCreate(NULL, "test_large", 0, 8192, 8192);
+    ASSERT_NE(ctx, nullptr);
+
+    /* 分配大于 block_size/2 的对象 */
+    Size large_size = 8192 / 2 + 1;
+    void *ptr = palloc(ctx, large_size);
+    ASSERT_NE(ptr, nullptr);
+
+    AllocSetContext *set = reinterpret_cast<AllocSetContext *>(ctx);
+    EXPECT_NE(set->large_blocks, nullptr);
+
+    /* 验证统计数据 */
+    Size header_size = ALLOCSET_ALIGN(sizeof(MemoryAllocationHeader));
+    Size aligned_size = ALLOCSET_ALIGN(large_size);
+    EXPECT_EQ(ctx->current_bytes, header_size + aligned_size);
 
     delete_memory(ctx);
 }

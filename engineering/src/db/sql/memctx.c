@@ -120,15 +120,59 @@ static void *allocset_alloc(MemoryContext ctx, Size size)
     }
     Size aligned = ALLOCSET_ALIGN(size);
 
-    /* 溢出检查 2：块头 + 数据区。若 aligned 接近上限，加上块头会回绕。 */
-    if (aligned > ALLOCSET_MAX_SIZE - ALLOCSET_BLOCK_HDR_SIZE) {
+    /* 计算总分配大小：MemoryAllocationHeader + 对齐后的用户数据 */
+    Size header_size = ALLOCSET_ALIGN(sizeof(MemoryAllocationHeader));
+    Size total_size = header_size + aligned;
+
+    /* 溢出检查 2：total_size 加法可能回绕。若结果小于 aligned，说明溢出。 */
+    if (total_size < aligned) {
         return NULL;
     }
-    Size needed = ALLOCSET_BLOCK_HDR_SIZE + aligned;
+
+    /* 溢出检查 3：块头 + header + 数据区。若 total_size 接近上限，加上块头会回绕。 */
+    if (total_size > ALLOCSET_MAX_SIZE - ALLOCSET_BLOCK_HDR_SIZE) {
+        return NULL;
+    }
+    Size needed = ALLOCSET_BLOCK_HDR_SIZE + total_size;
+
+    /* 大对象判断：超过块大小一半的对象独立分配 */
+    Size threshold = (set->blocks ? set->blocks->size : set->initBlockSize) / 2;
+    if (total_size > threshold) {
+        AllocSetBlock *large = (AllocSetBlock *)malloc(sizeof(AllocSetBlock) + total_size);
+        if (!large) {
+            return NULL;
+        }
+        large->size = sizeof(AllocSetBlock) + total_size;
+        large->free = 0;
+        large->start = (char *)large + sizeof(AllocSetBlock);
+        large->end = (char *)large + large->size;
+        large->next = set->large_blocks;
+        set->large_blocks = large;
+
+        /* 填充 header */
+        MemoryAllocationHeader *hdr = (MemoryAllocationHeader *)large->start;
+        hdr->magic = MEMORY_ALLOCATION_HEADER_MAGIC;
+        hdr->requested_size = size;
+        hdr->allocated_size = total_size;
+        hdr->owner = ctx;
+        hdr->generation = set->header.generation;
+        hdr->flags = 0;
+
+        /* 更新统计 */
+        set->header.current_bytes += total_size;
+        set->header.total_allocated += total_size;
+        set->header.allocation_count++;
+        set->header.mem_allocated += size;
+        if (set->header.current_bytes > set->header.peak_bytes) {
+            set->header.peak_bytes = set->header.current_bytes;
+        }
+
+        return (char *)hdr + header_size;
+    }
 
     /* 在首块尝试分配；不足则申请新块（首块替换为新块） */
     AllocSetBlock *block = set->blocks;
-    if (!block || block->free < aligned) {
+    if (!block || block->free < total_size) {
         block = allocset_new_block(set, needed);
         if (!block) {
             return NULL;
@@ -137,24 +181,69 @@ static void *allocset_alloc(MemoryContext ctx, Size size)
 
     /* 在首块末尾分配（线性推进） */
     void *ptr = block->end - block->free;
-    block->free -= aligned;
-    set->header.mem_allocated += size;
+    block->free -= total_size;
 
-    return ptr;
+    /* 填充 header */
+    MemoryAllocationHeader *hdr = (MemoryAllocationHeader *)ptr;
+    hdr->magic = MEMORY_ALLOCATION_HEADER_MAGIC;
+    hdr->requested_size = size;
+    hdr->allocated_size = total_size;
+    hdr->owner = ctx;
+    hdr->generation = set->header.generation;
+    hdr->flags = 0;
+
+    /* 更新统计 */
+    set->header.current_bytes += total_size;
+    set->header.total_allocated += total_size;
+    set->header.allocation_count++;
+    set->header.mem_allocated += size;
+    if (set->header.current_bytes > set->header.peak_bytes) {
+        set->header.peak_bytes = set->header.current_bytes;
+    }
+
+    return (char *)ptr + header_size;
 }
 
 /**
- * @brief pfree 在 AllocSet 中为空操作
+ * @brief pfree 逻辑释放（含校验）
  */
 static void allocset_free_p(MemoryContext ctx, void *ptr)
 {
-    /* noop：AllocSet 不支持单独释放，依靠 reset/delete 统一回收 */
-    (void)ctx;
-    (void)ptr;
+    if (!ptr) return;
+
+    /* 计算 header 位置 */
+    Size header_size = ALLOCSET_ALIGN(sizeof(MemoryAllocationHeader));
+    MemoryAllocationHeader *hdr = (MemoryAllocationHeader *)((char *)ptr - header_size);
+
+    /* 校验 magic */
+    if (hdr->magic != MEMORY_ALLOCATION_HEADER_MAGIC) {
+        ctx->invalid_free_count++;
+        return;  /* 非法指针 */
+    }
+
+    /* 校验 owner */
+    if (hdr->owner != ctx) {
+        ctx->invalid_free_count++;
+        return;  /* 跨上下文释放 */
+    }
+
+    /* 校验是否已释放 */
+    if (hdr->flags & MEMORY_ALLOCATION_FLAG_FREED) {
+        ctx->double_free_count++;
+        return;  /* 重复释放 */
+    }
+
+    /* 标记为已释放 */
+    hdr->flags |= MEMORY_ALLOCATION_FLAG_FREED;
+
+    /* 更新统计 */
+    ctx->current_bytes -= hdr->allocated_size;
+    ctx->total_freed += hdr->allocated_size;
+    ctx->free_count++;
 }
 
 /**
- * @brief 重置 AllocSet：保留首块，释放其余块
+ * @brief 重置 AllocSet：保留首块，释放其余块和大对象块
  */
 static void allocset_reset(MemoryContext ctx)
 {
@@ -186,8 +275,19 @@ static void allocset_reset(MemoryContext ctx)
         }
     }
 
+    /* 释放大对象块 */
+    AllocSetBlock *large = set->large_blocks;
+    while (large) {
+        AllocSetBlock *next = large->next;
+        free(large);
+        large = next;
+    }
+    set->large_blocks = NULL;
+
     set->header.mem_allocated = 0;
+    set->header.current_bytes = 0;
     set->header.isReset = true;
+    set->header.reset_count++;
 }
 
 /**
@@ -218,6 +318,15 @@ static void allocset_delete(MemoryContext ctx)
         block = next;
     }
     set->blocks = NULL;
+
+    /* 释放大对象块 */
+    AllocSetBlock *large = set->large_blocks;
+    while (large) {
+        AllocSetBlock *next = large->next;
+        free(large);
+        large = next;
+    }
+    set->large_blocks = NULL;
 
     /* 从父上下文的子链表中移除 */
     if (set->header.parent) {
@@ -263,9 +372,22 @@ MemoryContext AllocSetContextCreate(
     set->header.methods = &g_allocset_methods;
     set->header.name = name;
     set->header.mem_allocated = 0;
+    set->header.current_bytes = 0;
+    set->header.peak_bytes = 0;
+    set->header.total_allocated = 0;
+    set->header.total_freed = 0;
+    set->header.allocation_count = 0;
+    set->header.free_count = 0;
+    set->header.reset_count = 0;
+    set->header.oom_count = 0;
+    set->header.invalid_free_count = 0;
+    set->header.double_free_count = 0;
+    set->header.generation = 0;
+    set->header.flags = 0;
     set->header.isReset = false;
 
     set->blocks = NULL;
+    set->large_blocks = NULL;
     set->initBlockSize = (initBlockSize == 0) ? ALLOCSET_DEFAULT_BLOCK_SIZE : initBlockSize;
     set->maxBlockSize = (maxBlockSize == 0) ? ALLOCSET_DEFAULT_BLOCK_SIZE : maxBlockSize;
 
@@ -347,7 +469,7 @@ void *palloc0(MemoryContext ctx, Size size)
 }
 
 /**
- * @brief 释放单个指针（AllocSet 中为空操作）
+ * @brief 释放单个指针
  */
 void pfree(MemoryContext ctx, void *ptr)
 {
