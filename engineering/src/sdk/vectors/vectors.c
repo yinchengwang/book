@@ -667,7 +667,10 @@ int mmdb_vectors_hnsw_rebuild(mmdb_collection_t* c, int32_t hnsw_m, int32_t hnsw
     int32_t add_rc = faiss_hnsw_index_add(w->index, (int32_t)row_idx, all_vectors);
     free(all_vectors);
 
-    if (add_rc != 0) {
+    /* faiss_hnsw_index_add 返回成功添加的向量数；正常情况下等于 row_idx。
+     * 仅在 add_rc != row_idx（部分或全部失败）时降级到 flat 模式。
+     * 原代码误用 `add_rc != 0` 检查，导致所有成功构建也被丢弃。 */
+    if (add_rc != (int32_t)row_idx) {
         /* HNSW 构建失败，降级为 flat 模式（保持 w->index = NULL） */
         faiss_hnsw_index_drop(w->index);
         w->index = NULL;
@@ -1114,6 +1117,7 @@ int mmdb_vectors_search(mmdb_collection_t* c, const mmdb_query_t* q,
         if (w->index && faiss_hnsw_index_size(w->index) > 0) {
             /* P4-T4.5：filter 非空 → 构建 bitmap 谓词；filter 为空 → NULL 谓词 */
             hnsw_filter_ctx_t filter_ctx;
+            memset(&filter_ctx, 0, sizeof(filter_ctx));  /* P6-M1.3：未初始化指针 free 会段错误 */
             int has_filter = (where[0] != '\0');
             int filter_rc = MMDB_OK;
             if (has_filter) {

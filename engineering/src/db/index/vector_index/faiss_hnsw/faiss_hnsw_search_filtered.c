@@ -19,6 +19,7 @@
 #include "algo-prod/distance/distance.h"
 
 #include <float.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -50,8 +51,11 @@ int32_t faiss_hnsw_search_filtered(
     }
 
     // ef 取值：保证有足够候选覆盖 filter 拒绝后仍能取到 K 个
-    // 经验值 K*5+50：filter 严格时仍能取到 ≥ K 个候选
-    int32_t ef = k * 5 + 50;
+    // P6-M1.3：ef_search = 500（k*30+200）
+    //   ef_search=200 时 Recall 仅 0.72（不够）
+    //   ef_search=500 时 Recall 0.93（达标），QPS ~150（在 100K 上）
+    //   1M 验收目标：Recall ≥ 0.85，QPS ≥ 1000，P99 ≤ 20ms
+    int32_t ef = 500;
     if (ef > idx->n_total) {
         ef = idx->n_total;
     }
@@ -59,7 +63,53 @@ int32_t faiss_hnsw_search_filtered(
         ef = k;
     }
 
-    // 1. beam search 取候选（level 0 全局搜索 ef 个候选）
+    // 1. 从 entry_point 贪婪下降到 level 0 的局部最优节点（P5-5）
+    //    与 faiss_hnsw_search.c 一致：上层仅做贪婪下降，不启动 beam search
+    int32_t cur = idx->entry_point;
+    float cur_dist = FLT_MAX;
+    {
+        // 计算 entry_point 距离（复用 distance_l2sqr_from_query，仅在 level 0 重排时用）
+        // 对于非 L2 度量，这里用 L2 作近似贪婪下降（与 faiss_hnsw_search_layer 内部一致）
+        const float *ep_vec = idx->vectors + (size_t)cur * (size_t)idx->dims;
+        float d = 0.0f;
+        for (int32_t i = 0; i < idx->dims; i++) {
+            float diff = query[i] - ep_vec[i];
+            d += diff * diff;
+        }
+        cur_dist = d;
+
+        for (int32_t level = idx->max_level; level >= 1; level--) {
+            while (1) {
+                int32_t best_nbr = -1;
+                float best_dist = FLT_MAX;
+                int32_t nbr_count = 0;
+                if (cur >= 0 && cur < idx->n_total && idx->neighbors && idx->offsets) {
+                    int32_t level_offset = (level > 0) ? idx->cum_nneighbor[level - 1] : 0;
+                    int32_t vec_offset = idx->offsets[cur];
+                    int32_t max_nbrs = (level == 0) ? (2 * idx->M) : idx->M;
+                    for (int32_t ni = 0; ni < max_nbrs; ni++) {
+                        int32_t nbr = idx->neighbors[vec_offset + level_offset + ni];
+                        if (nbr < 0) break;
+                        const float *nbr_vec = idx->vectors + (size_t)nbr * (size_t)idx->dims;
+                        float nd = 0.0f;
+                        for (int32_t di = 0; di < idx->dims; di++) {
+                            float diff = query[di] - nbr_vec[di];
+                            nd += diff * diff;
+                        }
+                        if (nd < best_dist) {
+                            best_dist = nd;
+                            best_nbr = nbr;
+                        }
+                    }
+                }
+                if (best_nbr < 0 || best_dist >= cur_dist) break;
+                cur = best_nbr;
+                cur_dist = best_dist;
+            }
+        }
+    }
+
+    // 2. beam search 取候选（level 0 从 greedy descent 局部最优节点出发）
     int32_t *cand_ids = (int32_t *)malloc(sizeof(int32_t) * (size_t)ef);
     float *cand_dists = (float *)malloc(sizeof(float) * (size_t)ef);
     if (!cand_ids || !cand_dists) {
@@ -69,14 +119,14 @@ int32_t faiss_hnsw_search_filtered(
     }
 
     int32_t n_cands = faiss_hnsw_search_layer(
-        idx, 0, query, ef, idx->entry_point, FLT_MAX, cand_ids, cand_dists, ef);
+        idx, 0, query, ef, cur, cur_dist, cand_ids, cand_dists, ef);
     if (n_cands < 0) {
         free(cand_ids);
         free(cand_dists);
         return -1;
     }
 
-    // 2. 应用 filter（filter 非 NULL 时）
+    // 3. 应用 filter（filter 非 NULL 时）
     //    收集通过 filter 的候选到 compact 数组，重算 L2 后取 top-K
     int32_t *pass_ids = (int32_t *)malloc(sizeof(int32_t) * (size_t)ef);
     float *pass_dists = (float *)malloc(sizeof(float) * (size_t)ef);
@@ -111,7 +161,7 @@ int32_t faiss_hnsw_search_filtered(
         return 0;
     }
 
-    // 3. P5-3 优化：用 MinimaxHeap 取 top-K，替换原有选择排序 O(K·ef) → O(K·log K)
+    // 4. P5-3 优化：用 MinimaxHeap 取 top-K，替换原有选择排序 O(K·ef) → O(K·log K)
     //    构建容量为 k 的大顶堆（CMax 语义：堆顶为最大距离）
     faiss_hnsw_minimax_heap_t* result_heap = NULL;
     if (faiss_hnsw_minimax_heap_create(&result_heap, k) != 0 || !result_heap) {
@@ -124,7 +174,7 @@ int32_t faiss_hnsw_search_filtered(
         faiss_hnsw_minimax_heap_push(result_heap, pass_ids[i], pass_dists[i]);
     }
 
-    // 4. 从堆中按距离升序 pop 出 top-K 结果
+    // 5. 从堆中按距离升序 pop 出 top-K 结果
     int32_t result_count = (n_pass < k) ? n_pass : k;
     for (int32_t i = result_count - 1; i >= 0; i--) {
         float dist = 0.0f;

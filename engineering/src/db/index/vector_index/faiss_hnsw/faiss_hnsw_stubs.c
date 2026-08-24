@@ -17,6 +17,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+// P6-M1.3：AVX2 intrinsics 用于 SIMD L2 距离
+#if defined(__AVX2__) || defined(_MSC_VER)
+#include <immintrin.h>
+#endif
+
 // =============================================================================
 // 内部辅助：距离计算
 // =============================================================================
@@ -24,10 +29,33 @@
 static float hnsw_vec_dist(const faiss_hnsw_t *idx, const float *a, const float *b) {
     float dist = 0.0f;
     if (idx->metric == DISTANCE_METRIC_L2_SQUARED) {
+        // P6-M1.3：使用 SIMD (AVX2) 加速构建时的距离计算
+#if defined(__AVX2__) || defined(_MSC_VER)
+        size_t i = 0;
+        size_t limit = idx->dims & ~(size_t)7;
+        __m256 acc = _mm256_setzero_ps();
+        for (; i < limit; i += 8) {
+            __m256 va = _mm256_loadu_ps(a + i);
+            __m256 vb = _mm256_loadu_ps(b + i);
+            __m256 diff = _mm256_sub_ps(va, vb);
+            acc = _mm256_add_ps(acc, _mm256_mul_ps(diff, diff));
+        }
+        __m128 hi = _mm256_extractf128_ps(acc, 1);
+        __m128 lo = _mm256_castps256_ps128(acc);
+        __m128 sum = _mm_add_ps(lo, hi);
+        sum = _mm_hadd_ps(sum, sum);
+        sum = _mm_hadd_ps(sum, sum);
+        dist = _mm_cvtss_f32(sum);
+        for (; i < idx->dims; i++) {
+            float d = a[i] - b[i];
+            dist += d * d;
+        }
+#else
         for (int32_t i = 0; i < idx->dims; i++) {
             float d = a[i] - b[i];
             dist += d * d;
         }
+#endif
     } else if (idx->metric == DISTANCE_METRIC_COSINE) {
         float dot = 0.0f, na = 0.0f, nb = 0.0f;
         for (int32_t i = 0; i < idx->dims; i++) {
