@@ -22,3 +22,14 @@ set_target_properties(selector_integration_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
 )
 add_test(NAME selector_integration_test COMMAND selector_integration_test)
+
+# 向量 KNN 阶梯基准测试（T5.8）
+add_executable(staircase_benchmark staircase_benchmark.cpp)
+target_link_libraries(staircase_benchmark PRIVATE mmsdk gtest_main)
+target_include_directories(staircase_benchmark PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../include
+)
+set_target_properties(staircase_benchmark PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
+)
+add_test(NAME staircase_benchmark COMMAND staircase_benchmark)
