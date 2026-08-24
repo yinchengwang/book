@@ -343,7 +343,9 @@ int32_t faiss_hnsw_index_add(faiss_hnsw_t *idx, int32_t n, const float *vectors)
                 cand_dists[i] = FLT_MAX;
             }
 
-            int32_t found = faiss_hnsw_search_layer(idx, level, vec, ef, cand_ids, cand_dists, ef);
+            int32_t found = faiss_hnsw_search_layer(idx, level, vec, ef,
+                                                     cur, cur_dist,
+                                                     cand_ids, cand_dists, ef);
 
             // 选择最优 M 个
             int32_t target_m = max_neighbors(idx, level);

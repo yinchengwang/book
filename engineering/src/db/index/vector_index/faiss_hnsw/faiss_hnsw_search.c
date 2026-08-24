@@ -156,6 +156,7 @@ int32_t faiss_hnsw_index_search(faiss_hnsw_t *idx, const float *query, int32_t k
     }
 
     // 在 level 0 调用 faiss_hnsw_search_layer 进行 beam search
+    // 传入 greedy descent 找到的局部最优节点作为起点（P5-5 修复）
     int32_t *layer_result_ids = (int32_t *)malloc(sizeof(int32_t) * (size_t)ef);
     float *layer_result_dists = (float *)malloc(sizeof(float) * (size_t)ef);
     if (!layer_result_ids || !layer_result_dists) {
@@ -168,8 +169,9 @@ int32_t faiss_hnsw_index_search(faiss_hnsw_t *idx, const float *query, int32_t k
         layer_result_dists[i] = FLT_MAX;
     }
 
-    // 调用公共 search_layer（在最底层 layer 0 全局搜索 ef 个候选）
+    // 调用公共 search_layer（在最底层 layer 0 从局部最优节点出发搜索 ef 个候选）
     int32_t n_results = faiss_hnsw_search_layer(idx, 0, query, ef,
+                                                 cur, cur_dist,
                                                  layer_result_ids, layer_result_dists, ef);
 
     if (n_results < 0) {

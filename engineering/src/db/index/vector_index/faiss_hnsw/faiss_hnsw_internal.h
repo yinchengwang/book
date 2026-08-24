@@ -102,8 +102,8 @@ struct faiss_hnsw {
 /**
  * HNSW 核心搜索层算法
  *
- * 从 entry_point 开始，在指定 level 层进行贪婪搜索：
- *   1. 将 entry_point 压入 MinimaxHeap
+ * 从指定起点开始，在指定 level 层进行贪婪搜索：
+ *   1. 将起点 (start_id) 压入 MinimaxHeap
  *   2. 循环弹出当前最小距离的候选，扩展其邻居
  *   3. 直到堆为空
  * 收集堆中所有候选作为结果（最多 result_capacity 个）
@@ -111,16 +111,23 @@ struct faiss_hnsw {
  * 与 FAISS HNSW::search_from_candidates 语义一致。
  *
  * @param idx             索引实例
+ *   P5-5 修复：level=0 搜索从 greedy descent 的局部最优节点出发，
+ *   而非固定从 entry_point 出发。小数据集（N≤200）下 entry_point
+ *   可能远离 query，导致 beam search 无法覆盖目标区域，返回 0 候选。
+ *
  * @param level           搜索的目标层
  * @param query           查询向量
  * @param ef              搜索宽度（堆容量）
+ * @param start_id        搜索起点的 vec_id（通常由 greedy descent 确定）
+ * @param start_dist      起点到 query 的距离
  * @param result_ids      输出 id 数组（容量 result_capacity）
  * @param result_dist     输出距离数组（容量 result_capacity）
  * @param result_capacity 输出数组容量
  * @return                实际返回的结果数（<= result_capacity）
  */
 int32_t faiss_hnsw_search_layer(const faiss_hnsw_t *idx, int32_t level, const float *query,
-                                 int32_t ef, int32_t *result_ids, float *result_dist,
+                                 int32_t ef, int32_t start_id, float start_dist,
+                                 int32_t *result_ids, float *result_dist,
                                  int32_t result_capacity);
 
 #ifdef __cplusplus

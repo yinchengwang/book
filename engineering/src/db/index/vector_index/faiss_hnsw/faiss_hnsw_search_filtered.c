@@ -1,11 +1,12 @@
 // faiss_hnsw_search_filtered.c
-// 实现 faiss_hnsw_search_filtered 带 filter 谓词的 HNSW 搜索（P4-T4.5）
+// 实现 faiss_hnsw_search_filtered 带 filter 谓词的 HNSW 搜索（P4-T4.5 + P5-3 优化）
 //
 // 算法流程：
-//   1. 调 faiss_hnsw_search_layer(level=0, query, ef=K*5+50, ...) 取候选
-//   2. 对每个候选调 filter 回调（filter 非 NULL 时）；回调返回 0 的候选被丢弃
-//   3. 重读 idx->vectors 中的原始向量，重算 L2 平方距离
-//   4. 对通过 filter 的候选按距离升序排序，取 top-K
+//   1. 从 entry_point 贪婪下降到 level 0 的局部最优节点
+//   2. 调 faiss_hnsw_search_layer(level=0, query, ef=K*5+50, ...) 取候选
+//   3. 对每个候选调 filter 回调（filter 非 NULL 时）；回调返回 0 的候选被丢弃
+//   4. 重读 idx->vectors 中的原始向量，重算 L2 平方距离
+//   5. 用 MinimaxHeap 取 top-K（P5-3：替换原有选择排序 O(K·ef) → O(K·log K)）
 //
 // 设计取舍：
 //   - ef = K*5+50 保证有足够候选通过 filter（filter 严格时 ef 需更大）
@@ -68,7 +69,7 @@ int32_t faiss_hnsw_search_filtered(
     }
 
     int32_t n_cands = faiss_hnsw_search_layer(
-        idx, 0, query, ef, cand_ids, cand_dists, ef);
+        idx, 0, query, ef, idx->entry_point, FLT_MAX, cand_ids, cand_dists, ef);
     if (n_cands < 0) {
         free(cand_ids);
         free(cand_dists);
@@ -110,33 +111,29 @@ int32_t faiss_hnsw_search_filtered(
         return 0;
     }
 
-    // 3. 对通过 filter 的候选按距离升序排序（选择排序，简单可靠）
-    for (int32_t i = 0; i < n_pass - 1 && i < k; i++) {
-        int32_t best = i;
-        float best_d = pass_dists[i];
-        for (int32_t j = i + 1; j < n_pass; j++) {
-            if (pass_dists[j] < best_d) {
-                best_d = pass_dists[j];
-                best = j;
-            }
-        }
-        if (best != i) {
-            int32_t tmp_id = pass_ids[i];
-            float tmp_d = pass_dists[i];
-            pass_ids[i] = pass_ids[best];
-            pass_dists[i] = pass_dists[best];
-            pass_ids[best] = tmp_id;
-            pass_dists[best] = tmp_d;
-        }
+    // 3. P5-3 优化：用 MinimaxHeap 取 top-K，替换原有选择排序 O(K·ef) → O(K·log K)
+    //    构建容量为 k 的大顶堆（CMax 语义：堆顶为最大距离）
+    faiss_hnsw_minimax_heap_t* result_heap = NULL;
+    if (faiss_hnsw_minimax_heap_create(&result_heap, k) != 0 || !result_heap) {
+        free(pass_ids);
+        free(pass_dists);
+        return -1;
     }
 
-    // 4. 取 top-K
+    for (int32_t i = 0; i < n_pass; i++) {
+        faiss_hnsw_minimax_heap_push(result_heap, pass_ids[i], pass_dists[i]);
+    }
+
+    // 4. 从堆中按距离升序 pop 出 top-K 结果
     int32_t result_count = (n_pass < k) ? n_pass : k;
-    for (int32_t i = 0; i < result_count; i++) {
-        out_ids[i] = pass_ids[i];
-        out_distances[i] = pass_dists[i];
+    for (int32_t i = result_count - 1; i >= 0; i--) {
+        float dist = 0.0f;
+        int32_t id = faiss_hnsw_minimax_heap_pop_min(result_heap, &dist);
+        out_ids[i] = id;
+        out_distances[i] = dist;
     }
 
+    faiss_hnsw_minimax_heap_drop(result_heap);
     free(pass_ids);
     free(pass_dists);
     return result_count;

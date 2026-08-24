@@ -100,6 +100,149 @@ static float l2_distance_scalar(const float* a, const float* b, size_t dim) {
 #define HNSW_DEFAULT_EF_C     128
 #define HNSW_DEFAULT_EF_S     128
 
+/* ================================================================== */
+/* P5-1：sdk_id → vec_id 哈希表                                        */
+/* 替换 build_filter_ctx 中的 O(N) 线性扫描，实现 O(1) 查找            */
+/* ================================================================== */
+
+/* FNV-1a 哈希：对可变长 sdk_id 字节序列生成 64 位哈希 */
+static uint64_t fnv1a_hash(const uint8_t* data, size_t len) {
+    uint64_t h = 14695981039346656037ULL;  /* FNV offset basis */
+    for (size_t i = 0; i < len; i++) {
+        h ^= (uint64_t)data[i];
+        h *= 1099511628211ULL;  /* FNV prime */
+    }
+    return h;
+}
+
+/* 哈希表条目状态 */
+#define HASH_SLOT_EMPTY   0
+#define HASH_SLOT_USED    1
+#define HASH_SLOT_DELETED 2
+
+/* sdk_id → vec_id 哈希表（open addressing + 线性探测） */
+typedef struct {
+    uint64_t*  hashes;     /* sdk_id 的 FNV-1a 哈希值 */
+    int32_t*   vec_ids;    /* 对应的 HNSW vec_id */
+    uint8_t*   states;     /* 空/已用/已删除 */
+    size_t     capacity;   /* 槽数（2 的幂） */
+    size_t     count;      /* 已用槽数 */
+} sdk_id_hash_t;
+
+static sdk_id_hash_t* sdk_id_hash_create(size_t initial_cap) {
+    /* 确保 capacity 是 2 的幂 */
+    if (initial_cap < 16) initial_cap = 16;
+    size_t cap = 16;
+    while (cap < initial_cap) cap <<= 1;
+
+    sdk_id_hash_t* h = (sdk_id_hash_t*)calloc(1, sizeof(sdk_id_hash_t));
+    if (!h) return NULL;
+    h->capacity = cap;
+    h->hashes = (uint64_t*)calloc(cap, sizeof(uint64_t));
+    h->vec_ids = (int32_t*)malloc(cap * sizeof(int32_t));
+    h->states = (uint8_t*)calloc(cap, sizeof(uint8_t));
+    if (!h->hashes || !h->vec_ids || !h->states) {
+        free(h->hashes);
+        free(h->vec_ids);
+        free(h->states);
+        free(h);
+        return NULL;
+    }
+    for (size_t i = 0; i < cap; i++) h->vec_ids[i] = -1;
+    return h;
+}
+
+static void sdk_id_hash_free(sdk_id_hash_t* h) {
+    if (!h) return;
+    free(h->hashes);
+    free(h->vec_ids);
+    free(h->states);
+    free(h);
+}
+
+/* 插入映射：sdk_id → vec_id。返回 0 成功，-1 失败。 */
+static int sdk_id_hash_insert(sdk_id_hash_t* h, const uint8_t* sdk_id,
+                               size_t sdk_id_len, int32_t vec_id) {
+    if (!h || !sdk_id || sdk_id_len == 0) return -1;
+    /* 负载因子 > 0.75 时扩容 */
+    if (h->count * 4 >= h->capacity * 3) {
+        size_t new_cap = h->capacity << 1;
+        uint64_t* new_hashes = (uint64_t*)calloc(new_cap, sizeof(uint64_t));
+        int32_t* new_ids = (int32_t*)malloc(new_cap * sizeof(int32_t));
+        uint8_t* new_states = (uint8_t*)calloc(new_cap, sizeof(uint8_t));
+        if (!new_hashes || !new_ids || !new_states) {
+            free(new_hashes); free(new_ids); free(new_states);
+            return -1;
+        }
+        for (size_t i = 0; i < new_cap; i++) new_ids[i] = -1;
+        /* 重新哈希所有已用条目 */
+        size_t old_cap = h->capacity;
+        for (size_t i = 0; i < old_cap; i++) {
+            if (h->states[i] == HASH_SLOT_USED) {
+                uint64_t mask = new_cap - 1;
+                size_t idx = h->hashes[i] & mask;
+                while (new_states[idx] == HASH_SLOT_USED) {
+                    idx = (idx + 1) & mask;
+                }
+                new_hashes[idx] = h->hashes[i];
+                new_ids[idx] = h->vec_ids[i];
+                new_states[idx] = HASH_SLOT_USED;
+            }
+        }
+        free(h->hashes); free(h->vec_ids); free(h->states);
+        h->hashes = new_hashes;
+        h->vec_ids = new_ids;
+        h->states = new_states;
+        h->capacity = new_cap;
+    }
+    uint64_t hash = fnv1a_hash(sdk_id, sdk_id_len);
+    uint64_t mask = h->capacity - 1;
+    size_t idx = hash & mask;
+    while (h->states[idx] == HASH_SLOT_USED) {
+        idx = (idx + 1) & mask;
+    }
+    h->hashes[idx] = hash;
+    h->vec_ids[idx] = vec_id;
+    h->states[idx] = HASH_SLOT_USED;
+    h->count++;
+    return 0;
+}
+
+/* 标记删除：sdk_id → vec_id 的反向查找由 id_map 完成，此处仅标记状态 */
+static void sdk_id_hash_delete(sdk_id_hash_t* h, const uint8_t* sdk_id,
+                                size_t sdk_id_len) {
+    if (!h || !sdk_id || sdk_id_len == 0) return;
+    uint64_t hash = fnv1a_hash(sdk_id, sdk_id_len);
+    uint64_t mask = h->capacity - 1;
+    size_t idx = hash & mask;
+    while (h->states[idx] != HASH_SLOT_EMPTY) {
+        if (h->states[idx] == HASH_SLOT_USED && h->hashes[idx] == hash) {
+            /* 哈希匹配，进一步比对 id_map 确认（处理碰撞） */
+            h->states[idx] = HASH_SLOT_DELETED;
+            h->vec_ids[idx] = -1;
+            h->count--;
+            return;
+        }
+        idx = (idx + 1) & mask;
+    }
+}
+
+/* P5-1：查找 sdk_id 对应的 vec_id（O(1) 均摊）。找不到返回 -1。 */
+static int32_t sdk_id_hash_lookup(const sdk_id_hash_t* h, const uint8_t* sdk_id,
+                                   size_t sdk_id_len) {
+    if (!h || !sdk_id || sdk_id_len == 0) return -1;
+    uint64_t hash = fnv1a_hash(sdk_id, sdk_id_len);
+    uint64_t mask = h->capacity - 1;
+    size_t idx = hash & mask;
+    while (h->states[idx] != HASH_SLOT_EMPTY) {
+        if (h->states[idx] == HASH_SLOT_USED && h->hashes[idx] == hash) {
+            return h->vec_ids[idx];
+        }
+        idx = (idx + 1) & mask;
+    }
+    return -1;
+}
+
 /* HNSW ID 映射表：int32_t HNSW ID ↔ 可变长 SDK ID (BLOB) */
 typedef struct {
     uint8_t**  sdk_ids;      /* sdk_ids[i] = 对应 HNSW ID i 的 SDK 字节数组 ID */
@@ -174,6 +317,7 @@ static void hnsw_id_map_mark_deleted(hnsw_id_map_t* m, int32_t hnsw_id) {
 typedef struct {
     faiss_hnsw_t*   index;          /* HNSW 索引实例 */
     hnsw_id_map_t*  id_map;         /* int32_t ↔ SDK ID 映射 */
+    sdk_id_hash_t*  sdk_id_hash;    /* P5-1：sdk_id → vec_id 哈希表 */
     size_t          deleted_count;   /* 已标记删除的条目数 */
 } hnsw_wrapper_t;
 
@@ -202,6 +346,7 @@ static void hnsw_wrapper_free(hnsw_wrapper_t* w) {
     if (!w) return;
     if (w->index) faiss_hnsw_index_drop(w->index);
     hnsw_id_map_free(w->id_map);
+    sdk_id_hash_free(w->sdk_id_hash);
     free(w);
 }
 
@@ -255,19 +400,16 @@ static int build_filter_ctx(mmdb_collection_t* c, const char* where,
         return MMDB_ERR_INVALID;
     }
 
-    /* 对每个匹配的 SDK ID，查找对应 HNSW vec_id 并置位 bitmap */
+    /* 对每个匹配的 SDK ID，通过哈希表 O(1) 查找对应 HNSW vec_id 并置位 bitmap */
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         const void* id_blob = sqlite3_column_blob(stmt, 0);
         int id_bytes = sqlite3_column_bytes(stmt, 0);
         if (id_bytes <= 0) continue;
-        /* id_map 是小数组（N <= 100K），线性查找足够快 */
-        for (size_t i = 0; i < w->id_map->count; i++) {
-            if (w->id_map->sdk_ids[i] != NULL &&
-                w->id_map->sdk_id_lens[i] == (size_t)id_bytes &&
-                memcmp(w->id_map->sdk_ids[i], id_blob, id_bytes) == 0) {
-                ctx->bitmap[i] = 1;
-                break;
-            }
+        /* P5-1 优化：哈希表 O(1) 查找，替换原有 O(N) 线性扫描 */
+        int32_t vec_id = sdk_id_hash_lookup(w->sdk_id_hash,
+                                            (const uint8_t*)id_blob, (size_t)id_bytes);
+        if (vec_id >= 0 && (size_t)vec_id < ctx->bitmap_size) {
+            ctx->bitmap[vec_id] = 1;
         }
     }
 
@@ -350,6 +492,15 @@ int mmdb_vectors_hnsw_rebuild(mmdb_collection_t* c, int32_t hnsw_m, int32_t hnsw
         return MMDB_ERR_NOMEM;
     }
 
+    /* P5-1：重建 sdk_id → vec_id 哈希表 */
+    sdk_id_hash_free(w->sdk_id_hash);
+    w->sdk_id_hash = sdk_id_hash_create(total);
+    if (!w->sdk_id_hash) {
+        free(all_vectors);
+        sqlite3_finalize(stmt);
+        return MMDB_ERR_NOMEM;
+    }
+
     /* 释放旧 HNSW 索引，准备创建新的 */
     if (w->index) {
         faiss_hnsw_index_drop(w->index);
@@ -369,6 +520,11 @@ int mmdb_vectors_hnsw_rebuild(mmdb_collection_t* c, int32_t hnsw_m, int32_t hnsw
         /* 追加到 ID 映射表 */
         int32_t hnsw_id = hnsw_id_map_add(w->id_map, (const uint8_t*)id_blob, (size_t)id_bytes);
         if (hnsw_id < 0) continue;
+
+        /* P5-1：同时更新 sdk_id → vec_id 哈希表（用于 filter bitmap 构建） */
+        if (w->sdk_id_hash) {
+            sdk_id_hash_insert(w->sdk_id_hash, (const uint8_t*)id_blob, (size_t)id_bytes, hnsw_id);
+        }
 
         /* 拷贝向量数据到连续数组 */
         memcpy(all_vectors + row_idx * dim, vec_blob, dim * sizeof(float));
@@ -694,6 +850,10 @@ int mmdb_vectors_delete(mmdb_collection_t* c, const uint8_t* id, size_t id_len) 
     /* Phase 2: HNSW 同步 — 在 ID 映射表中标记删除，后续 rebuild 自然过滤 */
     if (rc == MMDB_OK && c->hnsw) {
         hnsw_wrapper_t* w = (hnsw_wrapper_t*)c->hnsw;
+        /* P5-1：从 sdk_id 哈希表中删除映射（O(1)），再标记 id_map */
+        if (w->sdk_id_hash) {
+            sdk_id_hash_delete(w->sdk_id_hash, id, id_len);
+        }
         /* 遍历映射表找到匹配的 HNSW ID 并标记删除 */
         for (size_t i = 0; i < w->id_map->count; i++) {
             if (w->id_map->sdk_ids[i] != NULL &&

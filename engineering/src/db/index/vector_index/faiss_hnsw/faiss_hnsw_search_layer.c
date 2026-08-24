@@ -111,7 +111,8 @@ static int32_t get_neighbor_count(const faiss_hnsw_t *idx, int32_t vec_id, int32
 // =============================================================================
 
 int32_t faiss_hnsw_search_layer(const faiss_hnsw_t *idx, int32_t level, const float *query,
-                                 int32_t ef, int32_t *result_ids, float *result_dist,
+                                 int32_t ef, int32_t start_id, float start_dist,
+                                 int32_t *result_ids, float *result_dist,
                                  int32_t result_capacity) {
     // 参数校验
     if (!idx || !query || !result_ids || !result_dist) {
@@ -144,9 +145,24 @@ int32_t faiss_hnsw_search_layer(const faiss_hnsw_t *idx, int32_t level, const fl
         return -1;
     }
 
-    // 3. 从 entry_point 开始
-    int32_t ep = idx->entry_point;
-    float ep_dist = compute_distance(idx, query, ep);
+    // 3. P5-5 修复：从 greedy descent 给定的局部最优节点出发
+    //    start_id 由 faiss_hnsw_index_search 的 greedy descent 确定，
+    //    比 entry_point 更接近 query（尤其在小数据集场景）。
+    int32_t ep = start_id;
+    float ep_dist = start_dist;
+    // 边界保护：若 start_id 越界则回退到 entry_point
+    if (ep < 0 || ep >= idx->n_total) {
+        ep = idx->entry_point;
+        ep_dist = FLT_MAX;
+        // 重新计算 entry_point 距离
+        const float *v = idx->vectors + (size_t)ep * (size_t)idx->dims;
+        float dist = 0.0f;
+        for (int32_t i = 0; i < idx->dims; i++) {
+            float d = query[i] - v[i];
+            dist += d * d;
+        }
+        ep_dist = dist;
+    }
     faiss_hnsw_minimax_heap_push(heap, ep, ep_dist);
     faiss_hnsw_visited_table_set(visited, ep);
 
