@@ -243,6 +243,22 @@ static void allocset_delete(MemoryContext ctx)
 }
 
 /* ========================================================================
+ * 线程局部当前上下文与切换 API
+ * ======================================================================== */
+
+__thread MemoryContext CurrentMemoryContext = NULL;
+
+MemoryContext MemoryContextCurrent(void) {
+    return CurrentMemoryContext;
+}
+
+MemoryContext MemoryContextSwitchTo(MemoryContext context) {
+    MemoryContext old = CurrentMemoryContext;
+    CurrentMemoryContext = context;
+    return old;
+}
+
+/* ========================================================================
  * 公共 API
  * ======================================================================== */
 

@@ -232,4 +232,83 @@ TEST(MemoryContextTest, MinContextSizeHonored) {
     delete_memory(ctx);
 }
 
+/**
+ * @brief 测试 SwitchTo 基本上下文切换与恢复
+ */
+TEST(MemoryContextTest, SwitchToAndRestore) {
+    MemoryContext parent = AllocSetContextCreate(NULL, "parent", 0, 8192, 8192 * 1024);
+    ASSERT_NE(parent, nullptr);
+
+    /* 切换前，当前上下文应为 NULL（初始状态）或由其他测试设置 */
+    MemoryContext prev = MemoryContextSwitchTo(parent);
+    EXPECT_EQ(MemoryContextCurrent(), parent);
+
+    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 8192, 8192 * 1024);
+    ASSERT_NE(child, nullptr);
+
+    MemoryContext old = MemoryContextSwitchTo(child);
+    EXPECT_EQ(MemoryContextCurrent(), child);
+    EXPECT_EQ(old, parent);
+
+    /* 恢复到旧上下文 */
+    MemoryContextSwitchTo(old);
+    EXPECT_EQ(MemoryContextCurrent(), parent);
+
+    delete_memory(parent);
+}
+
+/**
+ * @brief 测试嵌套 SwitchTo 场景
+ */
+TEST(MemoryContextTest, SwitchToNested) {
+    MemoryContext parent = AllocSetContextCreate(NULL, "parent", 0, 8192, 8192 * 1024);
+    ASSERT_NE(parent, nullptr);
+
+    MemoryContext child1 = AllocSetContextCreate(parent, "child1", 0, 8192, 8192 * 1024);
+    MemoryContext child2 = AllocSetContextCreate(parent, "child2", 0, 8192, 8192 * 1024);
+    ASSERT_NE(child1, nullptr);
+    ASSERT_NE(child2, nullptr);
+
+    /* 嵌套切换 */
+    MemoryContextSwitchTo(parent);
+    MemoryContext old1 = MemoryContextSwitchTo(child1);
+    MemoryContext old2 = MemoryContextSwitchTo(child2);
+
+    EXPECT_EQ(MemoryContextCurrent(), child2);
+    EXPECT_EQ(old1, parent);
+
+    /* 逐层恢复 */
+    MemoryContextSwitchTo(old2);
+    EXPECT_EQ(MemoryContextCurrent(), child1);
+
+    MemoryContextSwitchTo(old1);
+    EXPECT_EQ(MemoryContextCurrent(), parent);
+
+    delete_memory(parent);
+}
+
+/**
+ * @brief 测试 SwitchTo 后在当前上下文分配内存
+ */
+TEST(MemoryContextTest, SwitchToAlloc) {
+    MemoryContext parent = AllocSetContextCreate(NULL, "parent", 0, 8192, 8192 * 1024);
+    ASSERT_NE(parent, nullptr);
+
+    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 1024, 1024);
+    ASSERT_NE(child, nullptr);
+
+    /* 切换到子上下文 */
+    MemoryContextSwitchTo(child);
+
+    /* 在子上下文分配（通过 CurrentMemoryContext 间接验证） */
+    void *ptr = palloc(MemoryContextCurrent(), 100);
+    EXPECT_NE(ptr, nullptr);
+    EXPECT_EQ(child->current_bytes, 100u);
+
+    /* 恢复父上下文 */
+    MemoryContextSwitchTo(parent);
+
+    delete_memory(parent);
+}
+
 }  // namespace

@@ -299,6 +299,19 @@ void reset_memory(MemoryContext ctx);
  */
 void delete_memory(MemoryContext ctx);
 
+/* ========================================================================
+ * CurrentMemoryContext 与 SwitchTo API
+ * ======================================================================== */
+
+/* 当前线程的当前上下文（线程局部存储） */
+extern __thread MemoryContext CurrentMemoryContext;
+
+/* 获取当前上下文 */
+MemoryContext MemoryContextCurrent(void);
+
+/* 切换当前上下文，返回旧上下文 */
+MemoryContext MemoryContextSwitchTo(MemoryContext context);
+
 #ifdef __cplusplus
 }
 #endif
