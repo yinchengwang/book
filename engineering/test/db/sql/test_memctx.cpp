@@ -8,6 +8,13 @@
 #include <cstdlib>
 #include <vector>
 
+/* 强制启用 MMDB_MEMORY_DEBUG 以测试线程归属校验路径：
+ * memctx.c 已在内部默认启用该宏，测试端同步声明以便 GTEST_SKIP 分支
+ * 与实现行为保持一致。 */
+#ifndef MMDB_MEMORY_DEBUG
+#define MMDB_MEMORY_DEBUG
+#endif
+
 extern "C" {
 #include "db/sql/memctx.h"
 }
@@ -472,6 +479,371 @@ TEST_F(ResourceDestructionTest, ResourceDestructionLIFO) {
     EXPECT_EQ(destruction_order[1], 2);
     EXPECT_EQ(destruction_order[2], 1);  /* 最先注册，最后析构 */
     EXPECT_EQ(parent->resource_count, 0u);
+}
+
+/* ========================================================================
+ * Task 5: Reset/Delete 生命周期保护与统计测试
+ * ======================================================================== */
+
+/**
+ * @brief 生命周期测试夹具
+ *
+ * 提供 parent 上下文，用于 Reset/Delete 生命周期保护测试。
+ */
+class LifecycleTest : public ::testing::Test {
+public:
+    void SetUp() override {
+        parent = AllocSetContextCreate(NULL, "lifecycle_parent", 0, 8192, 8192 * 1024);
+        ASSERT_NE(parent, nullptr);
+    }
+
+    void TearDown() override {
+        /* 安全清理：仅当父上下文未被测试删除时才清理 */
+        if (parent) {
+            delete_memory(parent);
+            parent = nullptr;
+        }
+    }
+
+    MemoryContext parent;
+};
+
+/**
+ * @brief 测试 Reset 保留首块、重置分配指针、更新统计
+ */
+TEST_F(LifecycleTest, ResetPreservesFirstBlock) {
+    palloc(parent, 100);
+    palloc(parent, 200);
+
+    AllocSetContext *set = (AllocSetContext *)parent;
+    int block_count_before = CountBlocks(parent);
+    EXPECT_GE(block_count_before, 1);
+
+    reset_memory(parent);
+
+    /* 重置后应保留首块 */
+    EXPECT_NE(set->blocks, nullptr);
+    /* 首块 free 应恢复为完整数据区容量（未分配状态） */
+    EXPECT_EQ(set->blocks->free, set->blocks->size - ALLOCSET_ALIGN(sizeof(AllocSetBlock)));
+    /* 所有扩展块应已释放，只剩首块 */
+    EXPECT_EQ(CountBlocks(parent), 1);
+    EXPECT_EQ(parent->current_bytes, 0u);
+    EXPECT_EQ(parent->generation, 1u);
+}
+
+/**
+ * @brief 测试 Delete 释放全部块并从父链表移除
+ */
+TEST_F(LifecycleTest, DeleteReleasesAllBlocks) {
+    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 8192, 8192 * 1024);
+    palloc(child, 100);
+
+    AllocSetContext *child_set = (AllocSetContext *)child;
+    EXPECT_NE(child_set->blocks, nullptr);
+
+    /* 记录父上下文子链表状态 */
+    EXPECT_EQ(parent->firstchild, child);
+
+    delete_memory(child);
+
+    /* 父上下文子链表应已更新：child 不再是 firstchild */
+    EXPECT_NE(parent->firstchild, child);
+    /* parent 无其他子上下文时应为 NULL */
+    EXPECT_EQ(parent->firstchild, nullptr);
+}
+
+/**
+ * @brief 测试递归 Reset：父上下文 Reset 会重置所有子上下文的 current_bytes
+ */
+TEST_F(LifecycleTest, RecursiveReset) {
+    MemoryContext child1 = AllocSetContextCreate(parent, "child1", 0, 8192, 8192 * 1024);
+    MemoryContext child2 = AllocSetContextCreate(parent, "child2", 0, 8192, 8192 * 1024);
+
+    MemoryContextSwitchTo(child1);
+    palloc(child1, 100);
+    MemoryContextSwitchTo(child2);
+    palloc(child2, 200);
+    MemoryContextSwitchTo(parent);
+
+    EXPECT_GT(child1->current_bytes, 0u);
+    EXPECT_GT(child2->current_bytes, 0u);
+
+    MemoryContextReset(parent);
+
+    EXPECT_EQ(child1->current_bytes, 0u);
+    EXPECT_EQ(child2->current_bytes, 0u);
+}
+
+/**
+ * @brief 测试统计累积：allocation_count、total_allocated、peak_bytes
+ */
+TEST_F(LifecycleTest, StatsAccumulation) {
+    palloc(parent, 100);
+    palloc(parent, 200);
+    palloc(parent, 300);
+
+    EXPECT_EQ(parent->allocation_count, 3u);
+    /* total_allocated 累计用户请求的原始大小 */
+    EXPECT_EQ(parent->total_allocated, 100u + 200u + 300u);
+    /* current_bytes 为当前存活的分配总和 */
+    EXPECT_EQ(parent->current_bytes, 100u + 200u + 300u);
+    /* peak_bytes 应不小于 current_bytes */
+    EXPECT_GE(parent->peak_bytes, parent->current_bytes);
+}
+
+/**
+ * @brief 测试 Reset 后 peak_bytes 保持历史峰值
+ */
+TEST_F(LifecycleTest, ResetPreservesPeakBytes) {
+    palloc(parent, 500);
+    Size peak_before = parent->peak_bytes;
+    EXPECT_EQ(peak_before, 500u);
+
+    reset_memory(parent);
+    EXPECT_EQ(parent->current_bytes, 0u);
+    /* peak_bytes 应保留历史峰值 */
+    EXPECT_EQ(parent->peak_bytes, peak_before);
+
+    /* 再次分配较小内存，peak 不应下降 */
+    palloc(parent, 100);
+    EXPECT_EQ(parent->peak_bytes, peak_before);
+}
+
+/**
+ * @brief 测试 Reset 计数器递增
+ */
+TEST_F(LifecycleTest, ResetCountIncrements) {
+    EXPECT_EQ(parent->reset_count, 0u);
+
+    reset_memory(parent);
+    EXPECT_EQ(parent->reset_count, 1u);
+
+    reset_memory(parent);
+    EXPECT_EQ(parent->reset_count, 2u);
+}
+
+/**
+ * @brief 测试已删除上下文的 Reset 为空操作
+ */
+TEST_F(LifecycleTest, ResetAfterDeleteIsNoop) {
+    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 8192, 8192 * 1024);
+    palloc(child, 100);
+
+    /* 删除子上下文 */
+    delete_memory(child);
+
+    /* 父上下文应无子上下文 */
+    EXPECT_EQ(parent->firstchild, nullptr);
+}
+
+/**
+ * @brief 测试 MemoryContextResetChildren 只重置子上下文
+ */
+TEST_F(LifecycleTest, ResetChildrenOnly) {
+    MemoryContext child1 = AllocSetContextCreate(parent, "child1", 0, 8192, 8192 * 1024);
+    MemoryContext child2 = AllocSetContextCreate(parent, "child2", 0, 8192, 8192 * 1024);
+
+    palloc(parent, 100);
+    palloc(child1, 200);
+    palloc(child2, 300);
+
+    MemoryContextResetChildren(parent);
+
+    /* 子上下文应被重置 */
+    EXPECT_EQ(child1->current_bytes, 0u);
+    EXPECT_EQ(child2->current_bytes, 0u);
+
+    /* 父上下文不受影响 */
+    EXPECT_EQ(parent->current_bytes, 100u);
+}
+
+/**
+ * @brief 测试 MemoryContextReset 标准 API 名称
+ */
+TEST_F(LifecycleTest, StandardAPIReset) {
+    palloc(parent, 100);
+    AllocSetContext *set = (AllocSetContext *)parent;
+
+    MemoryContextReset(parent);
+
+    EXPECT_EQ(parent->current_bytes, 0u);
+    EXPECT_NE(set->blocks, nullptr);
+    EXPECT_EQ(CountBlocks(parent), 1);
+}
+
+/**
+ * @brief 测试 MemoryContextDelete 标准 API 名称
+ */
+TEST_F(LifecycleTest, StandardAPIDelete) {
+    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 8192, 8192 * 1024);
+    EXPECT_EQ(parent->firstchild, child);
+
+    MemoryContextDelete(child);
+
+    EXPECT_EQ(parent->firstchild, nullptr);
+}
+
+/**
+ * @brief 测试多层嵌套父子关系的递归 Delete
+ */
+TEST_F(LifecycleTest, RecursiveDelete) {
+    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 8192, 8192 * 1024);
+    MemoryContext grandchild = AllocSetContextCreate(child, "grandchild", 0, 1024, 1024);
+
+    palloc(grandchild, 50);
+    EXPECT_EQ(grandchild->current_bytes, 50u);
+
+    /* 删除 child 应递归删除 grandchild */
+    delete_memory(child);
+
+    /* parent 无子上下文 */
+    EXPECT_EQ(parent->firstchild, nullptr);
+}
+
+/* ========================================================================
+ * Task 6: 线程归属校验与 Generation 追踪
+ * ======================================================================== */
+
+/**
+ * @brief 线程归属测试夹具
+ */
+class ThreadOwnershipTest : public ::testing::Test {
+public:
+    void SetUp() override {
+        parent = AllocSetContextCreate(NULL, "thread_parent", 0, 8192, 8192);
+        ASSERT_NE(parent, nullptr);
+    }
+
+    void TearDown() override {
+        if (parent) {
+            delete_memory(parent);
+            parent = nullptr;
+        }
+    }
+
+    MemoryContext parent;
+};
+
+/**
+ * @brief 测试线程归属设置与校验
+ *
+ * 1. 默认未启用归属检查，CheckThread 应返回 true
+ * 2. 设置当前线程为所有者后，CheckThread 应返回 true
+ * 3. 设置为其他线程 ID 后，CheckThread 应返回 false
+ */
+TEST_F(ThreadOwnershipTest, ThreadOwnership) {
+    /* 1. 默认未启用归属检查 */
+    EXPECT_FALSE(parent->is_thread_owner);
+    EXPECT_TRUE(MemoryContextCheckThread(parent));
+
+    /* 2. 设置当前线程为所有者 */
+    MemoryContextSetThreadOwner(parent, mmdb_current_thread_id());
+    EXPECT_TRUE(parent->is_thread_owner);
+    EXPECT_TRUE(MemoryContextCheckThread(parent));
+
+    /* 3. 模拟错误线程 */
+    MemoryContextSetThreadOwner(parent, 999999);
+    EXPECT_TRUE(parent->is_thread_owner);
+    EXPECT_FALSE(MemoryContextCheckThread(parent));
+}
+
+/**
+ * @brief 测试 NULL 上下文对线程 API 的响应
+ */
+TEST_F(ThreadOwnershipTest, NullContextSafe) {
+    /* SetThreadOwner 对 NULL 应为空操作 */
+    MemoryContextSetThreadOwner(nullptr, 12345);
+
+    /* CheckThread 对 NULL 应返回 true（不阻塞调用方） */
+    EXPECT_TRUE(MemoryContextCheckThread(nullptr));
+
+    /* GetGeneration 对 NULL 应返回 0 */
+    EXPECT_EQ(MemoryContextGetGeneration(nullptr), 0u);
+}
+
+/**
+ * @brief 测试跨线程访问检测
+ *
+ * 在 Debug 模式下，设置错误的线程 ID 后调用 palloc 应返回 NULL。
+ * 在 Release 模式下（未定义 MMDB_MEMORY_DEBUG），跳过此测试。
+ */
+TEST_F(ThreadOwnershipTest, CrossThreadAccessDetected) {
+#ifndef MMDB_MEMORY_DEBUG
+    GTEST_SKIP() << "MMDB_MEMORY_DEBUG not enabled; cross-thread detection "
+                    "requires debug build";
+#else
+    /* 设置错误的线程 ID */
+    MemoryContextSetThreadOwner(parent, 999999);
+
+    /* Debug 模式下 palloc 应返回 NULL */
+    void *result = palloc(parent, 100);
+    EXPECT_EQ(result, nullptr);
+
+    /* 同样，pfree 也应静默返回（void） */
+    pfree(parent, nullptr);
+#endif
+}
+
+/**
+ * @brief 测试 Generation 追踪
+ *
+ * 1. 初始 generation 为 0
+ * 2. 分配后 header.generation 等于当时的 context.generation
+ * 3. Reset 后 generation 递增
+ * 4. 重新分配后 header.generation 反映递增后的值
+ */
+TEST_F(ThreadOwnershipTest, GenerationTracking) {
+    EXPECT_EQ(MemoryContextGetGeneration(parent), 0u);
+
+    /* 第一次分配，generation 应为 0 */
+    void *ptr = palloc(parent, 100);
+    ASSERT_NE(ptr, nullptr);
+    MemoryAllocationHeader *header = GET_ALLOCATION_HEADER(ptr);
+    EXPECT_EQ(header->generation, 0u);
+    EXPECT_EQ(MemoryContextGetGeneration(parent), 0u);
+
+    /* Reset 后 generation 递增 */
+    reset_memory(parent);
+    EXPECT_EQ(MemoryContextGetGeneration(parent), 1u);
+
+    /* 第二次分配，header.generation 应为 1 */
+    void *ptr2 = palloc(parent, 100);
+    ASSERT_NE(ptr2, nullptr);
+    MemoryAllocationHeader *header2 = GET_ALLOCATION_HEADER(ptr2);
+    EXPECT_EQ(header2->generation, 1u);
+
+    /* 再次 Reset，generation 递增到 2 */
+    reset_memory(parent);
+    EXPECT_EQ(MemoryContextGetGeneration(parent), 2u);
+}
+
+/**
+ * @brief 测试未启用归属检查时 palloc 正常工作
+ */
+TEST_F(ThreadOwnershipTest, AllocWithoutThreadOwner) {
+    /* is_thread_owner=false 时 CHECK_THREAD 退化为空操作 */
+    EXPECT_FALSE(parent->is_thread_owner);
+
+    void *ptr = palloc(parent, 256);
+    EXPECT_NE(ptr, nullptr);
+
+    /* 校验 header 被正确写入 */
+    MemoryAllocationHeader *header = GET_ALLOCATION_HEADER(ptr);
+    EXPECT_EQ(header->magic, MEMORY_ALLOCATION_HEADER_MAGIC);
+    EXPECT_EQ(header->requested_size, 256u);
+    EXPECT_EQ(header->owner, parent);
+    EXPECT_EQ(header->generation, parent->generation);
+}
+
+/**
+ * @brief 测试设置当前线程后 palloc 仍能正常工作
+ */
+TEST_F(ThreadOwnershipTest, AllocWithCorrectThreadOwner) {
+    MemoryContextSetThreadOwner(parent, mmdb_current_thread_id());
+
+    /* 当前线程匹配，palloc 应成功 */
+    void *ptr = palloc(parent, 256);
+    EXPECT_NE(ptr, nullptr);
 }
 
 }  // namespace

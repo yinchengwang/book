@@ -49,6 +49,10 @@ typedef unsigned long Size;
 /** Size 类型可表示的最大值（用于溢出检查） */
 #define ALLOCSET_MAX_SIZE (~(Size)0)
 
+/** 获取用户指针之前的分配头（必须在 palloc 返回的指针上调用） */
+#define GET_ALLOCATION_HEADER(ptr) \
+    ((MemoryAllocationHeader *)((char *)(ptr) - ALLOCSET_ALIGN(sizeof(MemoryAllocationHeader))))
+
 /* 前向声明 */
 typedef struct MemoryContextData *MemoryContext;
 
@@ -294,11 +298,78 @@ void pfree(MemoryContext ctx, void *ptr);
 void reset_memory(MemoryContext ctx);
 
 /**
+ * @brief 重置上下文（标准 API 名称）
+ *
+ * @param context 待重置的内存上下文
+ */
+void MemoryContextReset(MemoryContext context);
+
+/**
+ * @brief 重置所有子上下文，不重置自身
+ *
+ * @param context 父内存上下文
+ */
+void MemoryContextResetChildren(MemoryContext context);
+
+/**
  * @brief 删除上下文：释放当前上下文所有块及子上下文
  *
  * @param ctx 待删除的内存上下文
  */
 void delete_memory(MemoryContext ctx);
+
+/**
+ * @brief 删除上下文（标准 API 名称）
+ *
+ * @param context 待删除的内存上下文
+ */
+void MemoryContextDelete(MemoryContext context);
+
+/* ========================================================================
+ * 线程归属校验与 Generation 追踪
+ * ======================================================================== */
+
+/**
+ * @brief 获取当前线程 ID（跨平台）
+ *
+ * Windows 下使用 GetCurrentThreadId()，其他平台使用 pthread_self()。
+ *
+ * @return 当前线程唯一标识
+ */
+uint64_t mmdb_current_thread_id(void);
+
+/**
+ * @brief 设置上下文线程归属
+ *
+ * 将上下文标记为归属于指定线程。后续访问（Debug 模式下）将校验线程身份。
+ *
+ * @param context   内存上下文（NULL 则为空操作）
+ * @param thread_id 线程 ID（通常为 mmdb_current_thread_id()）
+ */
+void MemoryContextSetThreadOwner(MemoryContext context, uint64_t thread_id);
+
+/**
+ * @brief 检查当前线程是否为所有者
+ *
+ * 若上下文未启用归属检查（is_thread_owner=false），始终返回 true。
+ * 若启用且当前线程 ID 与 owner_thread_id 不匹配，返回 false。
+ *
+ * @param context 内存上下文
+ *
+ * @return true 表示访问合法或归属检查未启用；false 表示线程不匹配
+ */
+bool MemoryContextCheckThread(MemoryContext context);
+
+/**
+ * @brief 获取上下文 generation 计数器
+ *
+ * Generation 在 Reset 时自动递增，可用于检测 use-after-reset 错误。
+ *
+ * @param context 内存上下文（NULL 返回 0）
+ *
+ * @return 当前 generation 值
+ */
+uint64_t MemoryContextGetGeneration(MemoryContext context);
 
 /* ========================================================================
  * CurrentMemoryContext 与 SwitchTo API
