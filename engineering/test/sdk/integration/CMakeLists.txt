@@ -77,3 +77,14 @@ set_target_properties(aggregate_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
 )
 add_test(NAME aggregate_test COMMAND aggregate_test)
+
+# P6-M2.2：ACID 事务测试
+add_executable(txn_test txn_test.cpp)
+target_link_libraries(txn_test PRIVATE mmsdk gtest_main)
+target_include_directories(txn_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../include
+)
+set_target_properties(txn_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests
+)
+add_test(NAME txn_test COMMAND txn_test)

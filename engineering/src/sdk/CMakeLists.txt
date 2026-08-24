@@ -22,6 +22,7 @@ set(SDK_CORE_SOURCES
     core/result.c
     core/mmdb_lock.c
     core/metrics.c   # P6-M1.2：运行时监控指标
+    core/txn.c       # P6-M2.2：ACID 事务
 )
 
 # 向量模块
