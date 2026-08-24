@@ -36,7 +36,7 @@ TEST(MemoryContextTest, BasicAlloc) {
     ASSERT_NE(p, nullptr);
 
     /* 验证分配大小 */
-    EXPECT_EQ(ctx->mem_allocated, 100);
+    EXPECT_EQ(ctx->current_bytes, 100);
 
     pfree(ctx, p);
     delete_memory(ctx);
@@ -94,14 +94,14 @@ TEST(MemoryContextTest, ResetFreesChildBlocks) {
     /* 此时应已产生多个块 */
     EXPECT_GT(CountBlocks(child), 1);
 
-    Size child_alloc_before = child->mem_allocated;
+    Size child_alloc_before = child->current_bytes;
     EXPECT_GT(child_alloc_before, 0u);
 
     /* 重置子上下文 */
     reset_memory(child);
 
     /* 子上下文的已分配计数应被清零 */
-    EXPECT_EQ(child->mem_allocated, 0u);
+    EXPECT_EQ(child->current_bytes, 0u);
     /* reset 后应只保留首块，其余块被释放 */
     EXPECT_EQ(CountBlocks(child), 1);
 
@@ -131,7 +131,7 @@ TEST(MemoryContextTest, AllocSetMultipleBlocks) {
     }
 
     /* 验证分配计数 */
-    EXPECT_EQ(ctx->mem_allocated, 100u * 1000u);
+    EXPECT_EQ(ctx->current_bytes, 100u * 1000u);
 
     delete_memory(ctx);
 }
@@ -204,7 +204,7 @@ TEST(MemoryContextTest, AllocOverflowReturnsNull) {
     EXPECT_EQ(palloc(ctx, ALLOCSET_MAX_SIZE - ALLOCSET_ALIGNMENT), nullptr);
 
     /* 计数不应被污染 */
-    EXPECT_EQ(ctx->mem_allocated, 0u);
+    EXPECT_EQ(ctx->current_bytes, 0u);
 
     delete_memory(ctx);
 }

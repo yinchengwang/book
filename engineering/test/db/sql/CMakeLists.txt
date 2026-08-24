@@ -2,6 +2,11 @@
 
 include(${CMAKE_SOURCE_DIR}/cmake/ProjectUtils.cmake)
 
+# MemoryContext 测试
+add_executable(test_memctx test_memctx.cpp)
+target_include_directories(test_memctx PRIVATE ${GTEST_INCLUDE_DIRS})
+target_link_libraries(test_memctx sql_engine project_includes gtest gtest_main)
+
 # SQL 解析器测试（依赖简化解析器）
 add_executable(test_sql_parser sql_parser.cpp)
 target_include_directories(test_sql_parser PRIVATE ${GTEST_INCLUDE_DIRS})
@@ -121,6 +126,7 @@ add_subdirectory(benchmark)
 
 # SQL 测试
 add_custom_target(test_sql
+    COMMAND test_memctx
     COMMAND test_sql_parser
     COMMAND test_sql_planner
     COMMAND test_sql_executor
@@ -142,5 +148,5 @@ add_custom_target(test_sql
     COMMAND test_sql_storage_integration
     COMMAND test_storage_integration
     COMMAND test_jit_perf
-    DEPENDS test_sql_parser test_sql_planner test_sql_executor test_indexscan test_seqscan test_nestloop test_hashagg test_hashjoin test_parallel test_tuple_queue test_worker_pool test_trigger test_trigger_functions test_partition test_sort test_limit test_modifytable test_sql_storage_integration test_storage_integration test_jit_perf
+    DEPENDS test_memctx test_sql_parser test_sql_planner test_sql_executor test_indexscan test_seqscan test_nestloop test_hashagg test_hashjoin test_parallel test_tuple_queue test_worker_pool test_trigger test_trigger_functions test_partition test_sort test_limit test_modifytable test_sql_storage_integration test_storage_integration test_jit_perf
 )

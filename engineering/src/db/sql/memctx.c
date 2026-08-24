@@ -138,7 +138,12 @@ static void *allocset_alloc(MemoryContext ctx, Size size)
     /* 在首块末尾分配（线性推进） */
     void *ptr = block->end - block->free;
     block->free -= aligned;
-    set->header.mem_allocated += size;
+    set->header.current_bytes += size;
+    set->header.total_allocated += size;
+    set->header.allocation_count++;
+    if (set->header.current_bytes > set->header.peak_bytes) {
+        set->header.peak_bytes = set->header.current_bytes;
+    }
 
     return ptr;
 }
@@ -186,8 +191,9 @@ static void allocset_reset(MemoryContext ctx)
         }
     }
 
-    set->header.mem_allocated = 0;
-    set->header.isReset = true;
+    set->header.current_bytes = 0;
+    set->header.is_reset = true;
+    set->header.reset_count++;
 }
 
 /**
@@ -262,8 +268,16 @@ MemoryContext AllocSetContextCreate(
     set->header.nextchild = NULL;
     set->header.methods = &g_allocset_methods;
     set->header.name = name;
-    set->header.mem_allocated = 0;
-    set->header.isReset = false;
+    set->header.current_bytes = 0;
+    set->header.total_allocated = 0;
+    set->header.total_freed = 0;
+    set->header.allocation_count = 0;
+    set->header.free_count = 0;
+    set->header.reset_count = 0;
+    set->header.oom_count = 0;
+    set->header.invalid_free_count = 0;
+    set->header.double_free_count = 0;
+    set->header.is_reset = false;
 
     set->blocks = NULL;
     set->initBlockSize = (initBlockSize == 0) ? ALLOCSET_DEFAULT_BLOCK_SIZE : initBlockSize;
@@ -330,7 +344,7 @@ void *palloc(MemoryContext ctx, Size size)
     if (!ctx || !ctx->methods || !ctx->methods->alloc) {
         return NULL;
     }
-    ctx->isReset = false;
+    ctx->is_reset = false;
     return ctx->methods->alloc(ctx, size);
 }
 

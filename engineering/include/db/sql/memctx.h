@@ -49,12 +49,95 @@ typedef unsigned long Size;
 /** Size 类型可表示的最大值（用于溢出检查） */
 #define ALLOCSET_MAX_SIZE (~(Size)0)
 
+/* 前向声明 */
+typedef struct MemoryContextData *MemoryContext;
+
+/* ========================================================================
+ * 内存分配头结构
+ * ======================================================================== */
+
+/** 分配头魔数 */
+#define MEMORY_ALLOCATION_HEADER_MAGIC  0x4D454D435458ULL  /* "MEMCTX" */
+
+/** 分配头标志：已释放 */
+#define MEMORY_ALLOCATION_FLAG_FREED    0x1
+
+/**
+ * @brief 内存分配头
+ *
+ * 每次用户分配前插入隐藏头部，用于校验和调试。
+ */
+typedef struct MemoryAllocationHeader {
+    uint64_t           magic;           /**< 魔数校验 */
+    Size               requested_size;  /**< 用户请求大小 */
+    Size               allocated_size;  /**< 实际分配大小（含对齐） */
+    MemoryContext      owner;           /**< 所属上下文 */
+    uint64_t           generation;      /**< 分配时的 generation */
+    uint32_t           flags;           /**< 标志位 */
+} MemoryAllocationHeader;
+
+/* ========================================================================
+ * 内存上下文统计结构
+ * ======================================================================== */
+
+/**
+ * @brief 内存上下文统计信息
+ */
+typedef struct MemoryContextStats {
+    Size               current_bytes;       /**< 当前已分配字节数 */
+    Size               peak_bytes;          /**< 历史峰值分配字节数 */
+    Size               total_allocated;     /**< 累计分配字节数 */
+    Size               total_freed;         /**< 累计释放字节数 */
+    Size               allocation_count;    /**< 累计分配次数 */
+    Size               free_count;          /**< 累计释放次数 */
+    Size               reset_count;         /**< reset 次数 */
+    Size               oom_count;           /**< OOM 次数 */
+    Size               invalid_free_count;  /**< 无效释放次数 */
+    Size               double_free_count;   /**< 双重释放次数 */
+    Size               resource_count;      /**< 资源析构回调数量 */
+    Size               child_count;         /**< 子上下文数量 */
+} MemoryContextStats;
+
+/* ========================================================================
+ * 内存上下文错误码
+ * ======================================================================== */
+
+/**
+ * @brief 内存上下文错误码
+ */
+typedef enum MemoryContextError {
+    MMDB_MEMCTX_OK = 0,                  /**< 成功 */
+    MMDB_MEMCTX_INVALID_CONTEXT,         /**< 无效上下文 */
+    MMDB_MEMCTX_INVALID_POINTER,         /**< 无效指针 */
+    MMDB_MEMCTX_CROSS_CONTEXT_FREE,      /**< 跨上下文释放 */
+    MMDB_MEMCTX_DOUBLE_FREE,             /**< 双重释放 */
+    MMDB_MEMCTX_LIMIT_EXCEEDED,          /**< 超出限额 */
+    MMDB_MEMCTX_OVERFLOW,                /**< 溢出 */
+    MMDB_MEMCTX_OOM,                     /**< 内存不足 */
+    MMDB_MEMCTX_WRONG_THREAD,            /**< 线程不匹配 */
+    MMDB_MEMCTX_ALREADY_DELETED          /**< 已删除 */
+} MemoryContextError;
+
+/* ========================================================================
+ * 资源析构节点
+ * ======================================================================== */
+
+/**
+ * @brief 资源析构回调节点
+ *
+ * 用于注册需要在上下文销毁时释放的外部资源。
+ */
+typedef struct MemoryResource {
+    void            *resource;       /**< 资源指针 */
+    void (*destructor)(void *resource, void *arg); /**< 析构回调 */
+    void            *arg;            /**< 析构回调参数 */
+    const char      *name;           /**< 资源名称（调试用） */
+    struct MemoryResource *next;     /**< 下一个节点 */
+} MemoryResource;
+
 /* ========================================================================
  * 内存上下文方法表
  * ======================================================================== */
-
-/* 前向声明 */
-typedef struct MemoryContextData *MemoryContext;
 
 /**
  * @brief 内存上下文方法表
@@ -83,8 +166,40 @@ typedef struct MemoryContextData {
     MemoryContext            nextchild;     /**< 后一个兄弟 */
     const MemoryContextMethods *methods;    /**< 方法表 */
     const char              *name;          /**< 上下文名称（调试用） */
-    Size                     mem_allocated; /**< 已分配字节数（应用层累计） */
-    bool                     isReset;       /**< 是否已重置 */
+
+    /* 统计字段 */
+    Size                     current_bytes;     /**< 当前已分配字节数 */
+    Size                     peak_bytes;        /**< 历史峰值分配字节数 */
+    Size                     total_allocated;   /**< 累计分配字节数 */
+    Size                     total_freed;       /**< 累计释放字节数 */
+    Size                     allocation_count;  /**< 累计分配次数 */
+    Size                     free_count;        /**< 累计释放次数 */
+    Size                     reset_count;       /**< reset 次数 */
+    Size                     oom_count;         /**< OOM 次数 */
+    Size                     invalid_free_count;/**< 无效释放次数 */
+    Size                     double_free_count; /**< 双重释放次数 */
+
+    /* 限额 */
+    Size                     max_bytes;         /**< 内存限额（0 表示无限制） */
+
+    /* 校验与生命周期 */
+    uint64_t                 generation;        /**< 代次计数器，用于校验 */
+    uint32_t                 flags;             /**< 标志位 */
+
+    /* 资源析构 */
+    struct MemoryResource   *resources;         /**< 资源析构回调链表 */
+
+    /* OOM 策略 */
+    void (*on_oom)(MemoryContext context, Size requested, void *arg); /**< OOM 回调 */
+    void                    *on_oom_arg;        /**< OOM 回调参数 */
+
+    /* 状态 */
+    bool                     is_reset;          /**< 是否已重置 */
+    bool                     is_deleted;        /**< 是否已删除 */
+
+    /* 线程归属 */
+    bool                     is_thread_owner;   /**< 是否为线程拥有者 */
+    uint64_t                 owner_thread_id;   /**< 拥有者线程 ID */
 } MemoryContextData;
 
 /* ========================================================================
