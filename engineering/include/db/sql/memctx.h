@@ -39,8 +39,61 @@ typedef unsigned long Size;
 /** 最小块大小（含 AllocBlock 头） */
 #define ALLOCSET_MIN_BLOCK_SIZE 1024
 
+/* ========================================================================
+ * AllocSet 预设配置
+ *
+ * 为不同使用场景提供经过调优的块大小参数。
+ * 块大小按指数增长（当前块 * 2），直到 maxBlockSize 上限。
+ * ======================================================================== */
+
+/**
+ * @brief AllocSet 预设配置枚举
+ */
+typedef enum AllocSetPreset {
+    ALLOCSET_PRESET_DEFAULT = 0,    /**< 默认：8KB init, 8KB max（通用场景） */
+    ALLOCSET_PRESET_SMALL高频 = 1,  /**< 小对象高频：1KB init, 64KB max（SQL executor, request scope） */
+    ALLOCSET_PRESET_LARGE = 2,      /**< 大对象：64KB init, 1MB max（集合创建, 索引构建） */
+    ALLOCSET_PRESET_BULK = 3,       /**< 批量导入：1MB init, 16MB max（bulk insert, 数据导入） */
+} AllocSetPreset;
+
+/** 预设 0：默认 */
+#define ALLOCSET_PRESET0_INIT  8192
+#define ALLOCSET_PRESET0_MAX   8192
+
+/** 预设 1：小对象高频（1KB → 64KB 指数增长） */
+#define ALLOCSET_PRESET1_INIT  1024
+#define ALLOCSET_PRESET1_MAX   65536
+
+/** 预设 2：大对象（64KB → 1MB 指数增长） */
+#define ALLOCSET_PRESET2_INIT  65536
+#define ALLOCSET_PRESET2_MAX   1048576
+
+/** 预设 3：批量导入（1MB → 16MB 指数增长） */
+#define ALLOCSET_PRESET3_INIT  1048576
+#define ALLOCSET_PRESET3_MAX   16777216
+
 /** 内存对齐基数 */
 #define ALLOCSET_ALIGNMENT 8
+
+/* ========================================================================
+ * 严格释放模式（MMDB_MEMCTX_STRICT_FREE）
+ *
+ * 启用后在 pfree()、MemoryContextReset()、MemoryContextDelete() 中执行：
+ * - 魔数校验（检测已释放内存）
+ * - 双重释放检测（MEMORY_ALLOCATION_FLAG_FREED 标记）
+ * - 跨上下文释放检测（owner 字段校验）
+ *
+ * 仅在 Debug 构建或显式定义 MMDB_MEMCTX_STRICT_FREE=1 时启用。
+ * Release 构建默认关闭（性能优先）。
+ * ======================================================================== */
+
+#ifndef MMDB_MEMCTX_STRICT_FREE
+  #ifdef DEBUG
+    #define MMDB_MEMCTX_STRICT_FREE 1
+  #else
+    #define MMDB_MEMCTX_STRICT_FREE 0
+  #endif
+#endif
 
 /** 对齐宏：向上对齐到 8 字节 */
 #define ALLOCSET_ALIGN(size) \
@@ -65,6 +118,19 @@ typedef struct MemoryContextData *MemoryContext;
 
 /** 分配头标志：已释放 */
 #define MEMORY_ALLOCATION_FLAG_FREED    0x1
+
+/* ========================================================================
+ * 全局删除哨兵
+ * ======================================================================== */
+
+/**
+ * @brief 全局删除世代计数器
+ *
+ * 每次 MemoryContextDelete() 成功释放上下文后递增。
+ * 测试可通过比较 close 前后的值验证删除已发生，
+ * 避免 use-after-free（释放后仍访问已释放的 is_deleted 字段）。
+ */
+extern uint64_t g_memctx_delete_generation;
 
 /**
  * @brief 内存分配头
@@ -249,6 +315,9 @@ typedef struct AllocSetContext {
  *                       若 initBlockSize 推导出的首块数据区偏小，则按此值抬高首块尺寸。
  * @param initBlockSize  初始块大小（0 表示默认 8KB）
  * @param maxBlockSize   最大块大小（0 表示默认 8KB）
+ * @param preset         预设配置（0=DEFAULT, 1=SMALL高频, 2=LARGE, 3=BULK）。
+ *                       若 preset > 0，则 initBlockSize / maxBlockSize 参数被忽略，
+ *                       使用预设值覆盖；若 preset == 0，保持原有参数语义（向后兼容）。
  *
  * @return 新创建的 MemoryContext；失败返回 NULL
  */
@@ -257,7 +326,8 @@ MemoryContext AllocSetContextCreate(
     const char *name,
     Size minContextSize,
     Size initBlockSize,
-    Size maxBlockSize);
+    Size maxBlockSize,
+    AllocSetPreset preset);
 
 /**
  * @brief 从上下文中分配内存（自动 8 字节对齐）

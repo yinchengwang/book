@@ -53,3 +53,8 @@ target_link_libraries(sql_engine PRIVATE
 set_target_properties(sql_engine PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
 )
+
+# Debug 模式启用严格释放校验（MMDB_MEMCTX_STRICT_FREE）
+target_compile_definitions(sql_engine PRIVATE
+    $<$<CONFIG:Debug>:MMDB_MEMCTX_STRICT_FREE=1>
+)

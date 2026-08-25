@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <stdio.h>
 
 #ifdef _WIN32
 #include <windows.h>     /* GetCurrentThreadId */
@@ -188,6 +189,47 @@ static AllocSetBlock *allocset_new_block(AllocSetContext *set, Size needed)
     return block;
 }
 
+#if MMDB_MEMCTX_STRICT_FREE
+/**
+ * @brief 校验块中所有分配头的释放状态（严格模式）
+ *
+ * 在 MemoryContextReset/MemoryContextDelete 时调用，
+ * 检查每个分配是否已被正确释放。
+ */
+static void validate_block_allocations(AllocSetBlock *block,
+                                       AllocSetContext *set,
+                                       MemoryContext ctx)
+{
+    /* 遍历块中已分配的内存（从 start 到 end - free） */
+    char *ptr = block->start;
+    char *limit = block->end - block->free;
+
+    while (ptr < limit) {
+        MemoryAllocationHeader *hdr = (MemoryAllocationHeader *)ptr;
+
+        /* 魔数校验 */
+        if (hdr->magic != MEMORY_ALLOCATION_HEADER_MAGIC) {
+            fprintf(stderr, "[STRICT_FREE] reset/delete: 魔数校验失败 at %p\n", ptr);
+            set->header.invalid_free_count++;
+            break;
+        }
+
+        /* 检查是否已释放 — 如果未释放，说明存在泄漏 */
+        if (!(hdr->flags & MEMORY_ALLOCATION_FLAG_FREED)) {
+            fprintf(stderr, "[STRICT_FREE] reset/delete: 未释放的分配 at %p (size=%zu)\n",
+                    ptr + ALLOCSET_HDR_SIZE, hdr->requested_size);
+            /* 标记为已释放，避免重复报告 */
+            hdr->flags |= MEMORY_ALLOCATION_FLAG_FREED;
+        }
+
+        /* 前进到下一个分配（对齐后的大小 + header） */
+        ptr += ALLOCSET_HDR_SIZE + hdr->allocated_size;
+        /* 确保 8 字节对齐 */
+        ptr = (char *)(((uintptr_t)ptr + (ALLOCSET_ALIGNMENT - 1)) & ~(uintptr_t)(ALLOCSET_ALIGNMENT - 1));
+    }
+}
+#endif
+
 /**
  * @brief 在当前块分配内存；若当前块剩余空间不足则申请新块
  *
@@ -261,12 +303,52 @@ static void *allocset_alloc(MemoryContext ctx, Size size)
 
 /**
  * @brief pfree 在 AllocSet 中为空操作
+ *
+ * 严格模式（MMDB_MEMCTX_STRICT_FREE=1）下执行校验：
+ * - 魔数校验：检测已释放内存
+ * - 双重释放检测：标记 MEMORY_ALLOCATION_FLAG_FREED
+ * - 跨上下文释放检测：校验 header->owner == ctx
  */
 static void allocset_free_p(MemoryContext ctx, void *ptr)
 {
-    /* noop：AllocSet 不支持单独释放，依靠 reset/delete 统一回收 */
+    AllocSetContext *set = (AllocSetContext *)ctx;
+    if (!ctx || !ptr || set->header.is_deleted) {
+        return;
+    }
+
+#if MMDB_MEMCTX_STRICT_FREE
+    /* 计算分配头地址（ptr 向前偏移 ALLOCSET_HDR_SIZE） */
+    MemoryAllocationHeader *hdr = (MemoryAllocationHeader *)((char *)ptr - ALLOCSET_HDR_SIZE);
+
+    /* 检查 1：魔数校验 — 检测已释放内存 */
+    if (hdr->magic != MEMORY_ALLOCATION_HEADER_MAGIC) {
+        fprintf(stderr, "[STRICT_FREE] pfree: 魔数校验失败 (0x%08X)，可能已释放或非本系统分配\n",
+                hdr->magic);
+        set->header.invalid_free_count++;
+        return;
+    }
+
+    /* 检查 2：双重释放 — 已标记 FREED 则跳过 */
+    if (hdr->flags & MEMORY_ALLOCATION_FLAG_FREED) {
+        fprintf(stderr, "[STRICT_FREE] pfree: 双重释放 detected at %p\n", ptr);
+        set->header.double_free_count++;
+        return;
+    }
+
+    /* 检查 3：跨上下文释放 — 校验 owner */
+    if (hdr->owner != ctx) {
+        fprintf(stderr, "[STRICT_FREE] pfree: 跨上下文释放 detected at %p (owner=%p, ctx=%p)\n",
+                ptr, hdr->owner, ctx);
+        set->header.invalid_free_count++;
+        return;
+    }
+
+    /* 标记为已释放 */
+    hdr->flags |= MEMORY_ALLOCATION_FLAG_FREED;
+#else
     (void)ctx;
     (void)ptr;
+#endif
 }
 
 /**
@@ -297,6 +379,10 @@ static void allocset_reset(MemoryContext ctx)
     AllocSetBlock *first = set->blocks;
     Size freed_bytes = 0;
     if (first) {
+#if MMDB_MEMCTX_STRICT_FREE
+        /* 严格模式：校验首块中的所有分配头是否已正确释放 */
+        validate_block_allocations(first, set, ctx);
+#endif
         /* 断开首块与后续块的链接 */
         AllocSetBlock *cur = first->next;
         first->next = NULL;
@@ -343,8 +429,14 @@ static void allocset_delete(MemoryContext ctx)
 
     /* 3. 释放全部块 */
     AllocSetBlock *block = set->blocks;
+    Size freed_bytes = 0;
     while (block) {
         AllocSetBlock *next = block->next;
+#if MMDB_MEMCTX_STRICT_FREE
+        /* 严格模式：校验块中的所有分配头 */
+        validate_block_allocations(block, set, ctx);
+#endif
+        freed_bytes += block->size;
         free(block);
         block = next;
     }
@@ -367,9 +459,25 @@ static void allocset_delete(MemoryContext ctx)
     /* 5. 标记为已删除（在 free 之前设置，供其他引用检测） */
     set->header.is_deleted = true;
 
+    /* 递增全局删除世代计数器（供测试哨兵验证） */
+    g_memctx_delete_generation++;
+
     /* 6. 释放上下文本体 */
     free(set);
 }
+
+/* ========================================================================
+ * 全局删除世代计数器
+ * ======================================================================== */
+
+/**
+ * @brief 全局删除世代计数器
+ *
+ * 每次 MemoryContextDelete() 成功释放上下文后递增。
+ * 测试可通过比较 close 前后的值验证删除已发生，
+ * 避免 use-after-free（释放后仍访问已释放的 is_deleted 字段）。
+ */
+uint64_t g_memctx_delete_generation = 0;
 
 /* ========================================================================
  * 线程局部当前上下文与切换 API
@@ -399,7 +507,8 @@ MemoryContext AllocSetContextCreate(
     const char *name,
     Size minContextSize,
     Size initBlockSize,
-    Size maxBlockSize)
+    Size maxBlockSize,
+    AllocSetPreset preset)
 {
     AllocSetContext *set = (AllocSetContext *)calloc(1, sizeof(AllocSetContext));
     if (!set) {
@@ -426,8 +535,30 @@ MemoryContext AllocSetContextCreate(
     set->header.is_reset = false;
 
     set->blocks = NULL;
-    set->initBlockSize = (initBlockSize == 0) ? ALLOCSET_DEFAULT_BLOCK_SIZE : initBlockSize;
-    set->maxBlockSize = (maxBlockSize == 0) ? ALLOCSET_DEFAULT_BLOCK_SIZE : maxBlockSize;
+
+    /* 根据 preset 决定块大小参数：
+     * preset > 0 时覆盖 initBlockSize / maxBlockSize 参数（使用预设值）
+     * preset == 0 时保持原有参数语义（向后兼容） */
+    switch (preset) {
+        case ALLOCSET_PRESET_SMALL高频:
+            set->initBlockSize = ALLOCSET_PRESET1_INIT;
+            set->maxBlockSize = ALLOCSET_PRESET1_MAX;
+            break;
+        case ALLOCSET_PRESET_LARGE:
+            set->initBlockSize = ALLOCSET_PRESET2_INIT;
+            set->maxBlockSize = ALLOCSET_PRESET2_MAX;
+            break;
+        case ALLOCSET_PRESET_BULK:
+            set->initBlockSize = ALLOCSET_PRESET3_INIT;
+            set->maxBlockSize = ALLOCSET_PRESET3_MAX;
+            break;
+        case ALLOCSET_PRESET_DEFAULT:
+        default:
+            /* 向后兼容：使用原始参数 */
+            set->initBlockSize = (initBlockSize == 0) ? ALLOCSET_DEFAULT_BLOCK_SIZE : initBlockSize;
+            set->maxBlockSize = (maxBlockSize == 0) ? ALLOCSET_DEFAULT_BLOCK_SIZE : maxBlockSize;
+            break;
+    }
 
     /* 参数校验 */
     if (set->initBlockSize < ALLOCSET_MIN_BLOCK_SIZE) {

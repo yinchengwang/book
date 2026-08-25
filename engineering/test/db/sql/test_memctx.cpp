@@ -16,6 +16,11 @@
 #define MMDB_MEMORY_DEBUG
 #endif
 
+/* 强制启用 MMDB_MEMCTX_STRICT_FREE 以测试严格释放校验路径 */
+#ifndef MMDB_MEMCTX_STRICT_FREE
+#define MMDB_MEMCTX_STRICT_FREE 1
+#endif
+
 extern "C" {
 #include "db/sql/memctx.h"
 }
@@ -848,6 +853,140 @@ TEST_F(ThreadOwnershipTest, AllocWithCorrectThreadOwner) {
 }
 
 }  // namespace
+
+/* ========================================================================
+ * 严格释放模式（MMDB_MEMCTX_STRICT_FREE）测试
+ * ======================================================================== */
+
+#if MMDB_MEMCTX_STRICT_FREE
+
+/**
+ * @brief 测试双重释放检测
+ *
+ * 验证 pfree() 在严格模式下能检测到双重释放，
+ * 并将 double_free_count 计数器递增。
+ */
+TEST(StrictFreeTest, DoubleFreeDetected) {
+    MemoryContext ctx = AllocSetContextCreate(
+        NULL, "StrictDoubleFree", 0,
+        ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_PRESET_DEFAULT);
+    ASSERT_NE(ctx, nullptr);
+
+    /* 分配一块内存 */
+    void *ptr = palloc(ctx, 128);
+    ASSERT_NE(ptr, nullptr);
+
+    /* 第一次释放 — 应成功 */
+    pfree(ctx, ptr);
+    EXPECT_EQ(ctx->double_free_count, (Size)0);
+
+    /* 第二次释放 — 应被检测到 */
+    pfree(ctx, ptr);
+    EXPECT_GE(ctx->double_free_count, (Size)1)
+        << "双重释放应被检测到并递增 double_free_count";
+
+    /* 清理 */
+    MemoryContextDelete(ctx);
+}
+
+/**
+ * @brief 测试跨上下文释放检测
+ *
+ * 验证 pfree() 在严格模式下能检测到跨上下文释放，
+ * 并将 invalid_free_count 计数器递增。
+ */
+TEST(StrictFreeTest, CrossContextFreeDetected) {
+    /* 创建两个上下文 */
+    MemoryContext ctx1 = AllocSetContextCreate(
+        NULL, "StrictCtx1", 0,
+        ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_PRESET_DEFAULT);
+    ASSERT_NE(ctx1, nullptr);
+
+    MemoryContext ctx2 = AllocSetContextCreate(
+        NULL, "StrictCtx2", 0,
+        ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_PRESET_DEFAULT);
+    ASSERT_NE(ctx2, nullptr);
+
+    /* 在 ctx1 中分配内存 */
+    void *ptr = palloc(ctx1, 128);
+    ASSERT_NE(ptr, nullptr);
+
+    /* 尝试用 ctx2 释放 ctx1 的内存 — 应被检测到 */
+    pfree(ctx2, ptr);
+    EXPECT_GE(ctx2->invalid_free_count, (Size)1)
+        << "跨上下文释放应被检测到并递增 invalid_free_count";
+
+    /* 原上下文不受影响 */
+    EXPECT_EQ(ctx1->invalid_free_count, (Size)0)
+        << "原上下文的 invalid_free_count 不应受影响";
+
+    /* 清理 */
+    MemoryContextDelete(ctx1);
+    MemoryContextDelete(ctx2);
+}
+
+/**
+ * @brief 测试魔数校验失败检测
+ *
+ * 验证 pfree() 在严格模式下能检测到魔数校验失败
+ * （例如对已释放内存或野指针调用 pfree）。
+ */
+TEST(StrictFreeTest, MagicCheckFailed) {
+    MemoryContext ctx = AllocSetContextCreate(
+        NULL, "StrictMagic", 0,
+        ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_PRESET_DEFAULT);
+    ASSERT_NE(ctx, nullptr);
+
+    /* 模拟已释放内存（魔数被覆盖） */
+    void *ptr = palloc(ctx, 128);
+    ASSERT_NE(ptr, nullptr);
+
+    /* 覆盖魔数 */
+    MemoryAllocationHeader *hdr = GET_ALLOCATION_HEADER(ptr);
+    hdr->magic = 0xDEADBEEF;  /* 无效魔数 */
+
+    /* 尝试释放 — 应检测到魔数失败 */
+    pfree(ctx, ptr);
+    EXPECT_GE(ctx->invalid_free_count, (Size)1)
+        << "魔数校验失败应被检测到并递增 invalid_free_count";
+
+    /* 清理 */
+    MemoryContextDelete(ctx);
+}
+
+/**
+ * @brief 测试 Reset 时的未释放检测
+ *
+ * 验证 MemoryContextReset() 在严格模式下能检测到未释放的分配。
+ */
+TEST(StrictFreeTest, ResetDetectsUnfreed) {
+    MemoryContext ctx = AllocSetContextCreate(
+        NULL, "StrictReset", 0,
+        ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_PRESET_DEFAULT);
+    ASSERT_NE(ctx, nullptr);
+
+    /* 分配内存但不释放 */
+    void *ptr1 = palloc(ctx, 64);
+    void *ptr2 = palloc(ctx, 128);
+    ASSERT_NE(ptr1, nullptr);
+    ASSERT_NE(ptr2, nullptr);
+
+    /* Reset — 应检测到未释放的分配并输出警告 */
+    MemoryContextReset(ctx);
+
+    /* Reset 后 current_bytes 应清零 */
+    EXPECT_EQ(ctx->current_bytes, (Size)0);
+
+    /* 清理 */
+    MemoryContextDelete(ctx);
+}
+
+#endif /* MMDB_MEMCTX_STRICT_FREE */
 
 /* ========================================================================
  * 性能对比测试：AllocSet 预设配置
