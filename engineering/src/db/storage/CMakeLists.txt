@@ -48,19 +48,60 @@ add_subdirectory(access)
 
 add_subdirectory(mm)
 
-# CDC 订阅模块（暂时禁用，待实现）
-# add_subdirectory(cdc)
-
 # ========================================================================
-# 各引擎实现
+# 各引擎实现（按 MMDB_ENABLE_* 开关条件编译）
+# 注意：部分引擎（graph/doc/ts/spatial/yang）代码存在但有编译问题，
+#       需要先修复才能启用。默认仅启用 KV 和 Vector。
 # ========================================================================
 
-add_subdirectory(kv)
-add_subdirectory(vector)
-# spatial/ts/yang 模块暂时禁用 - 存在编译问题，待修复
-# add_subdirectory(spatial)
-# add_subdirectory(ts)
-# add_subdirectory(yang)
+# KV 引擎
+if(MMDB_ENABLE_KV)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/kv")
+        add_subdirectory(kv)
+    endif()
+endif()
+
+# 向量引擎
+if(MMDB_ENABLE_VECTOR)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vector")
+        add_subdirectory(vector)
+    endif()
+endif()
+
+# 图引擎（代码存在但有编译问题，暂不启用）
+if(MMDB_ENABLE_GRAPH)
+    message(STATUS "Graph engine: code exists but has build issues, not enabling")
+endif()
+
+# 文档引擎（代码存在但有编译问题，暂不启用）
+if(MMDB_ENABLE_DOCUMENT)
+    message(STATUS "Document engine: code exists but has build issues, not enabling")
+endif()
+
+# 时序引擎（代码存在但有编译问题，暂不启用）
+if(MMDB_ENABLE_TIMESERIES)
+    message(STATUS "Timeseries engine: code exists but has build issues, not enabling")
+endif()
+
+# 空间引擎（代码存在但有编译问题，暂不启用）
+if(MMDB_ENABLE_SPATIAL)
+    message(STATUS "Spatial engine: code exists but has build issues, not enabling")
+endif()
+
+# 树引擎（代码存在但有编译问题，暂不启用）
+if(MMDB_ENABLE_TREE)
+    message(STATUS "Tree engine: code exists but has build issues, not enabling")
+endif()
+
+# 流式引擎（预留）
+if(MMDB_ENABLE_STREAM)
+    message(STATUS "Stream engine: not yet implemented")
+endif()
+
+# 列存引擎（预留）
+if(MMDB_ENABLE_COLUMNAR)
+    message(STATUS "Columnar engine: not yet implemented")
+endif()
 
 # ========================================================================
 # 组合 db_storage 主库
@@ -69,8 +110,16 @@ add_subdirectory(vector)
 # 收集所有存在的 OBJECT 库
 set(DB_STORAGE_OBJECTS "")
 
-# 条件收集 OBJECT 库
-foreach(subdir buffer page lock catalog wal rel mm kv vector)
+# 条件收集 OBJECT 库（仅收集可正常编译的引擎）
+set(DB_STORAGE_SUBMODULES buffer page lock catalog wal rel mm)
+if(MMDB_ENABLE_KV AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/kv")
+    list(APPEND DB_STORAGE_SUBMODULES kv)
+endif()
+if(MMDB_ENABLE_VECTOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vector")
+    list(APPEND DB_STORAGE_SUBMODULES vector)
+endif()
+
+foreach(subdir ${DB_STORAGE_SUBMODULES})
     if(TARGET storage_${subdir})
         list(APPEND DB_STORAGE_OBJECTS $<TARGET_OBJECTS:storage_${subdir}>)
     endif()
