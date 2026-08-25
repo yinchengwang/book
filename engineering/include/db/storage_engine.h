@@ -32,7 +32,9 @@ typedef enum {
     MODEL_DOCUMENT = 5,      /**< 文档模型 */
     MODEL_SPATIAL = 6,       /**< 空间模型 */
     MODEL_TREE = 7,          /**< 树模型 */
-    MODEL_COUNT = 8,         /**< 模型数量 */
+    MODEL_STREAM = 8,        /**< 流式模型 */
+    MODEL_COLUMNAR = 9,      /**< 列存模型 */
+    MODEL_COUNT = 10,        /**< 模型数量 */
 } DataModel;
 
 /**

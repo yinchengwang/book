@@ -47,6 +47,8 @@ typedef enum CrossModelSource_e {
     CROSS_MODEL_DOCUMENT = MODEL_DOCUMENT,      /**< 文档模型 */
     CROSS_MODEL_SPATIAL = MODEL_SPATIAL,        /**< 空间模型 */
     CROSS_MODEL_TREE = MODEL_TREE,              /**< 树模型 */
+    CROSS_MODEL_STREAM = MODEL_STREAM,          /**< 流式模型 */
+    CROSS_MODEL_COLUMNAR = MODEL_COLUMNAR,      /**< 列存模型 */
 } CrossModelSource;
 
 /* ========================================================================
@@ -291,6 +293,8 @@ typedef struct CrossModelExecContext_s {
     void *doc_exec;              /**< 文档执行器 */
     void *spatial_exec;          /**< 空间执行器 */
     void *tree_exec;             /**< 树执行器 */
+    void *stream_exec;           /**< 流式模型执行器 */
+    void *columnar_exec;         /**< 列存模型执行器 */
 } CrossModelExecContext;
 
 /**

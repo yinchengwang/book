@@ -30,6 +30,8 @@ static const char *g_model_dir_names[MODEL_COUNT] = {
     "document",    /* MODEL_DOCUMENT */
     "spatial",     /* MODEL_SPATIAL */
     "yang",        /* MODEL_TREE */
+    "stream",      /* MODEL_STREAM */
+    "columnar",    /* MODEL_COLUMNAR */
 };
 
 /** 全局上下文 */
@@ -205,7 +207,8 @@ void storage_shutdown_all(void) {
 const char *storage_model_name(DataModel model) {
     static const char *names[MODEL_COUNT] = {
         "relational", "kv", "graph", "vector",
-        "timeseries", "document", "spatial", "tree"
+        "timeseries", "document", "spatial", "tree",
+        "stream", "columnar"
     };
     if (model < 0 || model >= MODEL_COUNT) {
         return "unknown";

@@ -312,6 +312,14 @@ double cross_model_estimate_scan_cost(CrossModelScanInfo *scan, double num_rows)
             base_cost = num_rows * 0.02; break;
         case CROSS_MODEL_TIMESERIES:
             base_cost = num_rows * 0.015; break;
+        case CROSS_MODEL_SPATIAL:
+            base_cost = num_rows * 0.025; break;  /* 空间索引代价 */
+        case CROSS_MODEL_TREE:
+            base_cost = num_rows * 0.02; break;   /* 树模型代价 */
+        case CROSS_MODEL_STREAM:
+            base_cost = num_rows * 0.008; break;  /* 流式模型代价 */
+        case CROSS_MODEL_COLUMNAR:
+            base_cost = num_rows * 0.005; break;  /* 列存模型代价（高压缩比）*/
         default:
             base_cost = num_rows * 0.02; break;
     }
