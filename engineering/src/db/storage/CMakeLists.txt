@@ -101,9 +101,12 @@ if(MMDB_ENABLE_STREAM)
     endif()
 endif()
 
-# 列存引擎（预留）
+# 列存引擎
 if(MMDB_ENABLE_COLUMNAR)
-    message(STATUS "Columnar engine: not yet implemented")
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/columnar")
+        add_subdirectory(columnar)
+        message(STATUS "Columnar engine: enabled")
+    endif()
 endif()
 
 # ========================================================================
@@ -123,6 +126,9 @@ if(MMDB_ENABLE_VECTOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vector")
 endif()
 if(MMDB_ENABLE_STREAM AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/stream")
     list(APPEND DB_STORAGE_SUBMODULES stream)
+endif()
+if(MMDB_ENABLE_COLUMNAR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/columnar")
+    list(APPEND DB_STORAGE_SUBMODULES columnar)
 endif()
 
 foreach(subdir ${DB_STORAGE_SUBMODULES})

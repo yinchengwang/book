@@ -36,7 +36,7 @@ extern const storage_ops_t *yang_engine_get_ops(void);
 extern const storage_ops_t *stream_engine_get_ops(void);
 #endif
 #ifdef MMDB_ENABLE_COLUMNAR
-/* extern const storage_ops_t *columnar_engine_get_ops(void); */
+extern const storage_ops_t *columnar_engine_get_ops(void);
 #endif
 
 /* 已注册引擎计数 */
@@ -145,9 +145,15 @@ int engine_registry_init(void) {
     }
 #endif
 
-    /* Columnar 引擎（预留） */
+    /* Columnar 引擎 */
 #ifdef MMDB_ENABLE_COLUMNAR
-    /* columnar_engine_get_ops 尚未实现 */
+    if (columnar_engine_get_ops) {
+        const storage_ops_t *ops = columnar_engine_get_ops();
+        if (ops && register_storage_engine(MODEL_COLUMNAR, ops) == 0) {
+            LOG_INFO("Registered Columnar engine: %s", ops->name);
+            count++;
+        }
+    }
 #endif
 
     g_registered_count = count;
