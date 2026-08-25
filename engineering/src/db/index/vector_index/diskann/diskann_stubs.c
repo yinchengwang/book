@@ -19,8 +19,12 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "diskann_private.h"
+#include "diskann_spann.h"
+#include "diskann_fresh.h"
+#include "diskann_merge.h"
 
 int32_t diskann_fresh_count(const diskann_fresh_context_t *ctx) {
     (void)ctx;
@@ -40,4 +44,64 @@ int32_t diskann_fresh_search(diskann_fresh_context_t *ctx,
     (void)distances;
     (void)labels;
     return 0;
+}
+
+/* 扩展持久化桩：SPANN/Merge/Fresh 相关函数 */
+diskann_spann_context_t *diskann_spann_create(const diskann_spann_config_t *config) {
+    (void)config;
+    return NULL;
+}
+
+void diskann_spann_free(diskann_spann_context_t *ctx) {
+    (void)ctx;
+}
+
+int32_t diskann_spann_persist(diskann_spann_context_t *ctx, FILE *file) {
+    (void)ctx;
+    (void)file;
+    return 0;
+}
+
+diskann_spann_context_t *diskann_spann_load(const diskann_spann_config_t *config, FILE *file) {
+    (void)config;
+    (void)file;
+    return NULL;
+}
+
+diskann_fresh_context_t *diskann_fresh_create(const diskann_fresh_config_t *config, int32_t dims) {
+    (void)config;
+    (void)dims;
+    return NULL;
+}
+
+int32_t diskann_fresh_init(diskann_fresh_context_t *ctx, int32_t dims) {
+    (void)ctx;
+    (void)dims;
+    return 0;
+}
+
+void diskann_fresh_free(diskann_fresh_context_t *ctx) {
+    (void)ctx;
+}
+
+int32_t diskann_fresh_persist(diskann_fresh_context_t *ctx, FILE *file) {
+    (void)ctx;
+    (void)file;
+    return 0;
+}
+
+diskann_fresh_context_t *diskann_fresh_load(const diskann_fresh_config_t *config, int32_t dims, FILE *file) {
+    (void)config;
+    (void)dims;
+    (void)file;
+    return NULL;
+}
+
+diskann_merge_context_t *diskann_merge_context_create(const diskann_merge_config_t *config) {
+    (void)config;
+    return NULL;
+}
+
+void diskann_merge_context_free(diskann_merge_context_t *ctx) {
+    (void)ctx;
 }

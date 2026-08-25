@@ -300,4 +300,92 @@ int32_t diskann_search_dual_zone(diskann_t *index,
                                  float *distances,
                                  int32_t *labels);
 
+/* ============================================================================
+ * Vamana 图算法扩展
+ * ============================================================================ */
+
+int diskann_greedy_search(const diskann_t *index,
+                         const float *query,
+                         int32_t *best_id,
+                         float *best_dist,
+                         int32_t max_iterations);
+int diskann_vamana_build_graph(diskann_t *index);
+int diskann_vamana_set_params(diskann_t *index,
+                              float alpha,
+                              int32_t index_size,
+                              int32_t build_search_list_size);
+int diskann_vamana_get_stats(const diskann_t *index,
+                             int32_t *total_nodes,
+                             int32_t *active_nodes,
+                             float *avg_degree,
+                             int32_t *max_degree);
+int diskann_vamana_insert_node(diskann_t *index, int32_t node_id, const float *vector);
+int diskann_vamana_delete_node(diskann_t *index, int32_t node_id);
+int diskann_beam_search(const diskann_t *index,
+                       const float *query,
+                       int32_t beam_width,
+                       int32_t *best_id,
+                       float *best_dist);
+void diskann_vamana_reset_graph(diskann_t *index);
+
+/* ============================================================================
+ * PQ 量化扩展
+ * ============================================================================ */
+
+bool diskann_pq_opq_enabled(const diskann_t *index);
+int diskann_pq_enable_opq(diskann_t *index);
+int diskann_pq_get_opq_rotation(const diskann_t *index,
+                                float *rotation_matrix,
+                                int32_t matrix_size);
+int diskann_pq_train(diskann_t *index, int32_t train_max_vectors);
+int diskann_pq_encode_batch(diskann_t *index, int32_t start_id, int32_t count);
+int diskann_pq_decode(const diskann_t *index, int32_t id, float *vector_out);
+float diskann_pq_approx_distance(const diskann_t *index,
+                                 const float *query,
+                                 int32_t id);
+float diskann_pq_compression_ratio(const diskann_t *index);
+int64_t diskann_pq_memory_usage(const diskann_t *index);
+int diskann_pq_set_params(diskann_t *index, int32_t m, int32_t bits, int32_t train_max);
+void diskann_pq_get_info(const diskann_t *index, char *info_out, int32_t max_len);
+
+/* ============================================================================
+ * 磁盘 I/O 扩展
+ * ============================================================================ */
+
+typedef struct diskann_mmap_handle diskann_mmap_handle_t;
+
+diskann_mmap_handle_t *diskann_mmap_create(const char *base_path,
+                                            int32_t page_size,
+                                            int32_t cache_size,
+                                            bool read_only);
+void diskann_mmap_destroy(diskann_mmap_handle_t *handle);
+storage_backend_t *diskann_mmap_get_vector_backend(diskann_mmap_handle_t *handle);
+storage_backend_t *diskann_mmap_get_graph_backend(diskann_mmap_handle_t *handle);
+storage_backend_t *diskann_mmap_get_code_backend(diskann_mmap_handle_t *handle);
+storage_backend_t *diskann_mmap_get_meta_backend(diskann_mmap_handle_t *handle);
+int32_t diskann_mmap_load_vectors(diskann_mmap_handle_t *handle,
+                                   int32_t start_id,
+                                   int32_t count,
+                                   float *vectors_out,
+                                   int32_t dims);
+int32_t diskann_mmap_load_vector_range(diskann_mmap_handle_t *handle,
+                                       int32_t start_id,
+                                       int32_t count,
+                                       float *vectors_out,
+                                       int32_t dims);
+int32_t diskann_mmap_load_graph(diskann_mmap_handle_t *handle,
+                                 int32_t *neighbors_out,
+                                 int32_t *neighbor_counts_out,
+                                 int32_t n_total,
+                                 int32_t index_size);
+int32_t diskann_mmap_load_codes(diskann_mmap_handle_t *handle,
+                                 uint8_t *codes_out,
+                                 int32_t n_total,
+                                 int32_t code_size);
+void *diskann_file_open(const char *path, int32_t page_size);
+void diskann_file_close(void *file);
+int64_t diskann_file_read(void *file, int64_t offset, void *data, int64_t size);
+int64_t diskann_file_write(void *file, int64_t offset, const void *data, int64_t size);
+int diskann_file_sync(void *file);
+
 #endif
