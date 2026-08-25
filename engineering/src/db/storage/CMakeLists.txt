@@ -93,9 +93,12 @@ if(MMDB_ENABLE_TREE)
     message(STATUS "Tree engine: code exists but has build issues, not enabling")
 endif()
 
-# 流式引擎（预留）
+# 流式引擎
 if(MMDB_ENABLE_STREAM)
-    message(STATUS "Stream engine: not yet implemented")
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/stream")
+        add_subdirectory(stream)
+        message(STATUS "Stream engine: enabled")
+    endif()
 endif()
 
 # 列存引擎（预留）
@@ -117,6 +120,9 @@ if(MMDB_ENABLE_KV AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/kv")
 endif()
 if(MMDB_ENABLE_VECTOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vector")
     list(APPEND DB_STORAGE_SUBMODULES vector)
+endif()
+if(MMDB_ENABLE_STREAM AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/stream")
+    list(APPEND DB_STORAGE_SUBMODULES stream)
 endif()
 
 foreach(subdir ${DB_STORAGE_SUBMODULES})

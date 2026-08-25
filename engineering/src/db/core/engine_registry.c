@@ -32,9 +32,8 @@ extern const storage_ops_t *spatial_engine_get_ops(void);
 #ifdef MMDB_ENABLE_TREE
 extern const storage_ops_t *yang_engine_get_ops(void);
 #endif
-/* Stream 和 Columnar 引擎将在后续阶段实现 */
 #ifdef MMDB_ENABLE_STREAM
-/* extern const storage_ops_t *stream_engine_get_ops(void); */
+extern const storage_ops_t *stream_engine_get_ops(void);
 #endif
 #ifdef MMDB_ENABLE_COLUMNAR
 /* extern const storage_ops_t *columnar_engine_get_ops(void); */
@@ -135,9 +134,15 @@ int engine_registry_init(void) {
     }
 #endif
 
-    /* Stream 引擎（预留） */
+    /* 注册流式引擎 */
 #ifdef MMDB_ENABLE_STREAM
-    /* stream_engine_get_ops 尚未实现 */
+    if (stream_engine_get_ops) {
+        const storage_ops_t *ops = stream_engine_get_ops();
+        if (ops && register_storage_engine(MODEL_STREAM, ops) == 0) {
+            LOG_INFO("Registered Stream engine: %s", ops->name);
+            count++;
+        }
+    }
 #endif
 
     /* Columnar 引擎（预留） */
