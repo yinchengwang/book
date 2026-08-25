@@ -7,6 +7,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <vector>
+#include <chrono>
 
 /* 强制启用 MMDB_MEMORY_DEBUG 以测试线程归属校验路径：
  * memctx.c 已在内部默认启用该宏，测试端同步声明以便 GTEST_SKIP 分支
@@ -37,7 +38,7 @@ static int CountBlocks(MemoryContext ctx) {
  * @brief 测试基本的内存分配与释放
  */
 TEST(MemoryContextTest, BasicAlloc) {
-    MemoryContext ctx = AllocSetContextCreate(NULL, "test", 0, 8192, 8192);
+    MemoryContext ctx = AllocSetContextCreate(NULL, "test", 0, 8192, 8192, ALLOCSET_PRESET_DEFAULT);
     ASSERT_NE(ctx, nullptr);
 
     void *p = palloc(ctx, 100);
@@ -54,7 +55,7 @@ TEST(MemoryContextTest, BasicAlloc) {
  * @brief 测试 palloc0 分配零初始化内存
  */
 TEST(MemoryContextTest, PallocZero) {
-    MemoryContext ctx = AllocSetContextCreate(NULL, "test_zero", 0, 8192, 8192);
+    MemoryContext ctx = AllocSetContextCreate(NULL, "test_zero", 0, 8192, 8192, ALLOCSET_PRESET_DEFAULT);
     ASSERT_NE(ctx, nullptr);
 
     /* 分配一块内存并写入非零数据 */
@@ -77,9 +78,9 @@ TEST(MemoryContextTest, PallocZero) {
  * 再 reset，验证只剩下保留的首块（长度 == 1），且首块可继续分配。
  */
 TEST(MemoryContextTest, ResetFreesChildBlocks) {
-    MemoryContext parent = AllocSetContextCreate(NULL, "parent", 0, 8192, 8192);
+    MemoryContext parent = AllocSetContextCreate(NULL, "parent", 0, 8192, 8192, ALLOCSET_PRESET_DEFAULT);
     /* 子上下文用小块（1024），便于用少量分配触发新块 */
-    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 1024, 1024);
+    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 1024, 1024, ALLOCSET_PRESET_DEFAULT);
     ASSERT_NE(parent, nullptr);
     ASSERT_NE(child, nullptr);
 
@@ -124,7 +125,7 @@ TEST(MemoryContextTest, ResetFreesChildBlocks) {
  * @brief 测试多块分配: 触发新块分配
  */
 TEST(MemoryContextTest, AllocSetMultipleBlocks) {
-    MemoryContext ctx = AllocSetContextCreate(NULL, "test_multi", 0, 1024, 8192);
+    MemoryContext ctx = AllocSetContextCreate(NULL, "test_multi", 0, 1024, 8192, ALLOCSET_PRESET_DEFAULT);
     ASSERT_NE(ctx, nullptr);
 
     /* 分配多个块，触发新块分配 */
@@ -148,9 +149,9 @@ TEST(MemoryContextTest, AllocSetMultipleBlocks) {
  * @brief 测试兄弟上下文关系
  */
 TEST(MemoryContextTest, SiblingContexts) {
-    MemoryContext parent = AllocSetContextCreate(NULL, "parent", 0, 8192, 8192);
-    MemoryContext child1 = AllocSetContextCreate(parent, "child1", 0, 1024, 1024);
-    MemoryContext child2 = AllocSetContextCreate(parent, "child2", 0, 1024, 1024);
+    MemoryContext parent = AllocSetContextCreate(NULL, "parent", 0, 8192, 8192, ALLOCSET_PRESET_DEFAULT);
+    MemoryContext child1 = AllocSetContextCreate(parent, "child1", 0, 1024, 1024, ALLOCSET_PRESET_DEFAULT);
+    MemoryContext child2 = AllocSetContextCreate(parent, "child2", 0, 1024, 1024, ALLOCSET_PRESET_DEFAULT);
     ASSERT_NE(child1, nullptr);
     ASSERT_NE(child2, nullptr);
 
@@ -166,7 +167,7 @@ TEST(MemoryContextTest, SiblingContexts) {
  * @brief 测试 8 字节对齐
  */
 TEST(MemoryContextTest, Alignment) {
-    MemoryContext ctx = AllocSetContextCreate(NULL, "align_test", 0, 8192, 8192);
+    MemoryContext ctx = AllocSetContextCreate(NULL, "align_test", 0, 8192, 8192, ALLOCSET_PRESET_DEFAULT);
     ASSERT_NE(ctx, nullptr);
 
     /* 分配若干小块，验证地址对齐 */
@@ -190,7 +191,7 @@ TEST(MemoryContextTest, Alignment) {
  * @brief 测试上下文名称
  */
 TEST(MemoryContextTest, ContextName) {
-    MemoryContext ctx = AllocSetContextCreate(NULL, "my_context", 0, 8192, 8192);
+    MemoryContext ctx = AllocSetContextCreate(NULL, "my_context", 0, 8192, 8192, ALLOCSET_PRESET_DEFAULT);
     ASSERT_NE(ctx, nullptr);
     ASSERT_NE(ctx->name, nullptr);
     EXPECT_STREQ(ctx->name, "my_context");
@@ -202,7 +203,7 @@ TEST(MemoryContextTest, ContextName) {
  * @brief 测试超大请求触发溢出保护返回 NULL（不得回绕成小缓冲区）
  */
 TEST(MemoryContextTest, AllocOverflowReturnsNull) {
-    MemoryContext ctx = AllocSetContextCreate(NULL, "overflow", 0, 8192, 8192);
+    MemoryContext ctx = AllocSetContextCreate(NULL, "overflow", 0, 8192, 8192, ALLOCSET_PRESET_DEFAULT);
     ASSERT_NE(ctx, nullptr);
 
     /* 接近 Size 上限的请求：对齐加法会回绕，必须被拦截返回 NULL */
@@ -223,7 +224,7 @@ TEST(MemoryContextTest, AllocOverflowReturnsNull) {
 TEST(MemoryContextTest, MinContextSizeHonored) {
     /* initBlockSize 给一个小值，用 minContextSize 抬高首块容量 */
     const Size min_size = 4096;
-    MemoryContext ctx = AllocSetContextCreate(NULL, "min_ctx", min_size, 1024, 8192);
+    MemoryContext ctx = AllocSetContextCreate(NULL, "min_ctx", min_size, 1024, 8192, ALLOCSET_PRESET_DEFAULT);
     ASSERT_NE(ctx, nullptr);
 
     AllocSetContext *set = reinterpret_cast<AllocSetContext *>(ctx);
@@ -244,14 +245,14 @@ TEST(MemoryContextTest, MinContextSizeHonored) {
  * @brief 测试 SwitchTo 基本上下文切换与恢复
  */
 TEST(MemoryContextTest, SwitchToAndRestore) {
-    MemoryContext parent = AllocSetContextCreate(NULL, "parent", 0, 8192, 8192 * 1024);
+    MemoryContext parent = AllocSetContextCreate(NULL, "parent", 0, 8192, 8192 * 1024, ALLOCSET_PRESET_DEFAULT);
     ASSERT_NE(parent, nullptr);
 
     /* 切换前，当前上下文应为 NULL（初始状态）或由其他测试设置 */
     MemoryContext prev = MemoryContextSwitchTo(parent);
     EXPECT_EQ(MemoryContextCurrent(), parent);
 
-    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 8192, 8192 * 1024);
+    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 8192, 8192 * 1024, ALLOCSET_PRESET_DEFAULT);
     ASSERT_NE(child, nullptr);
 
     MemoryContext old = MemoryContextSwitchTo(child);
@@ -269,11 +270,11 @@ TEST(MemoryContextTest, SwitchToAndRestore) {
  * @brief 测试嵌套 SwitchTo 场景
  */
 TEST(MemoryContextTest, SwitchToNested) {
-    MemoryContext parent = AllocSetContextCreate(NULL, "parent", 0, 8192, 8192 * 1024);
+    MemoryContext parent = AllocSetContextCreate(NULL, "parent", 0, 8192, 8192 * 1024, ALLOCSET_PRESET_DEFAULT);
     ASSERT_NE(parent, nullptr);
 
-    MemoryContext child1 = AllocSetContextCreate(parent, "child1", 0, 8192, 8192 * 1024);
-    MemoryContext child2 = AllocSetContextCreate(parent, "child2", 0, 8192, 8192 * 1024);
+    MemoryContext child1 = AllocSetContextCreate(parent, "child1", 0, 8192, 8192 * 1024, ALLOCSET_PRESET_DEFAULT);
+    MemoryContext child2 = AllocSetContextCreate(parent, "child2", 0, 8192, 8192 * 1024, ALLOCSET_PRESET_DEFAULT);
     ASSERT_NE(child1, nullptr);
     ASSERT_NE(child2, nullptr);
 
@@ -299,10 +300,10 @@ TEST(MemoryContextTest, SwitchToNested) {
  * @brief 测试 SwitchTo 后在当前上下文分配内存
  */
 TEST(MemoryContextTest, SwitchToAlloc) {
-    MemoryContext parent = AllocSetContextCreate(NULL, "parent", 0, 8192, 8192 * 1024);
+    MemoryContext parent = AllocSetContextCreate(NULL, "parent", 0, 8192, 8192 * 1024, ALLOCSET_PRESET_DEFAULT);
     ASSERT_NE(parent, nullptr);
 
-    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 1024, 1024);
+    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 1024, 1024, ALLOCSET_PRESET_DEFAULT);
     ASSERT_NE(child, nullptr);
 
     /* 切换到子上下文 */
@@ -331,7 +332,7 @@ TEST(MemoryContextTest, SwitchToAlloc) {
 class ResourceDestructionTest : public ::testing::Test {
 public:
     void SetUp() override {
-        parent = AllocSetContextCreate(NULL, "res_parent", 0, 8192, 8192);
+        parent = AllocSetContextCreate(NULL, "res_parent", 0, 8192, 8192, ALLOCSET_PRESET_DEFAULT);
         ASSERT_NE(parent, nullptr);
         destructor_call_count = 0;
         last_destroyed_resource = nullptr;
@@ -493,7 +494,7 @@ TEST_F(ResourceDestructionTest, ResourceDestructionLIFO) {
 class LifecycleTest : public ::testing::Test {
 public:
     void SetUp() override {
-        parent = AllocSetContextCreate(NULL, "lifecycle_parent", 0, 8192, 8192 * 1024);
+        parent = AllocSetContextCreate(NULL, "lifecycle_parent", 0, 8192, 8192 * 1024, ALLOCSET_PRESET_DEFAULT);
         ASSERT_NE(parent, nullptr);
     }
 
@@ -535,7 +536,7 @@ TEST_F(LifecycleTest, ResetPreservesFirstBlock) {
  * @brief 测试 Delete 释放全部块并从父链表移除
  */
 TEST_F(LifecycleTest, DeleteReleasesAllBlocks) {
-    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 8192, 8192 * 1024);
+    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 8192, 8192 * 1024, ALLOCSET_PRESET_DEFAULT);
     palloc(child, 100);
 
     AllocSetContext *child_set = (AllocSetContext *)child;
@@ -556,8 +557,8 @@ TEST_F(LifecycleTest, DeleteReleasesAllBlocks) {
  * @brief 测试递归 Reset：父上下文 Reset 会重置所有子上下文的 current_bytes
  */
 TEST_F(LifecycleTest, RecursiveReset) {
-    MemoryContext child1 = AllocSetContextCreate(parent, "child1", 0, 8192, 8192 * 1024);
-    MemoryContext child2 = AllocSetContextCreate(parent, "child2", 0, 8192, 8192 * 1024);
+    MemoryContext child1 = AllocSetContextCreate(parent, "child1", 0, 8192, 8192 * 1024, ALLOCSET_PRESET_DEFAULT);
+    MemoryContext child2 = AllocSetContextCreate(parent, "child2", 0, 8192, 8192 * 1024, ALLOCSET_PRESET_DEFAULT);
 
     MemoryContextSwitchTo(child1);
     palloc(child1, 100);
@@ -626,7 +627,7 @@ TEST_F(LifecycleTest, ResetCountIncrements) {
  * @brief 测试已删除上下文的 Reset 为空操作
  */
 TEST_F(LifecycleTest, ResetAfterDeleteIsNoop) {
-    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 8192, 8192 * 1024);
+    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 8192, 8192 * 1024, ALLOCSET_PRESET_DEFAULT);
     palloc(child, 100);
 
     /* 删除子上下文 */
@@ -640,8 +641,8 @@ TEST_F(LifecycleTest, ResetAfterDeleteIsNoop) {
  * @brief 测试 MemoryContextResetChildren 只重置子上下文
  */
 TEST_F(LifecycleTest, ResetChildrenOnly) {
-    MemoryContext child1 = AllocSetContextCreate(parent, "child1", 0, 8192, 8192 * 1024);
-    MemoryContext child2 = AllocSetContextCreate(parent, "child2", 0, 8192, 8192 * 1024);
+    MemoryContext child1 = AllocSetContextCreate(parent, "child1", 0, 8192, 8192 * 1024, ALLOCSET_PRESET_DEFAULT);
+    MemoryContext child2 = AllocSetContextCreate(parent, "child2", 0, 8192, 8192 * 1024, ALLOCSET_PRESET_DEFAULT);
 
     palloc(parent, 100);
     palloc(child1, 200);
@@ -675,7 +676,7 @@ TEST_F(LifecycleTest, StandardAPIReset) {
  * @brief 测试 MemoryContextDelete 标准 API 名称
  */
 TEST_F(LifecycleTest, StandardAPIDelete) {
-    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 8192, 8192 * 1024);
+    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 8192, 8192 * 1024, ALLOCSET_PRESET_DEFAULT);
     EXPECT_EQ(parent->firstchild, child);
 
     MemoryContextDelete(child);
@@ -687,8 +688,8 @@ TEST_F(LifecycleTest, StandardAPIDelete) {
  * @brief 测试多层嵌套父子关系的递归 Delete
  */
 TEST_F(LifecycleTest, RecursiveDelete) {
-    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 8192, 8192 * 1024);
-    MemoryContext grandchild = AllocSetContextCreate(child, "grandchild", 0, 1024, 1024);
+    MemoryContext child = AllocSetContextCreate(parent, "child", 0, 8192, 8192 * 1024, ALLOCSET_PRESET_DEFAULT);
+    MemoryContext grandchild = AllocSetContextCreate(child, "grandchild", 0, 1024, 1024, ALLOCSET_PRESET_DEFAULT);
 
     palloc(grandchild, 50);
     EXPECT_EQ(grandchild->current_bytes, 50u);
@@ -710,7 +711,7 @@ TEST_F(LifecycleTest, RecursiveDelete) {
 class ThreadOwnershipTest : public ::testing::Test {
 public:
     void SetUp() override {
-        parent = AllocSetContextCreate(NULL, "thread_parent", 0, 8192, 8192);
+        parent = AllocSetContextCreate(NULL, "thread_parent", 0, 8192, 8192, ALLOCSET_PRESET_DEFAULT);
         ASSERT_NE(parent, nullptr);
     }
 
@@ -847,3 +848,63 @@ TEST_F(ThreadOwnershipTest, AllocWithCorrectThreadOwner) {
 }
 
 }  // namespace
+
+/* ========================================================================
+ * 性能对比测试：AllocSet 预设配置
+ * ======================================================================== */
+
+/**
+ * @brief 验证 ALLOCSET_PRESET_SMALL高频 预设的块大小参数正确
+ *
+ * 验证预设配置正确设置了 initBlockSize 和 maxBlockSize。
+ * 预设 1（小对象高频）：1KB init, 64KB max
+ * 预设 0（默认）：8KB init, 8KB max
+ *
+ * 块大小差异体现在 malloc 级别：1KB init 比 8KB init 节省 87.5% 初始内存。
+ */
+TEST(AllocSetPresetPerf, PresetBlockSizes) {
+    /* 创建 DEFAULT 预设上下文 */
+    MemoryContext ctx_def = AllocSetContextCreate(
+        NULL, "DefaultSize", 0,
+        ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_PRESET_DEFAULT);
+    ASSERT_NE(ctx_def, nullptr);
+
+    /* 创建 SMALL高频 预设上下文 */
+    MemoryContext ctx_small = AllocSetContextCreate(
+        NULL, "SmallSize", 0,
+        ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_PRESET_SMALL高频);
+    ASSERT_NE(ctx_small, nullptr);
+
+    /* 验证 block size 设置正确 */
+    AllocSetContext *set_def = (AllocSetContext *)ctx_def;
+    AllocSetContext *set_small = (AllocSetContext *)ctx_small;
+
+    /* DEFAULT 预设：initBlockSize = 8KB, maxBlockSize = 8KB */
+    EXPECT_EQ(set_def->initBlockSize, (Size)ALLOCSET_DEFAULT_BLOCK_SIZE);
+    EXPECT_EQ(set_def->maxBlockSize, (Size)ALLOCSET_DEFAULT_BLOCK_SIZE);
+
+    /* SMALL高频 预设：initBlockSize = 1KB, maxBlockSize = 64KB */
+    EXPECT_EQ(set_small->initBlockSize, (Size)ALLOCSET_PRESET1_INIT);
+    EXPECT_EQ(set_small->maxBlockSize, (Size)ALLOCSET_PRESET1_MAX);
+
+    printf("  DEFAULT: init=%llu max=%llu, SMALL高频: init=%llu max=%llu\n",
+           (unsigned long long)set_def->initBlockSize,
+           (unsigned long long)set_def->maxBlockSize,
+           (unsigned long long)set_small->initBlockSize,
+           (unsigned long long)set_small->maxBlockSize);
+
+    /* 验证向后兼容：DEFAULT 预设的 initBlockSize 应等于传入的 initBlockSize */
+    MemoryContext ctx_compat = AllocSetContextCreate(
+        NULL, "CompatSize", 0, 4096, 16384,
+        ALLOCSET_PRESET_DEFAULT);
+    ASSERT_NE(ctx_compat, nullptr);
+    AllocSetContext *set_compat = (AllocSetContext *)ctx_compat;
+    EXPECT_EQ(set_compat->initBlockSize, (Size)4096);
+    EXPECT_EQ(set_compat->maxBlockSize, (Size)16384);
+
+    MemoryContextDelete(ctx_def);
+    MemoryContextDelete(ctx_small);
+    MemoryContextDelete(ctx_compat);
+}
