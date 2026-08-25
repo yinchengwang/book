@@ -5,6 +5,7 @@
  * 实现统一的多模态数据库存储管理，包括引擎注册、上下文管理、模型路由等功能。
  */
 #include "mm_storage.h"
+#include "db/engine_registry.h"
 #include "log.h"
 #include <stdlib.h>
 #include <string.h>
@@ -135,6 +136,13 @@ int mm_storage_init(const char *data_dir) {
             mm_storage_shutdown();
             return -1;
         }
+    }
+
+    /* 初始化引擎注册表 */
+    if (engine_registry_init() < 0) {
+        LOG_ERROR("Failed to initialize engine registry");
+        mm_storage_shutdown();
+        return -1;
     }
 
     g_context->initialized = true;

@@ -12,6 +12,7 @@ add_library(db_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/metrics.c
     ${CMAKE_CURRENT_SOURCE_DIR}/query_filter.c
     ${CMAKE_CURRENT_SOURCE_DIR}/query_fusion.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/engine_registry.c  # 引擎注册
 )
 target_include_directories(db_core PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include
