@@ -34,6 +34,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(ENGINEERING_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+# ========================================================================
+# 多模态编译配置（模态开关、分布式开关）
+# ========================================================================
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/MultimodalConfig.cmake")
+
 include(CTest)
 include(GNUInstallDirs)
 
@@ -83,10 +88,14 @@ find_package(Threads REQUIRED)
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/ProjectUtils.cmake")
 
 # 包含 cJSON（单文件 JSON 库）
-add_subdirectory(../third_part/cjson ${CMAKE_BINARY_DIR}/third_part/cjson_build)
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../third_part/cjson/CMakeLists.txt")
+    add_subdirectory(../third_part/cjson ${CMAKE_BINARY_DIR}/third_part/cjson_build)
+endif()
 
 # 包含 libmicrohttpd（HTTP 服务器库）
-add_subdirectory(../third_part/libmicrohttpd ${CMAKE_BINARY_DIR}/third_part/libmicrohttpd_build)
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../third_part/libmicrohttpd/CMakeLists.txt")
+    add_subdirectory(../third_part/libmicrohttpd ${CMAKE_BINARY_DIR}/third_part/libmicrohttpd_build)
+endif()
 
 if(BUILD_TESTING AND NOT TARGET gtest)
     if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../third_part/googletest/CMakeLists.txt")
