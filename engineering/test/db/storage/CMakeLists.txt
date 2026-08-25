@@ -16,9 +16,9 @@ target_link_libraries(test_storage_wal db_storage project_includes gtest gtest_m
 add_executable(test_storage_main storage.cpp)
 target_link_libraries(test_storage_main db_storage project_includes gtest gtest_main)
 
-# 多模态存储测试 - 暂时禁用 (依赖未启用的 graph/ts 模块)
-# add_executable(test_storage_mm mm_storage_test.cpp)
-# target_link_libraries(test_storage_mm db_storage index_hilbert project_includes gtest gtest_main)
+# 多模态存储测试（按模态开关启用）
+add_executable(test_storage_mm mm_storage_test.cpp)
+target_link_libraries(test_storage_mm db_storage db_core index_hilbert project_includes gtest gtest_main)
 
 # 图引擎遍历测试 - 暂时禁用 (依赖未启用的 graph 模块)
 # add_executable(test_storage_graph graph_traverse_test.cpp)

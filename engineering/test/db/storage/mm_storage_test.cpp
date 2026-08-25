@@ -6,6 +6,7 @@
  */
 #include <gtest/gtest.h>
 #include "db/mm_storage.h"
+#include "db/engine_registry.h"
 #include "db/kv_engine.h"
 #include "db/kv.h"
 #include "db/vector_engine.h"
@@ -22,15 +23,9 @@
 extern "C" {
 #endif
 
-/* 注册所有引擎 */
+/* 注册所有引擎 - 使用统一的 engine_registry_init */
 static void register_all_engines(void) {
-    storage_register_engine(MODEL_KV, kv_engine_get_ops());
-    storage_register_engine(MODEL_VECTOR, vector_engine_get_ops());
-    storage_register_engine(MODEL_TIMESERIES, ts_engine_get_ops());
-    storage_register_engine(MODEL_DOCUMENT, doc_engine_get_ops());
-    storage_register_engine(MODEL_SPATIAL, spatial_engine_get_ops());
-    storage_register_engine(MODEL_TREE, yang_engine_get_ops());
-    storage_register_engine(MODEL_GRAPH, graph_engine_get_ops());
+    engine_registry_init();
 }
 
 #ifdef __cplusplus
@@ -54,8 +49,11 @@ protected:
         /* 初始化错误系统 */
         db_error_init();
 
-        /* 初始化多模态存储管理器 */
+        /* 初始化多模态存储管理器（内部调用 engine_registry_init） */
         ASSERT_EQ(0, mm_storage_init("./test_data/mm_storage"));
+        /* 记录已注册引擎数量 */
+        int count = get_registered_engine_count();
+        printf("Registered engines: %d\n", count);
     }
 
     void TearDown() override {
@@ -565,4 +563,32 @@ TEST_F(MmStorageTest, SpatialUtils) {
 
     bbox_t bbox3 = bbox_create(20.0, 20.0, 30.0, 30.0);
     EXPECT_FALSE(bbox_intersects(&bbox, &bbox3));
+}
+
+/**
+ * @brief 测试新模型枚举值
+ */
+TEST_F(MmStorageTest, NewModelEnums) {
+    /* 验证 MODEL_STREAM 和 MODEL_COLUMNAR 的枚举值 */
+    EXPECT_EQ(MODEL_STREAM, 8);
+    EXPECT_EQ(MODEL_COLUMNAR, 9);
+    EXPECT_EQ(MODEL_COUNT, 10);
+}
+
+/**
+ * @brief 测试新模型的目录名
+ */
+TEST_F(MmStorageTest, NewModelDirectories) {
+    /* 验证目录名映射正确 */
+    EXPECT_STREQ(mm_get_model_dir(MODEL_STREAM), "stream");
+    EXPECT_STREQ(mm_get_model_dir(MODEL_COLUMNAR), "columnar");
+}
+
+/**
+ * @brief 测试引擎注册数量
+ */
+TEST_F(MmStorageTest, EngineRegistrationCount) {
+    int count = get_registered_engine_count();
+    EXPECT_GT(count, 0);
+    printf("Registered engines: %d\n", count);
 }
