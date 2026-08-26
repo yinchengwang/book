@@ -16,12 +16,13 @@ option(MMDB_ENABLE_SPATIAL "Enable Spatial Model" ON)
 option(MMDB_ENABLE_TREE "Enable Tree Model" ON)
 option(MMDB_ENABLE_STREAM "Enable Stream Model" OFF)  # 新增，默认关闭
 option(MMDB_ENABLE_COLUMNAR "Enable Columnar Model" OFF)  # 新增，默认关闭
+option(MMDB_ENABLE_SPARSE "Enable Sparse Vector + BM25 Hybrid Retrieval" ON)
 
 # ========================================================================
 # 分布式能力开关
 # ========================================================================
 
-option(MMDB_ENABLE_DISTRIBUTED "Enable Distributed Features" OFF)
+option(MMDB_ENABLE_DISTRIBUTED "Enable Distributed Features" ON)
 option(MMDB_ENABLE_DISTRIBUTED_RAFT "Enable Raft Consensus" OFF)
 option(MMDB_ENABLE_DISTRIBUTED_SHARD "Enable Sharding" OFF)
 
@@ -50,4 +51,5 @@ message(STATUS "  Spatial: ${MMDB_ENABLE_SPATIAL}")
 message(STATUS "  Tree: ${MMDB_ENABLE_TREE}")
 message(STATUS "  Stream: ${MMDB_ENABLE_STREAM}")
 message(STATUS "  Columnar: ${MMDB_ENABLE_COLUMNAR}")
+message(STATUS "  Sparse: ${MMDB_ENABLE_SPARSE}")
 message(STATUS "  Distributed: ${MMDB_ENABLE_DISTRIBUTED}")

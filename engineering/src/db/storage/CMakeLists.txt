@@ -109,6 +109,30 @@ if(MMDB_ENABLE_COLUMNAR)
     endif()
 endif()
 
+# 时空引擎
+if(MMDB_ENABLE_ST)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/st")
+        add_subdirectory(st)
+        message(STATUS "ST engine: enabled")
+    endif()
+endif()
+
+# RDF 知识图谱引擎
+if(MMDB_ENABLE_RDF)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/rdf")
+        add_subdirectory(rdf)
+        message(STATUS "RDF engine: enabled")
+    endif()
+endif()
+
+# 稀疏向量 + BM25 混合检索引擎
+if(MMDB_ENABLE_SPARSE)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sparse")
+        add_subdirectory(sparse)
+        message(STATUS "Sparse + BM25 hybrid engine: enabled")
+    endif()
+endif()
+
 # ========================================================================
 # 组合 db_storage 主库
 # ========================================================================
@@ -129,6 +153,15 @@ if(MMDB_ENABLE_STREAM AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/stream")
 endif()
 if(MMDB_ENABLE_COLUMNAR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/columnar")
     list(APPEND DB_STORAGE_SUBMODULES columnar)
+endif()
+if(MMDB_ENABLE_ST AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/st")
+    list(APPEND DB_STORAGE_SUBMODULES st)
+endif()
+if(MMDB_ENABLE_RDF AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/rdf")
+    list(APPEND DB_STORAGE_SUBMODULES rdf)
+endif()
+if(MMDB_ENABLE_SPARSE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sparse")
+    list(APPEND DB_STORAGE_SUBMODULES sparse)
 endif()
 
 foreach(subdir ${DB_STORAGE_SUBMODULES})

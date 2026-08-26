@@ -75,6 +75,9 @@ add_subdirectory(txn)
 # 并发控制（MVCC 多版本并发控制）
 add_subdirectory(concurrency)
 
+# 分布式模块（分片路由层）
+add_subdirectory(distributed)
+
 # 主从复制（流复制、故障切换）
 add_subdirectory(replication)
 
@@ -107,6 +110,11 @@ add_subdirectory(cli)
 
 # API 层（REST API + 向量 API）
 add_subdirectory(api)
+
+# ========================================================================
+# 协议兼容层（MySQL 线协议 + 分析 SQL 方言）
+# ========================================================================
+add_subdirectory(protocol)
 
 # ========================================================================
 # 工具模块（系统表管理、数据导入导出、统计信息、执行计划分析、空间回收、索引重建）

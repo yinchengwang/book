@@ -38,6 +38,15 @@ extern const storage_ops_t *stream_engine_get_ops(void);
 #ifdef MMDB_ENABLE_COLUMNAR
 extern const storage_ops_t *columnar_engine_get_ops(void);
 #endif
+#ifdef MMDB_ENABLE_ST
+extern const storage_ops_t *st_engine_get_ops(void);
+#endif
+#ifdef MMDB_ENABLE_RDF
+extern const storage_ops_t *rdf_engine_get_ops(void);
+#endif
+#ifdef MMDB_ENABLE_SPARSE
+/* 稀疏向量引擎不实现 storage_ops_t，仅提供独立检索接口 */
+#endif
 
 /* 已注册引擎计数 */
 static int g_registered_count = 0;
@@ -151,6 +160,28 @@ int engine_registry_init(void) {
         const storage_ops_t *ops = columnar_engine_get_ops();
         if (ops && register_storage_engine(MODEL_COLUMNAR, ops) == 0) {
             LOG_INFO("Registered Columnar engine: %s", ops->name);
+            count++;
+        }
+    }
+#endif
+
+    /* 时空引擎 */
+#ifdef MMDB_ENABLE_ST
+    if (st_engine_get_ops) {
+        const storage_ops_t *ops = st_engine_get_ops();
+        if (ops && register_storage_engine(MODEL_SPATIAL, ops) == 0) {
+            LOG_INFO("Registered ST engine: %s", ops->name);
+            count++;
+        }
+    }
+#endif
+
+    /* RDF 引擎 */
+#ifdef MMDB_ENABLE_RDF
+    if (rdf_engine_get_ops) {
+        const storage_ops_t *ops = rdf_engine_get_ops();
+        if (ops && register_storage_engine(MODEL_GRAPH, ops) == 0) {
+            LOG_INFO("Registered RDF engine: %s", ops->name);
             count++;
         }
     }
