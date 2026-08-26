@@ -1,0 +1,299 @@
+# RAG System - Configuration Template
+# ==============================================================================
+# This configuration file controls the behavior of the RAG system.
+# Copy this file to `config.yaml` in your project root and modify as needed.
+# ==============================================================================
+
+# --- System Settings ---
+server:
+  host: "0.0.0.0"
+  port: 8080
+  workers: 4
+  log_level: "info"
+
+# --- Data Sources ---
+data_sources:
+  - name: "default"
+    type: "local"
+    path: "./data"
+    file_types:
+      - "pdf"
+      - "md"
+      - "txt"
+      - "html"
+      - "csv"
+      - "json"
+      - "code"
+      - "image"
+      - "audio"
+      - "video"
+
+# --- Chunking ---
+chunking:
+  strategy: "recursive"  # "recursive" | "semantic" | "code"
+  chunk_size: 1024
+  chunk_overlap: 200
+  min_chunk_size: 100
+  max_chunk_size: 4096
+
+  # Code-specific settings
+  code:
+    language_detection: true
+    preserve_structure: true
+
+# --- Embedding ---
+embedding:
+  model: "BAAI/bge-m3"
+  dimension: 768
+  max_length: 8192
+  batch_size: 32
+
+  # Local vs Remote
+  provider: "local"  # "local" | "openai" | "azure"
+  local:
+    path: "./models/bge-m3"
+    device: "auto"  # "auto", "cuda", "cpu"
+    compute_type: "float32"  # "float32", "int8", "fp16"
+
+  # OpenAI settings (if provider: "openai")
+  openai:
+    api_key: "${OPENAI_API_KEY}"
+    model: "text-embedding-3-large"
+
+# --- Retrieval ---
+retrieval:
+  # Dense Retrieval (HNSW)
+  hnsw:
+    ef_construction: 200
+    M: 32
+    ef_search: 128
+    similarity: "cosine"  # "cosine", "ip", "l2"
+
+  # Sparse Retrieval (BM25)
+  bm25:
+    k1: 1.2
+    b: 0.75
+    analyzer: "standard"
+
+  # BGE-M3 Sparse Retrieval
+  bge_m3_sparse:
+    enabled: true
+    top_k: 100
+
+  # Hybrid Retrieval
+  hybrid:
+    enabled: true
+    strategy: "rrf"  # "rrf" | "weighted"
+    top_k: 50
+
+    # RRF (Reciprocal Rank Fusion) settings
+    rrf:
+      k: 60  # RRF constant
+
+    # Weights for weighted fusion
+    weights:
+      dense: 0.4
+      sparse: 0.3
+      bm25: 0.3
+
+  # Reranker
+  reranker:
+    enabled: true
+    model: "BAAI/bge-reranker-v2-m3"
+    provider: "local"  # "local" | "cohere"
+    top_n: 20
+    batch_size: 16
+
+    # Local Reranker settings
+    local:
+      path: "./models/bge-reranker"
+      format: "onnx"  # "onnx" | "pytorch"
+      use_gpu: false
+
+    # Cohere settings (if provider: "cohere")
+    cohere:
+      api_key: "${COHERE_API_KEY}"
+      model: "rerank-multilingual-v3.0"
+
+# --- Metadata Filtering ---
+metadata_filter:
+  enabled: true
+  pushdown_enabled: true  # Push filter to database query
+
+# --- Query Understanding ---
+query:
+  # Query Classifier
+  classifier:
+    strategy: "ensemble"  # "rule", "keyword", "llm", "ensemble"
+    confidence_threshold: 0.6
+    llm_model: "Qwen/Qwen2-7B-Instruct"
+
+  # Query Decomposer (for multi-hop queries)
+  decomposer:
+    enabled: true
+    strategy: "rule"  # "rule" | "llm" | "hybrid"
+    max_sub_queries: 5
+
+# --- Self-RAG ---
+self_rag:
+  enabled: true
+  max_retrieval_turns: 3
+
+  thresholds:
+    relevance: 0.5
+    support: 0.3
+    usefulness: 0.5
+
+  # Corrective RAG
+  corrective:
+    enabled: true
+    web_fallback_enabled: false
+    rewrite_strategy: "llm"  # "llm" | "rule"
+
+# --- Graph RAG ---
+graph_rag:
+  enabled: false  # Enable if Knowledge Graph is populated
+
+  entity_extraction:
+    strategy: "llm"  # "regex" | "llm"
+    model: "Qwen/Qwen2-7B-Instruct"
+    confidence_threshold: 0.6
+
+  community_detection:
+    algorithm: "louvain"  # "louvain" | "label_propagation"
+    resolution: 1.0
+
+  summary:
+    model: "Qwen/Qwen2-7B-Instruct"
+    max_tokens: 512
+
+# --- Multimodal ---
+multimodal:
+  enabled: true
+
+  chart:
+    enabled: true
+    vlm_model: "Qwen/Qwen2-VL-4B-Instruct"
+    vlm_path: "./models/qwen-vl2"
+    use_local_vlm: true
+
+  video:
+    enabled: true
+    frame_model: "CLIP-ViT-H-14"
+    frame_path: "./models/clip"
+    whisper_model: "large-v3"
+    whisper_path: "./models/whisper-large-v3"
+    sample_fps: 1.0  # Frames per second to extract
+    max_frames: 100
+
+  audio:
+    enabled: true
+    whisper_model: "large-v3"
+    whisper_path: "./models/whisper-large-v3"
+    language: "auto"  # "zh", "en", "auto"
+    word_timestamps: true
+
+  code:
+    enabled: true
+    model: "microsoft/graphcodebert-base"
+    path: "./models/graphcodebert"
+
+# --- LLM Generation ---
+llm:
+  provider: "local"  # "local" | "openai" | "ollama"
+  model: "Qwen/Qwen2-7B-Instruct"
+
+  # Local settings
+  local:
+    path: "./models/qwen2-7b"
+    device: "auto"
+    max_tokens: 2048
+    temperature: 0.7
+
+  # OpenAI settings
+  openai:
+    api_key: "${OPENAI_API_KEY}"
+    model: "gpt-4o"
+    max_tokens: 4096
+
+  # Ollama settings
+  ollama:
+    base_url: "http://localhost:11434"
+    model: "qwen2:7b"
+
+# --- Observability ---
+observability:
+  tracing:
+    enabled: true
+    sampling_rate: 1.0  # 0.0 to 1.0
+    export_format: "json"  # "json" | "otlp"
+
+  metrics:
+    enabled: true
+    export_prometheus: true
+    export_json: true
+    port: 9090
+
+    # Custom labels
+    labels:
+      environment: "development"
+      version: "1.0.0"
+
+# --- Caching ---
+caching:
+  enabled: true
+  type: "memory"  # "memory" | "redis"
+  max_size: 1000  # Max number of cached queries
+  ttl_seconds: 3600
+
+  redis:
+    host: "localhost"
+    port: 6379
+    db: 0
+
+# --- Security ---
+security:
+  # Rate limiting
+  rate_limit:
+    enabled: true
+    requests_per_minute: 60
+
+  # API Key authentication (optional)
+  api_key:
+    enabled: false
+    header: "X-API-Key"
+    keys: []
+
+# --- Database ---
+database:
+  type: "sqlite"  # "sqlite" | "postgres"
+  path: "./data/rag.db"
+
+  # SQLite settings
+  sqlite:
+    journal_mode: "WAL"
+    synchronous: "NORMAL"
+    busy_timeout: 5000
+
+  # Postgres settings (if type: "postgres")
+  postgres:
+    host: "localhost"
+    port: 5432
+    database: "rag"
+    user: "postgres"
+    password: "${DB_PASSWORD}"
+
+# --- Performance ---
+performance:
+  # Batch processing
+  batch_size: 32
+  max_concurrent_inference: 4
+
+  # Memory management
+  max_memory_gb: 16
+  gpu_memory_fraction: 0.8
+
+  # Index optimization
+  index:
+    build_threads: 4
+    optimize_interval: 1000  # Re-optimize after N inserts
