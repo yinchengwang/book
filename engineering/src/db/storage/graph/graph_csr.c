@@ -6,6 +6,7 @@
  */
 #include "db/storage/graph/graph_csr.h"
 #include "db/core/log.h"
+#include "db/storage/wal/wal_flush.h"   /* C2-3 T4：db_fsync */
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -213,6 +214,10 @@ graph_csr_t *graph_csr_open(const char *data_dir) {
 int graph_csr_save(graph_csr_t *csr) {
     if (csr == NULL) return -1;
 
+    /* C2-3 T4：fsync 策略——按 C0-2 统一 flush 策略（默认 FSYNC） */
+    wal_flush_policy_t policy = wal_flush_get_policy();
+    int do_fsync = (policy == WAL_FLUSH_FSYNC || policy == WAL_FLUSH_BATCH);
+
     char vertices_path[512];
     char edges_path[512];
     char meta_path[512];
@@ -239,6 +244,14 @@ int graph_csr_save(graph_csr_t *csr) {
     fwrite(&csr->edge_count, sizeof(csr->edge_count), 1, fp);
     fwrite(&csr->label_count, sizeof(csr->label_count), 1, fp);
     fclose(fp);
+    if (do_fsync) {
+        /* 重新打开以 fsync（FILE* 关闭后 fileno 无效） */
+        FILE *fsync_fp = fopen(meta_path, "rb");
+        if (fsync_fp) {
+            db_fsync(fileno(fsync_fp));
+            fclose(fsync_fp);
+        }
+    }
 
     /* 写入顶点数据 */
     fp = fopen(vertices_path, "wb");
