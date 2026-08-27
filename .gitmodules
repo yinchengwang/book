@@ -46,3 +46,6 @@
 [submodule "reference/relational/openGauss"]
 	path = reference/relational/openGauss
 	url = https://gitee.com/opengauss/openGauss-server.git
+[submodule "reference/vector/milvus"]
+	path = reference/vector/milvus
+	url = https://gitee.com/milvus-io/milvus.git
