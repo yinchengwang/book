@@ -6,9 +6,10 @@ set(TRAVERSE_SOURCE_FILES
     ${ENGINEERING_SOURCE_DIR}/src/db/executor/graph/traverse/traverse.c
 )
 
-# 包含图分析算法源文件
+# 包含图分析算法和 Cypher 解析器源文件
 set(GRAPH_ALGO_SOURCE_FILES
     ${ENGINEERING_SOURCE_DIR}/src/db/graph/graph_algorithms.c
+    ${ENGINEERING_SOURCE_DIR}/src/db/graph/graph_cypher.c
 )
 
 if(GRAPH_SOURCE_FILES OR TRAVERSE_SOURCE_FILES OR GRAPH_ALGO_SOURCE_FILES)

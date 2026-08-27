@@ -344,15 +344,15 @@ static void cypher_error_at(CypherParser *parser, const CypherToken *token,
 static CypherNodePattern *cypher_parse_node_pattern(CypherParser *parser);
 static CypherRelPattern *cypher_parse_rel_pattern(CypherParser *parser);
 static CypherPatternChain *cypher_parse_pattern_chain(CypherParser *parser);
-static CypherASTNode *cypher_parse_expression(CypherParser *parser);
+static CypherASTNode_t *cypher_parse_expression(CypherParser *parser);
 static CypherReturnItem *cypher_parse_return_item(CypherParser *parser);
 static CypherReturn *cypher_parse_return(CypherParser *parser);
 static CypherWhere *cypher_parse_where(CypherParser *parser);
 static CypherCreate *cypher_parse_create(CypherParser *parser);
 
-static CypherASTNode *cypher_alloc_node(CypherASTType type)
+static CypherASTNode_t *cypher_alloc_node(CypherASTType type)
 {
-    CypherASTNode *node = (CypherASTNode *)calloc(1, sizeof(CypherASTNode));
+    CypherASTNode_t *node = (CypherASTNode_t *)calloc(1, sizeof(CypherASTNode));
     node->type = type;
     return node;
 }
@@ -616,11 +616,11 @@ static CypherPatternChain *cypher_parse_pattern_chain(CypherParser *parser)
 }
 
 /* 解析表达式 */
-static CypherASTNode *cypher_parse_expression(CypherParser *parser)
+static CypherASTNode_t *cypher_parse_expression(CypherParser *parser)
 {
     (void)parser;
     /* 简化实现：解析标识符或字面量 */
-    CypherASTNode *node = NULL;
+    CypherASTNode_t *node = NULL;
 
     if (cypher_check(parser, CYPHER_TOKEN_IDENTIFIER)) {
         node = cypher_alloc_node(CYPHER_AST_IDENTIFIER);
@@ -890,7 +890,7 @@ void cypher_pattern_chain_free(CypherPatternChain *chain)
     free(chain);
 }
 
-void cypher_ast_free(CypherASTNode *node)
+void cypher_ast_free(CypherASTNode_t *node)
 {
     if (!node) return;
 
@@ -996,7 +996,7 @@ CypherResult *cypher_execute(void *graph, const char *query, void *params)
     return result;
 }
 
-void cypher_ast_print(const CypherASTNode *node, int indent)
+void cypher_ast_print(const CypherASTNode_t *node, int indent)
 {
     if (!node) return;
 
@@ -1006,7 +1006,7 @@ void cypher_ast_print(const CypherASTNode *node, int indent)
         case CYPHER_AST_QUERY:
             printf("Query\n");
             if (node->u.query.query) {
-                cypher_ast_print((CypherASTNode *)node->u.query.query, indent + 1);
+                cypher_ast_print((CypherASTNode_t *)node->u.query.query, indent + 1);
             }
             break;
         case CYPHER_AST_SINGLE_QUERY:
@@ -1017,7 +1017,7 @@ void cypher_ast_print(const CypherASTNode *node, int indent)
     }
 }
 
-char *cypher_ast_to_string(const CypherASTNode *node)
+char *cypher_ast_to_string(const CypherASTNode_t *node)
 {
     (void)node;
     return strdup("Cypher AST");

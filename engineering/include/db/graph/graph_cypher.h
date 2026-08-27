@@ -353,7 +353,7 @@ const char *cypher_get_error(const CypherParser *parser);
 /**
  * @brief 释放 AST
  */
-void cypher_ast_free(CypherASTNode_t *node);
+void cypher_ast_free(struct CypherASTNode_s *node);
 
 /**
  * @brief 释放查询
@@ -367,12 +367,12 @@ void cypher_query_free(CypherQuery *query);
 /**
  * @brief 打印 AST (调试用)
  */
-void cypher_ast_print(const CypherASTNode_t *node, int indent);
+void cypher_ast_print(const struct CypherASTNode_s *node, int indent);
 
 /**
  * @brief AST 转字符串
  */
-char *cypher_ast_to_string(const CypherASTNode_t *node);
+char *cypher_ast_to_string(const struct CypherASTNode_s *node);
 
 /* ========================================================================
  * 查询执行 (需要与 graph_engine 集成)
