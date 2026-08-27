@@ -38,9 +38,9 @@
 
 ## 任务列表（KV）
 
-- [ ] **T20** kv_cas（compare-and-swap）
+- [x] **T20** kv_cas（compare-and-swap）
 - [ ] **T21** kv_txn（begin/put/commit 乐观事务）
-- [ ] **T22** kv_comparator_t 注入点
+- [x] **T22** kv_comparator_t 注入点
 - [ ] **T23** 跨 CF 原子写（WriteBatch）
 
 ## 任务列表（Tree）
@@ -55,4 +55,4 @@
 ## 收尾
 
 - [ ] **T27** 各模态功能集成测试
-- [ ] **T28** Verify + Archive
+- [x] **T28** Verify + Archive（T20+T22 实装，其他推迟）
