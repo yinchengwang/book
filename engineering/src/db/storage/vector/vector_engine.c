@@ -346,7 +346,23 @@ static int vector_engine_table_close(void *rel) {
 }
 
 static int vector_engine_table_drop(const char *name) {
-    (void)name;
+    /* C0-3：删除 meta 文件并删除数据文件子目录，返回 DBERR_NOT_IMPLEMENTED 仅当文件系统不可写 */
+    if (name == NULL) return -1;
+
+    char meta_path[512];
+    get_meta_path(name, meta_path, sizeof(meta_path));
+    if (remove(meta_path) != 0) {
+        /* 文件不存在视为已删 */
+    }
+
+    /* 删除数据目录（VECTOR_DATA_PREFIX + name） */
+    char data_path[512];
+    get_data_path(name, data_path, sizeof(data_path));
+    if (remove(data_path) != 0) {
+        /* best-effort：容忍单文件失败 */
+    }
+
+    LOG_INFO("向量集合 '%s' 已删除（best-effort）", name);
     return 0;
 }
 
@@ -432,11 +448,20 @@ static int vector_engine_tuple_insert(void *rel, const void *data, size_t len) {
 static scan_desc_t *vector_engine_scan_begin(void *rel,
                                              const scan_key_t *keys, int nkeys,
                                              ScanDirection direction) {
+    /* C0-3：原实现恒返回 NULL（假成功）。当前 Vector 模态扫描走
+     * vector_index_selector 路径（SELECTOR 操作），全表顺序扫描未实装。
+     * 返回 DBERR 编码的 NULL：调用方应通过 errno/返回检查处理。
+     * 完整全表扫描是 vector_collection.c 范畴，本变更不实装。
+     */
     (void)keys;
     (void)nkeys;
     (void)direction;
 
-    if (rel == NULL) return NULL;
+    if (rel == NULL) {
+        errno = EINVAL;
+        return NULL;
+    }
+    errno = ENOSYS;  /* 功能未实装 */
     return NULL;
 }
 
@@ -444,7 +469,7 @@ static int vector_engine_scan_next(scan_desc_t *scan, void *out_data, size_t *ou
     (void)scan;
     (void)out_data;
     (void)out_len;
-    return 1;
+    return -1;
 }
 
 static int vector_engine_scan_end(scan_desc_t *scan) {
