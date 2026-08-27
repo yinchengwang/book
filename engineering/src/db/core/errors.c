@@ -447,3 +447,37 @@ const char *db_error_level_name(db_error_level_t level) {
     }
     return error_level_names[level];
 }
+
+/* ========================================================================
+ * C0-3：DBERR_* 整型错误码 → 可读字符串
+ * ======================================================================== */
+
+const char *dberr_str(int code) {
+    switch (code) {
+        case DBERR_OK:                  return "OK";
+        case DBERR_INVALID:            return "INVALID";
+        case DBERR_IO:                 return "IO";
+        case DBERR_NOMEM:              return "NOMEM";
+        case DBERR_FULL:               return "FULL";
+        case DBERR_CONFLICT:           return "CONFLICT";
+        case DBERR_NOT_IMPLEMENTED:    return "NOT_IMPLEMENTED";
+        case DBERR_WAL_FAILED:         return "WAL_FAILED";
+        case DBERR_NOT_FOUND:          return "NOT_FOUND";
+        case DBERR_EXISTS:             return "EXISTS";
+        case DBERR_CORRUPT:            return "CORRUPT";
+        case DBERR_TIMEOUT:            return "TIMEOUT";
+        case DBERR_LOCKED:             return "LOCKED";
+        case DBERR_MOD_KV:             return "KV";
+        case DBERR_MOD_GRAPH:          return "GRAPH";
+        case DBERR_MOD_VECTOR:         return "VECTOR";
+        case DBERR_MOD_TS:             return "TS";
+        case DBERR_MOD_DOC:            return "DOC";
+        case DBERR_MOD_SPATIAL:        return "SPATIAL";
+        case DBERR_MOD_RELATIONAL:     return "REL";
+        case DBERR_MOD_TREE:           return "TREE";
+        case DBERR_MOD_RDF:            return "RDF";
+        case DBERR_MOD_SPARSE:         return "SPARSE";
+        case DBERR_MOD_BLOB:           return "BLOB";
+        default:                       return "UNKNOWN";
+    }
+}
