@@ -31,7 +31,7 @@ typedef struct lock_manager_s lock_manager_t;
 #define KV_MAX_KEY_SIZE 8192
 
 /** 最大值长度 */
-#define KV_MAX_VALUE_SIZE (1024 * 1024)  /* 1MB */
+#define KV_MAX_VALUE_SIZE (16 * 1024 * 1024)  /* 16MB (C1-3 T5) */
 
 /** 默认数据库名称 */
 #define KV_DEFAULT_DB_NAME "kv.db"
