@@ -238,6 +238,11 @@ TupleTableSlot *ExecSeqScan(PlanState *pstate)
         /* 更新统计信息 */
         ext_state->ss_tuples_scanned++;
 
+        /* C1-1：从 scan descriptor 读取真实 TID 填入 slot */
+        slot->tts_tid.ip_blkid = ext_state->ss_currentScanDesc->rs_curr_blk;
+        slot->tts_tid.ip_posid = ext_state->ss_currentScanDesc->rs_curr_off;
+        slot->tts_tid.valid = true;
+
         /* 将元组复制到槽中（不使用 Relation 内部字段） */
         ExecCopyTupleToSlot(slot, tuple, NULL);
 
