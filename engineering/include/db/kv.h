@@ -48,7 +48,11 @@ typedef enum kv_result_e {
     KV_CORRUPT = 3,      /**< 数据库损坏 */
     KV_NOMEM = 4,        /**< 内存不足 */
     KV_EXISTS = 5,       /**< 键已存在 */
-    KV_INVALID = 6      /**< 无效参数 */
+    KV_INVALID = 6,      /**< 无效参数 */
+    /* C1-3 T3：专用错误码 */
+    KV_FULL = 7,         /**< page full（替代 KV_ERROR 用于此场景） */
+    KV_CONFLICT = 8,     /**< CAS 失败 */
+    KV_LOCKED = 9        /**< 锁等待超时 */
 } kv_result_t;
 
 /* ============================================================
@@ -65,6 +69,8 @@ struct kv_s {
     size_t         num_keys;       /**< 键数量 */
     lock_manager_t *lock_mgr;      /**< 锁管理器 */
     void          *ttl_mgr;        /**< TTL 管理器 */
+    /* C1-3 T2：mmdb_rwlock 并发保护（put/get/delete 包裹） */
+    mmdb_rwlock_t  rwlock;
 };
 
 /** KV 数据库（公开类型） */
@@ -300,6 +306,7 @@ int kv_replay_wal(kv_t *db, const char *wal_path);
  * ======================================================================== */
 
 #include "db/errors.h"
+#include "db/mmdb_lock.h"  /* C1-3 T2 */
 
 #define KV_TO_DBERR(rc) \
     ((rc) == KV_OK        ? DBERR_OK        : \
@@ -309,7 +316,25 @@ int kv_replay_wal(kv_t *db, const char *wal_path);
      (rc) == KV_EXISTS    ? DBERR_EXISTS    : \
      (rc) == KV_INVALID   ? DBERR_INVALID   : \
      (rc) == KV_CORRUPT   ? DBERR_CORRUPT   : \
+     (rc) == KV_CONFLICT  ? DBERR_CONFLICT  : \
+     (rc) == KV_LOCKED    ? DBERR_LOCKED    : \
                              DBERR_MOD_KV)
+
+/**
+ * @brief C1-3 T6：kv_get 释放契约
+ *
+ * kv_get 成功时将 value 拷贝到 malloc 分配的缓冲区，通过 *out_value 返回。
+ * **调用方必须**对 *out_value 指向的内存调用 free()，否则内存泄漏。
+ *
+ * 示例：
+ *   void *val = nullptr;
+ *   size_t val_len = 0;
+ *   kv_result_t rc = kv_get(db, key, key_len, &val, &val_len);
+ *   if (rc == KV_OK) {
+ *       // ... 使用 val ...
+ *       free(val);
+ *   }
+ */
 
 #ifdef __cplusplus
 }
