@@ -13,6 +13,7 @@
 #include "db/index/vector_index/ivf_pq/ivf_pq.h"
 #include "db/index/vector_index/vector_index_selector.h"
 #include "db/mm_pool.h"
+#include "db/mm_record.h"  /* C0-3：统一序列化头部 */
 #include "db/lock.h"
 #include <algo-prod/quantization/quantization.h>
 #include <stdlib.h>
@@ -370,9 +371,16 @@ static int vector_engine_tuple_insert(void *rel, const void *data, size_t len) {
     if (rel == NULL || data == NULL) return -1;
     vector_engine_db_t *db = (vector_engine_db_t *)rel;
 
-    if (len < sizeof(uint64_t) + sizeof(int32_t)) return -1;
-
+    /* C0-3：支持 mm_record_header_t 前缀；旧格式（无头部）走历史路径 */
     const uint8_t *ptr = (const uint8_t *)data;
+    size_t remaining = len;
+    if (mm_record_has_header(data, len)) {
+        ptr += sizeof(mm_record_header_t);
+        remaining -= sizeof(mm_record_header_t);
+    }
+
+    if (remaining < sizeof(uint64_t) + sizeof(int32_t)) return -1;
+
     ptr += sizeof(uint64_t);  /* skip id */
 
     int32_t dim;
