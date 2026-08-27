@@ -392,18 +392,24 @@ static int vector_engine_tuple_insert(void *rel, const void *data, size_t len) {
     size_t vec_data_len = len - sizeof(uint64_t) - sizeof(int32_t);
     const float *vector = (const float *)ptr;
 
-    /* WAL 写入（在数据修改前） */
-    if (db->use_wal && db->wal != NULL) {
-        int32_t vec_id = (int32_t)db->num_vectors;  /* 预分配 ID */
-        if (vector_wal_append(db->wal, db->segment_id, vec_id, dim, vector) != 0) {
-            LOG_WARN("WAL 写入失败，数据可能不安全");
-        }
-    }
+    /* C1-2 T5：WAL 必须按真实 vec_id 记录。
+     * 旧代码先按 db->num_vectors 预分配 vec_id 写 WAL，再调 vector_page_append
+     * 获取真实 id——两条路径的 id 可能错位（vec_page 内部可能跳号）。
+     * 现改为：先调 page_append 拿真实 id，再按真实 id 写 WAL。
+     */
+    int32_t actual_vec_id = -1;
 
     /* 优先使用 VecPage 页池存储 */
     if (db->use_page_pool && db->page_pool != NULL) {
-        int32_t vec_id = vector_page_append(db->page_pool, vector, -1);
-        if (vec_id >= 0) {
+        actual_vec_id = vector_page_append(db->page_pool, vector, -1);
+        if (actual_vec_id >= 0) {
+            /* C1-2 T5：WAL 写真实 vec_id */
+            if (db->use_wal && db->wal != NULL) {
+                if (vector_wal_append(db->wal, db->segment_id, actual_vec_id,
+                                      dim, vector) != 0) {
+                    LOG_WARN("WAL 写入失败，数据可能不安全");
+                }
+            }
             /* 如果启用了 PQ 量化，同时进行编码 */
             if (db->use_quantization && db->quantizer != NULL) {
                 uint8_t code[64];  /* PQ 最大码长 */
