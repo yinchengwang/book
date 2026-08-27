@@ -15,6 +15,7 @@ if(GRAPH_SOURCE_FILES OR TRAVERSE_SOURCE_FILES OR GRAPH_ALGO_SOURCE_FILES)
     add_library(storage_graph OBJECT ${GRAPH_SOURCE_FILES} ${TRAVERSE_SOURCE_FILES} ${GRAPH_ALGO_SOURCE_FILES})
     target_include_directories(storage_graph PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/third_part/uthash/src
         ${ENGINEERING_SOURCE_DIR}/include
         ${ENGINEERING_SOURCE_DIR}/include/db
         ${ENGINEERING_SOURCE_DIR}/include/db/storage

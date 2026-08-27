@@ -150,18 +150,19 @@ typedef enum CypherASTType_e {
 } CypherASTType;
 
 /** 属性 */
-typedef struct CypherProp_s {
+struct CypherProp_s {
     char *name;
-    struct CypherASTNode *value;
-    struct CypherProp *next;
-} CypherProp;
+    struct CypherASTNode_s *value;
+    struct CypherProp_s *next;
+};
+typedef struct CypherProp_s CypherProp_t;
 
 /** 节点模式 */
 typedef struct CypherNodePattern_s {
     char *variable;            /**< 变量名 (可选) */
     char **labels;             /**< 标签数组 */
     size_t num_labels;
-    CypherProp *props;          /**< 属性列表 */
+    CypherProp_t *props;          /**< 属性列表 */
 } CypherNodePattern;
 
 /** 关系方向 */
@@ -183,7 +184,7 @@ typedef struct CypherRelPattern_s {
     char *variable;             /**< 变量名 (可选) */
     char **rel_types;           /**< 关系类型数组 */
     size_t num_rel_types;
-    CypherProp *props;          /**< 属性 */
+    CypherProp_t *props;          /**< 属性 */
     CypherRelDir dir;           /**< 方向 */
     CypherVarLen *var_len;      /**< 变量长度 (可选) */
 } CypherRelPattern;
@@ -197,12 +198,12 @@ typedef struct CypherPatternChain_s {
 
 /** WHERE 子句 */
 typedef struct CypherWhere_s {
-    struct CypherASTNode *expr;
+    struct CypherASTNode_s *expr;
 } CypherWhere;
 
 /** RETURN 项 */
 typedef struct CypherReturnItem_s {
-    struct CypherASTNode *expr;
+    struct CypherASTNode_s *expr;
     char *alias;                /**< 别名 (可选) */
 } CypherReturnItem;
 
@@ -211,9 +212,9 @@ typedef struct CypherReturn_s {
     CypherReturnItem **items;
     size_t num_items;
     bool distinct;
-    CypherASTNode *order_by;
-    CypherASTNode *skip;
-    CypherASTNode *limit;
+    struct CypherASTNode_s *order_by;
+    struct CypherASTNode_s *skip;
+    struct CypherASTNode_s *limit;
 } CypherReturn;
 
 /** CREATE 子句 */
@@ -224,20 +225,20 @@ typedef struct CypherCreate_s {
 
 /** DELETE 子句 */
 typedef struct CypherDelete_s {
-    CypherASTNode **exprs;
+    struct CypherASTNode_s **exprs;
     size_t num_exprs;
     bool detach;                 /**< DETACH DELETE */
 } CypherDelete;
 
 /** SET 子句 */
 typedef struct CypherSet_s {
-    CypherASTNode **items;
+    struct CypherASTNode_s **items;
     size_t num_items;
 } CypherSet;
 
 /** ORDER BY */
 typedef struct CypherOrderBy_s {
-    CypherASTNode **items;
+    struct CypherASTNode_s **items;
     size_t num_items;
     bool *ascending;            /**< 每项的升序/降序 */
 } CypherOrderBy;
@@ -251,7 +252,7 @@ typedef struct CypherSingleQuery_s {
     CypherCreate *create;        /**< CREATE (可选) */
     CypherDelete *del;           /**< DELETE (可选) */
     CypherSet *set;             /**< SET (可选) */
-    CypherASTNode *with;        /**< WITH (可选) */
+    struct CypherASTNode_s *with;        /**< WITH (可选) */
 } CypherSingleQuery;
 
 /** 完整查询 */
@@ -261,7 +262,7 @@ typedef struct CypherQuery_s {
 } CypherQuery;
 
 /** AST 节点 */
-typedef struct CypherASTNode_s {
+struct CypherASTNode_s {
     CypherASTType type;
     union {
         CypherQuery query;
@@ -296,7 +297,8 @@ typedef struct CypherASTNode_s {
             size_t num_args;
         } func_call;
     } u;
-} CypherASTNode;
+};
+typedef struct CypherASTNode_s CypherASTNode_t;
 
 /* ========================================================================
  * 解析器
@@ -316,7 +318,7 @@ typedef struct CypherParser_s {
     bool had_error;              /**< 是否发生错误 */
     char error_msg[512];         /**< 错误信息 */
 
-    CypherASTNode *ast;          /**< 解析结果 AST */
+    CypherASTNode_t *ast;          /**< 解析结果 AST */
 } CypherParser;
 
 /**
@@ -351,7 +353,7 @@ const char *cypher_get_error(const CypherParser *parser);
 /**
  * @brief 释放 AST
  */
-void cypher_ast_free(CypherASTNode *node);
+void cypher_ast_free(CypherASTNode_t *node);
 
 /**
  * @brief 释放查询
@@ -365,12 +367,12 @@ void cypher_query_free(CypherQuery *query);
 /**
  * @brief 打印 AST (调试用)
  */
-void cypher_ast_print(const CypherASTNode *node, int indent);
+void cypher_ast_print(const CypherASTNode_t *node, int indent);
 
 /**
  * @brief AST 转字符串
  */
-char *cypher_ast_to_string(const CypherASTNode *node);
+char *cypher_ast_to_string(const CypherASTNode_t *node);
 
 /* ========================================================================
  * 查询执行 (需要与 graph_engine 集成)
