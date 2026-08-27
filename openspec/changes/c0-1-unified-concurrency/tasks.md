@@ -2,7 +2,7 @@
 
 ## 任务列表
 
-- [ ] **T1** mmdb_lock.h 迁移到 include/db/（SDK 兼容 include 保留）
+- [x] **T1** mmdb_lock.h 迁移到 include/db/（SDK 兼容 include 保留）
 - [ ] **T2** vector_engine.c 替换 simple_rwlock → mmdb_rwlock（删除 :1552-1606 复刻实现）
 - [ ] **T3** ts_engine.c 替换 ts_rwlock → mmdb_rwlock
 - [ ] **T4** doc_engine.c 替换 doc_rwlock → mmdb_rwlock

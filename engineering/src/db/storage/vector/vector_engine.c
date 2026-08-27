@@ -213,10 +213,10 @@ static void *vector_engine_table_open(const char *name, AccessMode mode) {
     db->mem_pool = g_vec_pool;
     db->use_mem_pool = (g_vec_pool != NULL);
 
-    /* 初始化锁（默认禁用，调用者可通过 API 启用） */
+    /* 初始化锁（C0-1：默认启用，统一 mmdb_rwlock 原语） */
     db->lockmgr = g_vec_lockmgr;
-    db->rwlock = NULL;
-    db->use_lock = false;
+    mmdb_rwlock_init(&db->rwlock);
+    db->use_lock = true;
 
     /* 初始化 WAL */
     db->wal = NULL;
@@ -326,11 +326,8 @@ static int vector_engine_table_close(void *rel) {
         db->compressed_codes = NULL;
     }
 
-    /* 释放读写锁 */
-    if (db->rwlock != NULL) {
-        free(db->rwlock);
-        db->rwlock = NULL;
-    }
+    /* 释放读写锁（C0-1：值类型，直接 destroy） */
+    mmdb_rwlock_destroy(&db->rwlock);
 
     /* 关闭 WAL */
     if (db->wal != NULL) {
@@ -1547,63 +1544,10 @@ int vector_engine_get_mem_pool_stats(void *rel, mm_pool_stats_t *stats) {
 
 /* ========================================================================
  * 并发锁控制 API 实现
+ *
+ * C0-1：使用 db/mmdb_lock.h 统一跨平台锁原语，删除本地 simple_rwlock_t 实现。
+ * 原实现在 :1552-1606 有竞态窗口 + 写者饥饿 + 假超时，现替换为正确实现。
  * ======================================================================== */
-
-/* 简单的读写锁实现（基于自旋锁） */
-typedef struct {
-    volatile int readers;
-    volatile int writers_waiting;
-    volatile int writer_active;
-} simple_rwlock_t;
-
-static void rwlock_init(simple_rwlock_t *rwlock) {
-    rwlock->readers = 0;
-    rwlock->writers_waiting = 0;
-    rwlock->writer_active = 0;
-}
-
-static void rwlock_read_lock(simple_rwlock_t *rwlock) {
-    while (1) {
-        while (rwlock->writer_active) {
-            /* 等待写锁释放 */;
-        }
-        /* 原子增加读计数 */
-        __sync_fetch_and_add(&rwlock->readers, 1);
-        /* 再次检查写锁是否激活 */
-        if (!rwlock->writer_active) {
-            return;
-        }
-        /* 回退 */
-        __sync_fetch_and_sub(&rwlock->readers, 1);
-    }
-}
-
-static void rwlock_read_unlock(simple_rwlock_t *rwlock) {
-    __sync_fetch_and_sub(&rwlock->readers, 1);
-}
-
-static void rwlock_write_lock(simple_rwlock_t *rwlock) {
-    __sync_fetch_and_add(&rwlock->writers_waiting, 1);
-    while (1) {
-        /* 等待所有读锁释放 */
-        while (rwlock->readers > 0) {
-            /* 等待 */;
-        }
-        /* 尝试获取写锁 */
-        if (__sync_bool_compare_and_swap(&rwlock->writer_active, 0, 1)) {
-            __sync_fetch_and_sub(&rwlock->writers_waiting, 1);
-            return;
-        }
-    }
-}
-
-static void rwlock_write_unlock(simple_rwlock_t *rwlock) {
-    __sync_fetch_and_and(&rwlock->writer_active, 0);
-}
-
-static void rwlock_destroy(simple_rwlock_t *rwlock) {
-    (void)rwlock;  /* 自旋锁无需清理 */
-}
 
 int vector_engine_enable_lock(void *rel, bool use_lock) {
     if (rel == NULL) return -1;
@@ -1618,25 +1562,12 @@ int vector_engine_enable_lock(void *rel, bool use_lock) {
                 return -1;
             }
         }
-        /* 初始化读写锁 */
-        if (db->rwlock == NULL) {
-            db->rwlock = calloc(1, sizeof(simple_rwlock_t));
-            if (db->rwlock == NULL) {
-                return -1;
-            }
-            rwlock_init((simple_rwlock_t *)db->rwlock);
-        }
         db->lockmgr = g_vec_lockmgr;
         db->use_lock = true;
         LOG_INFO("向量引擎并发锁已启用");
     } else {
         db->use_lock = false;
         db->lockmgr = NULL;
-        if (db->rwlock != NULL) {
-            rwlock_destroy((simple_rwlock_t *)db->rwlock);
-            free(db->rwlock);
-            db->rwlock = NULL;
-        }
         LOG_INFO("向量引擎并发锁已禁用");
     }
     return 0;
@@ -1646,8 +1577,8 @@ int vector_engine_read_lock(void *rel) {
     if (rel == NULL) return -1;
     vector_engine_db_t *db = (vector_engine_db_t *)rel;
 
-    if (db->use_lock && db->rwlock != NULL) {
-        rwlock_read_lock((simple_rwlock_t *)db->rwlock);
+    if (db->use_lock) {
+        mmdb_rwlock_rdlock(&db->rwlock);
     }
     return 0;
 }
@@ -1656,8 +1587,8 @@ void vector_engine_read_unlock(void *rel) {
     if (rel == NULL) return;
     vector_engine_db_t *db = (vector_engine_db_t *)rel;
 
-    if (db->use_lock && db->rwlock != NULL) {
-        rwlock_read_unlock((simple_rwlock_t *)db->rwlock);
+    if (db->use_lock) {
+        mmdb_rwlock_unlock(&db->rwlock, 0);
     }
 }
 
@@ -1665,11 +1596,11 @@ int vector_engine_write_lock(void *rel, uint32_t timeout_ms) {
     if (rel == NULL) return -1;
     vector_engine_db_t *db = (vector_engine_db_t *)rel;
 
-    if (db->use_lock && db->rwlock != NULL) {
-        rwlock_write_lock((simple_rwlock_t *)db->rwlock);
-        (void)timeout_ms;  /* 自旋锁暂不支持超时 */
+    if (db->use_lock) {
+        /* SRWLOCK 与 pthread_rwlock 都不支持超时，与旧版语义一致 */
+        (void)timeout_ms;
+        mmdb_rwlock_wrlock(&db->rwlock);
     }
-    (void)db;  /* 消除未使用警告 */
     return 0;
 }
 
@@ -1677,8 +1608,8 @@ void vector_engine_write_unlock(void *rel) {
     if (rel == NULL) return;
     vector_engine_db_t *db = (vector_engine_db_t *)rel;
 
-    if (db->use_lock && db->rwlock != NULL) {
-        rwlock_write_unlock((simple_rwlock_t *)db->rwlock);
+    if (db->use_lock) {
+        mmdb_rwlock_unlock(&db->rwlock, 1);
     }
 }
 

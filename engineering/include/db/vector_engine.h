@@ -9,6 +9,7 @@
 
 #include "storage_engine.h"
 #include "db/index/vector_index/hnsw/faiss_hnsw.h"  /* 引入 faiss_hnsw_t 类型 */
+#include "db/mmdb_lock.h"                              /* 统一并发原语（C0-1） */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -84,10 +85,10 @@ typedef struct vector_engine_db_s {
     int ivf_pq_nlist;          /**< IVF 聚类数量 */
     int ivf_pq_nprobe;         /**< 搜索探针数量 */
 
-    /* 并发控制 */
+    /* 并发控制（C0-1：统一 mmdb_rwlock 原语） */
     void *lockmgr;             /**< 锁管理器 */
-    void *rwlock;              /**< 读写锁（pthread_rwlock 或模拟） */
-    bool use_lock;             /**< 是否启用锁 */
+    mmdb_rwlock_t rwlock;      /**< 跨平台读写锁（值类型，open 时 init） */
+    bool use_lock;             /**< 是否启用锁（C0-1：默认 true） */
 
     /* WAL 持久化 */
     void *wal;                 /**< WAL 句柄（vector_wal_t*） */
