@@ -162,6 +162,31 @@ int32_t faiss_hnsw_index_delete_batch(faiss_hnsw_t *index, const int32_t *ids, i
 int32_t faiss_hnsw_index_undelete(faiss_hnsw_t *index, int32_t id);
 bool faiss_hnsw_index_is_deleted(const faiss_hnsw_t *index, int32_t id);
 
+/* ========================================================================
+ * C1-2：COW（Copy-on-Write）批量段接口骨架
+ *
+ * 完整实现在后续变更展开；当前提供接口与最小骨架，
+ * 用于隔离"插入 COW 缓冲"与"搜索读快照"两条路径，避免 realloc 与
+ * 搜索并发 UAF。
+ * ======================================================================== */
+
+typedef struct faiss_hnsw_segment faiss_hnsw_segment_t;
+
+/**
+ * @brief 创建不可变段快照（占位：当前实现直接返回 index 引用）
+ */
+faiss_hnsw_segment_t *faiss_hnsw_seal_segment(faiss_hnsw_t *index);
+
+/**
+ * @brief 获取当前活跃段（写路径目标）
+ */
+faiss_hnsw_segment_t *faiss_hnsw_get_active_segment(faiss_hnsw_t *index);
+
+/**
+ * @brief 释放段快照（搜索结束后调用）
+ */
+void faiss_hnsw_segment_release(faiss_hnsw_segment_t *seg);
+
 #ifdef __cplusplus
 }
 #endif

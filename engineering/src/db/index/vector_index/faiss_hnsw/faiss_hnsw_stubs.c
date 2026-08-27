@@ -455,3 +455,25 @@ int32_t faiss_hnsw_index_max_level(const faiss_hnsw_t *index) {
     if (!index) return -1;
     return index->max_level;
 }
+
+// =============================================================================
+// C1-2 T3：COW 批量段接口骨架（最小实现）
+//
+// 当前实现：seal_segment 返回 index 引用，segment_release 空操作。
+// 完整 COW（immutable buffer + 原子指针切换）在后续变更展开。
+// =============================================================================
+faiss_hnsw_segment_t *faiss_hnsw_seal_segment(faiss_hnsw_t *index) {
+    if (index == NULL) return NULL;
+    /* 占位：直接返回 index（与 Qdrant segment 设计兼容前先以原指针传递） */
+    return (faiss_hnsw_segment_t *)index;
+}
+
+faiss_hnsw_segment_t *faiss_hnsw_get_active_segment(faiss_hnsw_t *index) {
+    if (index == NULL) return NULL;
+    return (faiss_hnsw_segment_t *)index;
+}
+
+void faiss_hnsw_segment_release(faiss_hnsw_segment_t *seg) {
+    /* 占位：无操作（segment 与 index 同生命周期） */
+    (void)seg;
+}
