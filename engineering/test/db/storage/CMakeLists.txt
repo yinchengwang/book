@@ -153,6 +153,48 @@ set_target_properties(c0_2_wal_recover_test PROPERTIES
 add_test(NAME c0_2_wal_recover_test COMMAND c0_2_wal_recover_test)
 
 # ========================================================================
+# C1-1 关系模态 TID 管道修复测试
+# ========================================================================
+
+add_executable(c1_1_tid_pipeline_test
+    c1_1_tid_pipeline_test.cpp
+)
+
+target_link_libraries(c1_1_tid_pipeline_test
+    PRIVATE
+    storage_heap    # heap AM
+    db_storage
+    project_includes
+    gtest
+    gtest_main
+)
+
+target_include_directories(c1_1_tid_pipeline_test PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+    ${ENGINEERING_SOURCE_DIR}/include/db/storage
+    ${ENGINEERING_SOURCE_DIR}/include/db/storage/access
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googletest/include
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googlemock/include
+)
+
+if(MSVC)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "")
+        target_compile_options(c1_1_tid_pipeline_test PRIVATE /W4 /MDd)
+    else()
+        target_compile_options(c1_1_tid_pipeline_test PRIVATE /W4 /MD)
+    endif()
+else()
+    target_compile_options(c1_1_tid_pipeline_test PRIVATE -Wall -Wextra)
+endif()
+
+set_target_properties(c1_1_tid_pipeline_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+add_test(NAME c1_1_tid_pipeline_test COMMAND c1_1_tid_pipeline_test)
+
+# ========================================================================
 # 文档聚合管道测试
 # ========================================================================
 
