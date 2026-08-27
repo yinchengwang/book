@@ -66,12 +66,12 @@ static TupleTableSlot *exec_modifytable_impl(PlanState *pstate)
                         break;
 
                     case MODIFY_TABLE_UPDATE:
-                        /* UPDATE: 先删除旧元组，再插入新元组 */
-                        if (slot->tts_tuple.len > 0) {
-                            /* 构造 TID（简化：假设元组在块 0） */
+                        /* C1-1：使用 slot 携带的真实 TID（来自 ExecSeqScan） */
+                        if (slot->tts_tuple.len > 0 && slot->tts_tid.valid) {
+                            /* 打包真实 tid（block + offset）为 6B 格式 */
                             uint8_t tid[6];
-                            uint32_t block = 0;
-                            uint16_t offset = 24;
+                            uint32_t block = slot->tts_tid.ip_blkid;
+                            uint16_t offset = slot->tts_tid.ip_posid;
                             memcpy(tid, &block, sizeof(uint32_t));
                             memcpy(tid + sizeof(uint32_t), &offset, sizeof(uint16_t));
 
@@ -90,12 +90,11 @@ static TupleTableSlot *exec_modifytable_impl(PlanState *pstate)
                         break;
 
                     case MODIFY_TABLE_DELETE:
-                        /* DELETE: 标记元组为已删除 */
-                        {
-                            /* 构造 TID（简化：假设元组在块 0） */
+                        /* C1-1：使用 slot 携带的真实 TID */
+                        if (slot->tts_tid.valid) {
                             uint8_t tid[6];
-                            uint32_t block = 0;
-                            uint16_t offset = 24;
+                            uint32_t block = slot->tts_tid.ip_blkid;
+                            uint16_t offset = slot->tts_tid.ip_posid;
                             memcpy(tid, &block, sizeof(uint32_t));
                             memcpy(tid + sizeof(uint32_t), &offset, sizeof(uint16_t));
 
