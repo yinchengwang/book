@@ -81,7 +81,14 @@ typedef enum wal_log_type_e {
     WAL_LOG_COMMIT = 4,   /**< 事务提交 */
     WAL_LOG_ABORT = 5,    /**< 事务回滚 */
     WAL_LOG_CHECKPOINT = 6, /**< 检查点 */
-    WAL_LOG_BEGIN = 7     /**< 事务开始 */
+    WAL_LOG_BEGIN = 7,    /**< 事务开始 */
+    /* C0-2：扩展至多模态写路径 */
+    WAL_LOG_HEAP_INSERT    = 20,  /**< Relational 堆表插入 */
+    WAL_LOG_HEAP_DELETE    = 21,  /**< Relational 堆表删除 */
+    WAL_LOG_HEAP_UPDATE    = 22,  /**< Relational 堆表更新 */
+    WAL_LOG_TS_APPEND      = 23,  /**< Timeseries 点追加 */
+    WAL_LOG_SPATIAL_UPSERT = 24,  /**< Spatial 几何 upsert */
+    WAL_LOG_YANG_DS_WR     = 25   /**< Yang datastore 写（C2-5 配套） */
 } wal_log_type_t;
 
 /* ============================================================
@@ -246,6 +253,60 @@ uint64_t wal_write_abort(wal_t *wal, uint32_t txn_id);
  * @return LSN，失败返回 0
  */
 uint64_t wal_write_checkpoint(wal_t *wal, const uint32_t *dirty_pages, size_t num_pages);
+
+/* ============================================================
+ * C0-2：多模态 WAL 记录写入 API
+ * ============================================================
+ *
+ * 通用接口：底层走 wal_write_record()，外层封装便于各模态调用。
+ * 失败返回 0；调用方应检查并中止当次 DML（WAL-first 铁律）。
+ */
+
+/**
+ * @brief 写入 Relational 堆表插入记录
+ * @param wal WAL 句柄
+ * @param rel_id 关系 OID
+ * @param tuple 序列化元组
+ * @param tuple_len 元组长度
+ * @return LSN，失败返回 0
+ */
+uint64_t wal_write_heap_insert(wal_t *wal, uint32_t rel_id,
+                               const void *tuple, size_t tuple_len);
+
+/**
+ * @brief 写入 Relational 堆表删除记录
+ * @param rel_id 关系 OID
+ * @param tid 物理位置 (block<<32 | offset)
+ */
+uint64_t wal_write_heap_delete(wal_t *wal, uint32_t rel_id, uint64_t tid);
+
+/**
+ * @brief 写入 Relational 堆表更新记录
+ * @param old_tid 旧元组物理位置
+ * @param new_tuple 新元组序列化数据
+ */
+uint64_t wal_write_heap_update(wal_t *wal, uint32_t rel_id, uint64_t old_tid,
+                               const void *new_tuple, size_t new_tuple_len);
+
+/**
+ * @brief 写入 Timeseries 点追加记录
+ */
+uint64_t wal_write_ts_append(wal_t *wal, uint32_t series_id,
+                             int64_t timestamp, double value);
+
+/**
+ * @brief 写入 Spatial 几何 upsert 记录
+ * @param geom_id 几何对象 ID
+ * @param bbox 4 float（min_x, min_y, max_x, max_y）
+ */
+uint64_t wal_write_spatial_upsert(wal_t *wal, uint32_t geom_id,
+                                  const float bbox[4]);
+
+/**
+ * @brief 写入 Yang datastore 写记录（C2-5 配套，T6 留待该变更完成后启用）
+ */
+uint64_t wal_write_yang_ds(wal_t *wal, uint32_t datastore_id,
+                           const void *data, size_t data_len);
 
 /* ============================================================
  * 恢复 API

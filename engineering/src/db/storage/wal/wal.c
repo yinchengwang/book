@@ -539,6 +539,65 @@ uint64_t wal_write_checkpoint(wal_t *wal, const uint32_t *dirty_pages, size_t nu
 }
 
 /* ============================================================
+ * C0-2：多模态 WAL 记录写入（C0-2 T2）
+ *
+ * 包装 wal_write_record，提供按模态的语义化 API。
+ * 失败返回 0；调用方应中止当次 DML。
+ * ============================================================ */
+
+uint64_t wal_write_heap_insert(wal_t *wal, uint32_t rel_id,
+                               const void *tuple, size_t tuple_len) {
+    return wal_write_record(wal, WAL_LOG_HEAP_INSERT, rel_id, 0,
+                            &rel_id, sizeof(rel_id), tuple, tuple_len);
+}
+
+uint64_t wal_write_heap_delete(wal_t *wal, uint32_t rel_id, uint64_t tid) {
+    return wal_write_record(wal, WAL_LOG_HEAP_DELETE, rel_id, 0,
+                            &rel_id, sizeof(rel_id), &tid, sizeof(tid));
+}
+
+uint64_t wal_write_heap_update(wal_t *wal, uint32_t rel_id, uint64_t old_tid,
+                               const void *new_tuple, size_t new_tuple_len) {
+    /* 简单实现：value 段同时携带 old_tid 与 new_tuple */
+    size_t total = sizeof(old_tid) + new_tuple_len;
+    uint8_t *buf = (uint8_t *)malloc(total);
+    if (!buf) return 0;
+    memcpy(buf, &old_tid, sizeof(old_tid));
+    if (new_tuple && new_tuple_len > 0) {
+        memcpy(buf + sizeof(old_tid), new_tuple, new_tuple_len);
+    }
+    uint64_t lsn = wal_write_record(wal, WAL_LOG_HEAP_UPDATE, rel_id, 0,
+                                    &rel_id, sizeof(rel_id), buf, total);
+    free(buf);
+    return lsn;
+}
+
+uint64_t wal_write_ts_append(wal_t *wal, uint32_t series_id,
+                             int64_t timestamp, double value) {
+    /* 紧凑打包：ts(8) + value(8) = 16B value 段 */
+    uint8_t payload[16];
+    memcpy(payload, &timestamp, sizeof(timestamp));
+    memcpy(payload + sizeof(timestamp), &value, sizeof(value));
+    return wal_write_record(wal, WAL_LOG_TS_APPEND, series_id, 0,
+                            &series_id, sizeof(series_id), payload, sizeof(payload));
+}
+
+uint64_t wal_write_spatial_upsert(wal_t *wal, uint32_t geom_id,
+                                  const float bbox[4]) {
+    /* bbox 4 float = 16B value 段 */
+    uint8_t payload[16];
+    memcpy(payload, bbox, sizeof(payload));
+    return wal_write_record(wal, WAL_LOG_SPATIAL_UPSERT, geom_id, 0,
+                            &geom_id, sizeof(geom_id), payload, sizeof(payload));
+}
+
+uint64_t wal_write_yang_ds(wal_t *wal, uint32_t datastore_id,
+                           const void *data, size_t data_len) {
+    return wal_write_record(wal, WAL_LOG_YANG_DS_WR, datastore_id, 0,
+                            &datastore_id, sizeof(datastore_id), data, data_len);
+}
+
+/* ============================================================
  * 刷盘与查询
  * ============================================================ */
 
