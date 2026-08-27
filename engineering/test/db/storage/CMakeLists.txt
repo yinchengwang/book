@@ -318,6 +318,45 @@ set_target_properties(c2_3_pagerank_test PROPERTIES
 add_test(NAME c2_3_pagerank_test COMMAND c2_3_pagerank_test)
 
 # ========================================================================
+# C2-5 XML 解析器测试
+# ========================================================================
+
+add_executable(xml_parser_test
+    xml_parser_test.cpp
+)
+
+target_link_libraries(xml_parser_test
+    PRIVATE
+    db_core
+    project_includes
+    gtest
+    gtest_main
+)
+
+target_include_directories(xml_parser_test PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googletest/include
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googlemock/include
+)
+
+if(MSVC)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "")
+        target_compile_options(xml_parser_test PRIVATE /W4 /MDd)
+    else()
+        target_compile_options(xml_parser_test PRIVATE /W4 /MD)
+    endif()
+else()
+    target_compile_options(xml_parser_test PRIVATE -Wall -Wextra)
+endif()
+
+set_target_properties(xml_parser_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+add_test(NAME xml_parser_test COMMAND xml_parser_test)
+
+# ========================================================================
 # 文档聚合管道测试
 # ========================================================================
 
