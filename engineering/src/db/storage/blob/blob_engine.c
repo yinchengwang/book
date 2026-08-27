@@ -111,6 +111,12 @@ int blob_put(blob_engine_t *engine, const void *data, size_t len,
         if (!fp) return -1;
         fwrite((const uint8_t *)data + written, 1, chunk_len, fp);
         fflush(fp);
+        /* C3-1 T8：chunk 写入后 fsync（POSIX fsync / Windows _commit） */
+#ifdef _WIN32
+        _commit(_fileno(fp));
+#else
+        fsync(fileno(fp));
+#endif
         fclose(fp);
         written += chunk_len;
     }
