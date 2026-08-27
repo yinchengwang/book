@@ -112,9 +112,12 @@ static TupleTableSlot *exec_modifytable_impl(PlanState *pstate)
                     default:
                         break;
                 }
-            }
 
-            ext->mt_processed++;
+                /* C1-1 T5：仅当操作实际执行并成功时才计入 processed */
+                if (result == 0) {
+                    ext->mt_processed++;
+                }
+            }
         } else break;
     }
 
