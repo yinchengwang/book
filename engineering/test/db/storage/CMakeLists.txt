@@ -66,6 +66,52 @@ set_target_properties(test_spatial_engine PROPERTIES
 add_test(NAME test_spatial_engine COMMAND test_spatial_engine)
 
 # ========================================================================
+# C0-1 统一并发原语推广并发回归测试
+# ========================================================================
+
+add_executable(c0_1_concurrency_test
+    c0_1_concurrency_test.cpp
+)
+
+target_link_libraries(c0_1_concurrency_test
+    PRIVATE
+    storage_vector
+    storage_ts
+    storage_doc
+    storage_graph
+    db_storage
+    db_mvcc
+    project_includes
+    Threads::Threads
+    gtest
+    gtest_main
+)
+
+target_include_directories(c0_1_concurrency_test PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+    ${ENGINEERING_SOURCE_DIR}/include/db/storage
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googletest/include
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googlemock/include
+)
+
+if(MSVC)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "")
+        target_compile_options(c0_1_concurrency_test PRIVATE /W4 /MDd)
+    else()
+        target_compile_options(c0_1_concurrency_test PRIVATE /W4 /MD)
+    endif()
+else()
+    target_compile_options(c0_1_concurrency_test PRIVATE -Wall -Wextra)
+endif()
+
+set_target_properties(c0_1_concurrency_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+add_test(NAME c0_1_concurrency_test COMMAND c0_1_concurrency_test)
+
+# ========================================================================
 # 文档聚合管道测试
 # ========================================================================
 
