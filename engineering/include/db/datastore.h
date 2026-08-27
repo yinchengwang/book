@@ -25,12 +25,17 @@ typedef struct datastore_s {
     char *xml_data;          /* 序列化的 XML 数据 */
     size_t xml_len;
     char *path;              /* 持久化路径 */
+    void *wal;               /* C0-2 T6：可选 WAL 句柄（datastore commit 时记录） */
 } datastore_t;
 
 /* 加载 / 保存 / 提交 */
 datastore_t *datastore_load(const char *path, datastore_type_t type);
 int datastore_save(const datastore_t *ds);
 int datastore_commit(datastore_t *running, datastore_t *candidate);  /* 原子 candidate→running */
+
+/* C0-2 T6：设置 datastore 的 WAL 句柄（可选，NULL = 不记录） */
+void datastore_set_wal(datastore_t *ds, void *wal);
+
 void datastore_free(datastore_t *ds);
 
 #ifdef __cplusplus

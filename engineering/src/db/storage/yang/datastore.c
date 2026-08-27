@@ -1,5 +1,7 @@
 #include "db/datastore.h"
 #include "db/core/log.h"
+#include "db/storage/wal/wal.h"       /* C0-2 T6 */
+#include "db/storage/wal/wal_flush.h" /* C0-2 T6（统一刷盘） */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,7 +69,24 @@ int datastore_commit(datastore_t *running, datastore_t *candidate) {
     free(running->xml_data);
     running->xml_data = candidate->xml_data ? strdup(candidate->xml_data) : NULL;
     running->xml_len = candidate->xml_len;
-    return datastore_save(running);
+    int rc = datastore_save(running);
+    if (rc != 0) return rc;
+
+    /* C0-2 T6：commit 成功后写 WAL 记录（用于崩溃恢复） */
+    if (running->wal) {
+        uint64_t lsn = wal_write_yang_ds((wal_t *)running->wal,
+                                          (uint32_t)running->type,
+                                          running->xml_data, running->xml_len);
+        if (lsn == 0) {
+            LOG_WARN("datastore_commit: WAL 记录失败，崩溃恢复可能不完整");
+        }
+    }
+    return 0;
+}
+
+void datastore_set_wal(datastore_t *ds, void *wal) {
+    if (!ds) return;
+    ds->wal = wal;
 }
 
 void datastore_free(datastore_t *ds) {

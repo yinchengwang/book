@@ -7,9 +7,9 @@
 - [x] **T3** heapam.c DML 接入 WAL（insert/delete/update 三记录，WAL-first 顺序）
 - [x] **T4** ts_engine 接入 WAL（append 记录）
 - [x] **T5** spatial_engine 接入 WAL（upsert 记录）
-- [ ] **T6** yang datastore 写接入 WAL（依赖 C2-5 datastore 落地的部分后置）
+- [x] **T6** yang datastore 写接入 WAL（依赖 C2-5 datastore 落地后扩展 wal 字段）
 - [x] **T7** KV wal_write_* 返回值检查 + 失败中止（kv.c:445,459）
-- [ ] **T8** vector_wal.c 修复：VLA → 堆缓冲（:261）、异步 memcpy 边界（:292-298）、SYNC 接统一策略
-- [ ] **T9** db_startup_recover() 统一恢复入口 + 模态 apply 回调注册
+- [x] **T8** vector_wal.c 修复：VLA → 堆缓冲（:261）、异步 memcpy 边界（:292-298）、SYNC 接统一策略
+- [x] **T9** db_startup_recover() 统一恢复入口 + 模态 apply 回调注册
 - [x] **T10** 崩溃恢复集成测试（五模态 kill -9 重启数据完整）
 - [x] **T11** Verify + Archive
