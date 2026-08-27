@@ -300,6 +300,9 @@ int guc_init(const char *data_dir) {
     /* C0-2：WAL 刷盘模式（none/os/fsync/batch），默认 fsync */
     register_string("wal_sync_mode", "fsync",
                     "WAL 刷盘模式：none/os/fsync/batch");
+    /* C2-1：默认事务隔离级别 */
+    register_string("default_transaction_isolation", "read_committed",
+                    "事务隔离级别：read_committed/repeatable_read");
 
     /* 查询规划参数 */
     register_int("random_page_cost", 4, 0, 10000,

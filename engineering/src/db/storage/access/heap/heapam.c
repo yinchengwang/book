@@ -48,6 +48,7 @@
 #include "db/buf.h"
 #include "db/catalog.h"
 #include "db/storage/wal/wal.h"  /* C0-2：WAL 接入 */
+#include "db/mvcc_session.h"      /* C2-1：MVCC 集成 */
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -321,6 +322,10 @@ int heap_insert(Relation rel, const void *tuple, size_t len,
         uint8_t *tid_out = (uint8_t *)out_tid;
         memset(tid_out, 0, 6);
     }
+
+    /* C2-1 T2：获取当前事务 xid（用于后续戳 xmin——完整实现待 tuple 布局扩展） */
+    int64_t current_xid = mvcc_current_xid();
+    (void)current_xid;  /* 暂不写入 tuple（kv_record_t 无 xmin 字段），仅 LOG */
 
     /* 获取或分配新页面 */
     BlockNumber blocknum = rel->rd_nblocks;

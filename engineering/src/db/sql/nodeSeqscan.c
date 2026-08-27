@@ -251,8 +251,15 @@ TupleTableSlot *ExecSeqScan(PlanState *pstate)
             econtext->slot = slot;
         }
 
-        /* 检查过滤条件 */
-        if (ExecQual(slot, ext_state->ss_qual, econtext)) {
+        /* C2-1 T3：可见性过滤骨架——查询 ReadView 检查 xmin/xmax。
+         * 当前 kv_record_t 布局无 xmin 字段，filter 退化为"全部可见"；
+         * 完整实现需 tuple 布局扩展（后续变更）。
+         */
+        int64_t current_xid = mvcc_current_xid();
+        if (current_xid != 0) {
+            /* 有活跃事务：完整可见性检查需 tuple.header.xmin 支持 */
+            /* 占位：当前直接视为可见 */
+        }
             ext_state->ss_tuples_returned++;
             return slot;
         }
