@@ -33,7 +33,7 @@
 	url = https://github.com/neo4j/neo4j.git
 [submodule "reference/relational/openGauss"]
 	path = reference/relational/openGauss
-	url = https://github.com/opengauss/openGauss-server.git
+	url = https://gitee.com/opengauss/openGauss-server.git
 [submodule "reference/relational/mysql"]
 	path = reference/relational/mysql
 	url = https://github.com/mysql/mysql-server.git
