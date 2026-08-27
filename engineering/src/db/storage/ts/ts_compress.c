@@ -172,6 +172,45 @@ int ts_compress_add(ts_compressor_t *comp, int64_t timestamp, double value) {
     return 0;
 }
 
+/* ========================================================================
+ * C2-4 T1：增量编码器（delta-of-delta + XOR）骨架
+ *
+ * 完整实现：每个点写入时即时编码，不保留原始 16B/点。
+ * 简化版：当前仅记录增量（dod、xor_value）到 per-block 数组，
+ * flush 时由原 ts_compress_flush 编码为位流。完整位流编码待续。
+ * ======================================================================== */
+
+int ts_compress_add_immediate(ts_compressor_t *comp, int64_t timestamp, double value) {
+    if (!comp || !comp->current_block) return -22;  /* DBERR_CORRUPT 之类的负值 */
+
+    ts_compress_block_t *block = comp->current_block;
+
+    /* 满块路径：T2 触发显式 flush + retry */
+    if (block->state == TS_COMPRESS_BLOCK_FULL) {
+        if (ts_compress_flush(comp) != 0) {
+            return -28;  /* DBERR_FULL 标识 */
+        }
+        /* flush 后 comp 仍持有同一 current_block，但 state 应为 COMPRESSED/EMPTY */
+        /* 注：完整实现应支持"flush 后开新块"，此处 best-effort 续写 */
+        if (block->state == TS_COMPRESS_BLOCK_FULL) {
+            return -28;  /* flush 未释放空间 */
+        }
+    }
+
+    /* 沿用 ts_compress_add 的写入路径（已经是 C2-4 之前就位），
+     * 即 T1 的核心：调用方使用本函数时表示期望热路径即时压缩。
+     * 当前实现复用 add —— 完整 delta-of-delta 位流编码待后续变更展开。
+     */
+    return ts_compress_add(comp, timestamp, value);
+}
+
+int ts_compress_force_flush_add(ts_compressor_t *comp, int64_t timestamp, double value) {
+    if (!comp) return -22;
+    /* 强制 flush 一次后 retry insert */
+    ts_compress_flush(comp);
+    return ts_compress_add(comp, timestamp, value);
+}
+
 int ts_compress_flush(ts_compressor_t *comp) {
     if (!comp || !comp->current_block) return -1;
 

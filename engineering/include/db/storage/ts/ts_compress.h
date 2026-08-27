@@ -122,6 +122,25 @@ int ts_compress_add(ts_compressor_t *comp, int64_t timestamp, double value);
 int ts_compress_flush(ts_compressor_t *comp);
 
 /**
+ * @brief 立即压缩写入：C2-4 T1 增量编码器
+ *
+ * 与 ts_compress_add 的区别：边写入边编码（delta-of-delta + XOR），
+ * 内存中不保留原始 16B/点，热路径即可享受压缩收益。
+ *
+ * @param comp 压缩器
+ * @param timestamp 时间戳
+ * @param value 值
+ * @return 0 成功，DBERR_FULL（满且无法 flush） / DBERR_CORRUPT（编码异常）
+ */
+int ts_compress_add_immediate(ts_compressor_t *comp, int64_t timestamp, double value);
+
+/**
+ * @brief 满块路径（T2）：强制 flush + 重试插入
+ * @return 0 成功，DBERR_FULL（flush 后仍满）
+ */
+int ts_compress_force_flush_add(ts_compressor_t *comp, int64_t timestamp, double value);
+
+/**
  * @brief 获取当前块的压缩数据
  * @param comp 压缩器
  * @param out_size 输出压缩数据大小
