@@ -195,6 +195,48 @@ set_target_properties(c1_1_tid_pipeline_test PROPERTIES
 add_test(NAME c1_1_tid_pipeline_test COMMAND c1_1_tid_pipeline_test)
 
 # ========================================================================
+# C1-2 faiss_hnsw 并发与 IP 度量测试
+# ========================================================================
+
+add_executable(c1_2_hnsw_test
+    c1_2_hnsw_test.cpp
+)
+
+target_link_libraries(c1_2_hnsw_test
+    PRIVATE
+    vector_index_faiss_hnsw
+    db_storage
+    project_includes
+    Threads::Threads
+    gtest
+    gtest_main
+)
+
+target_include_directories(c1_2_hnsw_test PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+    ${ENGINEERING_SOURCE_DIR}/include/db/index
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googletest/include
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googlemock/include
+)
+
+if(MSVC)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "")
+        target_compile_options(c1_2_hnsw_test PRIVATE /W4 /MDd)
+    else()
+        target_compile_options(c1_2_hnsw_test PRIVATE /W4 /MD)
+    endif()
+else()
+    target_compile_options(c1_2_hnsw_test PRIVATE -Wall -Wextra)
+endif()
+
+set_target_properties(c1_2_hnsw_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+add_test(NAME c1_2_hnsw_test COMMAND c1_2_hnsw_test)
+
+# ========================================================================
 # 文档聚合管道测试
 # ========================================================================
 
