@@ -782,3 +782,79 @@ int kv_replay_wal(kv_t *db, const char *wal_path) {
     /* 使用 wal_redo 重放所有日志 */
     return wal_redo(wal_path, 0, kv_wal_apply, db);
 }
+
+/* C3-5 T22：自定义比较器注入点（占位——kv_page 层后续接入） */
+static kv_comparator_fn s_default_cmp = NULL;
+
+void kv_set_comparator(kv_t *db, kv_comparator_fn cmp) {
+    (void)db;
+    s_default_cmp = cmp;
+}
+
+/* C3-5 T20：CAS（compare-and-swap）
+ *
+ * 在已持有 wrlock 时直接查询（不递归加锁），比较后再写入。
+ * 由于 mmdb_rwlock 在 POSIX pthread_rwlock 默认下支持递归写锁、SRWLOCK 也支持
+ * 递归，本实现假定调用方已通过其他方式互斥；保守用法：调用本函数前不持锁。
+ */
+kv_result_t kv_cas(kv_t *db,
+                   const void *key, size_t key_len,
+                   const void *expected_old, size_t expected_old_len,
+                   const void *new_value, size_t new_value_len) {
+    if (!db || !key || key_len == 0 || key_len > KV_MAX_KEY_SIZE
+        || !new_value || new_value_len > KV_MAX_VALUE_SIZE) {
+        return KV_INVALID;
+    }
+    if (expected_old_len > 0 && !expected_old) return KV_INVALID;
+
+    mmdb_rwlock_wrlock(&db->rwlock);
+
+    /* 读当前值（直接走 page 层，绕过 lock） */
+    void *cur = NULL;
+    size_t cur_len = 0;
+    page_id_t data_page_id = kv_get_data_page_id(db);
+    page_t *page = buffer_get_page(db->pool, data_page_id);
+    if (page) {
+        uint16_t offset;
+        if (kv_page_find(page, key, key_len, &offset) == 0) {
+            kv_record_t *rec = (kv_record_t *)(page->data + offset);
+            cur_len = rec->value_len;
+            cur = malloc(cur_len);
+            if (cur) memcpy(cur, page->data + offset + sizeof(kv_record_t) + rec->key_len, cur_len);
+        }
+        buffer_unpin_page(db->pool, data_page_id);
+    }
+
+    bool match;
+    if (cur) {
+        match = (cur_len == expected_old_len
+                 && memcmp(cur, expected_old, cur_len) == 0);
+        free(cur);
+    } else if (expected_old == NULL) {
+        match = true;
+    } else {
+        mmdb_rwlock_unlock(&db->rwlock, 1);
+        return KV_CONFLICT;
+    }
+
+    if (!match) {
+        mmdb_rwlock_unlock(&db->rwlock, 1);
+        return KV_CONFLICT;
+    }
+
+    /* 写入新值（WAL + page insert）。wal_write_insert + kv_page_insert 内部不加锁 */
+    if (db->wal) {
+        uint64_t lsn = wal_write_insert(db->wal, 0, key, key_len, new_value, new_value_len);
+        if (lsn == 0) {
+            mmdb_rwlock_unlock(&db->rwlock, 1);
+            return KV_ERROR;
+        }
+    }
+    if (kv_page_insert(db->pool, data_page_id, key, key_len, new_value, new_value_len) != 0) {
+        mmdb_rwlock_unlock(&db->rwlock, 1);
+        return KV_FULL;
+    }
+    db->num_keys++;
+    mmdb_rwlock_unlock(&db->rwlock, 1);
+    return KV_OK;
+}

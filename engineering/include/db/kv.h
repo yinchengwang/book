@@ -320,6 +320,19 @@ int kv_replay_wal(kv_t *db, const char *wal_path);
      (rc) == KV_LOCKED    ? DBERR_LOCKED    : \
                              DBERR_MOD_KV)
 
+/* C3-5 T22：自定义 key 比较器注入点 */
+typedef int (*kv_comparator_fn)(const void *a, size_t alen,
+                               const void *b, size_t blen);
+void kv_set_comparator(kv_t *db, kv_comparator_fn cmp);
+
+/* C3-5 T20：CAS（compare-and-swap）
+ * 仅当旧值等于 expected_old 时替换为 new_value
+ */
+kv_result_t kv_cas(kv_t *db,
+                   const void *key, size_t key_len,
+                   const void *expected_old, size_t expected_old_len,
+                   const void *new_value, size_t new_value_len);
+
 /**
  * @brief C1-3 T6：kv_get 释放契约
  *
