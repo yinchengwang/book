@@ -11,5 +11,5 @@
 - [x] **T7** KV wal_write_* 返回值检查 + 失败中止（kv.c:445,459）
 - [ ] **T8** vector_wal.c 修复：VLA → 堆缓冲（:261）、异步 memcpy 边界（:292-298）、SYNC 接统一策略
 - [ ] **T9** db_startup_recover() 统一恢复入口 + 模态 apply 回调注册
-- [ ] **T10** 崩溃恢复集成测试（五模态 kill -9 重启数据完整）
+- [x] **T10** 崩溃恢复集成测试（五模态 kill -9 重启数据完整）
 - [ ] **T11** Verify + Archive
