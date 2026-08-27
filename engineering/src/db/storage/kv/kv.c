@@ -413,6 +413,17 @@ kv_result_t kv_put(kv_t *db,
 
     kv_result_t result;
     if (found) {
+        /* C0-2：WAL-first 铁律 — 在 page 写之前先 WAL */
+        if (db->wal && old_value) {
+            uint64_t lsn = wal_write_update(db->wal, 0, key, key_len,
+                                            old_value, old_value_len, value, value_len);
+            if (lsn == 0) {
+                free(old_value);
+                kv_set_error(db, "WAL write failed (update)");
+                return KV_ERROR;
+            }
+        }
+
         /*
          * 页面记录按紧凑布局连续存放，变更值长度不能原地覆盖：
          * 否则会把后续记录推入错误偏移，导致后续查找和扫描失效。
@@ -440,13 +451,18 @@ kv_result_t kv_put(kv_t *db,
             kv_set_error(db, "Failed to update");
             return KV_ERROR;
         }
-        /* 写入 WAL UPDATE 记录 */
-        if (db->wal && old_value) {
-            wal_write_update(db->wal, 0, key, key_len,
-                            old_value, old_value_len, value, value_len);
-        }
         result = KV_OK;
     } else {
+        /* C0-2：WAL-first 铁律 — INSERT 路径同上 */
+        if (db->wal) {
+            uint64_t lsn = wal_write_insert(db->wal, 0, key, key_len, value, value_len);
+            if (lsn == 0) {
+                free(old_value);
+                kv_set_error(db, "WAL write failed (insert)");
+                return KV_ERROR;
+            }
+        }
+
         /* 插入新记录 */
         if (kv_page_insert(db->pool, data_page_id, key, key_len, value, value_len) != 0) {
             free(old_value);
@@ -454,10 +470,6 @@ kv_result_t kv_put(kv_t *db,
             return KV_ERROR;
         }
         db->num_keys++;
-        /* 写入 WAL INSERT 记录 */
-        if (db->wal) {
-            wal_write_insert(db->wal, 0, key, key_len, value, value_len);
-        }
         result = KV_OK;
     }
 
