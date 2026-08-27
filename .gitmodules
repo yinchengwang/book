@@ -37,3 +37,12 @@
 # [submodule "reference/relational/mysql"]
 # 	path = reference/relational/mysql
 # 	url = https://gitee.com/yinchengwang_admin/mysql-server.git
+[submodule "reference/search/elasticsearch"]
+	path = reference/search/elasticsearch
+	url = https://gitee.com/yinchengwang_admin/elasticsearch.git
+[submodule "reference/benchmark/ann-benchmarks"]
+	path = reference/benchmark/ann-benchmarks
+	url = https://gitee.com/yinchengwang_admin/ann-benchmarks.git
+[submodule "reference/relational/openGauss"]
+	path = reference/relational/openGauss
+	url = https://gitee.com/opengauss/openGauss-server.git
