@@ -43,8 +43,17 @@ static float compute_distance_internal(faiss_hnsw_t *idx, const float *query, in
         } else {
             dist = 1.0f;
         }
+    } else if (idx->metric == DISTANCE_METRIC_INNER_PRODUCT) {
+        /* C1-2 T4 修复：IP 度量返回 -inner_product 作为距离
+         * （距离越小 = 内积越大 = 相似度越高）。旧实现静默 fallback L2²
+         * 是语义错误——见 docs/multimodal-gap-analysis-2026/01-vector-gap §2.5 */
+        float ip = 0.0f;
+        for (int32_t i = 0; i < idx->dims; i++) {
+            ip += query[i] * v[i];
+        }
+        dist = -ip;
     } else {
-        // 内积 / 汉明等其他度量：fallback 到 L2 平方
+        /* 未知度量：保持 L2 fallback 并 LOG_WARN（向后兼容旧行为） */
         for (int32_t i = 0; i < idx->dims; i++) {
             float d = query[i] - v[i];
             dist += d * d;
