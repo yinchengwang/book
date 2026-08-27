@@ -297,6 +297,9 @@ int guc_init(const char *data_dir) {
                  "同步提交模式：0=off, 1=on, 2=local");
     register_int("wal_buffers", -1, -1, 4096,
                  "WAL 缓冲区数量（-1=自动）");
+    /* C0-2：WAL 刷盘模式（none/os/fsync/batch），默认 fsync */
+    register_string("wal_sync_mode", "fsync",
+                    "WAL 刷盘模式：none/os/fsync/batch");
 
     /* 查询规划参数 */
     register_int("random_page_cost", 4, 0, 10000,

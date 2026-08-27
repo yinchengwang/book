@@ -2,7 +2,7 @@
 
 ## 任务列表
 
-- [ ] **T1** wal_flush_policy_t 四级策略 + GUC wal_sync_mode + fsync 封装（Windows FlushFileBuffers）
+- [x] **T1** wal_flush_policy_t 四级策略 + GUC wal_sync_mode + fsync 封装（Windows FlushFileBuffers）
 - [ ] **T2** 共享 WAL 记录类型扩展（heap/ts/spatial/yang 四族）
 - [ ] **T3** heapam.c DML 接入 WAL（insert/delete/update 三记录，WAL-first 顺序）
 - [ ] **T4** ts_engine 接入 WAL（append 记录）
