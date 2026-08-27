@@ -38,7 +38,8 @@ public:
         old_cxt = MemoryContextCurrent();
         test_cxt = AllocSetContextCreate(
             old_cxt, "ExecutorTest",
-            0, ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE);
+            0, ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE,
+            ALLOCSET_PRESET_DEFAULT);
         MemoryContextSwitchTo(test_cxt);
     }
 

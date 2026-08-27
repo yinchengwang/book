@@ -41,13 +41,21 @@ TEST(SqlExecutorMemctxTest, QueryDescAllocatedFromMemoryContext) {
     /* 1. 创建顶层 AllocSet 上下文 */
     MemoryContext top = AllocSetContextCreate(
         NULL, "SqlExecutorMemctxTestTop",
-        0, ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE);
+        0,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_PRESET_DEFAULT
+    );
     ASSERT_NE(top, nullptr);
 
     /* 2. 创建查询级子上下文 */
     MemoryContext query = AllocSetContextCreate(
         top, "SqlExecutorMemctxTestQuery",
-        0, ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE);
+        0,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_PRESET_DEFAULT
+    );
     ASSERT_NE(query, nullptr);
 
     /* 3. 切换到查询上下文 */
@@ -82,12 +90,20 @@ TEST(SqlExecutorMemctxTest, QueryDescAllocatedFromMemoryContext) {
 TEST(SqlExecutorMemctxTest, DestReceiverAllocatedFromMemoryContext) {
     MemoryContext top = AllocSetContextCreate(
         NULL, "DR_Top",
-        0, ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE);
+        0,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_PRESET_DEFAULT
+    );
     ASSERT_NE(top, nullptr);
 
     MemoryContext query = AllocSetContextCreate(
         top, "DR_Query",
-        0, ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE);
+        0,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_PRESET_DEFAULT
+    );
     ASSERT_NE(query, nullptr);
 
     MemoryContext old = MemoryContextSwitchTo(query);
@@ -115,12 +131,20 @@ TEST(SqlExecutorMemctxTest, DestReceiverAllocatedFromMemoryContext) {
 TEST(SqlExecutorMemctxTest, TupleTableSlotFallbackToCurrentMCxt) {
     MemoryContext top = AllocSetContextCreate(
         NULL, "Slot_Top",
-        0, ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE);
+        0,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_PRESET_DEFAULT
+    );
     ASSERT_NE(top, nullptr);
 
     MemoryContext query = AllocSetContextCreate(
         top, "Slot_Query",
-        0, ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE);
+        0,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_PRESET_DEFAULT
+    );
     ASSERT_NE(query, nullptr);
 
     MemoryContext old = MemoryContextSwitchTo(query);
@@ -149,12 +173,20 @@ TEST(SqlExecutorMemctxTest, TupleTableSlotFallbackToCurrentMCxt) {
 TEST(SqlExecutorMemctxTest, ExprStateAllocatedFromMemoryContext) {
     MemoryContext top = AllocSetContextCreate(
         NULL, "Expr_Top",
-        0, ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE);
+        0,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_PRESET_DEFAULT
+    );
     ASSERT_NE(top, nullptr);
 
     MemoryContext query = AllocSetContextCreate(
         top, "Expr_Query",
-        0, ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE);
+        0,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_PRESET_DEFAULT
+    );
     ASSERT_NE(query, nullptr);
 
     MemoryContext old = MemoryContextSwitchTo(query);
@@ -189,10 +221,18 @@ TEST(SqlExecutorMemctxTest, ExprStateAllocatedFromMemoryContext) {
 TEST(SqlExecutorMemctxTest, MultipleAllocationsReuseQueryContext) {
     MemoryContext top = AllocSetContextCreate(
         NULL, "Multi_Top",
-        0, ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE);
+        0,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_PRESET_DEFAULT
+    );
     MemoryContext query = AllocSetContextCreate(
         top, "Multi_Query",
-        0, ALLOCSET_DEFAULT_BLOCK_SIZE, ALLOCSET_DEFAULT_BLOCK_SIZE);
+        0,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_PRESET_DEFAULT
+    );
 
     MemoryContext old = MemoryContextSwitchTo(query);
 

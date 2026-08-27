@@ -37,7 +37,8 @@ protected:
             "SortTestContext",
             0,
             ALLOCSET_DEFAULT_BLOCK_SIZE,
-            ALLOCSET_DEFAULT_BLOCK_SIZE
+            ALLOCSET_DEFAULT_BLOCK_SIZE,
+            ALLOCSET_PRESET_DEFAULT
         );
         ASSERT_NE(ctx_, nullptr);
 

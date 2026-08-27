@@ -352,7 +352,7 @@ static CypherCreate *cypher_parse_create(CypherParser *parser);
 
 static CypherASTNode_t *cypher_alloc_node(CypherASTType type)
 {
-    CypherASTNode_t *node = (CypherASTNode_t *)calloc(1, sizeof(CypherASTNode));
+    CypherASTNode_t *node = (CypherASTNode_t *)calloc(1, sizeof(CypherASTNode_t));
     node->type = type;
     return node;
 }
@@ -364,10 +364,10 @@ static char *cypher_copy_string(const char *s)
 }
 
 /* 解析属性 */
-static CypherProp *cypher_parse_props(CypherParser *parser)
+static CypherProp_t *cypher_parse_props(CypherParser *parser)
 {
-    CypherProp *props = NULL;
-    CypherProp *last = NULL;
+    CypherProp_t *props = NULL;
+    CypherProp_t *last = NULL;
 
     if (cypher_match(parser, CYPHER_TOKEN_LBRACE)) {
         if (!cypher_check(parser, CYPHER_TOKEN_RBRACE)) {
@@ -377,7 +377,7 @@ static CypherProp *cypher_parse_props(CypherParser *parser)
                     return props;
                 }
 
-                CypherProp *prop = (CypherProp *)malloc(sizeof(CypherProp));
+                CypherProp_t *prop = (CypherProp_t *)malloc(sizeof(CypherProp_t));
                 prop->name = cypher_copy_string(parser->current_token.lexeme);
                 prop->next = NULL;
                 cypher_advance_token(parser);
@@ -837,11 +837,11 @@ const char *cypher_get_error(const CypherParser *parser)
     return parser->error_msg;
 }
 
-void cypher_prop_free(CypherProp *prop)
+void cypher_prop_free(CypherProp_t *prop)
 {
     if (!prop) return;
 
-    CypherProp *next;
+    CypherProp_t *next;
     while (prop) {
         next = prop->next;
         free(prop->name);
@@ -931,7 +931,7 @@ void cypher_ast_free(CypherASTNode_t *node)
         case CYPHER_AST_UNARY_OP:
             cypher_ast_free(node->u.unary_op.operand);
             break;
-        case CYPHER_AST_FUNC_CALL:
+        case CYPHER_AST_FUNCTION_CALL:
             free(node->u.func_call.name);
             for (size_t i = 0; i < node->u.func_call.num_args; i++) {
                 cypher_ast_free(node->u.func_call.args[i]);

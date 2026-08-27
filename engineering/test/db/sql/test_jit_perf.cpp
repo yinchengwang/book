@@ -55,7 +55,7 @@ TEST_F(JITPerfTest, InitAndAvailability) {
 
 TEST_F(JITPerfTest, CompileExpr) {
     /* 创建简单的常量表达式 */
-    MemoryContext ctx = AllocSetContextCreate(NULL, "test_jit", 0, 8192, 8192);
+    MemoryContext ctx = AllocSetContextCreate(NULL, "test_jit", 0, 8192, 8192, ALLOCSET_PRESET_DEFAULT);
     ASSERT_NE(ctx, nullptr);
 
     Expr expr;
@@ -86,7 +86,7 @@ TEST_F(JITPerfTest, CompileExpr) {
 
 TEST_F(JITPerfTest, InterpreterPerfBaseline) {
     /* 创建表达式: 常量 42 */
-    MemoryContext ctx = AllocSetContextCreate(NULL, "test_perf", 0, 8192, 8192);
+    MemoryContext ctx = AllocSetContextCreate(NULL, "test_perf", 0, 8192, 8192, ALLOCSET_PRESET_DEFAULT);
     ASSERT_NE(ctx, nullptr);
 
     Expr expr;
