@@ -39,7 +39,10 @@
 
 // 计算两点距离（L2 平方 / Cosine）
 // 与 FAISS 行为一致：L2 时返回平方距离（用于排序无影响）
-static float compute_distance(const faiss_hnsw_t *idx, const float *query, int32_t vec_id) {
+/* C4-1 T1：导出 SIMD-enabled compute_distance，供 search.c 复用 */
+float faiss_hnsw_compute_distance(const faiss_hnsw_t *idx, const float *query, int32_t vec_id);
+
+float faiss_hnsw_compute_distance(const faiss_hnsw_t *idx, const float *query, int32_t vec_id) {
     if (vec_id < 0 || vec_id >= idx->n_total || !idx->vectors || !query) {
         return FLT_MAX;
     }
@@ -254,7 +257,7 @@ int32_t faiss_hnsw_search_layer(const faiss_hnsw_t *idx, int32_t level, const fl
             }
 
             faiss_hnsw_visited_table_set(visited, nbr);
-            float nbr_dist = compute_distance(idx, query, nbr);
+            float nbr_dist = faiss_hnsw_compute_distance(idx, query, nbr);
 
             // push 内部自动处理堆满时的替换（保留 ef 个最近候选）
             faiss_hnsw_minimax_heap_push(heap, nbr, nbr_dist);

@@ -16,50 +16,13 @@
 // 内部辅助函数（自包含，避免依赖其他 .c 的静态函数）
 // =============================================================================
 
-// 计算查询向量到索引中指定向量的距离
-// 与 faiss_hnsw_search_layer.c 中的实现行为一致
+// 复用 search_layer.c 的 SIMD-enabled 距离函数（C4-1 T1）
+extern float faiss_hnsw_compute_distance(const faiss_hnsw_t *idx,
+                                       const float *query, int32_t vec_id);
+
+/* compute_distance_internal：直接委托 SIMD-enabled 实现 */
 static float compute_distance_internal(faiss_hnsw_t *idx, const float *query, int32_t vec_id) {
-    if (vec_id < 0 || vec_id >= idx->n_total || !idx->vectors || !query) {
-        return FLT_MAX;
-    }
-
-    const float *v = idx->vectors + (size_t)vec_id * (size_t)idx->dims;
-    float dist = 0.0f;
-
-    if (idx->metric == DISTANCE_METRIC_L2_SQUARED) {
-        for (int32_t i = 0; i < idx->dims; i++) {
-            float d = query[i] - v[i];
-            dist += d * d;
-        }
-    } else if (idx->metric == DISTANCE_METRIC_COSINE) {
-        float dot = 0.0f, norm_q = 0.0f, norm_v = 0.0f;
-        for (int32_t i = 0; i < idx->dims; i++) {
-            dot += query[i] * v[i];
-            norm_q += query[i] * query[i];
-            norm_v += v[i] * v[i];
-        }
-        if (norm_q > 0.0f && norm_v > 0.0f) {
-            dist = 1.0f - dot / (sqrtf(norm_q) * sqrtf(norm_v));
-        } else {
-            dist = 1.0f;
-        }
-    } else if (idx->metric == DISTANCE_METRIC_INNER_PRODUCT) {
-        /* C1-2 T4 修复：IP 度量返回 -inner_product 作为距离
-         * （距离越小 = 内积越大 = 相似度越高）。旧实现静默 fallback L2²
-         * 是语义错误——见 docs/multimodal-gap-analysis-2026/01-vector-gap §2.5 */
-        float ip = 0.0f;
-        for (int32_t i = 0; i < idx->dims; i++) {
-            ip += query[i] * v[i];
-        }
-        dist = -ip;
-    } else {
-        /* 未知度量：保持 L2 fallback 并 LOG_WARN（向后兼容旧行为） */
-        for (int32_t i = 0; i < idx->dims; i++) {
-            float d = query[i] - v[i];
-            dist += d * d;
-        }
-    }
-    return dist;
+    return faiss_hnsw_compute_distance(idx, query, vec_id);
 }
 
 // 获取第 level 层第 i 个邻居的 vec_id
