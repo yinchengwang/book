@@ -18,22 +18,22 @@
 	url = https://github.com/sqlite/sqlite.git
 [submodule "reference/search/elasticsearch"]
 	path = reference/search/elasticsearch
-	url = https://github.com/elastic/elasticsearch.git
+	url = https://gitee.com/mirrors/elasticsearch.git
 [submodule "reference/vector/chroma"]
 	path = reference/vector/chroma
-	url = https://github.com/chroma-core/chroma.git
+	url = https://gitee.com/mirrors/chroma.git
 [submodule "reference/vector/milvus"]
 	path = reference/vector/milvus
-	url = https://github.com/milvus-io/milvus.git
+	url = https://gitee.com/milvus-io/milvus.git
 [submodule "reference/benchmark/ann-benchmarks"]
 	path = reference/benchmark/ann-benchmarks
 	url = https://github.com/erikbern/ann-benchmarks.git
 [submodule "reference/graph/neo4j"]
 	path = reference/graph/neo4j
-	url = https://github.com/neo4j/neo4j.git
+	url = https://gitee.com/mirrors/neo4j.git
 [submodule "reference/relational/openGauss"]
 	path = reference/relational/openGauss
 	url = https://gitee.com/opengauss/openGauss-server.git
 [submodule "reference/relational/mysql"]
 	path = reference/relational/mysql
-	url = https://github.com/mysql/mysql-server.git
+	url = https://gitee.com/mirrors/mysql-server.git

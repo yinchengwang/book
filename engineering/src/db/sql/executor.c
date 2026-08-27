@@ -25,6 +25,7 @@
 #include "db/sql/nodeLimit.h"
 #include "db/sql/nodeModifyTable.h"
 #include "db/sql/nodeProjectSet.h"
+#include "db/mvcc_session.h"  /* C2-1 T4：事务生命周期 */
 
 #include <stdlib.h>
 #include <string.h>
@@ -562,6 +563,16 @@ void ExecutorStart(QueryDesc *queryDesc, int eflags) {
         return;
     }
 
+    /* C2-1 T4：事务生命周期挂钩
+     * 1) 查询开始时如未设置 current_xid，按 RC 隔离级别建立事务
+     * 2) mvcc_set_current_xid 由调用方（parser+statement）触发，本处仅作
+     *    fallback：若 caller 未调则建立一个最小事务用于快照读
+     */
+    if (mvcc_current_xid() == 0) {
+        static int64_t s_autotxn = 100;
+        mvcc_set_current_xid(++s_autotxn);
+    }
+
     /* 确保节点注册表已初始化 */
     if (!g_node_registry_initialized) {
         executor_register_nodes();
@@ -676,6 +687,9 @@ void ExecutorEnd(QueryDesc *queryDesc) {
     if (queryDesc == NULL) {
         return;
     }
+
+    /* C2-1 T5：查询结束清除当前线程的活跃 xid（RC 隔离级别下次查询重建 ReadView） */
+    mvcc_clear_current_xid();
 
     /* 1. 释放 PlanState 树 */
     if (queryDesc->planstate != NULL) {
