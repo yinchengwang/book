@@ -10,6 +10,7 @@
  */
 
 #include "db/sql/nodes/nodeSeqscan.h"
+#include "db/sql/memctx.h"  /* C0-3：per-query MemoryContext */
 
 /* 前向声明，避免引入冲突的头文件 */
 typedef struct RelationData *Relation;
@@ -97,16 +98,22 @@ SeqScanState *ExecInitSeqScan(SeqScanPlan *node, void *estate, int eflags)
     SeqScanState *scanstate;
     SeqScanExtState *ext_state;
 
+    /* C0-3：从 per-query MemoryContext 分配（FreeEState 一次 Reset 替代手工 free 链） */
+    EState *estate_p = (EState *)estate;
+    MemoryContext ctx = estate_p ? estate_p->es_query_cxt : NULL;
+    if (ctx == NULL) ctx = CurrentMemoryContext;  /* 退化路径 */
+    (void)eflags;
+
     /* 分配状态结构 */
-    scanstate = (SeqScanState *)calloc(1, sizeof(SeqScanState));
+    scanstate = (SeqScanState *)palloc0(ctx, sizeof(SeqScanState));
     if (!scanstate) {
         return NULL;
     }
 
     /* 分配扩展状态结构 */
-    ext_state = (SeqScanExtState *)calloc(1, sizeof(SeqScanExtState));
+    ext_state = (SeqScanExtState *)palloc0(ctx, sizeof(SeqScanExtState));
     if (!ext_state) {
-        free(scanstate);
+        pfree(ctx, scanstate);
         return NULL;
     }
 
@@ -139,8 +146,7 @@ SeqScanState *ExecInitSeqScan(SeqScanPlan *node, void *estate, int eflags)
     /* 暂时使用固定 2 列作为测试 */
     scanstate->ss.ps.ps_TupDesc = exec_make_tuple_desc(2);
     if (!scanstate->ss.ps.ps_TupDesc) {
-        free(ext_state);
-        free(scanstate);
+        /* scanstate/ext_state 由 MemoryContext 管理，FreeEState Reset 回收 */
         return NULL;
     }
 
@@ -148,8 +154,6 @@ SeqScanState *ExecInitSeqScan(SeqScanPlan *node, void *estate, int eflags)
     scanstate->ss.ps.expr_context = exec_create_expr_context();
     if (!scanstate->ss.ps.expr_context) {
         exec_drop_tuple_desc(scanstate->ss.ps.ps_TupDesc);
-        free(ext_state);
-        free(scanstate);
         return NULL;
     }
 
@@ -158,8 +162,6 @@ SeqScanState *ExecInitSeqScan(SeqScanPlan *node, void *estate, int eflags)
     if (!scanstate->ss.ps.expr_context->slot) {
         exec_destroy_expr_context(scanstate->ss.ps.expr_context);
         exec_drop_tuple_desc(scanstate->ss.ps.ps_TupDesc);
-        free(ext_state);
-        free(scanstate);
         return NULL;
     }
 
@@ -169,8 +171,6 @@ SeqScanState *ExecInitSeqScan(SeqScanPlan *node, void *estate, int eflags)
             exec_drop_tuple_slot(scanstate->ss.ps.expr_context->slot);
             exec_destroy_expr_context(scanstate->ss.ps.expr_context);
             exec_drop_tuple_desc(scanstate->ss.ps.ps_TupDesc);
-            free(ext_state);
-            free(scanstate);
             return NULL;
         }
     }
