@@ -1,4 +1,4 @@
-#include "sdk/impl/mmdb_lock.h"
+#include "db/mmdb_lock.h"
 
 #ifdef _WIN32
 
