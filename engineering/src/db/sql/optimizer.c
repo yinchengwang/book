@@ -17,18 +17,19 @@
 /**
  * @brief 获取默认优化器配置
  *
- * 默认启用所有优化规则。
+ * C2-2 T1：诚实验——未实现规则默认 false，避免"已优化"假象。
+ * 已实现规则（predicate/projection_pushdown 等）保留 true。
  */
 OptimizerConfig get_default_optimizer_config(void) {
     OptimizerConfig config = {
-        .enable_predicate_pushdown = true,
-        .enable_projection_pushdown = true,
-        .enable_join_order = true,
-        .enable_constant_folding = true,
-        .enable_subquery_unnest = true,
-        .enable_agg_pushdown = true,
-        .enable_sort_elimination = true,
-        .enable_limit_pushdown = true
+        .enable_predicate_pushdown = true,    /* 简化实装 */
+        .enable_projection_pushdown = true,    /* 简化实装 */
+        .enable_join_order = false,           /* C2-2 T5 重新启用 */
+        .enable_constant_folding = false,     /* T1 摘假：TODO 桩 */
+        .enable_subquery_unnest = false,       /* T1 摘假：TODO 桩 */
+        .enable_agg_pushdown = false,          /* T1 摘假：TODO 桩 */
+        .enable_sort_elimination = false,      /* T1 摘假：TODO 桩 */
+        .enable_limit_pushdown = true          /* 简化实装 */
     };
     return config;
 }
