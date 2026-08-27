@@ -124,6 +124,10 @@ graph_csr_t *graph_csr_create(const char *data_dir, uint64_t max_vertices) {
         GRAPH_CSR_MAX_LABELS, sizeof(graph_csr_label_index_entry_t));
     csr->label_index_count = 0;
 
+    /* C0-1：初始化统一并发原语（值类型，create 时 init，destroy 时 destroy） */
+    mmdb_rwlock_init(&csr->rwlock);
+    csr->use_lock = true;
+
     LOG_INFO("CSR 图存储创建成功: max_vertices=%lu", max_vertices);
     return csr;
 }
@@ -200,6 +204,9 @@ graph_csr_t *graph_csr_open(const char *data_dir) {
 
     LOG_INFO("CSR 图加载成功: vertices=%lu, edges=%lu",
              vertex_count, edge_count);
+
+    /* 注意：graph_csr_create 已在 :128 完成 mmdb_rwlock_init，此处不再重复 */
+
     return csr;
 }
 
@@ -297,6 +304,8 @@ void graph_csr_destroy(graph_csr_t *csr) {
     free(csr->in_offsets);
     free(csr->in_edges);
     free(csr->labels);
+    /* C0-1：释放统一锁 */
+    mmdb_rwlock_destroy(&csr->rwlock);
     free(csr);
 }
 
@@ -622,4 +631,40 @@ void graph_csr_get_stats(const graph_csr_t *csr,
     if (out_vertices) *out_vertices = csr->vertex_count;
     if (out_edges) *out_edges = csr->edge_count + csr->coo_count;
     if (out_labels) *out_labels = csr->label_count;
+}
+
+/* ========================================================================
+ * 并发锁 API（C0-1 新增）
+ *
+ * 说明：当前实现仅替换为正确原语；读写路径中插入 lock_acquire/release
+ * 留给后续 C2-3（CSR 双视图）一并接入，避免本变更一次扩散面过广。
+ * ======================================================================== */
+
+void graph_csr_read_lock(graph_csr_t *csr) {
+    if (csr != NULL && csr->use_lock) {
+        mmdb_rwlock_rdlock(&csr->rwlock);
+    }
+}
+
+void graph_csr_read_unlock(graph_csr_t *csr) {
+    if (csr != NULL && csr->use_lock) {
+        mmdb_rwlock_unlock(&csr->rwlock, 0);
+    }
+}
+
+void graph_csr_write_lock(graph_csr_t *csr) {
+    if (csr != NULL && csr->use_lock) {
+        mmdb_rwlock_wrlock(&csr->rwlock);
+    }
+}
+
+void graph_csr_write_unlock(graph_csr_t *csr) {
+    if (csr != NULL && csr->use_lock) {
+        mmdb_rwlock_unlock(&csr->rwlock, 1);
+    }
+}
+
+void graph_csr_enable_lock(graph_csr_t *csr, bool use_lock) {
+    if (csr == NULL) return;
+    csr->use_lock = use_lock;
 }

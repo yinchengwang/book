@@ -153,8 +153,10 @@ static void *graph_engine_table_open(const char *name, AccessMode mode) {
 
     /* 初始化锁（默认禁用） */
     db->lockmgr = NULL;
-    db->rwlock = NULL;
-    db->use_lock = false;
+    /* 初始化锁（C0-1：默认启用，统一 mmdb_rwlock 原语） */
+    db->lockmgr = NULL;
+    mmdb_rwlock_init(&db->rwlock);
+    db->use_lock = true;
 
     /* 初始化 CSR 存储 */
     db->use_csr = true;
@@ -214,10 +216,8 @@ static int graph_engine_table_close(void *rel) {
     }
 
     /* 释放读写锁 */
-    if (db->rwlock != NULL) {
-        free(db->rwlock);
-        db->rwlock = NULL;
-    }
+    /* 释放读写锁（C0-1：值类型，直接 destroy） */
+    mmdb_rwlock_destroy(&db->rwlock);
 
     free(db);
     return ret;
@@ -628,49 +628,15 @@ int graph_engine_get_mem_pool_stats(void *rel, mm_pool_stats_t *stats) {
  * 并发锁控制 API 实现
  * ======================================================================== */
 
+/* ========================================================================
+ * 并发锁控制 API 实现
+ *
+ * C0-1：使用 db/mmdb_lock.h 统一跨平台锁原语，删除本地 simple_rwlock_t 实现。
+ * 原实现在 :635-673 与 vector/ts/doc 是同一份有缺陷的复刻。
+ * ======================================================================== */
+
 /* 全局锁管理器用于图引擎 */
 static lock_manager_t *g_graph_lockmgr = NULL;
-
-/* 简单的读写锁实现（基于自旋锁，与向量引擎共享） */
-typedef struct {
-    volatile int readers;
-    volatile int writers_waiting;
-    volatile int writer_active;
-} simple_rwlock_t;
-
-static void rwlock_init(simple_rwlock_t *rwlock) {
-    rwlock->readers = 0;
-    rwlock->writers_waiting = 0;
-    rwlock->writer_active = 0;
-}
-
-static void rwlock_read_lock(simple_rwlock_t *rwlock) {
-    while (1) {
-        while (rwlock->writer_active) { /* 等待写锁 */; }
-        __sync_fetch_and_add(&rwlock->readers, 1);
-        if (!rwlock->writer_active) return;
-        __sync_fetch_and_sub(&rwlock->readers, 1);
-    }
-}
-
-static void rwlock_read_unlock(simple_rwlock_t *rwlock) {
-    __sync_fetch_and_sub(&rwlock->readers, 1);
-}
-
-static void rwlock_write_lock(simple_rwlock_t *rwlock) {
-    __sync_fetch_and_add(&rwlock->writers_waiting, 1);
-    while (1) {
-        while (rwlock->readers > 0) { /* 等待读锁 */; }
-        if (__sync_bool_compare_and_swap(&rwlock->writer_active, 0, 1)) {
-            __sync_fetch_and_sub(&rwlock->writers_waiting, 1);
-            return;
-        }
-    }
-}
-
-static void rwlock_write_unlock(simple_rwlock_t *rwlock) {
-    __sync_fetch_and_and(&rwlock->writer_active, 0);
-}
 
 int graph_engine_enable_lock(void *rel, bool use_lock) {
     if (rel == NULL) return -1;
@@ -684,21 +650,12 @@ int graph_engine_enable_lock(void *rel, bool use_lock) {
                 return -1;
             }
         }
-        if (db->rwlock == NULL) {
-            db->rwlock = calloc(1, sizeof(simple_rwlock_t));
-            if (db->rwlock == NULL) return -1;
-            rwlock_init((simple_rwlock_t *)db->rwlock);
-        }
         db->lockmgr = g_graph_lockmgr;
         db->use_lock = true;
         LOG_INFO("图引擎并发锁已启用");
     } else {
         db->use_lock = false;
         db->lockmgr = NULL;
-        if (db->rwlock != NULL) {
-            free(db->rwlock);
-            db->rwlock = NULL;
-        }
         LOG_INFO("图引擎并发锁已禁用");
     }
     return 0;
@@ -707,8 +664,8 @@ int graph_engine_enable_lock(void *rel, bool use_lock) {
 int graph_engine_read_lock(void *rel) {
     if (rel == NULL) return -1;
     graph_engine_db_t *db = (graph_engine_db_t *)rel;
-    if (db->use_lock && db->rwlock != NULL) {
-        rwlock_read_lock((simple_rwlock_t *)db->rwlock);
+    if (db->use_lock) {
+        mmdb_rwlock_rdlock(&db->rwlock);
     }
     return 0;
 }
@@ -716,25 +673,25 @@ int graph_engine_read_lock(void *rel) {
 void graph_engine_read_unlock(void *rel) {
     if (rel == NULL) return;
     graph_engine_db_t *db = (graph_engine_db_t *)rel;
-    if (db->use_lock && db->rwlock != NULL) {
-        rwlock_read_unlock((simple_rwlock_t *)db->rwlock);
+    if (db->use_lock) {
+        mmdb_rwlock_unlock(&db->rwlock, 0);
     }
 }
 
 int graph_engine_write_lock(void *rel, uint32_t timeout_ms) {
     if (rel == NULL) return -1;
     graph_engine_db_t *db = (graph_engine_db_t *)rel;
-    if (db->use_lock && db->rwlock != NULL) {
-        rwlock_write_lock((simple_rwlock_t *)db->rwlock);
+    if (db->use_lock) {
+        (void)timeout_ms;
+        mmdb_rwlock_wrlock(&db->rwlock);
     }
-    (void)timeout_ms;
     return 0;
 }
 
 void graph_engine_write_unlock(void *rel) {
     if (rel == NULL) return;
     graph_engine_db_t *db = (graph_engine_db_t *)rel;
-    if (db->use_lock && db->rwlock != NULL) {
-        rwlock_write_unlock((simple_rwlock_t *)db->rwlock);
+    if (db->use_lock) {
+        mmdb_rwlock_unlock(&db->rwlock, 1);
     }
 }

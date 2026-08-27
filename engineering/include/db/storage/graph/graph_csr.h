@@ -14,6 +14,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include "db/mmdb_lock.h"  /* C0-1：统一并发原语 */
 
 #ifdef __cplusplus
 extern "C" {
@@ -126,6 +127,10 @@ typedef struct graph_csr_s {
     uint64_t num_lookups;
     uint64_t num_edge_queries;
     double build_time_ms;
+
+    /* 并发控制（C0-1：新增统一锁原语，CSR 写路径需 wrlock） */
+    mmdb_rwlock_t rwlock;          /**< 跨平台读写锁（值类型，create 时 init） */
+    bool use_lock;                  /**< 是否启用锁（C0-1：默认 true） */
 } graph_csr_t;
 
 /**
@@ -330,6 +335,16 @@ void graph_csr_build_label_index(graph_csr_t *csr);
 void graph_csr_get_stats(const graph_csr_t *csr,
                          uint64_t *out_vertices, uint64_t *out_edges,
                          uint32_t *out_labels);
+
+/* ========================================================================
+ * 并发锁 API（C0-1 新增）
+ * ======================================================================== */
+
+void graph_csr_read_lock(graph_csr_t *csr);
+void graph_csr_read_unlock(graph_csr_t *csr);
+void graph_csr_write_lock(graph_csr_t *csr);
+void graph_csr_write_unlock(graph_csr_t *csr);
+void graph_csr_enable_lock(graph_csr_t *csr, bool use_lock);
 
 #ifdef __cplusplus
 }
