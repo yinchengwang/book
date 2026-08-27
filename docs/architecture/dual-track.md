@@ -106,22 +106,24 @@
 
 ## reference 轨道
 
-`reference/open-source/` 由 12 个 git submodule 组成：
+`reference/` 目录按数据模型分类组织，包含以下子模块（可通过 `git submodule update --init --recursive` 拉取）：
 
-| Submodule | 用途 |
-|---|---|
-| faiss | Facebook 向量检索 |
-| redis | Redis 内存数据库 |
-| postgres | PostgreSQL RDBMS |
-| pgvector | PG 向量扩展 |
-| sqlite3 | SQLite |
-| elasticsearch | ES 搜索引擎 |
-| chroma | Chroma 向量数据库 |
-| milvus | Milvus 向量数据库 |
-| ann-benchmarks | ANN 基准测试 |
-| mysql | MySQL |
-| neo4j | Neo4j 图数据库 |
-| openGauss | openGauss 数据库 |
+| 模型目录 | Submodule | 用途 |
+|---|---|---|
+| vector/ | faiss | Facebook 向量检索 |
+| key-value/ | redis | Redis 内存数据库 |
+| relational/ | postgres | PostgreSQL RDBMS |
+| extension/ | pgvector | PG 向量扩展 |
+| relational/ | sqlite3 | SQLite |
+| search/ | elasticsearch | ES 搜索引擎 |
+| vector/ | chroma | Chroma 向量数据库 |
+| vector/ | milvus | Milvus 向量数据库 |
+| benchmark/ | ann-benchmarks | ANN 基准测试 |
+| relational/ | mysql | MySQL |
+| graph/ | neo4j | Neo4j 图数据库 |
+| relational/ | openGauss | openGauss 数据库 |
+
+> 注：部分子模块因网络限制暂未拉取，详见 `reference/catalog.yml`。
 
 **reference 不参与构建** —— 它是只读参考材料，用于学习开源实现。
 

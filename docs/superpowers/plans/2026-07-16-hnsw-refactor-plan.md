@@ -4,7 +4,7 @@
 
 **架构**：内存版（faiss_hnsw/）和持久化版（hnsw/）共享相同的 HNSW 图算法逻辑，区别仅在存储层。
 
-**依赖**：参考 `reference/open-source/faiss/faiss/impl/HNSW.cpp`、`reference/open-source/pgvector/src/hnsw.c`。
+**依赖**：参考 `reference/vector/faiss/faiss/impl/HNSW.cpp`、`reference/extension/pgvector/src/hnsw.c`。
 
 ---
 
@@ -329,7 +329,7 @@ cd build/engineering && cmake --build . --target faiss_hnsw
 
 - [ ] **Step 3: 实现 faiss_hnsw_index_create**
 
-参考 `reference/open-source/faiss/faiss/impl/HNSW.cpp` 中 `HNSW::HNSW(int M)` 构造函数：
+参考 `reference/vector/faiss/faiss/impl/HNSW.cpp` 中 `HNSW::HNSW(int M)` 构造函数：
 - 调用 `set_default_probas(M, 1.0/log(M))` 初始化层分配概率
 - 初始化 RNG 状态（seed=12345，Mersenne Twister）
 - 分配 levels/offsets/neighbors/cum_nneighbor 数组
@@ -385,7 +385,7 @@ void test_random_level(void) {
 
 - [ ] **Step 2: 实现 faiss_hnsw_random_level**
 
-参考 `reference/open-source/faiss/faiss/impl/HNSW.cpp` 的 `HNSW::random_level()`：
+参考 `reference/vector/faiss/faiss/impl/HNSW.cpp` 的 `HNSW::random_level()`：
 ```cpp
 int HNSW::random_level() {
     std::uniform_real_distribution<> distrib(0.0, 1.0);
@@ -437,7 +437,7 @@ void test_search_layer_monotonicity(void) {
 
 - [ ] **Step 2: 实现 search_layer**
 
-参考 `reference/open-source/faiss/faiss/impl/HNSW.cpp` 的 `search_layer_to_add` 和 `search_neighbors_to_add`：
+参考 `reference/vector/faiss/faiss/impl/HNSW.cpp` 的 `search_layer_to_add` 和 `search_neighbors_to_add`：
 1. 初始化 entry_point 为搜索起点
 2. 创建 MinimaxHeap（容量 ef）
 3. 创建 VisitedTable（大小 n_total）
@@ -482,7 +482,7 @@ void test_insert_20_vectors(void) {
 
 - [ ] **Step 2: 实现 faiss_hnsw_index_add**
 
-参考 `reference/open-source/faiss/faiss/impl/HNSW.cpp` 的 `add_with_locks` 和 `add_links_starting_from`：
+参考 `reference/vector/faiss/faiss/impl/HNSW.cpp` 的 `add_with_locks` 和 `add_links_starting_from`：
 
 **批量插入流程（与 FAISS hnsw_add_vertices 一致）：**
 1. 预先为所有向量分配层级（调用 `prepare_level_tab`）
@@ -576,7 +576,7 @@ void test_recall_sift_small(void) {
 
 - [ ] **Step 2: 实现 faiss_hnsw_index_search**
 
-参考 `reference/open-source/faiss/faiss/impl/HNSW.cpp` 的 `search` 方法：
+参考 `reference/vector/faiss/faiss/impl/HNSW.cpp` 的 `search` 方法：
 
 **搜索流程：**
 1. 从 entry_point 开始，逐层向下搜索
@@ -671,7 +671,7 @@ cmake --build . 2>&1 | head -100
 
 - [ ] **Step 1: 创建 hnsw_page.h**
 
-参考 `reference/open-source/pgvector/src/hnsw.h` 的页面格式：
+参考 `reference/extension/pgvector/src/hnsw.h` 的页面格式：
 - 元页面：存储 M/efConstruction/efSearch/维度/entry_point/max_level
 - 数据页面：存储向量数据和邻居信息
 - 页面大小：8KB（可配置）

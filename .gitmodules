@@ -1,39 +1,39 @@
 [submodule "third_part/googletest"]
 	path = third_part/googletest
 	url = https://gitee.com/yinchengwang_admin/googletest.git
-[submodule "reference/open-source/faiss"]
-	path = reference/open-source/faiss
+[submodule "reference/vector/faiss"]
+	path = reference/vector/faiss
 	url = https://gitee.com/yinchengwang_admin/faiss.git
-[submodule "reference/open-source/redis"]
-	path = reference/open-source/redis
+[submodule "reference/key-value/redis"]
+	path = reference/key-value/redis
 	url = https://gitee.com/yinchengwang_admin/redis.git
-[submodule "reference/open-source/pgvector"]
-	path = reference/open-source/pgvector
+[submodule "reference/extension/pgvector"]
+	path = reference/extension/pgvector
 	url = https://gitee.com/yinchengwang_admin/pgvector.git
-[submodule "reference/open-source/postgres"]
-	path = reference/open-source/postgres
+[submodule "reference/relational/postgres"]
+	path = reference/relational/postgres
 	url = https://github.com/postgres/postgres.git
-[submodule "reference/open-source/sqlite3"]
-	path = reference/open-source/sqlite3
+[submodule "reference/relational/sqlite3"]
+	path = reference/relational/sqlite3
 	url = https://github.com/sqlite/sqlite.git
-[submodule "reference/open-source/elasticsearch"]
-	path = reference/open-source/elasticsearch
-	url = https://gitee.com/yinchengwang_admin/elasticsearch.git
-[submodule "reference/open-source/chroma"]
-	path = reference/open-source/chroma
+# [submodule "reference/search/elasticsearch"]
+# 	path = reference/search/elasticsearch
+# 	url = https://gitee.com/yinchengwang_admin/elasticsearch.git
+[submodule "reference/vector/chroma"]
+	path = reference/vector/chroma
 	url = https://github.com/chroma-core/chroma.git
-[submodule "reference/open-source/milvus"]
-	path = reference/open-source/milvus
-	url = https://github.com/milvus-io/milvus.git
-[submodule "reference/open-source/ann-benchmarks"]
-	path = reference/open-source/ann-benchmarks
-	url = https://gitee.com/yinchengwang_admin/ann-benchmarks.git
-[submodule "reference/open-source/neo4j"]
-	path = reference/open-source/neo4j
+# [submodule "reference/vector/milvus"]
+# 	path = reference/vector/milvus
+# 	url = https://github.com/milvus-io/milvus.git
+# [submodule "reference/benchmark/ann-benchmarks"]
+# 	path = reference/benchmark/ann-benchmarks
+# 	url = https://gitee.com/yinchengwang_admin/ann-benchmarks.git
+[submodule "reference/graph/neo4j"]
+	path = reference/graph/neo4j
 	url = https://github.com/neo4j/neo4j.git
-[submodule "reference/open-source/openGauss"]
-	path = reference/open-source/openGauss
-	url = https://gitee.com/opengauss/openGauss-server.git
-[submodule "reference/open-source/mysql"]
-	path = reference/open-source/mysql
-	url = https://gitee.com/yinchengwang_admin/mysql-server.git
+# [submodule "reference/relational/openGauss"]
+# 	path = reference/relational/openGauss
+# 	url = https://gitee.com/opengauss/openGauss-server.git
+# [submodule "reference/relational/mysql"]
+# 	path = reference/relational/mysql
+# 	url = https://gitee.com/yinchengwang_admin/mysql-server.git

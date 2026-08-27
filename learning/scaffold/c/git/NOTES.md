@@ -30,6 +30,6 @@ Git 是工程化中最"无形"但最深刻的基础设施。它渗透在本仓�
 2. **OPSX 变更管理 = Git 工作流的文档化替代**：`openspec/` 下的每个变更目录（proposal.md / tasks.md / specs/）本质上是一个"特性分支"的文档化版本——proposal 是分支的 commit message，tasks 是 commit 清单，spec 是 merge 后的最终状态。不需要真的创建 Git 分支，但思维模型完全一致
 3. **`.clang-format` 的配置溯源**：`.clang-format` 在仓库根目录——通过 `git blame .clang-format` 可以追溯到谁在何时引入了哪条格式规则。`.gitattributes` 控制换行符行为，防止不同 OS 的开发者互相污染 diff
 4. **`git bisect` 在工程中的实战价值**：本仓库的 `engineering/src/db/api/handlers.c` 有 9 个 REST API handler——如果某个 API 返回码突然从 200 变成 500，`git bisect run ./test_api.sh` 能自动定位到引入 bug 的 commit，比阅读最近 50 个 commit 的 diff 快一个数量级
-5. **Git submodule 的成本与收益**：本仓库 `reference/open-source/` 下有 12 个 git submodule（faiss/redis/postgres 等）——submodule 记录了"这个外部依赖的哪个版本能和我现在的代码兼容"，这是 Monorepo 之外另一种依赖管理方案
+5. **Git submodule 的成本与收益**：本仓库 `reference/` 下有多个 git submodule（faiss/redis/postgres 等），按数据模型分类组织——submodule 记录了"这个外部依赖的哪个版本能和我现在的代码兼容"，这是 Monorepo 之外另一种依赖管理方案
 
 学完本卡后能动手的事：用 `git bisect` 在 `engineering/src/db/api/handlers.c` 的历史中定位一个假设的回归 bug——写一个 `test_api.sh`，让它返回 0 或 1，然后 `git bisect run` 自动二分。

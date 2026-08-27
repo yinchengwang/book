@@ -1,6 +1,6 @@
 // faiss_hnsw_level.c
 // 实现 faiss_hnsw_random_level：为新插入向量分配随机层号
-// 参考 FAISS reference/open-source/faiss/faiss/impl/HNSW.cpp 的 HNSW::random_level()
+// 参考 FAISS reference/vector/faiss/faiss/impl/HNSW.cpp 的 HNSW::random_level()
 //
 // FAISS 原版逻辑：
 //   int HNSW::random_level() {

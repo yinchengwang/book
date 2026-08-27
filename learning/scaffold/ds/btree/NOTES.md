@@ -52,7 +52,7 @@
 
 1. 阅读 `btreeam.c` 理解页面级别的 BTree 操作
 2. 对比 `engineering/src/db/index/btree/` 中的完整实现
-3. 研究 PostgreSQL 源码 `reference/open-source/postgres/src/backend/access/nbtree/` 中的生产级 BTree
+3. 研究 PostgreSQL 源码 `reference/relational/postgres/src/backend/access/nbtree/` 中的生产级 BTree
 
 ## 总结
 

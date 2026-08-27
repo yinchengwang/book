@@ -16,7 +16,7 @@ Unix Domain Socket 是高性能本地 IPC 的首选方案。当进程间通信�
 
 ## 工程中的应用
 
-在本项目工程代码中，Redis 源码（`reference/open-source/redis/`）大量使用 Unix Domain Socket 实现客户端-服务器通信。Redis 配置文件中通过 `unixsocket` 和 `unixsocketperm` 参数启用：
+在本项目工程代码中，Redis 源码（`reference/key-value/redis/`）大量使用 Unix Domain Socket 实现客户端-服务器通信。Redis 配置文件中通过 `unixsocket` 和 `unixsocketperm` 参数启用：
 
 ```bash
 unixsocket /var/run/redis.sock

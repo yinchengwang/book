@@ -152,19 +152,26 @@ test-results/        # 测试/运行产物（logs/coverage/test dbs）
 ## 外部源码（Git 子模块）
 
 ```
-reference/open-source/  # 知名开源项目的源码镜像（托管在 gitee），用于学习参考
-├── faiss/          # Facebook 向量检索库
-├── redis/          # Redis
-├── postgres/       # PostgreSQL
-├── pgvector/       # PG 向量扩展
-├── sqlite3/        # SQLite
-├── elasticsearch/  # Elasticsearch
-├── chroma/         # Chroma 向量数据库
-├── milvus/         # Milvus 向量数据库
-├── mysql/          # MySQL
-├── neo4j/          # Neo4j 图数据库
-├── openGauss/      # openGauss 数据库
-└── ann-benchmarks/ # 近似最近邻搜索基准测试
+reference/                  # 只读参考源码，按数据模型分类组织
+├── relational/             # 关系型数据库
+│   ├── postgres/          # PostgreSQL
+│   ├── sqlite3/           # SQLite
+│   └── ...
+├── key-value/             # 键值数据库
+│   ├── redis/             # Redis
+│   └── ...
+├── vector/                # 向量数据库
+│   ├── faiss/            # Facebook 向量检索
+│   ├── chroma/           # Chroma 向量数据库
+│   └── ...
+├── search/                # 搜索引擎
+│   └── elasticsearch/     # Elasticsearch
+├── graph/                 # 图数据库
+│   └── neo4j/            # Neo4j
+├── extension/             # 数据库扩展
+│   └── pgvector/         # PG 向量扩展
+└── benchmark/             # 基准测试
+    └── ann-benchmarks/    # ANN 基准测试
 
 third_part/googletest/  # GoogleTest（vendored，CMake 自动包含，无需系统安装）
 ```

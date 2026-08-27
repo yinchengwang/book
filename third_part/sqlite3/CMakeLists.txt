@@ -1,4 +1,4 @@
-# SQLite amalgamation（来自 reference/open-source/sqlite3 子模块）
+# SQLite amalgamation（来自 reference/relational/sqlite3 子模块）
 # 提供 sqlite3 静态库 + 头文件路径
 
 cmake_minimum_required(VERSION 3.20)
@@ -7,7 +7,7 @@ project(sqlite3 C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# 源文件：从 reference/open-source/sqlite3/src 复制 amalgamation
+# 源文件：从 reference/relational/sqlite3/src 复制 amalgamation
 # 若 third_part/sqlite3/sqlite3.c 存在则直接使用，否则跳过构建
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sqlite3.c")
     add_library(sqlite3 STATIC sqlite3.c)
