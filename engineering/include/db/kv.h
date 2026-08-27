@@ -295,6 +295,22 @@ void *kv_get_buffer_pool(kv_t *db);
  */
 int kv_replay_wal(kv_t *db, const char *wal_path);
 
+/* ========================================================================
+ * C0-3：KV → DBERR 适配宏（向后兼容）
+ * ======================================================================== */
+
+#include "db/errors.h"
+
+#define KV_TO_DBERR(rc) \
+    ((rc) == KV_OK        ? DBERR_OK        : \
+     (rc) == KV_NOT_FOUND ? DBERR_NOT_FOUND : \
+     (rc) == KV_FULL      ? DBERR_FULL      : \
+     (rc) == KV_NOMEM     ? DBERR_NOMEM     : \
+     (rc) == KV_EXISTS    ? DBERR_EXISTS    : \
+     (rc) == KV_INVALID   ? DBERR_INVALID   : \
+     (rc) == KV_CORRUPT   ? DBERR_CORRUPT   : \
+                             DBERR_MOD_KV)
+
 #ifdef __cplusplus
 }
 #endif

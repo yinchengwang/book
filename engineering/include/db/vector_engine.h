@@ -231,6 +231,21 @@ float vector_cosine_similarity(const float *a, const float *b, int32_t dim);
  */
 void vector_normalize(float *v, int32_t dim);
 
+/* ========================================================================
+ * C0-3：Vector API → DBERR 适配宏
+ * ======================================================================== */
+
+#include "db/errors.h"
+
+/**
+ * @brief Vector API 返回值（int 0/-1）→ DBERR
+ *
+ * Vector API 当前仅 0/-1 二值；区分 NOT_IMPLEMENTED/INVALID 需要调用方
+ * 自行在调用前后判定（如先 vector_engine_is_drop_implemented() 探测）。
+ */
+#define VEC_TO_DBERR(rc) \
+    ((rc) == 0 ? DBERR_OK : DBERR_MOD_VECTOR)
+
 #ifdef __cplusplus
 }
 #endif
