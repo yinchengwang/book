@@ -957,3 +957,21 @@ void wal_recovery_info_free(wal_recovery_info_t *info) {
     if (info->active_txns) free(info->active_txns);
     memset(info, 0, sizeof(*info));
 }
+
+/* ============================================================
+ * C0-2：当前活跃 WAL（线程局部）
+ * ============================================================ */
+
+#ifdef _WIN32
+__declspec(thread) static wal_t *s_current_wal = NULL;
+#else
+__thread wal_t *s_current_wal = NULL;
+#endif
+
+void wal_set_current(wal_t *wal) {
+    s_current_wal = wal;
+}
+
+wal_t *wal_get_current(void) {
+    return s_current_wal;
+}

@@ -309,6 +309,19 @@ uint64_t wal_write_yang_ds(wal_t *wal, uint32_t datastore_id,
                            const void *data, size_t data_len);
 
 /* ============================================================
+ * C0-2：当前活跃 WAL（线程局部）
+ * ============================================================
+ *
+ * 用法：模态在 DML 入口前调用 wal_set_current(w) 设置，
+ * heap_insert/delete/update 内部读 wal_get_current() 写 redo 记录。
+ * 这样避免修改 Relation 结构与所有调用方签名。
+ * 多线程并发由调用方负责（同一时刻只允许一个 WAL 活跃）。
+ */
+
+void   wal_set_current(wal_t *wal);
+wal_t *wal_get_current(void);
+
+/* ============================================================
  * 恢复 API
  * ============================================================ */
 

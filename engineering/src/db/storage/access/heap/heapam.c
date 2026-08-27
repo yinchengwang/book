@@ -47,6 +47,7 @@
 #include "db/rel.h"
 #include "db/buf.h"
 #include "db/catalog.h"
+#include "db/storage/wal/wal.h"  /* C0-2：WAL 接入 */
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -301,6 +302,19 @@ int heap_insert(Relation rel, const void *tuple, size_t len,
     (void)options;
     (void)bistate;
 
+    /* C0-2：WAL-first 铁律 — 在主存修改前先写 redo 日志 */
+    {
+        wal_t *cur_wal = wal_get_current();
+        if (cur_wal != NULL) {
+            uint64_t lsn = wal_write_heap_insert(cur_wal, rel->rd_relfilenode,
+                                                tuple, len);
+            if (lsn == 0) {
+                /* WAL 写入失败：中止本次插入 */
+                return -1;
+            }
+        }
+    }
+
     /* 获取或分配新页面 */
     BlockNumber blocknum = rel->rd_nblocks;
     BufferDesc *buf = NULL;
@@ -391,12 +405,22 @@ int heap_delete(Relation rel, const void *tid, uint32_t cid,
     (void)crosscheck;
     (void)wait;
 
-    /* 解析 TID：前4字节是 block，后2字节是 offset */
+    /* C0-2：WAL-first — 解析 TID 后先写 redo 日志 */
     const uint8_t *tid_data = (const uint8_t *)tid;
     uint32_t blocknum = 0;
     uint16_t offset = 0;
     memcpy(&blocknum, tid_data, sizeof(uint32_t));
     memcpy(&offset, tid_data + sizeof(uint32_t), sizeof(uint16_t));
+
+    {
+        wal_t *cur_wal = wal_get_current();
+        if (cur_wal != NULL) {
+            uint64_t packed_tid = ((uint64_t)blocknum << 32) | (uint64_t)offset;
+            uint64_t lsn = wal_write_heap_delete(cur_wal, rel->rd_relfilenode,
+                                                packed_tid);
+            if (lsn == 0) return -1;
+        }
+    }
 
     /* 读取页面 */
     BufferDesc *buf = buf_read(rel->rd_relfilenode, blocknum, 0);
@@ -454,10 +478,22 @@ int heap_update(Relation rel, const void *tid,
     (void)bistate;
     (void)lockmode;
 
-    /* 解析 TID */
+    /* C0-2：WAL-first — update 等价 delete + insert，先记 redo */
     const uint8_t *tid_data = (const uint8_t *)tid;
     uint32_t blocknum = 0;
+    uint16_t offset = 0;
     memcpy(&blocknum, tid_data, sizeof(uint32_t));
+    memcpy(&offset, tid_data + sizeof(uint32_t), sizeof(uint16_t));
+
+    {
+        wal_t *cur_wal = wal_get_current();
+        if (cur_wal != NULL) {
+            uint64_t packed_tid = ((uint64_t)blocknum << 32) | (uint64_t)offset;
+            uint64_t lsn = wal_write_heap_update(cur_wal, rel->rd_relfilenode,
+                                                packed_tid, newtuple, new_len);
+            if (lsn == 0) return -1;
+        }
+    }
 
     /* 先删除旧元组 */
     if (heap_delete(rel, tid, cid, false, false) != 0) {
