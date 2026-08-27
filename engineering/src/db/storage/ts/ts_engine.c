@@ -7,6 +7,7 @@
 #include "db/storage/ts/ts_retention.h"
 #include "db/storage/ts/ts_segment.h"
 #include "db/core/log.h"
+#include "db/storage/wal/wal.h"  /* C0-2：WAL 接入 */
 #include "db/mm_pool.h"
 #include "db/lock.h"
 #include <stdlib.h>
@@ -224,6 +225,16 @@ static int ts_engine_tuple_insert(void *rel, const void *data, size_t len) {
     double value;
     memcpy(&timestamp, data, sizeof(int64_t));
     memcpy(&value, (const uint8_t *)data + sizeof(int64_t), sizeof(double));
+
+    /* C0-2：WAL-first — 主存修改前先写 redo 日志 */
+    {
+        wal_t *cur_wal = wal_get_current();
+        if (cur_wal != NULL) {
+            uint32_t series_id = (uint32_t)(uintptr_t)rel;  /* 简化：用 rel 指针作 series_id */
+            uint64_t lsn = wal_write_ts_append(cur_wal, series_id, timestamp, value);
+            if (lsn == 0) return -1;
+        }
+    }
 
     /* 优先使用分段索引存储 */
     if (db->use_segment_index && db->segment_index != NULL) {
