@@ -8,6 +8,7 @@
 
 #include <db/storage/vector/vector_persist.h>
 #include <db/log.h>
+#include <db/storage/wal/wal_flush.h>  /* C0-2 T8：db_fsync + 策略 */
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -257,9 +258,23 @@ int vector_wal_append(vector_wal_t *wal, uint32_t segment_id,
 
     pthread_mutex_lock(&wal->mutex);
 
-    /* 序列化记录 */
-    uint8_t record[VECTOR_WAL_RECORD_HEADER_SIZE + dims * sizeof(float)];
-    size_t data_size = dims * sizeof(float);
+    /* C0-2 T8 修复：dims 上限保护，避免 VLA 栈溢出与 memcpy 越界 */
+    if (dims <= 0 || dims > 65536) {
+        LOG_ERROR("向量维度非法: %d", dims);
+        pthread_mutex_unlock(&wal->mutex);
+        return -1;
+    }
+
+    size_t data_size = (size_t)dims * sizeof(float);
+    size_t record_size = VECTOR_WAL_RECORD_HEADER_SIZE + data_size + 4 /*crc*/;
+
+    /* C0-2 T8：堆缓冲替代 VLA，避免大 dims 栈溢出 */
+    uint8_t *record = (uint8_t *)malloc(record_size);
+    if (record == NULL) {
+        LOG_ERROR("malloc WAL record 失败 (size=%zu)", record_size);
+        pthread_mutex_unlock(&wal->mutex);
+        return -1;
+    }
 
     /* 写入记录头 */
     record[0] = VECTOR_WAL_APPEND;
@@ -274,35 +289,51 @@ int vector_wal_append(vector_wal_t *wal, uint32_t segment_id,
     }
 
     /* 计算校验和 */
-    uint32_t crc = wal_crc32(record, sizeof(record) - 4);
-    memcpy(&record[sizeof(record) - 4], &crc, 4);
+    uint32_t crc = wal_crc32(record, record_size - 4);
+    memcpy(&record[record_size - 4], &crc, 4);
 
+    int rc = 0;
     /* 写入缓冲区或直接刷盘 */
-    size_t record_size = sizeof(record);
     if (wal->mode == VECTOR_WAL_SYNC) {
-        /* 同步模式：直接写入并刷盘 */
+        /* C0-2 T8：同步模式走统一刷盘策略 */
+        wal_flush_policy_t policy = wal_flush_get_policy();
         if (fwrite(record, record_size, 1, wal->fp) != 1) {
             LOG_ERROR("写入 WAL 记录失败");
-            pthread_mutex_unlock(&wal->mutex);
-            return -1;
+            rc = -1;
+        } else {
+            fflush(wal->fp);
+            if (policy == WAL_FLUSH_FSYNC || policy == WAL_FLUSH_BATCH) {
+                if (db_fsync(fileno(wal->fp)) != 0) {
+                    LOG_ERROR("fsync WAL 记录失败");
+                    rc = -1;
+                }
+            }
         }
-        fflush(wal->fp);
     } else {
-        /* 异步模式：写入缓冲区 */
-        if (wal->buffer_used + record_size > wal->buffer_size) {
-            /* 缓冲区满，先刷盘 */
-            fwrite(wal->buffer, wal->buffer_used, 1, wal->fp);
-            wal->buffer_used = 0;
+        /* 异步模式：写入缓冲区（C0-2 T8 加边界检查） */
+        if (record_size > wal->buffer_size) {
+            LOG_ERROR("WAL 记录 size=%zu 超过 buffer=%zu",
+                      record_size, (size_t)wal->buffer_size);
+            rc = -1;
+        } else {
+            if (wal->buffer_used + record_size > wal->buffer_size) {
+                /* 缓冲区满，先刷盘 */
+                fwrite(wal->buffer, wal->buffer_used, 1, wal->fp);
+                wal->buffer_used = 0;
+            }
+            memcpy(wal->buffer + wal->buffer_used, record, record_size);
+            wal->buffer_used += record_size;
         }
-        memcpy(wal->buffer + wal->buffer_used, record, record_size);
-        wal->buffer_used += record_size;
     }
 
-    wal->num_records++;
-    wal->num_vectors++;
+    if (rc == 0) {
+        wal->num_records++;
+        wal->num_vectors++;
+    }
 
+    free(record);
     pthread_mutex_unlock(&wal->mutex);
-    return 0;
+    return rc;
 }
 
 /**
@@ -372,6 +403,15 @@ int vector_wal_flush(vector_wal_t *wal) {
             return -1;
         }
         fflush(wal->fp);
+        /* C0-2 T8：根据全局策略决定 fsync */
+        wal_flush_policy_t policy = wal_flush_get_policy();
+        if (policy == WAL_FLUSH_FSYNC || policy == WAL_FLUSH_BATCH) {
+            if (db_fsync(fileno(wal->fp)) != 0) {
+                LOG_ERROR("fsync WAL 缓冲区失败");
+                pthread_mutex_unlock(&wal->mutex);
+                return -1;
+            }
+        }
         wal->buffer_used = 0;
     }
 
