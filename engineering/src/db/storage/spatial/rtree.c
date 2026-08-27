@@ -154,12 +154,18 @@ rtree_t *rtree_create(int max_entries) {
     tree->num_items = 0;
     tree->height = 1;
 
+    /* C0-1：统一锁原语，默认启用 */
+    mmdb_rwlock_init(&tree->rwlock);
+    tree->use_lock = true;
+
     return tree;
 }
 
 void rtree_free(rtree_t *tree) {
     if (!tree) return;
     rtree_node_free(tree->root);
+    /* C0-1：释放统一锁 */
+    mmdb_rwlock_destroy(&tree->rwlock);
     free(tree);
 }
 
@@ -659,4 +665,37 @@ void rtree_stats(rtree_t *tree, rtree_stats_t *stats) {
 
     free(stack);
     stats->num_nodes = node_count;
+}
+
+/* ========================================================================
+ * 并发锁 API（C0-1 新增）
+ * ======================================================================== */
+
+void rtree_read_lock(rtree_t *tree) {
+    if (tree != NULL && tree->use_lock) {
+        mmdb_rwlock_rdlock(&tree->rwlock);
+    }
+}
+
+void rtree_read_unlock(rtree_t *tree) {
+    if (tree != NULL && tree->use_lock) {
+        mmdb_rwlock_unlock(&tree->rwlock, 0);
+    }
+}
+
+void rtree_write_lock(rtree_t *tree) {
+    if (tree != NULL && tree->use_lock) {
+        mmdb_rwlock_wrlock(&tree->rwlock);
+    }
+}
+
+void rtree_write_unlock(rtree_t *tree) {
+    if (tree != NULL && tree->use_lock) {
+        mmdb_rwlock_unlock(&tree->rwlock, 1);
+    }
+}
+
+void rtree_enable_lock(rtree_t *tree, bool use_lock) {
+    if (tree == NULL) return;
+    tree->use_lock = use_lock;
 }

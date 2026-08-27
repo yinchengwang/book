@@ -135,6 +135,10 @@ static void *spatial_engine_table_open(const char *name, AccessMode mode) {
     db->rtree_index = NULL;
     db->index_built = false;
 
+    /* C0-1：统一锁原语，默认启用 */
+    mmdb_rwlock_init(&db->rwlock);
+    db->use_lock = true;
+
     return db;
 }
 
@@ -166,6 +170,8 @@ static int spatial_engine_table_close(void *rel) {
         db->hilbert_index = NULL;
     }
 
+    /* C0-1：释放统一锁 */
+    mmdb_rwlock_destroy(&db->rwlock);
     free(db);
     return 0;
 }
