@@ -45,6 +45,42 @@ static int get_dir_path(const char *name, char *path, size_t path_size) {
     return 0;
 }
 
+static int create_dir_recursive(const char *path) {
+    char tmp[512];
+    char *p = NULL;
+    size_t len;
+
+    snprintf(tmp, sizeof(tmp), "%s", path);
+    len = strlen(tmp);
+
+    if (tmp[len - 1] == '/') {
+        tmp[len - 1] = '\0';
+    }
+
+    for (p = tmp + 1; *p; p++) {
+        if (*p == '/') {
+            *p = '\0';
+#ifdef _WIN32
+            if (_mkdir(tmp) != 0 && errno != EEXIST) {
+#else
+            if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
+#endif
+                return -1;
+            }
+            *p = '/';
+        }
+    }
+
+#ifdef _WIN32
+    if (_mkdir(tmp) != 0 && errno != EEXIST) {
+#else
+    if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
+#endif
+        return -1;
+    }
+    return 0;
+}
+
 static int spatial_engine_table_create(const char *name, const storage_schema_t *schema) {
     (void)schema;
     if (name == NULL) return -1;
@@ -52,12 +88,8 @@ static int spatial_engine_table_create(const char *name, const storage_schema_t 
     char dir_path[512];
     get_dir_path(name, dir_path, sizeof(dir_path));
 
-    /* 创建目录（兼容 Windows/macOS/Linux） */
-#ifdef _WIN32
-    if (mkdir(dir_path) != 0 && errno != EEXIST) {
-#else
-    if (mkdir(dir_path, 0755) != 0 && errno != EEXIST) {
-#endif
+    /* 递归创建目录 */
+    if (create_dir_recursive(dir_path) != 0) {
         LOG_ERROR("创建空间数据目录失败: %s", dir_path);
         return -1;
     }

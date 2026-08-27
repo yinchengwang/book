@@ -83,7 +83,7 @@ static void expand_node(GraphTraverseIter *iter, graph_vertex_id_t vid, int dept
         graph_edge_get(iter->graph, out_edges[i], &edge);
         if (!edge) continue;
 
-        graph_vertex_id_t neighbor = edge->dst;
+        graph_vertex_id_t neighbor = edge->dst_id;
 
         if (!iter->visited[neighbor]) {
             iter->visited[neighbor] = true;
@@ -327,7 +327,7 @@ GraphPath *graph_dijkstra(void *graph,
             graph_edge_get(graph, out_edges[i], &edge);
             if (!edge) continue;
 
-            graph_vertex_id_t neighbor = edge->dst;
+            graph_vertex_id_t neighbor = edge->dst_id;
             double weight = 1.0;
 
             if (options->edge_weights) {
@@ -502,7 +502,7 @@ GraphPageRankResult *graph_pagerank(void *graph, const GraphPageRankOptions *opt
 
                 /* 找到源顶点的索引 */
                 for (size_t k = 0; k < n; k++) {
-                    if (vertices[k] == edge->src) {
+                    if (vertices[k] == edge->src_id) {
                         new_scores[i] += opts.damping * scores[k] / out_degrees[k];
                         break;
                     }
@@ -708,7 +708,7 @@ GraphLouvainResult *graph_louvain(void *graph, const GraphLouvainOptions *option
 
                 /* 找到邻居的社区 */
                 for (size_t k = 0; k < n; k++) {
-                    if (vertices[k] == edge->dst) {
+                    if (vertices[k] == edge->dst_id) {
                         int neighbor_community = communities[k];
                         if (neighbor_community != current_community) {
                             /* 简化的模块度增益计算 */
@@ -830,9 +830,9 @@ GraphConnectedComponents *graph_connected_components(void *graph)
                 if (!edge) continue;
 
                 for (size_t j = 0; j < n; j++) {
-                    if (vertices[j] == edge->dst && component_ids[j] == -1) {
+                    if (vertices[j] == edge->dst_id && component_ids[j] == -1) {
                         component_ids[j] = component_id;
-                        queue[queue_back++] = edge->dst;
+                        queue[queue_back++] = edge->dst_id;
                     }
                 }
 
@@ -846,9 +846,9 @@ GraphConnectedComponents *graph_connected_components(void *graph)
                 if (!edge) continue;
 
                 for (size_t j = 0; j < n; j++) {
-                    if (vertices[j] == edge->src && component_ids[j] == -1) {
+                    if (vertices[j] == edge->src_id && component_ids[j] == -1) {
                         component_ids[j] = component_id;
-                        queue[queue_back++] = edge->src;
+                        queue[queue_back++] = edge->src_id;
                     }
                 }
 

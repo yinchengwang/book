@@ -8,6 +8,7 @@
 #define DB_SPATIAL_QUADTREE_H
 
 #include "db/storage/spatial/spatial_engine.h"
+#include "db/storage/spatial/rtree.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

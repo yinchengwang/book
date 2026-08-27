@@ -6,8 +6,13 @@ set(TRAVERSE_SOURCE_FILES
     ${ENGINEERING_SOURCE_DIR}/src/db/executor/graph/traverse/traverse.c
 )
 
-if(GRAPH_SOURCE_FILES OR TRAVERSE_SOURCE_FILES)
-    add_library(storage_graph OBJECT ${GRAPH_SOURCE_FILES} ${TRAVERSE_SOURCE_FILES})
+# 包含图分析算法源文件
+set(GRAPH_ALGO_SOURCE_FILES
+    ${ENGINEERING_SOURCE_DIR}/src/db/graph/graph_algorithms.c
+)
+
+if(GRAPH_SOURCE_FILES OR TRAVERSE_SOURCE_FILES OR GRAPH_ALGO_SOURCE_FILES)
+    add_library(storage_graph OBJECT ${GRAPH_SOURCE_FILES} ${TRAVERSE_SOURCE_FILES} ${GRAPH_ALGO_SOURCE_FILES})
     target_include_directories(storage_graph PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${ENGINEERING_SOURCE_DIR}/include
@@ -16,6 +21,7 @@ if(GRAPH_SOURCE_FILES OR TRAVERSE_SOURCE_FILES)
         ${ENGINEERING_SOURCE_DIR}/include/db/core
         ${ENGINEERING_SOURCE_DIR}/include/db/executor
         ${ENGINEERING_SOURCE_DIR}/src/db/executor/graph
+        ${ENGINEERING_SOURCE_DIR}/src/db/graph
     )
 endif()
 

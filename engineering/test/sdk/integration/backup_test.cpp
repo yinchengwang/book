@@ -18,6 +18,7 @@
 extern "C" {
 #include "sdk/mmdb.h"
 #include "sdk/mmdb_backup.h"
+#include "sdk/impl/mmdb_internal.h"
 #include "sqlite3.h"
 }
 

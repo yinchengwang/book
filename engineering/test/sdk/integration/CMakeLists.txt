@@ -94,6 +94,7 @@ add_executable(backup_test backup_test.cpp)
 target_link_libraries(backup_test PRIVATE mmsdk gtest_main)
 target_include_directories(backup_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_part/sqlite3
 )
 set_target_properties(backup_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/sdk_integration_tests

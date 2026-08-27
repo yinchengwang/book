@@ -299,7 +299,8 @@ int mmdb_request_begin(mmdb_t* db, const char* name, mmdb_request_scope_t* scope
         name,                     /* name */
         0,                        /* minContextSize */
         8192,                     /* initBlockSize */
-        1024 * 1024               /* maxBlockSize */
+        1024 * 1024,              /* maxBlockSize */
+        ALLOCSET_PRESET_DEFAULT   /* preset */
     );
     if (!scope->context) {
         return MMDB_ERR_NOMEM;

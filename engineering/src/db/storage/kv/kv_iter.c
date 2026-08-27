@@ -25,7 +25,8 @@ typedef struct kv_record_s {
 /** KV 扫描迭代器 */
 struct kv_iter_s {
     buffer_pool_t *pool;          /**< 缓存池 */
-    page_id_t     data_page_id;   /**< 数据页 ID */
+    page_id_t     data_page_id;   /**< 当前数据页 ID */
+    page_id_t     max_page_id;    /**< 最大数据页 ID（用于多页扫描） */
 
     /* 扫描范围 */
     void         *start_key;
@@ -91,6 +92,7 @@ kv_iter_t *kv_scan(kv_t *db,
 
     iter->pool = db->pool;
     iter->data_page_id = 1;  /* 第一个数据页 */
+    iter->max_page_id = 1;  /* 后续扫描时动态更新 */
 
     /* 复制范围边界 */
     if (start_key && start_len > 0) {

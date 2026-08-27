@@ -67,7 +67,8 @@ mmdb_memctx_t mmdb_memctx_create(mmdb_memctx_t parent,
      * 创建后通过设置 header.max_bytes 字段启用限额，由 SDK 层兜底预检。
      */
     MemoryContext ctx = AllocSetContextCreate(parent, name, 0, init_size,
-                                              MMDB_MEMCTX_MAX_BLOCK_SIZE);
+                                              MMDB_MEMCTX_MAX_BLOCK_SIZE,
+                                              ALLOCSET_PRESET_DEFAULT);
     if (!ctx) {
         return NULL;
     }

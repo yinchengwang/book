@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <sys/stat.h>
 
 /**
  * @brief SpatialEngineTest: 空间引擎功能测试
@@ -15,8 +16,8 @@
 class SpatialEngineTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // 创建测试目录
-        test_dir = "test_data/mm_storage/spatial/spatial_test_hilbert";
+        // 创建测试目录（使用 test-results 目录）
+        test_dir = "test-results/engineering/spatial_test";
 #ifdef _WIN32
         _mkdir(test_dir.c_str());
 #else

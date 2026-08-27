@@ -7,9 +7,21 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 依赖：SQLite
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../../third_part/sqlite3
-                 ${CMAKE_BINARY_DIR}/sdk_sqlite3_build)
+# 依赖：SQLite（amalgamation，位于 third_part/sqlite3/）
+set(_sqlite3_dir "${CMAKE_CURRENT_LIST_DIR}/../../../third_part/sqlite3")
+if(EXISTS "${_sqlite3_dir}/sqlite3.c")
+    if(NOT TARGET sqlite3)
+        add_library(sqlite3 STATIC "${_sqlite3_dir}/sqlite3.c")
+        target_include_directories(sqlite3 PUBLIC "${_sqlite3_dir}")
+        if(MSVC)
+            target_compile_options(sqlite3 PRIVATE /W0)
+        else()
+            target_compile_options(sqlite3 PRIVATE -w)
+        endif()
+    endif()
+else()
+    message(FATAL_ERROR "third_part/sqlite3/sqlite3.c 不存在，请下载 SQLite amalgamation")
+endif()
 
 # 核心模块
 set(SDK_CORE_SOURCES

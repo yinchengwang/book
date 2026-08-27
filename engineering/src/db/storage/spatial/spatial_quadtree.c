@@ -10,24 +10,9 @@
 #include <math.h>
 #include <float.h>
 
-/* ========================================================================
- * 工具函数
- * ======================================================================== */
+/* 使用 rtree.h 中的 bbox_area 和 bbox_intersects */
 
-static bool bbox_contains_bbox(const bbox_t *outer, const bbox_t *inner) {
-    return inner->min_x >= outer->min_x && inner->max_x <= outer->max_x &&
-           inner->min_y >= outer->min_y && inner->max_y <= outer->max_y;
-}
-
-static bool bbox_intersects(const bbox_t *a, const bbox_t *b) {
-    return !(a->max_x < b->min_x || a->min_x > b->max_x ||
-             a->max_y < b->min_y || a->min_y > b->max_y);
-}
-
-static double bbox_area(const bbox_t *bbox) {
-    return (bbox->max_x - bbox->min_x) * (bbox->max_y - bbox->min_y);
-}
-
+/* point_distance 用于 QuadTree 内部计算 */
 static double point_distance(const point_t *p, const bbox_t *bbox) {
     double dx = 0, dy = 0;
     if (p->x < bbox->min_x) dx = bbox->min_x - p->x;

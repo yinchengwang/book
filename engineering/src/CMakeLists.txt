@@ -25,3 +25,6 @@ add_subdirectory(db)             # 数据库内核
 
 # kbase 库（轻量级推理引擎 + Obsidian 知识库）
 add_subdirectory(kbase)
+
+# 多模态 SDK（依赖 db 模块，必须在 db 之后）
+add_subdirectory(sdk)

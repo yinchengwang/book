@@ -149,7 +149,7 @@ char *spatial_wkt_serialize(const SpatialGeometry *geom, size_t *out_len);
  * @brief 几何对象转 WKT 字符串（带精度控制）
  */
 char *spatial_wkt_serialize_precision(const SpatialGeometry *geom,
-                                      int precision);
+                                      int precision, size_t *out_len);
 
 /* ========================================================================
  * 空间关系判断

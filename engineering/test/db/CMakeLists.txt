@@ -20,6 +20,8 @@ add_subdirectory(tools)
 add_subdirectory(index)
 add_subdirectory(bgworker)
 add_subdirectory(protocol)
+add_subdirectory(graph)
+add_subdirectory(sharding)  # 分片测试
 
 # 订阅/对账/老化模块测试
 add_executable(test_sla sla_test.cpp)

@@ -178,7 +178,8 @@ EState *CreateEState(void) {
         "EStateQuery",              /* 调试用名 */
         0,                          /* minContextSize */
         ALLOCSET_DEFAULT_BLOCK_SIZE,/* initBlockSize */
-        ALLOCSET_DEFAULT_BLOCK_SIZE /* maxBlockSize */
+        ALLOCSET_DEFAULT_BLOCK_SIZE,/* maxBlockSize */
+        ALLOCSET_PRESET_DEFAULT     /* 预设：默认配置 */
     );
 
     if (query_cxt == NULL) {
@@ -265,7 +266,8 @@ ExprContext *CreateExprContext(EState *estate) {
         "ExprContextPerTuple",
         0,
         ALLOCSET_DEFAULT_BLOCK_SIZE,
-        ALLOCSET_DEFAULT_BLOCK_SIZE
+        ALLOCSET_DEFAULT_BLOCK_SIZE,
+        ALLOCSET_PRESET_DEFAULT
     );
 
     if (per_tuple_cxt == NULL) {

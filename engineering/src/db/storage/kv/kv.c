@@ -123,10 +123,6 @@ static int kv_page_find(const page_t *page,
 
     while (offset < free_space) {
         iter++;
-        if (iter > 50) {
-            /* 安全检查 */
-            return -1;
-        }
 
         /* 安全检查：确保 offset 不会越界 */
         if (offset + sizeof(kv_record_t) > PAGE_DATA_SIZE) {
@@ -417,8 +413,29 @@ kv_result_t kv_put(kv_t *db,
 
     kv_result_t result;
     if (found) {
-        /* 更新现有值 */
-        if (kv_page_update(db->pool, data_page_id, offset, value, value_len) != 0) {
+        /*
+         * 页面记录按紧凑布局连续存放，变更值长度不能原地覆盖：
+         * 否则会把后续记录推入错误偏移，导致后续查找和扫描失效。
+         * 长度不变时可以直接更新；长度变化时删除旧记录后重新插入。
+         */
+        bool update_ok = false;
+        page_t *found_page = buffer_get_page(db->pool, data_page_id);
+        if (found_page) {
+            kv_record_t *record = (kv_record_t *)(found_page->data + offset);
+            size_t old_record_value_len = record->value_len;
+            buffer_unpin_page(db->pool, data_page_id);
+
+            if (old_record_value_len == value_len) {
+                update_ok = (kv_page_update(db->pool, data_page_id,
+                                            offset, value, value_len) == 0);
+            } else if (kv_page_delete(db->pool, data_page_id, offset) == 0 &&
+                       kv_page_insert(db->pool, data_page_id,
+                                      key, key_len, value, value_len) == 0) {
+                update_ok = true;
+            }
+        }
+
+        if (!update_ok) {
             free(old_value);
             kv_set_error(db, "Failed to update");
             return KV_ERROR;
@@ -458,9 +475,7 @@ kv_result_t kv_get(kv_t *db,
     /* 检查 TTL 是否过期 */
     kv_ttl_mgr_t *ttl_mgr = (kv_ttl_mgr_t *)db->ttl_mgr;
     if (ttl_mgr && kv_ttl_is_expired(ttl_mgr, key, key_len)) {
-        /* 键已过期，删除它 */
-        kv_delete(db, key, key_len);
-        /* 从 TTL 管理器中移除条目 */
+        /* 仅移除 TTL 条目，避免 kv_get 与 kv_delete 互相递归。 */
         kv_ttl_delete(ttl_mgr, key, key_len);
         return KV_NOT_FOUND;
     }

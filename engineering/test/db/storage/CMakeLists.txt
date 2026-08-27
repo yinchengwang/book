@@ -13,3 +13,60 @@ target_link_libraries(test_sparse
 
 # 自动发现 test_sparse 中的 main 用例
 add_test(NAME test_sparse COMMAND test_sparse)
+
+# ========================================================================
+# 空间引擎测试
+# ========================================================================
+
+# 空间测试可执行文件
+add_executable(test_spatial_engine
+    spatial_engine_test.cpp
+)
+
+target_link_libraries(test_spatial_engine
+    PRIVATE
+    storage_spatial    # 空间存储模块
+    storage_graph      # 图存储模块（Hilbert 索引依赖）
+    db_storage
+    db_core
+    index_hilbert      # Hilbert 索引
+    db_rtree           # R-Tree 索引
+    project_includes
+    gtest
+    gtest_main
+)
+
+# 包含必要目录
+target_include_directories(test_spatial_engine PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+    ${ENGINEERING_SOURCE_DIR}/include/db/storage
+    ${ENGINEERING_SOURCE_DIR}/include/db/index
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googletest/include
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googlemock/include
+)
+
+# Windows MSVC 运行时库
+if(MSVC)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "")
+        target_compile_options(test_spatial_engine PRIVATE /W4 /MDd)
+    else()
+        target_compile_options(test_spatial_engine PRIVATE /W4 /MD)
+    endif()
+else()
+    target_compile_options(test_spatial_engine PRIVATE -Wall -Wextra)
+endif()
+
+# 输出到构建目录
+set_target_properties(test_spatial_engine PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+# 注册测试
+add_test(NAME test_spatial_engine COMMAND test_spatial_engine)
+
+# ========================================================================
+# 文档聚合管道测试
+# ========================================================================
+
+add_subdirectory(doc)

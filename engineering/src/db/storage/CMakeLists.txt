@@ -68,9 +68,11 @@ if(MMDB_ENABLE_VECTOR)
     endif()
 endif()
 
-# 图引擎（代码存在但有编译问题，暂不启用）
+# 图引擎
 if(MMDB_ENABLE_GRAPH)
-    message(STATUS "Graph engine: code exists but has build issues, not enabling")
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/graph")
+        add_subdirectory(graph)
+    endif()
 endif()
 
 # 文档引擎（代码存在但有编译问题，暂不启用）
@@ -85,7 +87,10 @@ endif()
 
 # 空间引擎（代码存在但有编译问题，暂不启用）
 if(MMDB_ENABLE_SPATIAL)
-    message(STATUS "Spatial engine: code exists but has build issues, not enabling")
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/spatial")
+        add_subdirectory(spatial)
+        message(STATUS "Spatial engine: enabled")
+    endif()
 endif()
 
 # 树引擎（代码存在但有编译问题，暂不启用）
@@ -147,6 +152,9 @@ if(MMDB_ENABLE_KV AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/kv")
 endif()
 if(MMDB_ENABLE_VECTOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vector")
     list(APPEND DB_STORAGE_SUBMODULES vector)
+endif()
+if(MMDB_ENABLE_GRAPH AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/graph")
+    list(APPEND DB_STORAGE_SUBMODULES graph)
 endif()
 if(MMDB_ENABLE_STREAM AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/stream")
     list(APPEND DB_STORAGE_SUBMODULES stream)

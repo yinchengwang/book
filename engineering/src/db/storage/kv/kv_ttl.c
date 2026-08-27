@@ -69,6 +69,10 @@ static int key_compare(const void *key1, size_t len1,
 /** 二分查找键的位置 */
 static int64_t kv_ttl_find_index(const kv_ttl_mgr_t *mgr,
                                   const void *key, size_t key_len) {
+    if (!mgr) return -1;
+    if (!key) return -1;
+    if (mgr->num_entries == 0) return -1;
+
     int64_t left = 0;
     int64_t right = (int64_t)mgr->num_entries - 1;
 
@@ -339,11 +343,11 @@ int64_t kv_ttl_get_remaining(kv_ttl_mgr_t *mgr, const void *key, size_t key_len)
 }
 
 bool kv_ttl_is_expired(kv_ttl_mgr_t *mgr, const void *key, size_t key_len) {
-    if (!mgr || !key) return true;
+    if (!mgr || !key) return false;  // 无 TTL 管理器或空键视为未过期
 
     int64_t idx = kv_ttl_find_index(mgr, key, key_len);
     if (idx < 0) {
-        return true;  /* 键不存在视为已过期 */
+        return false;  /* 键不在 TTL 管理器中，视为未设置 TTL（永不过期） */
     }
 
     int64_t expire_at_ms = mgr->entries[idx].expire_at_ms;

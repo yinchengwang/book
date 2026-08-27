@@ -101,3 +101,6 @@ add_subdirectory(faiss_hnsw)
 
 # HNSW 持久化版（基于 pgVector 页面管理风格）
 add_subdirectory(hnsw)
+
+# GPU 向量加速模块（CUDA/OpenCL 加速）
+add_subdirectory(gpu)

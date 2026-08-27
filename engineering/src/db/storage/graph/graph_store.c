@@ -61,20 +61,23 @@ static void graph_set_error(graph_t *g, const char *fmt, ...) {
  */
 static graph_vertex_id_t graph_alloc_vertex_id(graph_t *g) {
     char key[64];
-    char value[16];
+    char *value = NULL;
+    size_t value_len = 0;
 
     snprintf(key, sizeof(key), GRAPH_KEY_SEQ_VERTEX);
-    kv_result_t r = kv_get(g->kv, key, strlen(key), (void**)&value, NULL);
+    kv_result_t r = kv_get(g->kv, key, strlen(key), (void**)&value, &value_len);
 
     graph_vertex_id_t id;
     if (r == KV_NOT_FOUND) {
         id = 1;
     } else {
         id = g->next_vertex_id;
+        free(value);
     }
 
-    snprintf(value, sizeof(value), "%lu", (unsigned long)(id + 1));
-    kv_put(g->kv, key, strlen(key), value, strlen(value));
+    char id_str[16];
+    snprintf(id_str, sizeof(id_str), "%lu", (unsigned long)(id + 1));
+    kv_put(g->kv, key, strlen(key), id_str, strlen(id_str));
     g->next_vertex_id = id + 1;
 
     return id;
@@ -85,20 +88,23 @@ static graph_vertex_id_t graph_alloc_vertex_id(graph_t *g) {
  */
 static graph_edge_id_t graph_alloc_edge_id(graph_t *g) {
     char key[64];
-    char value[16];
+    char *value = NULL;
+    size_t value_len = 0;
 
     snprintf(key, sizeof(key), GRAPH_KEY_SEQ_EDGE);
-    kv_result_t r = kv_get(g->kv, key, strlen(key), (void**)&value, NULL);
+    kv_result_t r = kv_get(g->kv, key, strlen(key), (void**)&value, &value_len);
 
     graph_edge_id_t id;
     if (r == KV_NOT_FOUND) {
         id = 1;
     } else {
         id = g->next_edge_id;
+        free(value);
     }
 
-    snprintf(value, sizeof(value), "%lu", (unsigned long)(id + 1));
-    kv_put(g->kv, key, strlen(key), value, strlen(value));
+    char id_str[16];
+    snprintf(id_str, sizeof(id_str), "%lu", (unsigned long)(id + 1));
+    kv_put(g->kv, key, strlen(key), id_str, strlen(id_str));
     g->next_edge_id = id + 1;
 
     return id;
@@ -109,20 +115,23 @@ static graph_edge_id_t graph_alloc_edge_id(graph_t *g) {
  */
 static graph_label_id_t graph_alloc_label_id(graph_t *g) {
     char key[64];
-    char value[16];
+    char *value = NULL;
+    size_t value_len = 0;
 
     snprintf(key, sizeof(key), "gseq:label");
-    kv_result_t r = kv_get(g->kv, key, strlen(key), (void**)&value, NULL);
+    kv_result_t r = kv_get(g->kv, key, strlen(key), (void**)&value, &value_len);
 
     graph_label_id_t id;
     if (r == KV_NOT_FOUND) {
         id = 1;
     } else {
         id = g->next_label_id;
+        free(value);
     }
 
-    snprintf(value, sizeof(value), "%u", id + 1);
-    kv_put(g->kv, key, strlen(key), value, strlen(value));
+    char id_str[16];
+    snprintf(id_str, sizeof(id_str), "%u", id + 1);
+    kv_put(g->kv, key, strlen(key), id_str, strlen(id_str));
     g->next_label_id = id + 1;
 
     return id;
@@ -133,20 +142,23 @@ static graph_label_id_t graph_alloc_label_id(graph_t *g) {
  */
 static graph_label_id_t graph_alloc_rel_type_id(graph_t *g) {
     char key[64];
-    char value[16];
+    char *value = NULL;
+    size_t value_len = 0;
 
     snprintf(key, sizeof(key), "gseq:reltype");
-    kv_result_t r = kv_get(g->kv, key, strlen(key), (void**)&value, NULL);
+    kv_result_t r = kv_get(g->kv, key, strlen(key), (void**)&value, &value_len);
 
     graph_label_id_t id;
     if (r == KV_NOT_FOUND) {
         id = 1;
     } else {
         id = g->next_rel_type_id;
+        free(value);
     }
 
-    snprintf(value, sizeof(value), "%u", id + 1);
-    kv_put(g->kv, key, strlen(key), value, strlen(value));
+    char id_str[16];
+    snprintf(id_str, sizeof(id_str), "%u", id + 1);
+    kv_put(g->kv, key, strlen(key), id_str, strlen(id_str));
     g->next_rel_type_id = id + 1;
 
     return id;
@@ -787,7 +799,8 @@ graph_edge_id_t graph_edge_create(graph_t *g,
     size_t key_len;
     graph_make_edge_key(eid, key, &key_len);
 
-    if (kv_put(g->kv, key, key_len, &edge, sizeof(edge)) != KV_OK) {
+    kv_result_t put_r = kv_put(g->kv, key, key_len, &edge, sizeof(edge));
+    if (put_r != KV_OK) {
         graph_set_error(g, "Failed to store edge");
         return GRAPH_INVALID_ID;
     }
@@ -1028,28 +1041,26 @@ int graph_get_stats(graph_t *g, graph_stats_t *stats) {
         kv_iter_free(v_iter);
     }
 
-    /* 统计边数（只统计 LIVE 状态） */
-    kv_iter_t *e_iter = kv_scan(g->kv, GRAPH_KEY_EDGE_PREFIX, strlen(GRAPH_KEY_EDGE_PREFIX),
-                                GRAPH_KEY_EDGE_PREFIX "~", strlen(GRAPH_KEY_EDGE_PREFIX "~"));
-    if (e_iter) {
-        while (kv_iter_next(e_iter) == KV_OK) {
-            const void *key = kv_iter_key(e_iter);
-            (void)kv_iter_key_len(e_iter);
+    /* 统计边数：通过扫描顶点并累加出度，规避稀疏记录键在扫描器中的越界风险。 */
+    kv_iter_t *v_iter2 = kv_scan(g->kv, GRAPH_KEY_VERTEX_PREFIX, strlen(GRAPH_KEY_VERTEX_PREFIX),
+                                GRAPH_KEY_VERTEX_PREFIX "~", strlen(GRAPH_KEY_VERTEX_PREFIX "~"));
+    if (v_iter2) {
+        while (kv_iter_next(v_iter2) == KV_OK) {
+            const void *key = kv_iter_key(v_iter2);
+            (void)kv_iter_key_len(v_iter2);
 
-            /* 解析边 ID */
-            graph_edge_id_t eid = 0;
-            sscanf((const char*)key + strlen(GRAPH_KEY_EDGE_PREFIX), "%lu", (unsigned long*)&eid);
+            graph_vertex_id_t vid = 0;
+            sscanf((const char *)key + strlen(GRAPH_KEY_VERTEX_PREFIX), "%lu", (unsigned long *)&vid);
 
-            /* 检查边状态 */
-            graph_edge_t *edge = NULL;
-            if (graph_edge_get(g, eid, &edge) == 0) {
-                if (edge->state == GRAPH_EDGE_LIVE) {
-                    stats->num_edges++;
+            graph_vertex_t *vertex = NULL;
+            if (graph_vertex_get(g, vid, &vertex) == 0) {
+                if (vertex->state == GRAPH_VERTEX_LIVE) {
+                    stats->num_edges += (size_t)vertex->out_degree;
                 }
-                free(edge);
+                free(vertex);
             }
         }
-        kv_iter_free(e_iter);
+        kv_iter_free(v_iter2);
     }
 
     /* 统计标签数 */

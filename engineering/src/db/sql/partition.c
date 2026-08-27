@@ -40,7 +40,8 @@ static MemoryContext GetPartitionContext(void) {
             "PartitionContext",         /* 调试用名 */
             0,                           /* minContextSize */
             ALLOCSET_DEFAULT_BLOCK_SIZE, /* initBlockSize */
-            ALLOCSET_DEFAULT_BLOCK_SIZE  /* maxBlockSize */
+            ALLOCSET_DEFAULT_BLOCK_SIZE, /* maxBlockSize */
+            ALLOCSET_PRESET_DEFAULT      /* 预设：默认配置 */
         );
     }
     return PartitionContext;
