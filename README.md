@@ -202,6 +202,69 @@ int main() {
 }
 ```
 
+## 多模态数据库
+
+支持 KV、向量、图、文档、空间、时序、列族七种数据模型的统一存储引擎。
+
+### 架构文档
+
+- [整体架构](docs/db/MULTIMODAL-DB-ARCHITECTURE.md) —— 多模态架构总览、子模块设计、数据流图
+
+### 子模块
+
+| 模块 | 引擎 | 核心能力 |
+|------|------|----------|
+| KV | kv_engine | 键值存储，BTree 索引，Buffer Pool，WAL |
+| 向量 | vector_engine | HNSW、IVF-PQ、NSW、DiskANN，GPU 加速 |
+| 图 | graph_engine | 邻接表/CSR 存储，BFS/DFS/Dijkstra/PageRank |
+| 文档 | doc_engine | JSON 存储，倒排索引，BM25 全文检索 |
+| 空间 | spatial_engine | Point/Line/Polygon，R-Tree 索引，ST_* 谓词 |
+| 时序 | ts_engine | TSM 文件，降采样，聚合查询 |
+| 列族 | cf_engine | 列族存储，TTL 支持 |
+
+### 数据流
+
+```
+用户查询 → SQL/Cypher 解析 → 查询优化 → 多模态路由
+    ↓
+各子引擎并行检索 → RRF 结果融合 → 返回结果
+```
+
+## 多态 RAG
+
+检索增强生成系统，支持 Naive/Advanced/Modular 三种 RAG 范式。
+
+### 架构文档
+
+- [整体架构](docs/rag/RAG-ARCHITECTURE.md) —— 多态 RAG 架构、子模块设计、流程图
+
+### 子模块
+
+| 模块 | 功能 | 说明 |
+|------|------|------|
+| BM25 | 文本检索 | 倒排索引，分词，BM25 评分 |
+| 向量检索 | 语义检索 | HNSW/IVF-PQ，Embedding 模型 |
+| 知识图谱 | 关系推理 | 三元组存储，TransE/TransH 推理 |
+| 混合检索 | 多路召回 | RRF 融合，加权融合，Coef 优化 |
+| 查询处理 | 意图理解 | 查询改写/扩展/分解 |
+| 重排序 | 结果优化 | 交叉编码，晚融合，多样性 |
+
+### RAG 流程
+
+```
+用户查询 → 查询改写 → 多路召回(向量+BM25+KG)
+    ↓
+RRF 融合 → 交叉编码重排 → 上下文构建
+    ↓
+LLM 生成 → 回答输出
+```
+
+### 部署模式
+
+- **单机版**：向量库 + 文档库一体化
+- **分布式版**：代理层 + 向量/文档/图集群
+- **云原生版**：Kubernetes 编排，LLM 服务化
+
 ## 治理文档
 
 - [AGENTS.md](AGENTS.md) —— AI 助手操作指南（构建命令、库列表、代码风格、编译器标志）
