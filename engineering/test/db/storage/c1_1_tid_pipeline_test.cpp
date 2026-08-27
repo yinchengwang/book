@@ -60,9 +60,9 @@ TEST(TidPipelineBug, HardcodedTidCorruptsWrongRow) {
     make_tuple(&t3, 3, "ROW_THREE");
 
     /* 插入 3 行 */
-    ASSERT_EQ(heap_insert(rel, &t1, sizeof(t1), 0, 0, nullptr), 0);
-    ASSERT_EQ(heap_insert(rel, &t2, sizeof(t2), 0, 0, nullptr), 0);
-    ASSERT_EQ(heap_insert(rel, &t3, sizeof(t3), 0, 0, nullptr), 0);
+    ASSERT_EQ(heap_insert(rel, &t1, sizeof(t1), 0, 0, nullptr, nullptr), 0);
+    ASSERT_EQ(heap_insert(rel, &t2, sizeof(t2), 0, 0, nullptr, nullptr), 0);
+    ASSERT_EQ(heap_insert(rel, &t3, sizeof(t3), 0, 0, nullptr, nullptr), 0);
 
     /* BUG 路径：用硬编码 tid 模拟 ModifyTable 旧行为（:70-75 硬编码） */
     uint8_t bogus_tid[6] = {0, 0, 0, 0, 24, 0};  /* block=0, offset=24 */

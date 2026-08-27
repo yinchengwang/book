@@ -293,7 +293,8 @@ int heap_page_get_tuple_count(void *page) {
  * ============================================================ */
 
 int heap_insert(Relation rel, const void *tuple, size_t len,
-                uint32_t cid, int options, void *bistate) {
+                uint32_t cid, int options, void *bistate,
+                void *out_tid) {
     if (!rel || !tuple) {
         return -1;
     }
@@ -313,6 +314,12 @@ int heap_insert(Relation rel, const void *tuple, size_t len,
                 return -1;
             }
         }
+    }
+
+    /* C1-1：初始化 out_tid 为无效值（避免调用方读到垃圾） */
+    if (out_tid != NULL) {
+        uint8_t *tid_out = (uint8_t *)out_tid;
+        memset(tid_out, 0, 6);
     }
 
     /* 获取或分配新页面 */
@@ -391,6 +398,15 @@ int heap_insert(Relation rel, const void *tuple, size_t len,
 
     /* 更新统计 */
     global_stats.inserts++;
+
+    /* C1-1：回填 tid（block + LinePointer 编号） */
+    if (out_tid != NULL) {
+        uint8_t *tid_out = (uint8_t *)out_tid;
+        uint32_t blk = buf->blocknum;
+        uint16_t off = lp;
+        memcpy(tid_out, &blk, sizeof(blk));
+        memcpy(tid_out + sizeof(blk), &off, sizeof(off));
+    }
 
     return 0;
 }

@@ -169,7 +169,7 @@ TEST_F(StorageIntegrationTest, HeapInsertAndScan) {
     /* 插入元组 */
     const char *tuples[] = {"row1", "row2", "row3"};
     for (int i = 0; i < 3; i++) {
-        int r = heap_insert(rel, tuples[i], strlen(tuples[i]), 0, 0, NULL);
+        int r = heap_insert(rel, tuples[i], strlen(tuples[i]), 0, 0, NULL, NULL);
         EXPECT_EQ(0, r);
     }
 
@@ -220,7 +220,7 @@ TEST_F(StorageIntegrationTest, FullWorkflow) {
 
     /* 4. 通过 Heap AM 插入元组 */
     const char *row = "test_row_data";
-    EXPECT_EQ(0, heap_insert(rel, row, strlen(row), 0, 0, NULL));
+    EXPECT_EQ(0, heap_insert(rel, row, strlen(row), 0, 0, NULL, NULL));
 
     /* 5. 关闭 Relation */
     relation_close(rel, 0);

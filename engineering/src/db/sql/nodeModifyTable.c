@@ -58,7 +58,8 @@ static TupleTableSlot *exec_modifytable_impl(PlanState *pstate)
                                             slot->tts_tuple.len > 0 ? slot->tts_tuple.len : 64,
                                             0,  /* cid */
                                             0,  /* options */
-                                            NULL /* bistate */);
+                                            NULL, /* bistate */
+                                            NULL /* out_tid: INSERT 路径不需要返回 tid */);
                         if (result == 0) {
                             ext->mt_inserted++;
                         }
