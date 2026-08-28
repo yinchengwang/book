@@ -56,6 +56,13 @@ int mm_record_has_header(const void *data, size_t len);
  */
 size_t mm_record_write_header(void *buf, uint32_t model, uint32_t payload_len);
 
+/* C3-1 T10：mm_storage 接入 BLOB 类型 */
+#define MM_BLOB_MAX_REF_LEN 64
+int mm_storage_blob_put(const char *collection, const uint8_t blob_id[32]);
+int mm_storage_blob_get(const char *collection,
+                        const uint8_t blob_id[32],
+                        void *out_buf, size_t buf_len, size_t *out_read);
+
 #ifdef __cplusplus
 }
 #endif
