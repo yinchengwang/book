@@ -622,6 +622,46 @@ void blob_catalog_iter_destroy(blob_catalog_iter_t *iter) {
 }
 
 /* ========================================================================
+ * Chunk 引用迭代器
+ * ======================================================================== */
+
+blob_catalog_chunk_iter_t *blob_catalog_chunk_iter_create(const blob_catalog_t *catalog) {
+    if (!catalog) {
+        return NULL;
+    }
+
+    blob_catalog_chunk_iter_t *iter = (blob_catalog_chunk_iter_t *)calloc(1, sizeof(blob_catalog_chunk_iter_t));
+    if (!iter) {
+        return NULL;
+    }
+
+    iter->catalog = catalog;
+    iter->next_bucket = 0;
+    return iter;
+}
+
+int blob_catalog_chunk_iter_next(blob_catalog_chunk_iter_t *iter, blob_chunk_ref_t *out_ref) {
+    if (!iter || !out_ref) {
+        return BLOB_CATALOG_ERR_INVAL;
+    }
+
+    const blob_catalog_t *catalog = iter->catalog;
+    for (size_t i = iter->next_bucket; i < catalog->chunk_table_size; i++) {
+        if (catalog->chunk_table[i].occupied) {
+            *out_ref = catalog->chunk_table[i].ref;
+            iter->next_bucket = i + 1;
+            return BLOB_CATALOG_OK;
+        }
+    }
+
+    return BLOB_CATALOG_ERR_NOTFOUND;
+}
+
+void blob_catalog_chunk_iter_destroy(blob_catalog_chunk_iter_t *iter) {
+    free(iter);
+}
+
+/* ========================================================================
  * Checkpoint 格式
  * ======================================================================== */
 

@@ -336,6 +336,49 @@ int blob_catalog_iter_next(blob_catalog_iter_t *iter, blob_entry_t *out_entry);
  */
 void blob_catalog_iter_destroy(blob_catalog_iter_t *iter);
 
+/* ========================================================================
+ * Chunk 引用迭代器（用于 GC 扫描）
+ * ======================================================================== */
+
+/**
+ * @brief Chunk 引用迭代器
+ *
+ * 用于遍历所有 Chunk 引用条目，支持 GC 扫描。
+ */
+typedef struct blob_catalog_chunk_iter_s {
+    const void *catalog;
+    size_t next_bucket;
+} blob_catalog_chunk_iter_t;
+
+/**
+ * @brief 创建 Chunk 引用扫描迭代器
+ *
+ * @param catalog Catalog 句柄
+ * @return 迭代器句柄，失败返回 NULL
+ */
+blob_catalog_chunk_iter_t *blob_catalog_chunk_iter_create(const blob_catalog_t *catalog);
+
+/**
+ * @brief 获取迭代器当前 Chunk 引用
+ *
+ * @param iter      迭代器
+ * @param out_ref   输出 Chunk 引用
+ * @return BLOB_CATALOG_OK 成功，BLOB_CATALOG_ERR_NOTFOUND 遍历结束
+ */
+int blob_catalog_chunk_iter_next(blob_catalog_chunk_iter_t *iter,
+                                 blob_chunk_ref_t *out_ref);
+
+/**
+ * @brief 销毁 Chunk 引用迭代器
+ *
+ * @param iter 迭代器
+ */
+void blob_catalog_chunk_iter_destroy(blob_catalog_chunk_iter_t *iter);
+
+/* ========================================================================
+ * Checkpoint
+ * ======================================================================== */
+
 /**
  * @brief 执行 checkpoint
  *
