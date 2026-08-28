@@ -245,11 +245,12 @@ projects:
   - name: couchbase
     model: document
     tier: representative
-    repository: https://github.com/couchbase/server.git
-    mirror: https://github.com/couchbase/server.git
+    repository: https://github.com/couchbase/couchbase-lite-core.git
+    mirror: https://github.com/couchbase/couchbase-lite-core.git
     license: BSL-1.1
     status: active
     notes:
+      - 注：官方 server 仓库已闭源（BSL 许可），此处使用 Couchbase Lite Core（C++ 嵌入式引擎，公开可读）
       - 文档与键值混合数据库
   - name: ravendb
     model: document
@@ -641,8 +642,8 @@ projects:
   - name: db-bench
     model: benchmark
     tier: representative
-    repository: https://github.com/nicholasgasior/db-bench.git
-    mirror: https://github.com/nicholasgasior/db-bench.git
+    repository: https://github.com/wagjamin/db-bench.git
+    mirror: https://github.com/wagjamin/db-bench.git
     license: MIT
     status: maintained
     notes:

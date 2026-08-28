@@ -45,6 +45,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 2. **提交纪律**：每次 OPSX 变更里提交代码时，只提交变更相关的代码，不相关的不要混在一起提交
 3. **归档纪律**：变更归档时，只提交变更相关的代码，不相关的不要混在一起提交
 
+## 提交推送纪律
+
+1. **目标分支**：所有代码统一推送到 GitHub 远程仓库（`origin`）的 `main` 分支。
+2. **即时推送**：每次 commit 完成后，必须立即执行 `git push`，不得累积多个 commit 后批量推送。
+3. **远程仓库**：仅使用 `origin`（GitHub: `https://github.com/yinchengwang/book.git`），不再使用 Gitee。
+
 ## 项目概述
 
 C/C++ 算法与数据结构练习项目。CMake 3.20+、C11、C++17。无运行时依赖。
@@ -152,26 +158,19 @@ test-results/        # 测试/运行产物（logs/coverage/test dbs）
 ## 外部源码（Git 子模块）
 
 ```
-reference/                  # 只读参考源码，按数据模型分类组织
-├── relational/             # 关系型数据库
-│   ├── postgres/          # PostgreSQL
-│   ├── sqlite3/           # SQLite
-│   └── ...
-├── key-value/             # 键值数据库
-│   ├── redis/             # Redis
-│   └── ...
-├── vector/                # 向量数据库
-│   ├── faiss/            # Facebook 向量检索
-│   ├── chroma/           # Chroma 向量数据库
-│   └── ...
-├── search/                # 搜索引擎
-│   └── elasticsearch/     # Elasticsearch
-├── graph/                 # 图数据库
-│   └── neo4j/            # Neo4j
-├── extension/             # 数据库扩展
-│   └── pgvector/         # PG 向量扩展
-└── benchmark/             # 基准测试
-    └── ann-benchmarks/    # ANN 基准测试
+reference/open-source/  # 知名开源项目的源码镜像（托管在 gitee），用于学习参考
+├── faiss/          # Facebook 向量检索库
+├── redis/          # Redis
+├── postgres/       # PostgreSQL
+├── pgvector/       # PG 向量扩展
+├── sqlite3/        # SQLite
+├── elasticsearch/  # Elasticsearch
+├── chroma/         # Chroma 向量数据库
+├── milvus/         # Milvus 向量数据库
+├── mysql/          # MySQL
+├── neo4j/          # Neo4j 图数据库
+├── openGauss/      # openGauss 数据库
+└── ann-benchmarks/ # 近似最近邻搜索基准测试
 
 third_part/googletest/  # GoogleTest（vendored，CMake 自动包含，无需系统安装）
 ```
@@ -390,4 +389,4 @@ log_level = 'info'
 
 ## 子项目规则
 
-本仓库含 `engineering/apps/web/knowledge_hub/` 子项目（Taro 3.6 + React 18 + Vite 5 的 H5 + 微信小程序双端学习追踪平台），其规则（项目铁律 / 工具位置 / OpenSpec 协作流程）与 C/C++ 主项目**不同**，详见 `engineering/apps/web/knowledge_hub/CLAUDE.md`。
+本仓库含前端 monorepo 子项目 `frontend/`（Taro 3.6 + React 18 + Vite 5 的 H5 + 微信小程序双端学习追踪平台，统一管理 `knowledge_hub` / `games` / `digest` / `todo` 四个应用 + 共享 `common/`），其规则（项目铁律 / 工具位置 / OpenSpec 协作流程）与 C/C++ 主项目**不同**，详见 `frontend/CLAUDE.md`。

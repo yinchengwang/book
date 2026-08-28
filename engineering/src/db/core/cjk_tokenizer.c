@@ -6,6 +6,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* ========================================================================
+ * 跨平台 strndup（MinGW 等不支持 POSIX strndup 时提供）
+ * ======================================================================== */
+static char *my_strndup(const char *s, size_t n) {
+    size_t len = strlen(s);
+    if (len > n) len = n;
+    char *dup = (char *)malloc(len + 1);
+    if (!dup) return NULL;
+    memcpy(dup, s, len);
+    dup[len] = '\0';
+    return dup;
+}
+
 /* ========== 词典 ========== */
 struct cjk_dict_s {
     char **words;
@@ -38,7 +51,7 @@ cjk_dict_t *cjk_dict_load(const char *path) {
             d->lens = realloc(d->lens, nc * sizeof(size_t));
             d->cap = nc;
         }
-        d->words[d->n_words] = strndup(line, n);
+        d->words[d->n_words] = my_strndup(line, n);
         d->lens[d->n_words] = n;
         d->n_words++;
     }
@@ -145,7 +158,7 @@ cjk_token_list_t cjk_tokenize(const cjk_dict_t *dict, const char *text, size_t l
     for (int k = 0; k < nf; ++k) {
         int end = fmm[k];
         int start = prev;
-        result.tokens[result.n_tokens].text = strndup(text + start, end - start);
+        result.tokens[result.n_tokens].text = my_strndup(text + start, end - start);
         result.tokens[result.n_tokens].start = (size_t)start;
         result.tokens[result.n_tokens].end = (size_t)end;
         result.n_tokens++;
@@ -194,7 +207,7 @@ static void drop_trailing(char *s, int *len, int n) {
 char *snowball_porter2_stem(const char *word, size_t len) {
     if (!word || len == 0) return NULL;
     if (len > 64) len = 64;  /* 简化上限 */
-    char *buf = strndup(word, len);
+    char *buf = my_strndup(word, len);
     if (!buf) return NULL;
     int n = (int)len;
 

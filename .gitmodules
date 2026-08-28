@@ -61,6 +61,9 @@
 [submodule "reference/relational/h2"]
 	path = reference/relational/h2
 	url = https://github.com/h2database/h2database.git
+[submodule "reference/relational/firebird"]
+	path = reference/relational/firebird
+	url = https://github.com/FirebirdSQL/firebird.git
 [submodule "reference/document/mongodb"]
 	path = reference/document/mongodb
 	url = https://github.com/mongodb/mongo.git
@@ -85,6 +88,9 @@
 [submodule "reference/columnar/doris"]
 	path = reference/columnar/doris
 	url = https://github.com/apache/doris.git
+[submodule "reference/columnar/pinot"]
+	path = reference/columnar/pinot
+	url = https://github.com/apache/pinot.git
 [submodule "reference/distributed-sql/cockroachdb"]
 	path = reference/distributed-sql/cockroachdb
 	url = https://github.com/cockroachdb/cockroach.git
@@ -103,6 +109,12 @@
 [submodule "reference/time-series/questdb"]
 	path = reference/time-series/questdb
 	url = https://github.com/questdb/questdb.git
+[submodule "reference/time-series/victoriametrics"]
+	path = reference/time-series/victoriametrics
+	url = https://github.com/VictoriaMetrics/VictoriaMetrics.git
+[submodule "reference/time-series/iotdb"]
+	path = reference/time-series/iotdb
+	url = https://github.com/apache/iotdb.git
 [submodule "reference/search/meilisearch"]
 	path = reference/search/meilisearch
 	url = https://github.com/meilisearch/meilisearch.git
@@ -115,6 +127,9 @@
 [submodule "reference/search/typesense"]
 	path = reference/search/typesense
 	url = https://github.com/typesense/typesense.git
+[submodule "reference/search/opensearch"]
+	path = reference/search/opensearch
+	url = https://github.com/opensearch-project/OpenSearch.git
 [submodule "reference/vector/weaviate"]
 	path = reference/vector/weaviate
 	url = https://github.com/weaviate/weaviate.git
@@ -142,21 +157,61 @@
 [submodule "reference/graph/nebula"]
 	path = reference/graph/nebula
 	url = https://github.com/vesoft-inc/nebula.git
+[submodule "reference/graph/memgraph"]
+	path = reference/graph/memgraph
+	url = https://github.com/memgraph/memgraph.git
+[submodule "reference/graph/kuzu"]
+	path = reference/graph/kuzu
+	url = https://github.com/kuzudb/kuzu.git
 [submodule "reference/stream/pulsar"]
 	path = reference/stream/pulsar
 	url = https://github.com/apache/pulsar.git
 [submodule "reference/stream/nats"]
 	path = reference/stream/nats
 	url = https://github.com/nats-io/nats-server.git
+[submodule "reference/stream/kafka"]
+	path = reference/stream/kafka
+	url = https://github.com/apache/kafka.git
+[submodule "reference/stream/redpanda"]
+	path = reference/stream/redpanda
+	url = https://github.com/redpanda-data/redpanda.git
 [submodule "reference/embedded/lmdb"]
 	path = reference/embedded/lmdb
 	url = https://github.com/LMDB/lmdb.git
 [submodule "reference/embedded/boltdb"]
 	path = reference/embedded/boltdb
 	url = https://github.com/boltdb/bolt.git
+[submodule "reference/embedded/duckdb"]
+	path = reference/embedded/duckdb
+	url = https://github.com/duckdb/duckdb.git
+[submodule "reference/extension/arrow"]
+	path = reference/extension/arrow
+	url = https://github.com/apache/arrow.git
+[submodule "reference/extension/datafusion"]
+	path = reference/extension/datafusion
+	url = https://github.com/apache/datafusion.git
+[submodule "reference/extension/velox"]
+	path = reference/extension/velox
+	url = https://github.com/facebookincubator/velox.git
+[submodule "reference/extension/lance"]
+	path = reference/extension/lance
+	url = https://github.com/lancedb/lance.git
 [submodule "reference/extension/hnswlib"]
 	path = reference/extension/hnswlib
 	url = https://github.com/nmslib/hnswlib.git
 [submodule "reference/benchmark/tpch"]
 	path = reference/benchmark/tpch
 	url = https://github.com/gregrahn/tpch-kit.git
+[submodule "reference/benchmark/tpcds"]
+	path = reference/benchmark/tpcds
+	url = https://github.com/gregrahn/tpcds-kit.git
+[submodule "reference/benchmark/db-bench"]
+	path = reference/benchmark/db-bench
+	url = https://github.com/wagjamin/db-bench.git
+[submodule "reference/benchmark/vectordbbench"]
+	path = reference/benchmark/vectordbbench
+	url = https://github.com/zilliztech/VectorDBBench.git
+
+[submodule "reference/document/couchbase"]
+	path = reference/document/couchbase
+	url = https://github.com/couchbase/couchbase-lite-core.git
