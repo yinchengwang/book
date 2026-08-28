@@ -341,14 +341,7 @@ int blob_upload_finish(blob_upload_t *upload,
     /* 计算整体 Blob SHA-256 */
     sha256_final(&upload->blob_sha_ctx, out_blob_id);
 
-    /* C0: 所有 Chunk 完成并 fsync（已在 blob_chunk_write_tmp 中完成） */
-
-    /* C1: Catalog BLOB_PREPARE + WAL fsync */
-    /* 注意：这里需要访问 Catalog，但当前实现中 Catalog 是独立的
-     * 实际实现中应该从 engine 获取 Catalog 句柄 */
-    /* TODO: 实现 Catalog 操作 */
-
-    /* C2: Manifest 临时写入 + fsync + rename */
+    /* 创建 Manifest */
     blob_manifest_t *manifest = blob_manifest_create(
         upload->chunk_count,
         upload->content_type[0] != '\0' ? upload->content_type : NULL,
@@ -370,15 +363,74 @@ int blob_upload_finish(blob_upload_t *upload,
         manifest->chunks[i].chunk_checksum = blob_manifest_chunk_checksum(&manifest->chunks[i]);
     }
 
-    /* 写入 Manifest */
+    /* 获取 Catalog 句柄 */
+    blob_catalog_t *catalog = blob_engine_get_catalog(upload->engine);
+    if (catalog) {
+        /* C1: Catalog BLOB_PREPARE + WAL fsync */
+        int rc = blob_catalog_begin(catalog);
+        if (rc != BLOB_CATALOG_OK) {
+            blob_manifest_free(manifest);
+            return BLOB_UPLOAD_ERR_IO;
+        }
+
+        /* 为每个 Chunk 增加引用计数 */
+        for (uint32_t i = 0; i < upload->chunk_count; i++) {
+            rc = blob_catalog_ref_inc(catalog, upload->chunk_entries[i].chunk_sha256);
+            if (rc != BLOB_CATALOG_OK) {
+                LOG_WARN("blob_upload_finish: ref_inc failed for chunk %u", i);
+            }
+        }
+
+        /* 写入 PREPARE 记录 */
+        rc = blob_catalog_prepare(catalog, out_blob_id,
+                                  upload->blob_size, upload->chunk_count);
+        if (rc != BLOB_CATALOG_OK) {
+            blob_catalog_end(catalog);
+            blob_manifest_free(manifest);
+            return BLOB_UPLOAD_ERR_IO;
+        }
+
+        /* 提交事务（fsync WAL） */
+        rc = blob_catalog_end(catalog);
+        if (rc != BLOB_CATALOG_OK) {
+            blob_manifest_free(manifest);
+            return BLOB_UPLOAD_ERR_IO;
+        }
+    } else {
+        LOG_WARN("blob_upload_finish: no catalog available, skipping Catalog operations");
+    }
+
+    /* C2: Manifest 临时写入 + fsync + rename */
     int rc = blob_manifest_write_atomic(upload->manifests_dir, manifest, upload->upload_id);
-    blob_manifest_free(manifest);
     if (rc != BLOB_OK) {
+        blob_manifest_free(manifest);
         return BLOB_UPLOAD_ERR_IO;
     }
 
     /* C3: Catalog BLOB_COMMIT + WAL fsync */
-    /* TODO: 实现 Catalog 操作 */
+    if (catalog) {
+        rc = blob_catalog_begin(catalog);
+        if (rc != BLOB_CATALOG_OK) {
+            blob_manifest_free(manifest);
+            return BLOB_UPLOAD_ERR_IO;
+        }
+
+        rc = blob_catalog_commit(catalog, out_blob_id);
+        if (rc != BLOB_CATALOG_OK) {
+            blob_catalog_end(catalog);
+            blob_manifest_free(manifest);
+            return BLOB_UPLOAD_ERR_IO;
+        }
+
+        /* 提交事务（fsync WAL） */
+        rc = blob_catalog_end(catalog);
+        if (rc != BLOB_CATALOG_OK) {
+            blob_manifest_free(manifest);
+            return BLOB_UPLOAD_ERR_IO;
+        }
+    }
+
+    blob_manifest_free(manifest);
 
     /* C4: 内存状态 COMMITTED */
     upload->state = BLOB_UPLOAD_COMMITTED;
