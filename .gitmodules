@@ -37,3 +37,126 @@
 [submodule "reference/relational/mysql"]
 	path = reference/relational/mysql
 	url = https://gitee.com/mirrors/mysql-server.git
+[submodule "reference/key-value/rocksdb"]
+	path = reference/key-value/rocksdb
+	url = https://github.com/facebook/rocksdb.git
+[submodule "reference/key-value/leveldb"]
+	path = reference/key-value/leveldb
+	url = https://github.com/google/leveldb.git
+[submodule "reference/key-value/badger"]
+	path = reference/key-value/badger
+	url = https://github.com/dgraph-io/badger.git
+[submodule "reference/key-value/pebble"]
+	path = reference/key-value/pebble
+	url = https://github.com/cockroachdb/pebble.git
+[submodule "reference/key-value/dragonfly"]
+	path = reference/key-value/dragonfly
+	url = https://github.com/dragonflydb/dragonfly.git
+[submodule "reference/key-value/foundationdb"]
+	path = reference/key-value/foundationdb
+	url = https://github.com/apple/foundationdb.git
+[submodule "reference/relational/mariadb"]
+	path = reference/relational/mariadb
+	url = https://github.com/MariaDB/server.git
+[submodule "reference/relational/h2"]
+	path = reference/relational/h2
+	url = https://github.com/h2database/h2database.git
+[submodule "reference/document/mongodb"]
+	path = reference/document/mongodb
+	url = https://github.com/mongodb/mongo.git
+[submodule "reference/document/ravendb"]
+	path = reference/document/ravendb
+	url = https://github.com/ravendb/ravendb.git
+[submodule "reference/document/ferretdb"]
+	path = reference/document/ferretdb
+	url = https://github.com/FerretDB/FerretDB.git
+[submodule "reference/document/couchdb"]
+	path = reference/document/couchdb
+	url = https://github.com/apache/couchdb.git
+[submodule "reference/columnar/clickhouse"]
+	path = reference/columnar/clickhouse
+	url = https://github.com/ClickHouse/ClickHouse.git
+[submodule "reference/columnar/druid"]
+	path = reference/columnar/druid
+	url = https://github.com/apache/druid.git
+[submodule "reference/columnar/starrocks"]
+	path = reference/columnar/starrocks
+	url = https://github.com/StarRocks/starrocks.git
+[submodule "reference/columnar/doris"]
+	path = reference/columnar/doris
+	url = https://github.com/apache/doris.git
+[submodule "reference/distributed-sql/cockroachdb"]
+	path = reference/distributed-sql/cockroachdb
+	url = https://github.com/cockroachdb/cockroach.git
+[submodule "reference/distributed-sql/tidb"]
+	path = reference/distributed-sql/tidb
+	url = https://github.com/pingcap/tidb.git
+[submodule "reference/distributed-sql/yugabytedb"]
+	path = reference/distributed-sql/yugabytedb
+	url = https://github.com/yugabyte/yugabyte-db.git
+[submodule "reference/time-series/influxdb"]
+	path = reference/time-series/influxdb
+	url = https://github.com/influxdata/influxdb.git
+[submodule "reference/time-series/tdengine"]
+	path = reference/time-series/tdengine
+	url = https://github.com/taosdata/TDengine.git
+[submodule "reference/time-series/questdb"]
+	path = reference/time-series/questdb
+	url = https://github.com/questdb/questdb.git
+[submodule "reference/search/meilisearch"]
+	path = reference/search/meilisearch
+	url = https://github.com/meilisearch/meilisearch.git
+[submodule "reference/search/quickwit"]
+	path = reference/search/quickwit
+	url = https://github.com/quickwit-oss/quickwit.git
+[submodule "reference/search/tantivy"]
+	path = reference/search/tantivy
+	url = https://github.com/quickwit-oss/tantivy.git
+[submodule "reference/search/typesense"]
+	path = reference/search/typesense
+	url = https://github.com/typesense/typesense.git
+[submodule "reference/vector/weaviate"]
+	path = reference/vector/weaviate
+	url = https://github.com/weaviate/weaviate.git
+[submodule "reference/vector/lancedb"]
+	path = reference/vector/lancedb
+	url = https://github.com/lancedb/lancedb.git
+[submodule "reference/vector/qdrant"]
+	path = reference/vector/qdrant
+	url = https://github.com/qdrant/qdrant.git
+[submodule "reference/vector/vald"]
+	path = reference/vector/vald
+	url = https://github.com/vdaas/vald.git
+[submodule "reference/vector/vespa"]
+	path = reference/vector/vespa
+	url = https://github.com/vespa-engine/vespa.git
+[submodule "reference/vector/usearch"]
+	path = reference/vector/usearch
+	url = https://github.com/unum-cloud/usearch.git
+[submodule "reference/graph/arangodb"]
+	path = reference/graph/arangodb
+	url = https://github.com/arangodb/arangodb.git
+[submodule "reference/graph/janusgraph"]
+	path = reference/graph/janusgraph
+	url = https://github.com/JanusGraph/janusgraph.git
+[submodule "reference/graph/nebula"]
+	path = reference/graph/nebula
+	url = https://github.com/vesoft-inc/nebula.git
+[submodule "reference/stream/pulsar"]
+	path = reference/stream/pulsar
+	url = https://github.com/apache/pulsar.git
+[submodule "reference/stream/nats"]
+	path = reference/stream/nats
+	url = https://github.com/nats-io/nats-server.git
+[submodule "reference/embedded/lmdb"]
+	path = reference/embedded/lmdb
+	url = https://github.com/LMDB/lmdb.git
+[submodule "reference/embedded/boltdb"]
+	path = reference/embedded/boltdb
+	url = https://github.com/boltdb/bolt.git
+[submodule "reference/extension/hnswlib"]
+	path = reference/extension/hnswlib
+	url = https://github.com/nmslib/hnswlib.git
+[submodule "reference/benchmark/tpch"]
+	path = reference/benchmark/tpch
+	url = https://github.com/gregrahn/tpch-kit.git
