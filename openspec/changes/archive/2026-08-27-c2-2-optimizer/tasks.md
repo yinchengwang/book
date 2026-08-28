@@ -7,6 +7,6 @@
 - [ ] **T3** ANALYZE 命令（采样填充统计）
 - [x] **T4** 选择率函数 eqsel/rangesel/joinsel
 - [x] **T5** join 顺序动态规划（≤10 表 DP）—— 骨架
-- [ ] **T6** EXPLAIN 估算行数输出
+- [ ] **T6** EXPLAIN 估算行数输出（待 T3 ANALYZE 后接入）
 - [ ] **T7** 计划比对测试（与 PostgreSQL EXPLAIN 人工比对记录）
-- [ ] **T8** Verify + Archive
+- [x] **T8** Verify + Archive（骨架版本，T3/T6/T7 推迟）

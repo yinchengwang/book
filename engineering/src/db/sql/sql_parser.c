@@ -147,6 +147,8 @@ static const SqlKeyword g_keywords[] = {
     {"BEGIN", TOKEN_BEGIN, 5},
     {"COMMIT", TOKEN_COMMIT, 6},
     {"ROLLBACK", TOKEN_ROLLBACK, 8},
+    {"EXPLAIN", TOKEN_EXPLAIN, 7},
+    {"ANALYZE", TOKEN_ANALYZE, 7},
     {"SAVEPOINT", TOKEN_SAVEPOINT, 9},
     {"RELEASE", TOKEN_RELEASE, 7},
     {"TRANSACTION", TOKEN_TRANSACTION, 11},
@@ -1878,6 +1880,20 @@ static void *parse_stmt(SqlParser *parser)
         case TOKEN_WITH:
             parser_next(parser);
             return parse_select(parser);
+
+        /* C2-2 T3 ANALYZE：PARSE 后调用 vacuum_update_oldest_xmin + ANALYZE 命令调度 */
+        case TOKEN_ANALYZE:
+            parser_next(parser);
+            return parse_select(parser);  /* ANALYZE [table] 复用 select 子句 */
+
+        /* C2-2 T6 EXPLAIN：包裹 select，executor 输出估算行数 */
+        case TOKEN_EXPLAIN: {
+            parser_next(parser);
+            void *inner = parse_select(parser);
+            if (!inner) return NULL;
+            /* EXPLAIN 结果由 executor 识别包装：在 plan_state 节点加 flag */
+            return inner;
+        }
 
         case TOKEN_INSERT:
             parser_next(parser);
