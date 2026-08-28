@@ -10,6 +10,7 @@
 #include "db/buffer.h"
 #include "db/wal.h"
 #include "db/lock.h"
+#include "db/mmdb_lock.h"  /* C1-3 T2 */
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -306,7 +307,6 @@ int kv_replay_wal(kv_t *db, const char *wal_path);
  * ======================================================================== */
 
 #include "db/errors.h"
-#include "db/mmdb_lock.h"  /* C1-3 T2 */
 
 #define KV_TO_DBERR(rc) \
     ((rc) == KV_OK        ? DBERR_OK        : \
