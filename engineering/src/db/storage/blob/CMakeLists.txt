@@ -7,5 +7,6 @@ if(BLOB_SOURCE_FILES)
         ${ENGINEERING_SOURCE_DIR}/include
         ${ENGINEERING_SOURCE_DIR}/include/db
         ${ENGINEERING_SOURCE_DIR}/include/db/core
+        ${ENGINEERING_SOURCE_DIR}/include/db/storage
     )
 endif()
