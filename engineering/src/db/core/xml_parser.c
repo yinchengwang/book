@@ -76,7 +76,7 @@ static int read_name(parser_t *p, char **out_name, char **out_prefix) {
     }
     if (colon) {
         *out_prefix = str_dup(p, p->src + start, colon - (p->src + start));
-        *out_name = str_dup(p, colon + 1, p->pos - (colon + 1));
+        *out_name = str_dup(p, colon + 1, p->pos - (size_t)(colon + 1));
     } else {
         *out_name = str_dup(p, p->src + start, p->pos - start);
     }

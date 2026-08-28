@@ -80,18 +80,27 @@ add_executable(blob_engine_test
 )
 
 # 使用 CMake 查找 GTest（conda 或 vendored）
-find_package(GTest REQUIRED)
-target_link_libraries(blob_engine_test PRIVATE GTest::GTest GTest::Main)
+find_package(GTest QUIET)
+if(NOT GTest_FOUND)
+    # 使用 vendored googletest
+    add_subdirectory(${CMAKE_SOURCE_DIR}/third_part/googletest ${CMAKE_BINARY_DIR}/third_party/googletest EXCLUDE_FROM_ALL)
+    set(GTEST_LIBRARIES gtest gtest_main)
+    set(GTEST_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/third_part/googletest/googletest/include)
+endif()
 
-# 链接 Blob 存储引擎库
 target_link_libraries(blob_engine_test PRIVATE storage_blob db_core project_includes)
+
+if(GTest_FOUND)
+    target_link_libraries(blob_engine_test PRIVATE GTest::GTest GTest::Main)
+else()
+    target_link_libraries(blob_engine_test PRIVATE ${GTEST_LIBRARIES})
+endif()
 
 target_include_directories(blob_engine_test PRIVATE
     ${ENGINEERING_SOURCE_DIR}/include
     ${ENGINEERING_SOURCE_DIR}/include/db
 )
 
-# 添加 GTest include 路径
 if(GTest_FOUND)
     target_include_directories(blob_engine_test PRIVATE ${GTEST_INCLUDE_DIRS})
 else()

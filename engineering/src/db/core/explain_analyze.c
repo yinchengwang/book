@@ -9,6 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* 前向声明 */
+void vacuum_trigger_check(void);
+
 int sql_analyze_table(const char *table_name) {
     /* C2-2 T3：ANALYZE 采样填充 AttStats（占位）
      * 完整实现：扫描 heap → 采样 30000 行 → 计算 ndistinct / histogram / MCV → 写 catalog

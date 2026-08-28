@@ -6,6 +6,24 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* strndup 在某些平台上可能未定义，提供兼容实现 */
+#ifndef _WIN32
+#include <strings.h>
+#endif
+
+/* 如果 strndup 未定义，提供兼容实现 */
+#if defined(_WIN32) || defined(__MINGW32__)
+static char *compat_strndup(const char *s, size_t n) {
+    char *p = (char *)malloc(n + 1);
+    if (p) {
+        memcpy(p, s, n);
+        p[n] = '\0';
+    }
+    return p;
+}
+#define strndup compat_strndup
+#endif
+
 /* ========== 词典 ========== */
 struct cjk_dict_s {
     char **words;
