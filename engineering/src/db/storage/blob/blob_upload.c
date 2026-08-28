@@ -281,7 +281,11 @@ int blob_upload_write(blob_upload_t *upload, const void *data, size_t len) {
             /* 记录 Chunk 条目 */
             blob_upload_chunk_entry_t *entry = &upload->chunk_entries[upload->chunk_count];
             memcpy(entry->chunk_sha256, chunk_id, BLOB_SHA256_SIZE);
-            entry->logical_offset = upload->blob_size - upload->chunk_buffer_used;
+            /* logical_offset = 已发布的总字节数（即本 chunk 之前的所有 chunk 大小之和） */
+            entry->logical_offset = upload->chunk_count == 0
+                ? 0
+                : upload->chunk_entries[upload->chunk_count - 1].logical_offset +
+                  upload->chunk_entries[upload->chunk_count - 1].chunk_size;
             entry->chunk_size = (uint32_t)upload->chunk_buffer_used;
             upload->chunk_count++;
 
@@ -333,7 +337,11 @@ int blob_upload_finish(blob_upload_t *upload,
         /* 记录 Chunk 条目 */
         blob_upload_chunk_entry_t *entry = &upload->chunk_entries[upload->chunk_count];
         memcpy(entry->chunk_sha256, chunk_id, BLOB_SHA256_SIZE);
-        entry->logical_offset = upload->blob_size - upload->chunk_buffer_used;
+        /* logical_offset = 之前已发布 Chunk 的累计大小 */
+        entry->logical_offset = upload->chunk_count == 0
+            ? 0
+            : upload->chunk_entries[upload->chunk_count - 1].logical_offset +
+              upload->chunk_entries[upload->chunk_count - 1].chunk_size;
         entry->chunk_size = (uint32_t)upload->chunk_buffer_used;
         upload->chunk_count++;
     }

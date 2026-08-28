@@ -43,10 +43,10 @@ extern "C" {
 #define BLOB_MANIFEST_VERSION   1
 
 /** Manifest 头部固定大小（64 字节） */
-#define BLOB_MANIFEST_HEADER_SIZE  64U
+#define BLOB_MANIFEST_HEADER_SIZE  72U
 
 /** Manifest Chunk 条目固定大小（44 字节） */
-#define BLOB_MANIFEST_CHUNK_SIZE   44U
+#define BLOB_MANIFEST_CHUNK_SIZE   48U
 
 /** Blob ID 长度（SHA-256 摘要） */
 #define BLOB_BLOB_ID_SIZE      32

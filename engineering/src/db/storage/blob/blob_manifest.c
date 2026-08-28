@@ -244,7 +244,7 @@ static int manifest_header_deserialize(const uint8_t buf[BLOB_MANIFEST_HEADER_SI
     hdr->content_type_len = get_le16(buf + 28);
     hdr->metadata_len    = get_le16(buf + 30);
     memcpy(hdr->blob_sha256, buf + 32, BLOB_BLOB_ID_SIZE);
-    hdr->manifest_checksum = get_le32(buf + 60);
+    hdr->manifest_checksum = get_le32(buf + offsetof(blob_manifest_header_t, manifest_checksum));
     return 0;
 }
 
@@ -614,6 +614,8 @@ blob_manifest_t *blob_manifest_create(uint32_t chunk_count,
     manifest->header.chunk_count = chunk_count;
     manifest->header.chunk_size = BLOB_CHUNK_LOGICAL_SIZE;
     manifest->header.flags = 0;
+    manifest->header.magic = BLOB_MANIFEST_MAGIC;
+    manifest->header.version = BLOB_MANIFEST_VERSION;
 
     /* 复制 content_type */
     if (content_type && content_type[0] != '\0') {
@@ -686,11 +688,13 @@ int blob_manifest_write_atomic(const char *dir,
 
     /* 4. 写入头部（先写入，后填充 checksum） */
     uint8_t header_buf[BLOB_MANIFEST_HEADER_SIZE];
+    memset(header_buf, 0, BLOB_MANIFEST_HEADER_SIZE);
     manifest_header_serialize(&manifest->header, header_buf);
 
-    /* 计算头部校验和 */
-    uint32_t hdr_cksum = blob_manifest_header_checksum((blob_manifest_header_t *)header_buf);
-    put_le32(header_buf + 60, hdr_cksum);
+    /* 计算头部校验和：基于字节布局而非 struct layout（避免 struct padding 影响） */
+    uint32_t hdr_cksum = blob_chunk_payload_checksum(
+        header_buf, offsetof(blob_manifest_header_t, manifest_checksum));
+    put_le32(header_buf + offsetof(blob_manifest_header_t, manifest_checksum), hdr_cksum);
 
     rc = safe_fwrite(header_buf, 1, BLOB_MANIFEST_HEADER_SIZE, fp);
     if (rc != 0) {
@@ -827,8 +831,9 @@ int blob_manifest_load_checked(const char *dir,
         return BLOB_ERR_CORRUPT;
     }
 
-    /* 6. 校验头部校验和 */
-    uint32_t computed_cksum = blob_manifest_header_checksum(&hdr);
+    /* 6. 校验头部校验和（基于字节布局，避免 struct padding 影响） */
+    uint32_t computed_cksum = blob_chunk_payload_checksum(
+        header_buf, offsetof(blob_manifest_header_t, manifest_checksum));
     if (computed_cksum != hdr.manifest_checksum) {
         fclose(fp);
         return BLOB_ERR_CORRUPT;
