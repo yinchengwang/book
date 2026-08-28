@@ -361,3 +361,39 @@ add_test(NAME xml_parser_test COMMAND xml_parser_test)
 # ========================================================================
 
 add_subdirectory(doc)
+
+add_executable(c5_vector_multimodal_test
+    c5_vector_multimodal_test.cpp
+)
+
+target_link_libraries(c5_vector_multimodal_test
+    PRIVATE
+    vector_index_faiss_hnsw
+    db_storage
+    project_includes
+    gtest
+    gtest_main
+)
+
+target_include_directories(c5_vector_multimodal_test PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googletest/include
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googlemock/include
+)
+
+if(MSVC)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "")
+        target_compile_options(c5_vector_multimodal_test PRIVATE /W4 /MDd)
+    else()
+        target_compile_options(c5_vector_multimodal_test PRIVATE /W4 /MD)
+    endif()
+else()
+    target_compile_options(c5_vector_multimodal_test PRIVATE -Wall -Wextra)
+endif()
+
+set_target_properties(c5_vector_multimodal_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+add_test(NAME c5_vector_multimodal_test COMMAND c5_vector_multimodal_test)
