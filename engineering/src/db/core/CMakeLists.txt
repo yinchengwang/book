@@ -13,11 +13,12 @@ add_library(db_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/query_filter.c
     ${CMAKE_CURRENT_SOURCE_DIR}/query_fusion.c
     ${CMAKE_CURRENT_SOURCE_DIR}/engine_registry.c  # 引擎注册
-    ${CMAKE_CURRENT_SOURCE_DIR}/mm_record.c       # C0-3 序列化契约
-    ${CMAKE_CURRENT_SOURCE_DIR}/mvcc_session.c    # C2-1 MVCC 线程局部
-    ${CMAKE_CURRENT_SOURCE_DIR}/xml_parser.c      # C2-5 自研 XML 解析器
-    ${CMAKE_CURRENT_SOURCE_DIR}/cjk_tokenizer.c   # C2-6 中文分词 + 词干化
+    ${CMAKE_CURRENT_SOURCE_DIR}/mm_record.c         # C0-3 序列化契约
+    ${CMAKE_CURRENT_SOURCE_DIR}/mvcc_session.c      # C2-1 MVCC 线程局部
+    ${CMAKE_CURRENT_SOURCE_DIR}/xml_parser.c        # C2-5 自研 XML 解析器
+    ${CMAKE_CURRENT_SOURCE_DIR}/cjk_tokenizer.c     # C2-6 中文分词 + 词干化
     ${CMAKE_CURRENT_SOURCE_DIR}/explain_analyze.c   # C2-2 EXPLAIN/ANALYZE
+    ${CMAKE_CURRENT_SOURCE_DIR}/sha256.c            # Blob SHA-256
 )
 target_include_directories(db_core PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include
