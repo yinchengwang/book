@@ -139,7 +139,8 @@ void heapam_shutdown(void);
  * @return 0 成功，-1 失败
  */
 int heap_insert(Relation rel, const void *tuple, size_t len,
-                uint32_t cid, int options, void *bistate);
+                uint32_t cid, int options, void *bistate,
+                void *out_tid /* 6B: block(4)+offset(2)，可为 NULL */);
 
 /**
  * @brief 删除元组

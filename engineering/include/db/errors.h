@@ -21,6 +21,56 @@
 extern "C" {
 #endif
 
+/* ========================================================================
+ * C0-3：DBERR_* 紧凑整型错误码
+ *
+ * 与 SQLSTATE 字符串体系并存。DBERR_* 用于：
+ *   1. 跨模态统一的整型码（避免字符串比较）
+ *   2. 快速 if/else 分支与断言
+ *   3. ABI 稳定的二进制错误码
+ *
+ * 旧 SQLSTATE 体系保留不动（向后兼容）。
+ * ======================================================================== */
+
+#define DBERR_OK                  0
+#define DBERR_INVALID            (-1)   /* 参数非法 */
+#define DBERR_IO                 (-2)   /* IO 错误 */
+#define DBERR_NOMEM              (-3)
+#define DBERR_FULL               (-4)   /* page/full */
+#define DBERR_CONFLICT           (-5)   /* CAS 失败 */
+#define DBERR_NOT_IMPLEMENTED    (-6)   /* 未实装接口 */
+#define DBERR_WAL_FAILED         (-7)   /* WAL 写失败 */
+#define DBERR_NOT_FOUND          (-8)
+#define DBERR_EXISTS             (-9)
+#define DBERR_CORRUPT            (-10)
+#define DBERR_TIMEOUT            (-11)
+#define DBERR_LOCKED             (-12)
+
+/* 模态前缀（≥100） */
+#define DBERR_MOD_BASE           100
+#define DBERR_MOD_KV             (DBERR_MOD_BASE + 1)
+#define DBERR_MOD_GRAPH          (DBERR_MOD_BASE + 2)
+#define DBERR_MOD_VECTOR         (DBERR_MOD_BASE + 3)
+#define DBERR_MOD_TS             (DBERR_MOD_BASE + 4)
+#define DBERR_MOD_DOC            (DBERR_MOD_BASE + 5)
+#define DBERR_MOD_SPATIAL        (DBERR_MOD_BASE + 6)
+#define DBERR_MOD_RELATIONAL     (DBERR_MOD_BASE + 7)
+#define DBERR_MOD_TREE           (DBERR_MOD_BASE + 8)
+#define DBERR_MOD_RDF            (DBERR_MOD_BASE + 9)
+#define DBERR_MOD_SPARSE         (DBERR_MOD_BASE + 10)
+#define DBERR_MOD_BLOB           (DBERR_MOD_BASE + 11)
+
+/**
+ * @brief 将 DBERR_* 错误码转可读字符串
+ * @param code 错误码
+ * @return 静态字符串
+ */
+const char *dberr_str(int code);
+
+/* ========================================================================
+ * 既有 SQLSTATE 字符串体系（保留）
+ * ======================================================================== */
+
 /* 成功与警告 (00*, 01*) */
 #define ERRCODE_SUCCESSFUL_COMPLETION          "00000"
 #define ERRCODE_WARNING                        "01000"

@@ -34,6 +34,9 @@ typedef enum {
     MODEL_TREE = 7,          /**< 树模型 */
     MODEL_STREAM = 8,        /**< 流式模型 */
     MODEL_COLUMNAR = 9,      /**< 列存模型 */
+    /* C3-5 T10/T11：扩展 RDF/SPATIO-TEMPORAL 注册 */
+    MODEL_RDF = 11,           /**< RDF 三元组 */
+    MODEL_SPATIOTEMPORAL = 12, /**< 时空对象 */
     MODEL_COUNT = 10,        /**< 模型数量 */
 } DataModel;
 

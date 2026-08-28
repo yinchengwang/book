@@ -141,6 +141,12 @@ typedef struct TupleTableSlot_s {
         TTS_VIRTUAL,         /**< 虚拟元组 */
         TTS_PHYSICAL         /**< 物理元组 */
     } tts_type;
+    /* C0-3 T2：物理 TID（block 4B + offset 2B），扫描路径填充，DML 算子使用 */
+    struct {
+        uint32_t ip_blkid;   /**< 块号 */
+        uint16_t ip_posid;   /**< 块内偏移（LinePointer 编号） */
+        bool     valid;      /**< 是否已填充（虚拟槽或无 tid 时为 false） */
+    } tts_tid;
 } TupleTableSlot;
 
 /* ========================================================================

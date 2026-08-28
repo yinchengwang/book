@@ -148,6 +148,9 @@ typedef enum SqlTokenType_e {
     TOKEN_SERIALIZABLE,
     TOKEN_REPEATABLE,
     TOKEN_COMMITTED,
+    /* C2-2 T3/T6 */
+    TOKEN_EXPLAIN,
+    TOKEN_ANALYZE,
     TOKEN_UNCOMMITTED,
 
     /* 其他关键字 */

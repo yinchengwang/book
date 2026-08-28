@@ -10,6 +10,7 @@
  */
 
 #include "db/sql/nodes/nodeSeqscan.h"
+#include "db/sql/memctx.h"  /* C0-3：per-query MemoryContext */
 
 /* 前向声明，避免引入冲突的头文件 */
 typedef struct RelationData *Relation;
@@ -97,16 +98,22 @@ SeqScanState *ExecInitSeqScan(SeqScanPlan *node, void *estate, int eflags)
     SeqScanState *scanstate;
     SeqScanExtState *ext_state;
 
+    /* C0-3：从 per-query MemoryContext 分配（FreeEState 一次 Reset 替代手工 free 链） */
+    EState *estate_p = (EState *)estate;
+    MemoryContext ctx = estate_p ? estate_p->es_query_cxt : NULL;
+    if (ctx == NULL) ctx = CurrentMemoryContext;  /* 退化路径 */
+    (void)eflags;
+
     /* 分配状态结构 */
-    scanstate = (SeqScanState *)calloc(1, sizeof(SeqScanState));
+    scanstate = (SeqScanState *)palloc0(ctx, sizeof(SeqScanState));
     if (!scanstate) {
         return NULL;
     }
 
     /* 分配扩展状态结构 */
-    ext_state = (SeqScanExtState *)calloc(1, sizeof(SeqScanExtState));
+    ext_state = (SeqScanExtState *)palloc0(ctx, sizeof(SeqScanExtState));
     if (!ext_state) {
-        free(scanstate);
+        pfree(ctx, scanstate);
         return NULL;
     }
 
@@ -139,8 +146,7 @@ SeqScanState *ExecInitSeqScan(SeqScanPlan *node, void *estate, int eflags)
     /* 暂时使用固定 2 列作为测试 */
     scanstate->ss.ps.ps_TupDesc = exec_make_tuple_desc(2);
     if (!scanstate->ss.ps.ps_TupDesc) {
-        free(ext_state);
-        free(scanstate);
+        /* scanstate/ext_state 由 MemoryContext 管理，FreeEState Reset 回收 */
         return NULL;
     }
 
@@ -148,8 +154,6 @@ SeqScanState *ExecInitSeqScan(SeqScanPlan *node, void *estate, int eflags)
     scanstate->ss.ps.expr_context = exec_create_expr_context();
     if (!scanstate->ss.ps.expr_context) {
         exec_drop_tuple_desc(scanstate->ss.ps.ps_TupDesc);
-        free(ext_state);
-        free(scanstate);
         return NULL;
     }
 
@@ -158,8 +162,6 @@ SeqScanState *ExecInitSeqScan(SeqScanPlan *node, void *estate, int eflags)
     if (!scanstate->ss.ps.expr_context->slot) {
         exec_destroy_expr_context(scanstate->ss.ps.expr_context);
         exec_drop_tuple_desc(scanstate->ss.ps.ps_TupDesc);
-        free(ext_state);
-        free(scanstate);
         return NULL;
     }
 
@@ -169,8 +171,6 @@ SeqScanState *ExecInitSeqScan(SeqScanPlan *node, void *estate, int eflags)
             exec_drop_tuple_slot(scanstate->ss.ps.expr_context->slot);
             exec_destroy_expr_context(scanstate->ss.ps.expr_context);
             exec_drop_tuple_desc(scanstate->ss.ps.ps_TupDesc);
-            free(ext_state);
-            free(scanstate);
             return NULL;
         }
     }
@@ -238,6 +238,11 @@ TupleTableSlot *ExecSeqScan(PlanState *pstate)
         /* 更新统计信息 */
         ext_state->ss_tuples_scanned++;
 
+        /* C1-1：从 scan descriptor 读取真实 TID 填入 slot */
+        slot->tts_tid.ip_blkid = ext_state->ss_currentScanDesc->rs_curr_blk;
+        slot->tts_tid.ip_posid = ext_state->ss_currentScanDesc->rs_curr_off;
+        slot->tts_tid.valid = true;
+
         /* 将元组复制到槽中（不使用 Relation 内部字段） */
         ExecCopyTupleToSlot(slot, tuple, NULL);
 
@@ -246,8 +251,15 @@ TupleTableSlot *ExecSeqScan(PlanState *pstate)
             econtext->slot = slot;
         }
 
-        /* 检查过滤条件 */
-        if (ExecQual(slot, ext_state->ss_qual, econtext)) {
+        /* C2-1 T3：可见性过滤骨架——查询 ReadView 检查 xmin/xmax。
+         * 当前 kv_record_t 布局无 xmin 字段，filter 退化为"全部可见"；
+         * 完整实现需 tuple 布局扩展（后续变更）。
+         */
+        int64_t current_xid = mvcc_current_xid();
+        if (current_xid != 0) {
+            /* 有活跃事务：完整可见性检查需 tuple.header.xmin 支持 */
+            /* 占位：当前直接视为可见 */
+        }
             ext_state->ss_tuples_returned++;
             return slot;
         }

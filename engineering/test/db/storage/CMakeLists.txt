@@ -70,3 +70,49 @@ add_test(NAME test_spatial_engine COMMAND test_spatial_engine)
 # ========================================================================
 
 add_subdirectory(doc)
+
+# ========================================================================
+# Blob 存储引擎测试
+# ========================================================================
+
+add_executable(blob_engine_test
+    blob_engine_test.cpp
+)
+
+# 使用 CMake 查找 GTest（conda 或 vendored）
+find_package(GTest REQUIRED)
+target_link_libraries(blob_engine_test PRIVATE GTest::GTest GTest::Main)
+
+# 链接 Blob 存储引擎库
+target_link_libraries(blob_engine_test PRIVATE storage_blob db_core project_includes)
+
+target_include_directories(blob_engine_test PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+)
+
+# 添加 GTest include 路径
+if(GTest_FOUND)
+    target_include_directories(blob_engine_test PRIVATE ${GTEST_INCLUDE_DIRS})
+else()
+    target_include_directories(blob_engine_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/third_part/googletest/googletest/include
+        ${CMAKE_SOURCE_DIR}/third_part/googletest/googlemock/include
+    )
+endif()
+
+if(MSVC)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "")
+        target_compile_options(blob_engine_test PRIVATE /W4 /MDd)
+    else()
+        target_compile_options(blob_engine_test PRIVATE /W4 /MD)
+    endif()
+else()
+    target_compile_options(blob_engine_test PRIVATE -Wall -Wextra)
+endif()
+
+set_target_properties(blob_engine_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+add_test(NAME blob_engine_test COMMAND blob_engine_test)

@@ -11,6 +11,7 @@
 #include "db/buffer.h"
 #include "db/core/log.h"
 #include "db/storage/kv/kv_ttl.h"
+#include "db/mmdb_lock.h"  /* C1-3 T2 */
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -318,6 +319,9 @@ kv_t *kv_open(const char *path) {
     /* 初始化 TTL 管理器 */
     db->ttl_mgr = kv_ttl_mgr_create(db->db_path);
 
+    /* C1-3 T2：初始化并发保护锁 */
+    mmdb_rwlock_init(&db->rwlock);
+
     return db;
 }
 
@@ -390,9 +394,14 @@ kv_result_t kv_put(kv_t *db,
         return KV_INVALID;
     }
 
+    /* C1-3 T2：写锁包裹读-改-写序列，避免并发 put 丢更新 */
+    mmdb_rwlock_wrlock(&db->rwlock);
+
     /* 获取旧值（用于 WAL 记录） */
     void *old_value = NULL;
     size_t old_value_len = 0;
+    kv_result_t result;
+
     bool key_exists = (kv_get(db, key, key_len, &old_value, &old_value_len) == KV_OK);
     (void)key_exists;  /* 用于 WAL 记录，已获取到 old_value */
 
@@ -401,7 +410,8 @@ kv_result_t kv_put(kv_t *db,
     if (!page) {
         free(old_value);
         kv_set_error(db, "Failed to get data page");
-        return KV_ERROR;
+        result = KV_ERROR;
+        goto kv_put_unlock;
     }
 
     /* 查找是否已存在 */
@@ -411,8 +421,19 @@ kv_result_t kv_put(kv_t *db,
     /* 查找完成，解除页面固定 */
     buffer_unpin_page(db->pool, data_page_id);
 
-    kv_result_t result;
     if (found) {
+        /* C0-2：WAL-first 铁律 — 在 page 写之前先 WAL */
+        if (db->wal && old_value) {
+            uint64_t lsn = wal_write_update(db->wal, 0, key, key_len,
+                                            old_value, old_value_len, value, value_len);
+            if (lsn == 0) {
+                free(old_value);
+                kv_set_error(db, "WAL write failed (update)");
+                result = KV_ERROR;
+                goto kv_put_unlock;
+            }
+        }
+
         /*
          * 页面记录按紧凑布局连续存放，变更值长度不能原地覆盖：
          * 否则会把后续记录推入错误偏移，导致后续查找和扫描失效。
@@ -438,30 +459,37 @@ kv_result_t kv_put(kv_t *db,
         if (!update_ok) {
             free(old_value);
             kv_set_error(db, "Failed to update");
-            return KV_ERROR;
-        }
-        /* 写入 WAL UPDATE 记录 */
-        if (db->wal && old_value) {
-            wal_write_update(db->wal, 0, key, key_len,
-                            old_value, old_value_len, value, value_len);
+            result = KV_ERROR;
+            goto kv_put_unlock;
         }
         result = KV_OK;
     } else {
+        /* C0-2：WAL-first 铁律 — INSERT 路径同上 */
+        if (db->wal) {
+            uint64_t lsn = wal_write_insert(db->wal, 0, key, key_len, value, value_len);
+            if (lsn == 0) {
+                free(old_value);
+                kv_set_error(db, "WAL write failed (insert)");
+                result = KV_ERROR;
+                goto kv_put_unlock;
+            }
+        }
+
         /* 插入新记录 */
         if (kv_page_insert(db->pool, data_page_id, key, key_len, value, value_len) != 0) {
             free(old_value);
             kv_set_error(db, "Failed to insert (page full)");
-            return KV_ERROR;
+            result = KV_FULL;  /* C1-3 T3：page full 专用错误码 */
+            goto kv_put_unlock;
         }
         db->num_keys++;
-        /* 写入 WAL INSERT 记录 */
-        if (db->wal) {
-            wal_write_insert(db->wal, 0, key, key_len, value, value_len);
-        }
         result = KV_OK;
     }
 
     free(old_value);
+
+kv_put_unlock:
+    mmdb_rwlock_unlock(&db->rwlock, 1);
     return result;
 }
 
@@ -472,24 +500,32 @@ kv_result_t kv_get(kv_t *db,
         return KV_INVALID;
     }
 
+    /* C1-3 T2：读锁包裹 */
+    mmdb_rwlock_rdlock(&db->rwlock);
+
+    kv_result_t result;
+
     /* 检查 TTL 是否过期 */
     kv_ttl_mgr_t *ttl_mgr = (kv_ttl_mgr_t *)db->ttl_mgr;
     if (ttl_mgr && kv_ttl_is_expired(ttl_mgr, key, key_len)) {
         /* 仅移除 TTL 条目，避免 kv_get 与 kv_delete 互相递归。 */
         kv_ttl_delete(ttl_mgr, key, key_len);
-        return KV_NOT_FOUND;
+        result = KV_NOT_FOUND;
+        goto kv_get_unlock;
     }
 
     page_id_t data_page_id = kv_get_data_page_id(db);
     page_t *page = buffer_get_page(db->pool, data_page_id);
     if (!page) {
-        return KV_NOT_FOUND;
+        result = KV_NOT_FOUND;
+        goto kv_get_unlock;
     }
 
     uint16_t offset;
     if (kv_page_find(page, key, key_len, &offset) != 0) {
         buffer_unpin_page(db->pool, data_page_id);
-        return KV_NOT_FOUND;
+        result = KV_NOT_FOUND;
+        goto kv_get_unlock;
     }
 
     kv_record_t *rec = (kv_record_t *)(page->data + offset);
@@ -498,7 +534,8 @@ kv_result_t kv_get(kv_t *db,
         void *value = malloc(rec->value_len);
         if (!value) {
             buffer_unpin_page(db->pool, data_page_id);
-            return KV_NOMEM;
+            result = KV_NOMEM;
+            goto kv_get_unlock;
         }
         memcpy(value,
                page->data + offset + sizeof(kv_record_t) + rec->key_len,
@@ -508,14 +545,22 @@ kv_result_t kv_get(kv_t *db,
     }
 
     buffer_unpin_page(db->pool, data_page_id);
+    result = KV_OK;
 
-    return KV_OK;
+kv_get_unlock:
+    mmdb_rwlock_unlock(&db->rwlock, 0);
+    return result;
 }
 
 kv_result_t kv_delete(kv_t *db, const void *key, size_t key_len) {
     if (!db || !key || key_len == 0) {
         return KV_INVALID;
     }
+
+    /* C1-3 T2：写锁包裹 */
+    mmdb_rwlock_wrlock(&db->rwlock);
+
+    kv_result_t result;
 
     /* 获取旧值（用于 WAL 记录） */
     void *old_value = NULL;
@@ -532,21 +577,24 @@ kv_result_t kv_delete(kv_t *db, const void *key, size_t key_len) {
     page_t *page = buffer_get_page(db->pool, data_page_id);
     if (!page) {
         free(old_value);
-        return KV_NOT_FOUND;
+        result = KV_NOT_FOUND;
+        goto kv_delete_unlock;
     }
 
     uint16_t offset;
     if (kv_page_find(page, key, key_len, &offset) != 0) {
         buffer_unpin_page(db->pool, data_page_id);
         free(old_value);
-        return KV_NOT_FOUND;
+        result = KV_NOT_FOUND;
+        goto kv_delete_unlock;
     }
 
     /* 删除记录（保持页面 pinned，由 kv_page_delete 处理 unpin） */
     if (kv_page_delete(db->pool, data_page_id, offset) != 0) {
         buffer_unpin_page(db->pool, data_page_id);  /* 确保 unpin */
         free(old_value);
-        return KV_ERROR;
+        result = KV_ERROR;
+        goto kv_delete_unlock;
     }
 
     /* 写入 WAL DELETE 记录 */
@@ -556,7 +604,11 @@ kv_result_t kv_delete(kv_t *db, const void *key, size_t key_len) {
 
     db->num_keys--;
     free(old_value);
-    return KV_OK;
+    result = KV_OK;
+
+kv_delete_unlock:
+    mmdb_rwlock_unlock(&db->rwlock, 1);
+    return result;
 }
 
 bool kv_exists(kv_t *db, const void *key, size_t key_len) {
@@ -729,4 +781,80 @@ int kv_replay_wal(kv_t *db, const char *wal_path) {
 
     /* 使用 wal_redo 重放所有日志 */
     return wal_redo(wal_path, 0, kv_wal_apply, db);
+}
+
+/* C3-5 T22：自定义比较器注入点（占位——kv_page 层后续接入） */
+static kv_comparator_fn s_default_cmp = NULL;
+
+void kv_set_comparator(kv_t *db, kv_comparator_fn cmp) {
+    (void)db;
+    s_default_cmp = cmp;
+}
+
+/* C3-5 T20：CAS（compare-and-swap）
+ *
+ * 在已持有 wrlock 时直接查询（不递归加锁），比较后再写入。
+ * 由于 mmdb_rwlock 在 POSIX pthread_rwlock 默认下支持递归写锁、SRWLOCK 也支持
+ * 递归，本实现假定调用方已通过其他方式互斥；保守用法：调用本函数前不持锁。
+ */
+kv_result_t kv_cas(kv_t *db,
+                   const void *key, size_t key_len,
+                   const void *expected_old, size_t expected_old_len,
+                   const void *new_value, size_t new_value_len) {
+    if (!db || !key || key_len == 0 || key_len > KV_MAX_KEY_SIZE
+        || !new_value || new_value_len > KV_MAX_VALUE_SIZE) {
+        return KV_INVALID;
+    }
+    if (expected_old_len > 0 && !expected_old) return KV_INVALID;
+
+    mmdb_rwlock_wrlock(&db->rwlock);
+
+    /* 读当前值（直接走 page 层，绕过 lock） */
+    void *cur = NULL;
+    size_t cur_len = 0;
+    page_id_t data_page_id = kv_get_data_page_id(db);
+    page_t *page = buffer_get_page(db->pool, data_page_id);
+    if (page) {
+        uint16_t offset;
+        if (kv_page_find(page, key, key_len, &offset) == 0) {
+            kv_record_t *rec = (kv_record_t *)(page->data + offset);
+            cur_len = rec->value_len;
+            cur = malloc(cur_len);
+            if (cur) memcpy(cur, page->data + offset + sizeof(kv_record_t) + rec->key_len, cur_len);
+        }
+        buffer_unpin_page(db->pool, data_page_id);
+    }
+
+    bool match;
+    if (cur) {
+        match = (cur_len == expected_old_len
+                 && memcmp(cur, expected_old, cur_len) == 0);
+        free(cur);
+    } else if (expected_old == NULL) {
+        match = true;
+    } else {
+        mmdb_rwlock_unlock(&db->rwlock, 1);
+        return KV_CONFLICT;
+    }
+
+    if (!match) {
+        mmdb_rwlock_unlock(&db->rwlock, 1);
+        return KV_CONFLICT;
+    }
+
+    /* 写入新值（WAL + page insert）。wal_write_insert + kv_page_insert 内部不加锁 */
+    if (db->wal) {
+        uint64_t lsn = wal_write_insert(db->wal, 0, key, key_len, new_value, new_value_len);
+        if (lsn == 0) {
+            mmdb_rwlock_unlock(&db->rwlock, 1);
+            return KV_ERROR;
+        }
+    }
+    if (kv_page_insert(db->pool, data_page_id, key, key_len, new_value, new_value_len) != 0) {
+        mmdb_rwlock_unlock(&db->rwlock, 1);
+        return KV_FULL;
+    }
+    db->num_keys++;
+    mmdb_rwlock_unlock(&db->rwlock, 1);
+    return KV_OK;
 }

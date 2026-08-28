@@ -253,6 +253,11 @@ bool spatial_intersects(const SpatialGeometry *a, const SpatialGeometry *b);
  */
 SpatialGeometry *spatial_buffer(const SpatialGeometry *geom, double distance);
 
+/**
+ * @brief ST_Distance 几何距离（基于 bbox 下界近似）
+ */
+double spatial_distance(const SpatialGeometry *a, const SpatialGeometry *b);
+
 /* ========================================================================
  * SQL 函数
  * ======================================================================== */

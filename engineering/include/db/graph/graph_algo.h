@@ -353,6 +353,22 @@ GraphAlgoStats *graph_algo_stats(void *graph);
  */
 void graph_algo_stats_free(GraphAlgoStats *stats);
 
+/* C2-3 T8：图算法 +10 声明 */
+int graph_weakly_connected_components(const graph_t *graph, int64_t **out_labels);
+int64_t graph_triangle_count(const graph_t *graph);
+int graph_degree_distribution(const graph_t *graph,
+                              int64_t *min_deg, int64_t *max_deg,
+                              double *avg_deg);
+double graph_jaccard_similarity(const graph_t *graph,
+                                graph_vertex_id_t u, graph_vertex_id_t v);
+bool graph_has_cycle(const graph_t *graph);
+double graph_betweenness_centrality(const graph_t *graph, graph_vertex_id_t v);
+double graph_closeness_centrality(const graph_t *graph, graph_vertex_id_t v);
+double graph_katz_centrality(const graph_t *graph, graph_vertex_id_t v,
+                             double alpha);
+int graph_louvain_communities(const graph_t *graph, int64_t **out_labels);
+int graph_diameter(const graph_t *graph);
+
 #ifdef __cplusplus
 }
 #endif

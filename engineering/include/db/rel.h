@@ -328,6 +328,9 @@ typedef struct TableScanDescData {
     ScanKey     rs_key;             /**< 扫描键 */
     int         rs_nkeys;           /**< 扫描键数量 */
     ScanDirection rs_direction;     /**< 扫描方向 */
+    /* C1-1：当前元组的 TID（rs_cblock, rs_cindex）— 供上层扫描算子填 slot->tts_tid */
+    BlockNumber rs_curr_blk;        /**< 当前元组所在块 */
+    uint16_t    rs_curr_off;        /**< 当前元组行指针编号（LinePointer） */
 } TableScanDescData;
 
 /** 表扫描描述符 */

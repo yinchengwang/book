@@ -17,6 +17,7 @@
 #   spatial/  - 空间存储引擎
 #   ts/       - 时序存储引擎
 #   yang/     - 树存储引擎
+#   blob/     - Blob 存储引擎
 
 # ========================================================================
 # 基础存储模块（页面/缓存层）
@@ -47,6 +48,12 @@ add_subdirectory(access)
 # ========================================================================
 
 add_subdirectory(mm)
+
+# ========================================================================
+# Blob 存储引擎
+# ========================================================================
+
+add_subdirectory(blob)
 
 # ========================================================================
 # 各引擎实现（按 MMDB_ENABLE_* 开关条件编译）
@@ -146,7 +153,7 @@ endif()
 set(DB_STORAGE_OBJECTS "")
 
 # 条件收集 OBJECT 库（仅收集可正常编译的引擎）
-set(DB_STORAGE_SUBMODULES buffer page lock catalog wal rel mm)
+set(DB_STORAGE_SUBMODULES buffer page lock catalog wal rel mm blob)
 if(MMDB_ENABLE_KV AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/kv")
     list(APPEND DB_STORAGE_SUBMODULES kv)
 endif()

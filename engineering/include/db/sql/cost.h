@@ -82,6 +82,12 @@ typedef struct AttStats {
     double      ndistinct;          /**< 不同值数量 */
     double      nullfrac;           /**< NULL 比例 */
     double      avg_width;          /**< 平均宽度（字节） */
+    /* C2-2 T2：扩展统计字段 */
+    double     *histogram_bounds;   /**< 等深直方图桶边界（≤100 桶） */
+    int         histogram_nbuckets;  /**< 桶数 */
+    double     *mcv_freq;           /**< 最常见值频率（≤100 项） */
+    int         mcv_nitems;          /**< MCV 数量 */
+    double      correlation;        /**< 物理位置与值的相关性（-1..1） */
 } AttStats;
 
 /* ========================================================================
@@ -181,6 +187,9 @@ Cost compute_sort_cost(double num_tuples);
  * @return 选择率（0.0 ~ 1.0）
  */
 double estimate_selectivity(AttStats *stats, struct Expr *clause);
+double estimate_range_selectivity(AttStats *stats, double const_value);
+double estimate_join_selectivity(AttStats *a, AttStats *b);
+double optimize_join_order_dp(const double *costs, int n_tables);
 
 /**
  * @brief 估算分组数

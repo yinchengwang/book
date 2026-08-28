@@ -5,6 +5,7 @@
 #include "db/storage/spatial/spatial_engine.h"  /* 使用绝对路径 */
 #include "db/storage/spatial/rtree.h"  /* 后包含，使用已定义的类型 */
 #include "db/index/hilbert.h"          /* Hilbert 曲线索引 */
+#include "db/storage/wal/wal.h"          /* C0-2：WAL 接入 */
 #include "log.h"
 #include <stdlib.h>
 #include <string.h>
@@ -135,6 +136,10 @@ static void *spatial_engine_table_open(const char *name, AccessMode mode) {
     db->rtree_index = NULL;
     db->index_built = false;
 
+    /* C0-1：统一锁原语，默认启用 */
+    mmdb_rwlock_init(&db->rwlock);
+    db->use_lock = true;
+
     return db;
 }
 
@@ -166,6 +171,8 @@ static int spatial_engine_table_close(void *rel) {
         db->hilbert_index = NULL;
     }
 
+    /* C0-1：释放统一锁 */
+    mmdb_rwlock_destroy(&db->rwlock);
     free(db);
     return 0;
 }
@@ -196,6 +203,17 @@ static int spatial_engine_tuple_insert(void *rel, const void *data, size_t len) 
 
     bbox_t bounds;
     memcpy(&bounds, ptr, sizeof(bbox_t));
+
+    /* C0-2：WAL-first — 文件写入前先记 redo 日志 */
+    {
+        wal_t *cur_wal = wal_get_current();
+        if (cur_wal != NULL) {
+            float bbox4[4] = { bounds.min_x, bounds.min_y,
+                               bounds.max_x, bounds.max_y };
+            uint64_t lsn = wal_write_spatial_upsert(cur_wal, (uint32_t)id, bbox4);
+            if (lsn == 0) return -1;
+        }
+    }
 
     /* 写入数据文件 */
     char data_path[512];

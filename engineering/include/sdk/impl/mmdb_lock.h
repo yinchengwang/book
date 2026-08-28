@@ -1,18 +1,10 @@
-#ifndef MMDB_LOCK_H
-#define MMDB_LOCK_H
+/**
+ * @file mmdb_lock.h (SDK 兼容 shim)
+ * @brief 已迁移到 db/mmdb_lock.h，本文件仅为 ABI 兼容保留
+ */
+#ifndef SDK_IMPL_MMDB_LOCK_H
+#define SDK_IMPL_MMDB_LOCK_H
 
-#ifdef _WIN32
-#include <windows.h>
-typedef SRWLOCK mmdb_rwlock_t;
-#else
-#include <pthread.h>
-typedef pthread_rwlock_t mmdb_rwlock_t;
-#endif
+#include "db/mmdb_lock.h"
 
-int mmdb_rwlock_init(mmdb_rwlock_t *lock);
-int mmdb_rwlock_rdlock(mmdb_rwlock_t *lock);
-int mmdb_rwlock_wrlock(mmdb_rwlock_t *lock);
-int mmdb_rwlock_unlock(mmdb_rwlock_t *lock, int is_wrlock);
-int mmdb_rwlock_destroy(mmdb_rwlock_t *lock);
-
-#endif /* MMDB_LOCK_H */
+#endif /* SDK_IMPL_MMDB_LOCK_H */

@@ -47,6 +47,8 @@
 #include "db/rel.h"
 #include "db/buf.h"
 #include "db/catalog.h"
+#include "db/storage/wal/wal.h"  /* C0-2：WAL 接入 */
+#include "db/mvcc_session.h"      /* C2-1：MVCC 集成 */
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -292,7 +294,8 @@ int heap_page_get_tuple_count(void *page) {
  * ============================================================ */
 
 int heap_insert(Relation rel, const void *tuple, size_t len,
-                uint32_t cid, int options, void *bistate) {
+                uint32_t cid, int options, void *bistate,
+                void *out_tid) {
     if (!rel || !tuple) {
         return -1;
     }
@@ -300,6 +303,29 @@ int heap_insert(Relation rel, const void *tuple, size_t len,
     (void)cid;
     (void)options;
     (void)bistate;
+
+    /* C0-2：WAL-first 铁律 — 在主存修改前先写 redo 日志 */
+    {
+        wal_t *cur_wal = wal_get_current();
+        if (cur_wal != NULL) {
+            uint64_t lsn = wal_write_heap_insert(cur_wal, rel->rd_relfilenode,
+                                                tuple, len);
+            if (lsn == 0) {
+                /* WAL 写入失败：中止本次插入 */
+                return -1;
+            }
+        }
+    }
+
+    /* C1-1：初始化 out_tid 为无效值（避免调用方读到垃圾） */
+    if (out_tid != NULL) {
+        uint8_t *tid_out = (uint8_t *)out_tid;
+        memset(tid_out, 0, 6);
+    }
+
+    /* C2-1 T2：获取当前事务 xid（用于后续戳 xmin——完整实现待 tuple 布局扩展） */
+    int64_t current_xid = mvcc_current_xid();
+    (void)current_xid;  /* 暂不写入 tuple（kv_record_t 无 xmin 字段），仅 LOG */
 
     /* 获取或分配新页面 */
     BlockNumber blocknum = rel->rd_nblocks;
@@ -378,6 +404,15 @@ int heap_insert(Relation rel, const void *tuple, size_t len,
     /* 更新统计 */
     global_stats.inserts++;
 
+    /* C1-1：回填 tid（block + LinePointer 编号） */
+    if (out_tid != NULL) {
+        uint8_t *tid_out = (uint8_t *)out_tid;
+        uint32_t blk = buf->blocknum;
+        uint16_t off = lp;
+        memcpy(tid_out, &blk, sizeof(blk));
+        memcpy(tid_out + sizeof(blk), &off, sizeof(off));
+    }
+
     return 0;
 }
 
@@ -391,12 +426,22 @@ int heap_delete(Relation rel, const void *tid, uint32_t cid,
     (void)crosscheck;
     (void)wait;
 
-    /* 解析 TID：前4字节是 block，后2字节是 offset */
+    /* C0-2：WAL-first — 解析 TID 后先写 redo 日志 */
     const uint8_t *tid_data = (const uint8_t *)tid;
     uint32_t blocknum = 0;
     uint16_t offset = 0;
     memcpy(&blocknum, tid_data, sizeof(uint32_t));
     memcpy(&offset, tid_data + sizeof(uint32_t), sizeof(uint16_t));
+
+    {
+        wal_t *cur_wal = wal_get_current();
+        if (cur_wal != NULL) {
+            uint64_t packed_tid = ((uint64_t)blocknum << 32) | (uint64_t)offset;
+            uint64_t lsn = wal_write_heap_delete(cur_wal, rel->rd_relfilenode,
+                                                packed_tid);
+            if (lsn == 0) return -1;
+        }
+    }
 
     /* 读取页面 */
     BufferDesc *buf = buf_read(rel->rd_relfilenode, blocknum, 0);
@@ -454,10 +499,22 @@ int heap_update(Relation rel, const void *tid,
     (void)bistate;
     (void)lockmode;
 
-    /* 解析 TID */
+    /* C0-2：WAL-first — update 等价 delete + insert，先记 redo */
     const uint8_t *tid_data = (const uint8_t *)tid;
     uint32_t blocknum = 0;
+    uint16_t offset = 0;
     memcpy(&blocknum, tid_data, sizeof(uint32_t));
+    memcpy(&offset, tid_data + sizeof(uint32_t), sizeof(uint16_t));
+
+    {
+        wal_t *cur_wal = wal_get_current();
+        if (cur_wal != NULL) {
+            uint64_t packed_tid = ((uint64_t)blocknum << 32) | (uint64_t)offset;
+            uint64_t lsn = wal_write_heap_update(cur_wal, rel->rd_relfilenode,
+                                                packed_tid, newtuple, new_len);
+            if (lsn == 0) return -1;
+        }
+    }
 
     /* 先删除旧元组 */
     if (heap_delete(rel, tid, cid, false, false) != 0) {

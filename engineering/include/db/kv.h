@@ -31,7 +31,7 @@ typedef struct lock_manager_s lock_manager_t;
 #define KV_MAX_KEY_SIZE 8192
 
 /** 最大值长度 */
-#define KV_MAX_VALUE_SIZE (1024 * 1024)  /* 1MB */
+#define KV_MAX_VALUE_SIZE (16 * 1024 * 1024)  /* 16MB (C1-3 T5) */
 
 /** 默认数据库名称 */
 #define KV_DEFAULT_DB_NAME "kv.db"
@@ -48,7 +48,11 @@ typedef enum kv_result_e {
     KV_CORRUPT = 3,      /**< 数据库损坏 */
     KV_NOMEM = 4,        /**< 内存不足 */
     KV_EXISTS = 5,       /**< 键已存在 */
-    KV_INVALID = 6      /**< 无效参数 */
+    KV_INVALID = 6,      /**< 无效参数 */
+    /* C1-3 T3：专用错误码 */
+    KV_FULL = 7,         /**< page full（替代 KV_ERROR 用于此场景） */
+    KV_CONFLICT = 8,     /**< CAS 失败 */
+    KV_LOCKED = 9        /**< 锁等待超时 */
 } kv_result_t;
 
 /* ============================================================
@@ -65,6 +69,8 @@ struct kv_s {
     size_t         num_keys;       /**< 键数量 */
     lock_manager_t *lock_mgr;      /**< 锁管理器 */
     void          *ttl_mgr;        /**< TTL 管理器 */
+    /* C1-3 T2：mmdb_rwlock 并发保护（put/get/delete 包裹） */
+    mmdb_rwlock_t  rwlock;
 };
 
 /** KV 数据库（公开类型） */
@@ -294,6 +300,54 @@ void *kv_get_buffer_pool(kv_t *db);
  * @return 0 成功，-1 失败
  */
 int kv_replay_wal(kv_t *db, const char *wal_path);
+
+/* ========================================================================
+ * C0-3：KV → DBERR 适配宏（向后兼容）
+ * ======================================================================== */
+
+#include "db/errors.h"
+#include "db/mmdb_lock.h"  /* C1-3 T2 */
+
+#define KV_TO_DBERR(rc) \
+    ((rc) == KV_OK        ? DBERR_OK        : \
+     (rc) == KV_NOT_FOUND ? DBERR_NOT_FOUND : \
+     (rc) == KV_FULL      ? DBERR_FULL      : \
+     (rc) == KV_NOMEM     ? DBERR_NOMEM     : \
+     (rc) == KV_EXISTS    ? DBERR_EXISTS    : \
+     (rc) == KV_INVALID   ? DBERR_INVALID   : \
+     (rc) == KV_CORRUPT   ? DBERR_CORRUPT   : \
+     (rc) == KV_CONFLICT  ? DBERR_CONFLICT  : \
+     (rc) == KV_LOCKED    ? DBERR_LOCKED    : \
+                             DBERR_MOD_KV)
+
+/* C3-5 T22：自定义 key 比较器注入点 */
+typedef int (*kv_comparator_fn)(const void *a, size_t alen,
+                               const void *b, size_t blen);
+void kv_set_comparator(kv_t *db, kv_comparator_fn cmp);
+
+/* C3-5 T20：CAS（compare-and-swap）
+ * 仅当旧值等于 expected_old 时替换为 new_value
+ */
+kv_result_t kv_cas(kv_t *db,
+                   const void *key, size_t key_len,
+                   const void *expected_old, size_t expected_old_len,
+                   const void *new_value, size_t new_value_len);
+
+/**
+ * @brief C1-3 T6：kv_get 释放契约
+ *
+ * kv_get 成功时将 value 拷贝到 malloc 分配的缓冲区，通过 *out_value 返回。
+ * **调用方必须**对 *out_value 指向的内存调用 free()，否则内存泄漏。
+ *
+ * 示例：
+ *   void *val = nullptr;
+ *   size_t val_len = 0;
+ *   kv_result_t rc = kv_get(db, key, key_len, &val, &val_len);
+ *   if (rc == KV_OK) {
+ *       // ... 使用 val ...
+ *       free(val);
+ *   }
+ */
 
 #ifdef __cplusplus
 }

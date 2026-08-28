@@ -8,6 +8,7 @@
 #define DB_STORAGE_SPATIAL_ENGINE_H
 
 #include "db/storage_engine.h"
+#include "db/mmdb_lock.h"  /* C0-1：统一并发原语 */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -95,6 +96,10 @@ typedef struct spatial_engine_db_s {
     /* Hilbert 辅助索引 */
     void *hilbert_index;       /**< Hilbert 辅助索引指针 */
     bool hilbert_built;         /**< Hilbert 索引是否已构建 */
+
+    /* 并发控制（C0-1：统一 mmdb_rwlock 原语） */
+    mmdb_rwlock_t rwlock;       /**< 跨平台读写锁（值类型，open 时 init） */
+    bool use_lock;              /**< 是否启用锁（C0-1：默认 true） */
 } spatial_engine_db_t;
 
 /* ========================================================================

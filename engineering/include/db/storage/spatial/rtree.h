@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include "db/mmdb_lock.h"  /* C0-1：统一并发原语 */
 
 #ifdef __cplusplus
 extern "C" {
@@ -92,6 +93,10 @@ typedef struct rtree_s {
     uint32_t min_entries;           /**< 每个节点最小条目数 */
     uint32_t num_items;             /**< 索引项总数 */
     uint32_t height;                /**< 树高度 */
+
+    /* 并发控制（C0-1：统一 mmdb_rwlock 原语） */
+    mmdb_rwlock_t rwlock;           /**< 跨平台读写锁（值类型，create 时 init） */
+    bool use_lock;                  /**< 是否启用锁（C0-1：默认 true） */
 } rtree_t;
 
 /* ========================================================================
@@ -212,6 +217,16 @@ double bbox_point_distance(const bbox_t *bbox, const point_t *point);
  * @brief 合并两个边界框
  */
 bbox_t bbox_union(const bbox_t *a, const bbox_t *b);
+
+/* ========================================================================
+ * 并发锁 API（C0-1 新增）
+ * ======================================================================== */
+
+void rtree_read_lock(rtree_t *tree);
+void rtree_read_unlock(rtree_t *tree);
+void rtree_write_lock(rtree_t *tree);
+void rtree_write_unlock(rtree_t *tree);
+void rtree_enable_lock(rtree_t *tree, bool use_lock);
 
 #ifdef __cplusplus
 }

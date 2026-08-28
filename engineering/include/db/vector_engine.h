@@ -9,6 +9,7 @@
 
 #include "storage_engine.h"
 #include "db/index/vector_index/hnsw/faiss_hnsw.h"  /* 引入 faiss_hnsw_t 类型 */
+#include "db/mmdb_lock.h"                              /* 统一并发原语（C0-1） */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -84,10 +85,10 @@ typedef struct vector_engine_db_s {
     int ivf_pq_nlist;          /**< IVF 聚类数量 */
     int ivf_pq_nprobe;         /**< 搜索探针数量 */
 
-    /* 并发控制 */
+    /* 并发控制（C0-1：统一 mmdb_rwlock 原语） */
     void *lockmgr;             /**< 锁管理器 */
-    void *rwlock;              /**< 读写锁（pthread_rwlock 或模拟） */
-    bool use_lock;             /**< 是否启用锁 */
+    mmdb_rwlock_t rwlock;      /**< 跨平台读写锁（值类型，open 时 init） */
+    bool use_lock;             /**< 是否启用锁（C0-1：默认 true） */
 
     /* WAL 持久化 */
     void *wal;                 /**< WAL 句柄（vector_wal_t*） */
@@ -229,6 +230,21 @@ float vector_cosine_similarity(const float *a, const float *b, int32_t dim);
  * @brief 归一化向量
  */
 void vector_normalize(float *v, int32_t dim);
+
+/* ========================================================================
+ * C0-3：Vector API → DBERR 适配宏
+ * ======================================================================== */
+
+#include "db/errors.h"
+
+/**
+ * @brief Vector API 返回值（int 0/-1）→ DBERR
+ *
+ * Vector API 当前仅 0/-1 二值；区分 NOT_IMPLEMENTED/INVALID 需要调用方
+ * 自行在调用前后判定（如先 vector_engine_is_drop_implemented() 探测）。
+ */
+#define VEC_TO_DBERR(rc) \
+    ((rc) == 0 ? DBERR_OK : DBERR_MOD_VECTOR)
 
 #ifdef __cplusplus
 }
