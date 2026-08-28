@@ -397,3 +397,39 @@ set_target_properties(c5_vector_multimodal_test PROPERTIES
 )
 
 add_test(NAME c5_vector_multimodal_test COMMAND c5_vector_multimodal_test)
+
+add_executable(c6_observability_test
+    c6_observability_test.cpp
+)
+
+target_link_libraries(c6_observability_test
+    PRIVATE
+    storage_log
+    db_storage
+    project_includes
+    gtest
+    gtest_main
+)
+
+target_include_directories(c6_observability_test PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googletest/include
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googlemock/include
+)
+
+if(MSVC)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "")
+        target_compile_options(c6_observability_test PRIVATE /W4 /MDd)
+    else()
+        target_compile_options(c6_observability_test PRIVATE /W4 /MD)
+    endif()
+else()
+    target_compile_options(c6_observability_test PRIVATE -Wall -Wextra)
+endif()
+
+set_target_properties(c6_observability_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+add_test(NAME c6_observability_test COMMAND c6_observability_test)
