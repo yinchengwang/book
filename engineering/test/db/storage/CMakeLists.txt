@@ -83,13 +83,12 @@ add_executable(blob_engine_test
 find_package(GTest REQUIRED)
 target_link_libraries(blob_engine_test PRIVATE GTest::GTest GTest::Main)
 
-# OBJECT 库必须放在最后，这样链接器可以提取符号
-target_link_libraries(blob_engine_test PRIVATE project_includes db_storage db_core)
+# 链接 Blob 存储引擎库
+target_link_libraries(blob_engine_test PRIVATE storage_blob db_core project_includes)
 
 target_include_directories(blob_engine_test PRIVATE
     ${ENGINEERING_SOURCE_DIR}/include
     ${ENGINEERING_SOURCE_DIR}/include/db
-    C:/Users/yinch/anaconda3/Library/include
 )
 
 # 添加 GTest include 路径

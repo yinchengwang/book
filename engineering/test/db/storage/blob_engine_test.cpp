@@ -19,6 +19,7 @@
 extern "C" {
 #include "db/sha256.h"
 #include "db/blob_manifest.h"
+#include "db/blob_engine.h"
 }
 
 namespace fs = std::filesystem;
@@ -757,4 +758,123 @@ TEST_F(BlobManifestTest, ChunkEntryChecksum) {
     chunk2.logical_offset = 1024;
     uint32_t cksum3 = blob_manifest_chunk_checksum(&chunk2);
     EXPECT_NE(cksum1, cksum3);
+}
+
+/* ========================================================================
+ * Blob Engine 测试（Task 5+6）
+ * ======================================================================== */
+
+class BlobEngineTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        /* 创建临时测试目录 */
+        test_dir_ = fs::temp_directory_path() / "blob_engine_test";
+        fs::create_directories(test_dir_);
+
+        /* 打开 Blob 引擎 */
+        engine_ = blob_engine_create(test_dir_.string().c_str());
+        ASSERT_NE(engine_, nullptr);
+    }
+
+    void TearDown() override {
+        /* 关闭引擎 */
+        if (engine_) {
+            blob_engine_close(engine_);
+        }
+
+        /* 清理测试目录 */
+        fs::remove_all(test_dir_);
+    }
+
+    fs::path test_dir_;
+    blob_engine_t *engine_;
+};
+
+/* 测试小对象 put/get */
+TEST_F(BlobEngineTest, SmallObjectPutGet) {
+    const char *data = "Hello, Blob Engine!";
+    size_t len = strlen(data);
+
+    uint8_t blob_id[BLOB_SHA256_SIZE];
+    int rc = blob_put(engine_, data, len, blob_id);
+    ASSERT_EQ(rc, 0);
+
+    /* 读回数据 */
+    char read_buf[100];
+    size_t read_len = 0;
+    rc = blob_get(engine_, blob_id, read_buf, sizeof(read_buf), &read_len);
+    ASSERT_EQ(rc, 0);
+    EXPECT_EQ(read_len, len);
+    EXPECT_EQ(memcmp(read_buf, data, len), 0);
+}
+
+/* 测试多 Chunk 对象 */
+TEST_F(BlobEngineTest, MultiChunkObject) {
+    /* 创建 4MB + 17 字节的数据 */
+    const size_t data_size = 4 * 1024 * 1024 + 17;
+    std::vector<uint8_t> data(data_size);
+    for (size_t i = 0; i < data_size; i++) {
+        data[i] = (uint8_t)(i & 0xFF);
+    }
+
+    uint8_t blob_id[BLOB_SHA256_SIZE];
+    int rc = blob_put(engine_, data.data(), data_size, blob_id);
+    ASSERT_EQ(rc, 0);
+
+    /* 读回数据 */
+    std::vector<uint8_t> read_buf(data_size);
+    size_t read_len = 0;
+    rc = blob_get(engine_, blob_id, read_buf.data(), read_buf.size(), &read_len);
+    ASSERT_EQ(rc, 0);
+    EXPECT_EQ(read_len, data_size);
+    EXPECT_EQ(memcmp(read_buf.data(), data.data(), data_size), 0);
+}
+
+/* 测试 Range 读取 */
+TEST_F(BlobEngineTest, RangeGet) {
+    /* 创建测试数据 */
+    const size_t data_size = 1024;
+    std::vector<uint8_t> data(data_size);
+    for (size_t i = 0; i < data_size; i++) {
+        data[i] = (uint8_t)(i & 0xFF);
+    }
+
+    uint8_t blob_id[BLOB_SHA256_SIZE];
+    int rc = blob_put(engine_, data.data(), data_size, blob_id);
+    ASSERT_EQ(rc, 0);
+
+    /* Range 读取中间部分 */
+    char read_buf[100];
+    size_t read_len = 0;
+    rc = blob_range_get(engine_, blob_id, 100, sizeof(read_buf), read_buf, sizeof(read_buf), &read_len);
+    ASSERT_EQ(rc, 0);
+    EXPECT_EQ(read_len, sizeof(read_buf));
+    EXPECT_EQ(memcmp(read_buf, data.data() + 100, sizeof(read_buf)), 0);
+}
+
+/* 测试 stat */
+TEST_F(BlobEngineTest, StatObject) {
+    const char *data = "Test data for stat";
+    size_t len = strlen(data);
+
+    uint8_t blob_id[BLOB_SHA256_SIZE];
+    int rc = blob_put(engine_, data, len, blob_id);
+    ASSERT_EQ(rc, 0);
+
+    size_t blob_size = 0;
+    rc = blob_stat(engine_, blob_id, &blob_size);
+    ASSERT_EQ(rc, 0);
+    EXPECT_EQ(blob_size, len);
+}
+
+/* 测试不存在的 Blob */
+TEST_F(BlobEngineTest, NotFound) {
+    uint8_t fake_id[BLOB_SHA256_SIZE];
+    sha256_compute("notexist", 8, fake_id);
+
+    char read_buf[100];
+    size_t read_len = 0;
+    int rc = blob_get(engine_, fake_id, read_buf, sizeof(read_buf), &read_len);
+    EXPECT_NE(rc, 0);
+    EXPECT_EQ(read_len, 0u);
 }

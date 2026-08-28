@@ -42,8 +42,8 @@ extern "C" {
 /** Manifest 格式版本 */
 #define BLOB_MANIFEST_VERSION   1
 
-/** Manifest 头部固定大小（28 字节） */
-#define BLOB_MANIFEST_HEADER_SIZE  28U
+/** Manifest 头部固定大小（64 字节） */
+#define BLOB_MANIFEST_HEADER_SIZE  64U
 
 /** Manifest Chunk 条目固定大小（44 字节） */
 #define BLOB_MANIFEST_CHUNK_SIZE   44U

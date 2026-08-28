@@ -93,12 +93,6 @@ typedef struct blob_chunk_bucket_s {
 /** 哈希表初始容量 */
 #define HASH_TABLE_CAPACITY 1024
 
-/** 迭代器内部结构 */
-struct blob_catalog_iter_s {
-    const blob_catalog_t *catalog;
-    size_t next_bucket;      /**< 下一个要检查的桶索引 */
-};
-
 /* ========================================================================
  * Catalog 内部结构
  * ======================================================================== */

@@ -22,6 +22,9 @@ blob_engine_t *blob_engine_create(const char *data_dir);
 blob_engine_t *blob_engine_open(const char *data_dir);
 void blob_engine_close(blob_engine_t *engine);
 
+/* 获取引擎数据目录（内部使用） */
+const char *blob_engine_get_data_dir(const blob_engine_t *engine);
+
 /* Blob 操作 */
 int blob_put(blob_engine_t *engine,
              const void *data, size_t len,
