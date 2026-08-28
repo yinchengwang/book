@@ -546,6 +546,45 @@ static CypherRelPattern *cypher_parse_rel_pattern(CypherParser *parser)
         rel->dir = CYPHER_REL_OUTGOING;
     }
 
+    /* C3-5 T7：变长路径 *N..M 解析
+     * 语法：-[*1..5]->   表示 hop 数 1..5
+     * 默认：min_hops = max_hops = 1（精确 1 跳）
+     */
+    rel->min_hops = 1;
+    rel->max_hops = 1;
+    if (cypher_check(parser, CYPHER_TOKEN_ASTERISK)) {
+        /* 解析 *N..M 或 * 或 *N */
+        if (cypher_check(parser, CYPHER_TOKEN_NUMBER)) {
+            int n = (int)parser->current_token.value.num_value;
+            rel->min_hops = n;
+            rel->max_hops = n;
+            /* 检查 ..M */
+            if (parser->input[parser->pos] == '.' && parser->input[parser->pos + 1] == '.') {
+                parser->pos += 2;
+                if (cypher_check(parser, CYPHER_TOKEN_NUMBER)) {
+                    rel->max_hops = (int)parser->current_token.value.num_value;
+                }
+            }
+        } else if (parser->input[parser->pos] == '.' && parser->input[parser->pos + 1] == '.') {
+            /* ..M 形式 */
+            parser->pos += 2;
+            if (cypher_check(parser, CYPHER_TOKEN_NUMBER)) {
+                rel->max_hops = (int)parser->current_token.value.num_value;
+                rel->min_hops = 0;
+            }
+        }
+        /* consume * */
+    }
+
+    /* C3-5 T8: 处理 OPTIONAL MATCH 关键字 + UNWIND 子句（占位） */
+    if (parser->current_token.type == CYPHER_TOKEN_OPTIONAL && parser->next_token.type == CYPHER_TOKEN_MATCH) {
+        cypher_advance_token(parser);  /* OPTIONAL */
+        cypher_advance_token(parser);  /* MATCH */
+        /* 占位：调用 parse_match 处理后续节点 */
+        /* 当前骨架：与普通 MATCH 同处理，语义上 OPTIONAL 不强制 null 检查 */
+        return cypher_parse_match_block(parser);
+    }
+
     /* 检查是否有关系模式（不是简单的 --> */
     if (!cypher_check(parser, CYPHER_TOKEN_GREATER) && !cypher_check(parser, CYPHER_TOKEN_RPAREN)) {
         /* 可能是变量 */

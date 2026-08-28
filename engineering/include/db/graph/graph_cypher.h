@@ -187,6 +187,9 @@ typedef struct CypherRelPattern_s {
     CypherProp_t *props;          /**< 属性 */
     CypherRelDir dir;           /**< 方向 */
     CypherVarLen *var_len;      /**< 变量长度 (可选) */
+    /* C3-5 T7: 变长路径 hop 数（*N..M 展开后填充） */
+    int min_hops;
+    int max_hops;
 } CypherRelPattern;
 
 /** 模式链 (顶点-边-顶点-边-顶点...) */
