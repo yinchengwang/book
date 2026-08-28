@@ -196,7 +196,8 @@ typedef struct blob_catalog_upload_payload_s {
  * 用于遍历 Catalog 中的所有 Blob 条目。
  */
 typedef struct blob_catalog_iter_s {
-    void *opaque;  /**< 内部实现指针 */
+    const void *catalog;
+    size_t next_bucket;
 } blob_catalog_iter_t;
 
 /* ========================================================================

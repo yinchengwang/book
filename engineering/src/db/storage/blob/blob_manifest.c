@@ -10,6 +10,7 @@
  * 所有多字节字段按 little-endian 写入。
  */
 #include "db/blob_manifest.h"
+#include "db/sha256.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -209,6 +210,15 @@ static int chunk_header_deserialize(const uint8_t buf[BLOB_CHUNK_HEADER_SIZE],
     return 0;
 }
 
+static void put_le16(uint8_t *buf, uint16_t val) {
+    buf[0] = (uint8_t)(val);
+    buf[1] = (uint8_t)(val >> 8);
+}
+
+static uint16_t get_le16(const uint8_t *buf) {
+    return (uint16_t)buf[0] | ((uint16_t)buf[1] << 8);
+}
+
 static void manifest_header_serialize(const blob_manifest_header_t *hdr,
                                       uint8_t buf[BLOB_MANIFEST_HEADER_SIZE]) {
     put_le32(buf + 0,  hdr->magic);
@@ -221,15 +231,6 @@ static void manifest_header_serialize(const blob_manifest_header_t *hdr,
     put_le16(buf + 30, hdr->metadata_len);
     memcpy(buf + 32, hdr->blob_sha256, BLOB_BLOB_ID_SIZE);
     /* manifest_checksum 稍后填充 */
-}
-
-static void put_le16(uint8_t *buf, uint16_t val) {
-    buf[0] = (uint8_t)(val);
-    buf[1] = (uint8_t)(val >> 8);
-}
-
-static uint16_t get_le16(const uint8_t *buf) {
-    return (uint16_t)buf[0] | ((uint16_t)buf[1] << 8);
 }
 
 static int manifest_header_deserialize(const uint8_t buf[BLOB_MANIFEST_HEADER_SIZE],
