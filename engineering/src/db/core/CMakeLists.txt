@@ -18,7 +18,7 @@ add_library(db_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/xml_parser.c        # C2-5 自研 XML 解析器
     ${CMAKE_CURRENT_SOURCE_DIR}/cjk_tokenizer.c     # C2-6 中文分词 + 词干化
     ${CMAKE_CURRENT_SOURCE_DIR}/explain_analyze.c   # C2-2 EXPLAIN/ANALYZE
-    ${CMAKE_CURRENT_SOURCE_DIR}/sha256.c            # Blob SHA-256
+    ${CMAKE_CURRENT_SOURCE_DIR}/sha256.c            # Blob SHA-256: 实现 Manifest 编解码与完整性校验（Task 3）)
 )
 target_include_directories(db_core PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include

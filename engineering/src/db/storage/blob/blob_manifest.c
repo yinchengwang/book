@@ -1,15 +1,15 @@
 /**
  * @file blob_manifest.c
- * @brief Blob Chunk 固定格式与原子发布实现（Task 2）
+ * @brief Blob Chunk/Manifest 固定格式与原子发布实现（Task 2+3）
  *
- * 实现 Chunk 文件的写入、校验和原子发布逻辑。
- * 文件格式：header(56) + payload(payload_size) + payload_checksum(4)
+ * 实现 Chunk 和 Manifest 文件的写入、校验和原子发布逻辑。
+ *
+ * Chunk 格式：header(56) + payload(payload_size) + payload_checksum(4)
+ * Manifest 格式：header(28) + content_type + metadata + chunks[]
+ *
  * 所有多字节字段按 little-endian 写入。
  */
 #include "db/blob_manifest.h"
-#include "db/sha256.h"
-#include "db/core/log.h"
-#include "db/storage/wal/wal_flush.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +25,21 @@
 #else
 #include <unistd.h>
 #define mkdir_path(path) mkdir(path, 0755)
+#endif
+
+/* ========================================================================
+ * 日志宏（简化版本，避免引入额外依赖）
+ * ======================================================================== */
+
+#ifdef BLOB_ENABLE_LOG
+#include "db/log.h"
+#define LOG_DEBUG(...)  log_debug(__VA_ARGS__)
+#define LOG_WARN(...)   log_warn(__VA_ARGS__)
+#define LOG_ERROR(...)  log_error(__VA_ARGS__)
+#else
+#define LOG_DEBUG(...)  ((void)0)
+#define LOG_WARN(...)   ((void)0)
+#define LOG_ERROR(...)  ((void)0)
 #endif
 
 /* ========================================================================
@@ -50,7 +65,7 @@ static void crc32_init_table(void) {
     crc32_table_initialized = true;
 }
 
-static uint32_t crc32_compute(const void *data, size_t len) {
+uint32_t blob_chunk_payload_checksum(const void *data, size_t len) {
     crc32_init_table();
     const uint8_t *p = (const uint8_t *)data;
     uint32_t crc = 0xFFFFFFFF;
@@ -104,14 +119,14 @@ static uint64_t get_le64(const uint8_t *buf) {
  * SHA-256 转十六进制字符串
  * ======================================================================== */
 
-static void sha256_to_hex(const uint8_t digest[BLOB_CHUNK_ID_SIZE],
-                          char hex[BLOB_CHUNK_ID_SIZE * 2 + 1]) {
+void blob_sha256_to_hex(const uint8_t digest[BLOB_BLOB_ID_SIZE],
+                        char hex[BLOB_BLOB_ID_SIZE * 2 + 1]) {
     static const char hexc[] = "0123456789abcdef";
-    for (size_t i = 0; i < BLOB_CHUNK_ID_SIZE; i++) {
+    for (size_t i = 0; i < BLOB_BLOB_ID_SIZE; i++) {
         hex[2 * i]     = hexc[digest[i] >> 4];
         hex[2 * i + 1] = hexc[digest[i] & 0x0F];
     }
-    hex[BLOB_CHUNK_ID_SIZE * 2] = '\0';
+    hex[BLOB_BLOB_ID_SIZE * 2] = '\0';
 }
 
 /* ========================================================================
@@ -129,8 +144,25 @@ int blob_chunk_final_path(const char *dir,
                           const uint8_t chunk_id[BLOB_CHUNK_ID_SIZE],
                           char *path_buf, size_t buf_size) {
     char hex[BLOB_CHUNK_ID_SIZE * 2 + 1];
-    sha256_to_hex(chunk_id, hex);
+    blob_sha256_to_hex(chunk_id, hex);
     int n = snprintf(path_buf, buf_size, "%s/%s.chunk", dir, hex);
+    if (n < 0 || (size_t)n >= buf_size) return BLOB_ERR_INVAL;
+    return BLOB_OK;
+}
+
+int blob_manifest_tmp_path(const char *dir, const char *upload_id,
+                          char *path_buf, size_t buf_size) {
+    int n = snprintf(path_buf, buf_size, "%s/.tmp.%s", dir, upload_id);
+    if (n < 0 || (size_t)n >= buf_size) return BLOB_ERR_INVAL;
+    return BLOB_OK;
+}
+
+int blob_manifest_final_path(const char *dir,
+                             const uint8_t blob_id[BLOB_BLOB_ID_SIZE],
+                             char *path_buf, size_t buf_size) {
+    char hex[BLOB_BLOB_ID_SIZE * 2 + 1];
+    blob_sha256_to_hex(blob_id, hex);
+    int n = snprintf(path_buf, buf_size, "%s/%s.manifest", dir, hex);
     if (n < 0 || (size_t)n >= buf_size) return BLOB_ERR_INVAL;
     return BLOB_OK;
 }
@@ -141,18 +173,25 @@ int blob_chunk_final_path(const char *dir,
 
 uint32_t blob_chunk_header_checksum(const blob_chunk_header_t *hdr) {
     /* 覆盖前 48 字节（magic + version + payload_size + chunk_sha256） */
-    return crc32_compute(hdr, offsetof(blob_chunk_header_t, header_checksum));
+    return blob_chunk_payload_checksum(hdr, offsetof(blob_chunk_header_t, header_checksum));
 }
 
-uint32_t blob_chunk_payload_checksum(const void *data, size_t len) {
-    return crc32_compute(data, len);
+uint32_t blob_manifest_header_checksum(const blob_manifest_header_t *hdr) {
+    /* 覆盖前 24 字节 */
+    return blob_chunk_payload_checksum(hdr, offsetof(blob_manifest_header_t, manifest_checksum));
+}
+
+uint32_t blob_manifest_chunk_checksum(const blob_manifest_chunk_t *chunk) {
+    /* 覆盖前 40 字节：chunk_sha256(32) + logical_offset(8) */
+    return blob_chunk_payload_checksum(chunk, offsetof(blob_manifest_chunk_t, chunk_checksum));
 }
 
 /* ========================================================================
  * Header 序列化/反序列化
  * ======================================================================== */
 
-static void header_serialize(const blob_chunk_header_t *hdr, uint8_t buf[BLOB_CHUNK_HEADER_SIZE]) {
+static void chunk_header_serialize(const blob_chunk_header_t *hdr,
+                                   uint8_t buf[BLOB_CHUNK_HEADER_SIZE]) {
     put_le32(buf + 0,  hdr->magic);
     put_le32(buf + 4,  hdr->version);
     put_le64(buf + 8,  hdr->payload_size);
@@ -160,8 +199,8 @@ static void header_serialize(const blob_chunk_header_t *hdr, uint8_t buf[BLOB_CH
     put_le32(buf + 48, hdr->header_checksum);
 }
 
-static int header_deserialize(const uint8_t buf[BLOB_CHUNK_HEADER_SIZE],
-                              blob_chunk_header_t *hdr) {
+static int chunk_header_deserialize(const uint8_t buf[BLOB_CHUNK_HEADER_SIZE],
+                                    blob_chunk_header_t *hdr) {
     hdr->magic          = get_le32(buf + 0);
     hdr->version        = get_le32(buf + 4);
     hdr->payload_size   = get_le64(buf + 8);
@@ -170,13 +209,69 @@ static int header_deserialize(const uint8_t buf[BLOB_CHUNK_HEADER_SIZE],
     return 0;
 }
 
+static void manifest_header_serialize(const blob_manifest_header_t *hdr,
+                                      uint8_t buf[BLOB_MANIFEST_HEADER_SIZE]) {
+    put_le32(buf + 0,  hdr->magic);
+    put_le32(buf + 4,  hdr->version);
+    put_le32(buf + 8,  hdr->flags);
+    put_le64(buf + 12, hdr->blob_size);
+    put_le32(buf + 20, hdr->chunk_size);
+    put_le32(buf + 24, hdr->chunk_count);
+    put_le16(buf + 28, hdr->content_type_len);
+    put_le16(buf + 30, hdr->metadata_len);
+    memcpy(buf + 32, hdr->blob_sha256, BLOB_BLOB_ID_SIZE);
+    /* manifest_checksum 稍后填充 */
+}
+
+static void put_le16(uint8_t *buf, uint16_t val) {
+    buf[0] = (uint8_t)(val);
+    buf[1] = (uint8_t)(val >> 8);
+}
+
+static uint16_t get_le16(const uint8_t *buf) {
+    return (uint16_t)buf[0] | ((uint16_t)buf[1] << 8);
+}
+
+static int manifest_header_deserialize(const uint8_t buf[BLOB_MANIFEST_HEADER_SIZE],
+                                       blob_manifest_header_t *hdr) {
+    hdr->magic           = get_le32(buf + 0);
+    hdr->version         = get_le32(buf + 4);
+    hdr->flags           = get_le32(buf + 8);
+    hdr->blob_size       = get_le64(buf + 12);
+    hdr->chunk_size      = get_le32(buf + 20);
+    hdr->chunk_count     = get_le32(buf + 24);
+    hdr->content_type_len = get_le16(buf + 28);
+    hdr->metadata_len    = get_le16(buf + 30);
+    memcpy(hdr->blob_sha256, buf + 32, BLOB_BLOB_ID_SIZE);
+    hdr->manifest_checksum = get_le32(buf + 60);
+    return 0;
+}
+
+static void manifest_chunk_serialize(const blob_manifest_chunk_t *chunk,
+                                     uint8_t buf[BLOB_MANIFEST_CHUNK_SIZE]) {
+    memcpy(buf + 0,  chunk->chunk_sha256, BLOB_CHUNK_ID_SIZE);
+    put_le64(buf + 32, chunk->logical_offset);
+    put_le32(buf + 40, chunk->chunk_size);
+    /* chunk_checksum 稍后填充 */
+}
+
+static void manifest_chunk_deserialize(const uint8_t buf[BLOB_MANIFEST_CHUNK_SIZE],
+                                       blob_manifest_chunk_t *chunk) {
+    memcpy(chunk->chunk_sha256, buf + 0, BLOB_CHUNK_ID_SIZE);
+    chunk->logical_offset = get_le64(buf + 32);
+    chunk->chunk_size     = get_le32(buf + 40);
+    chunk->chunk_checksum = get_le32(buf + 44);
+}
+
 /* ========================================================================
  * 目录确保
  * ======================================================================== */
 
-static int ensure_chunks_dir(const char *dir) {
-    mkdir_path(dir);
-    return 0;
+static int ensure_dir(const char *dir) {
+    if (mkdir_path(dir) != 0 && errno != EEXIST) {
+        return BLOB_ERR_IO;
+    }
+    return BLOB_OK;
 }
 
 /* ========================================================================
@@ -198,8 +293,16 @@ static int safe_fwrite(const void *data, size_t size, size_t count, FILE *fp) {
  * @brief 跨平台 fsync
  */
 static int file_fsync(FILE *fp) {
-    int fd = fileno(fp);
-    return db_fsync(fd);
+#ifdef _WIN32
+    if (_commit(_fileno(fp)) != 0) {
+        return BLOB_ERR_IO;
+    }
+#else
+    if (fsync(fileno(fp)) != 0) {
+        return BLOB_ERR_IO;
+    }
+#endif
+    return BLOB_OK;
 }
 
 /* ========================================================================
@@ -215,7 +318,7 @@ int blob_chunk_write_tmp(const char *dir,
     }
 
     /* 1. 确保 chunks 目录存在 */
-    ensure_chunks_dir(dir);
+    ensure_dir(dir);
 
     /* 2. 计算 chunk_id = SHA-256(data) */
     sha256_compute(data, len, out_chunk_id);
@@ -240,16 +343,14 @@ int blob_chunk_write_tmp(const char *dir,
     /* 6. 打开临时文件 */
     FILE *fp = fopen(tmp_path, "wb");
     if (!fp) {
-        LOG_ERROR("Blob Chunk: 无法创建临时文件 %s", tmp_path);
         return BLOB_ERR_IO;
     }
 
     /* 7. 写入 header */
     uint8_t header_buf[BLOB_CHUNK_HEADER_SIZE];
-    header_serialize(&hdr, header_buf);
+    chunk_header_serialize(&hdr, header_buf);
     rc = safe_fwrite(header_buf, 1, BLOB_CHUNK_HEADER_SIZE, fp);
     if (rc != 0) {
-        LOG_ERROR("Blob Chunk: 写入 header 失败 %s", tmp_path);
         fclose(fp);
         return rc;
     }
@@ -257,7 +358,6 @@ int blob_chunk_write_tmp(const char *dir,
     /* 8. 写入 payload */
     rc = safe_fwrite(data, 1, len, fp);
     if (rc != 0) {
-        LOG_ERROR("Blob Chunk: 写入 payload 失败 %s", tmp_path);
         fclose(fp);
         return rc;
     }
@@ -265,19 +365,16 @@ int blob_chunk_write_tmp(const char *dir,
     /* 9. 写入 payload_checksum */
     rc = safe_fwrite(&payload_cksum, sizeof(payload_cksum), 1, fp);
     if (rc != 0) {
-        LOG_ERROR("Blob Chunk: 写入 payload_checksum 失败 %s", tmp_path);
         fclose(fp);
         return rc;
     }
 
     /* 10. fflush + fsync */
     if (fflush(fp) != 0) {
-        LOG_ERROR("Blob Chunk: fflush 失败 %s", tmp_path);
         fclose(fp);
         return BLOB_ERR_IO;
     }
     if (file_fsync(fp) != 0) {
-        LOG_ERROR("Blob Chunk: fsync 失败 %s", tmp_path);
         fclose(fp);
         return BLOB_ERR_IO;
     }
@@ -304,23 +401,19 @@ int blob_chunk_write_tmp(const char *dir,
             existing_hdr.header_checksum == hdr.header_checksum) {
             /* 内容完全一致，删除临时文件，复用正式文件 */
             remove(tmp_path);
-            LOG_DEBUG("Blob Chunk: 正式文件已存在且一致，复用 %s", final_path);
             return BLOB_OK;
         }
         /* 正式文件存在但内容不同，不允许覆盖 */
         remove(tmp_path);
-        LOG_WARN("Blob Chunk: 正式文件已存在但内容不同，拒绝覆盖 %s", final_path);
         return BLOB_ERR_CONFLICT;
     }
 
     /* 12. 正式文件不存在，rename 临时文件为正式文件 */
     if (rename(tmp_path, final_path) != 0) {
-        LOG_ERROR("Blob Chunk: rename 失败 %s -> %s", tmp_path, final_path);
         remove(tmp_path);
         return BLOB_ERR_IO;
     }
 
-    LOG_DEBUG("Blob Chunk: 发布成功 %s", final_path);
     return BLOB_OK;
 }
 
@@ -352,26 +445,21 @@ int blob_chunk_read_header(const char *dir,
         return BLOB_ERR_CORRUPT;
     }
 
-    header_deserialize(header_buf, out_header);
+    chunk_header_deserialize(header_buf, out_header);
 
     /* 校验 magic */
     if (out_header->magic != BLOB_CHUNK_MAGIC) {
-        LOG_WARN("Blob Chunk: magic 不匹配 (期望 0x%08X, 实际 0x%08X)",
-                 BLOB_CHUNK_MAGIC, out_header->magic);
         return BLOB_ERR_CORRUPT;
     }
 
     /* 校验 version */
     if (out_header->version != BLOB_CHUNK_VERSION) {
-        LOG_WARN("Blob Chunk: version 不匹配 (期望 %u, 实际 %u)",
-                 BLOB_CHUNK_VERSION, out_header->version);
         return BLOB_ERR_CORRUPT;
     }
 
     /* 校验 header_checksum */
     uint32_t computed_cksum = blob_chunk_header_checksum(out_header);
     if (computed_cksum != out_header->header_checksum) {
-        LOG_WARN("Blob Chunk: header_checksum 不匹配");
         return BLOB_ERR_CORRUPT;
     }
 
@@ -401,14 +489,11 @@ int blob_chunk_read_checked(const char *dir,
 
     /* 2. 校验 payload_size 合理性 */
     if (hdr.payload_size == 0) {
-        LOG_WARN("Blob Chunk: payload_size 为零");
         return BLOB_ERR_CORRUPT;
     }
 
     /* 3. 检查输出缓冲区是否足够 */
     if (buf_len < hdr.payload_size) {
-        LOG_WARN("Blob Chunk: 输出缓冲区不足 (需 %lu, 有 %lu)",
-                 (unsigned long)hdr.payload_size, (unsigned long)buf_len);
         return BLOB_ERR_INVAL;
     }
 
@@ -431,8 +516,6 @@ int blob_chunk_read_checked(const char *dir,
     /* 读取 payload */
     size_t nread = fread(out_buf, 1, (size_t)hdr.payload_size, fp);
     if (nread != (size_t)hdr.payload_size) {
-        LOG_WARN("Blob Chunk: payload 读取长度不匹配 (需 %lu, 实际 %lu)",
-                 (unsigned long)hdr.payload_size, (unsigned long)nread);
         fclose(fp);
         *out_len = 0;
         return BLOB_ERR_CORRUPT;
@@ -441,7 +524,6 @@ int blob_chunk_read_checked(const char *dir,
     /* 5. 读取 payload_checksum */
     uint32_t disk_cksum;
     if (fread(&disk_cksum, sizeof(disk_cksum), 1, fp) != 1) {
-        LOG_WARN("Blob Chunk: 读取 payload_checksum 失败");
         fclose(fp);
         *out_len = 0;
         return BLOB_ERR_CORRUPT;
@@ -451,8 +533,6 @@ int blob_chunk_read_checked(const char *dir,
     /* 6. 校验 payload_checksum */
     uint32_t computed_cksum = blob_chunk_payload_checksum(out_buf, hdr.payload_size);
     if (computed_cksum != disk_cksum) {
-        LOG_WARN("Blob Chunk: payload_checksum 不匹配 (期望 0x%08X, 实际 0x%08X)",
-                 disk_cksum, computed_cksum);
         *out_len = 0;
         return BLOB_ERR_CORRUPT;
     }
@@ -461,7 +541,6 @@ int blob_chunk_read_checked(const char *dir,
     uint8_t actual_sha[BLOB_CHUNK_ID_SIZE];
     sha256_compute(out_buf, hdr.payload_size, actual_sha);
     if (memcmp(actual_sha, hdr.chunk_sha256, BLOB_CHUNK_ID_SIZE) != 0) {
-        LOG_WARN("Blob Chunk: SHA-256 不匹配");
         *out_len = 0;
         return BLOB_ERR_CORRUPT;
     }
@@ -500,10 +579,363 @@ int blob_chunk_exists_checked(const char *dir,
     /* 校验文件大小：header + payload + payload_checksum */
     uint64_t expected_size = BLOB_CHUNK_HEADER_SIZE + hdr.payload_size + sizeof(uint32_t);
     if ((uint64_t)st.st_size != expected_size) {
-        LOG_WARN("Blob Chunk: 文件大小不匹配 (期望 %lu, 实际 %lu)",
-                 (unsigned long)expected_size, (unsigned long)st.st_size);
         return BLOB_ERR_CORRUPT;
     }
 
+    return BLOB_OK;
+}
+
+/* ========================================================================
+ * Manifest 内存结构管理
+ * ======================================================================== */
+
+blob_manifest_t *blob_manifest_create(uint32_t chunk_count,
+                                      const char *content_type,
+                                      const void *metadata, size_t metadata_len) {
+    if (chunk_count == 0) {
+        return NULL;
+    }
+
+    /* 分配 Manifest 结构 */
+    blob_manifest_t *manifest = (blob_manifest_t *)calloc(1, sizeof(blob_manifest_t));
+    if (!manifest) {
+        return NULL;
+    }
+
+    /* 分配 Chunk 数组 */
+    manifest->chunks = (blob_manifest_chunk_t *)calloc(chunk_count, sizeof(blob_manifest_chunk_t));
+    if (!manifest->chunks) {
+        free(manifest);
+        return NULL;
+    }
+
+    manifest->chunk_count = chunk_count;
+    manifest->header.chunk_count = chunk_count;
+    manifest->header.chunk_size = BLOB_CHUNK_LOGICAL_SIZE;
+    manifest->header.flags = 0;
+
+    /* 复制 content_type */
+    if (content_type && content_type[0] != '\0') {
+        size_t ct_len = strlen(content_type);
+        manifest->content_type = (char *)malloc(ct_len + 1);
+        if (manifest->content_type) {
+            memcpy(manifest->content_type, content_type, ct_len + 1);
+            manifest->header.content_type_len = (uint16_t)ct_len;
+        } else {
+            blob_manifest_free(manifest);
+            return NULL;
+        }
+    } else {
+        manifest->content_type = NULL;
+        manifest->header.content_type_len = 0;
+    }
+
+    /* 复制 metadata */
+    if (metadata && metadata_len > 0) {
+        manifest->metadata = malloc(metadata_len);
+        if (manifest->metadata) {
+            memcpy(manifest->metadata, metadata, metadata_len);
+            manifest->header.metadata_len = (uint16_t)metadata_len;
+        } else {
+            blob_manifest_free(manifest);
+            return NULL;
+        }
+    } else {
+        manifest->metadata = NULL;
+        manifest->header.metadata_len = 0;
+    }
+
+    return manifest;
+}
+
+void blob_manifest_free(blob_manifest_t *manifest) {
+    if (!manifest) {
+        return;
+    }
+    free(manifest->chunks);
+    free(manifest->content_type);
+    free(manifest->metadata);
+    free(manifest);
+}
+
+/* ========================================================================
+ * blob_manifest_write_atomic: 原子写入 Manifest 文件
+ * ======================================================================== */
+
+int blob_manifest_write_atomic(const char *dir,
+                               const blob_manifest_t *manifest,
+                               const char *upload_id) {
+    if (!dir || !manifest || !upload_id) {
+        return BLOB_ERR_INVAL;
+    }
+
+    /* 1. 确保目录存在 */
+    ensure_dir(dir);
+
+    /* 2. 构造临时文件路径 */
+    char tmp_path[1024];
+    int rc = blob_manifest_tmp_path(dir, upload_id, tmp_path, sizeof(tmp_path));
+    if (rc != 0) return rc;
+
+    /* 3. 打开临时文件 */
+    FILE *fp = fopen(tmp_path, "wb");
+    if (!fp) {
+        return BLOB_ERR_IO;
+    }
+
+    /* 4. 写入头部（先写入，后填充 checksum） */
+    uint8_t header_buf[BLOB_MANIFEST_HEADER_SIZE];
+    manifest_header_serialize(&manifest->header, header_buf);
+
+    /* 计算头部校验和 */
+    uint32_t hdr_cksum = blob_manifest_header_checksum((blob_manifest_header_t *)header_buf);
+    put_le32(header_buf + 60, hdr_cksum);
+
+    rc = safe_fwrite(header_buf, 1, BLOB_MANIFEST_HEADER_SIZE, fp);
+    if (rc != 0) {
+        fclose(fp);
+        return rc;
+    }
+
+    /* 5. 写入 content_type */
+    if (manifest->header.content_type_len > 0 && manifest->content_type) {
+        rc = safe_fwrite(manifest->content_type, 1, manifest->header.content_type_len, fp);
+        if (rc != 0) {
+            fclose(fp);
+            return rc;
+        }
+    }
+
+    /* 6. 写入 metadata */
+    if (manifest->header.metadata_len > 0 && manifest->metadata) {
+        rc = safe_fwrite(manifest->metadata, 1, manifest->header.metadata_len, fp);
+        if (rc != 0) {
+            fclose(fp);
+            return rc;
+        }
+    }
+
+    /* 7. 写入 Chunk 条目数组 */
+    for (uint32_t i = 0; i < manifest->chunk_count; i++) {
+        uint8_t chunk_buf[BLOB_MANIFEST_CHUNK_SIZE];
+        manifest_chunk_serialize(&manifest->chunks[i], chunk_buf);
+
+        /* 计算条目校验和 */
+        uint32_t chunk_cksum = blob_manifest_chunk_checksum(&manifest->chunks[i]);
+        put_le32(chunk_buf + 44, chunk_cksum);
+
+        rc = safe_fwrite(chunk_buf, 1, BLOB_MANIFEST_CHUNK_SIZE, fp);
+        if (rc != 0) {
+            fclose(fp);
+            return rc;
+        }
+    }
+
+    /* 8. fflush + fsync */
+    if (fflush(fp) != 0) {
+        fclose(fp);
+        return BLOB_ERR_IO;
+    }
+    if (file_fsync(fp) != 0) {
+        fclose(fp);
+        return BLOB_ERR_IO;
+    }
+    fclose(fp);
+
+    /* 9. 原子 rename 为正式文件 */
+    char final_path[1024];
+    rc = blob_manifest_final_path(dir, manifest->header.blob_sha256,
+                                  final_path, sizeof(final_path));
+    if (rc != 0) {
+        remove(tmp_path);
+        return rc;
+    }
+
+    if (rename(tmp_path, final_path) != 0) {
+        remove(tmp_path);
+        return BLOB_ERR_IO;
+    }
+
+    return BLOB_OK;
+}
+
+/* ========================================================================
+ * blob_manifest_load_checked: 读取并校验 Manifest 文件
+ * ======================================================================== */
+
+int blob_manifest_load_checked(const char *dir,
+                               const uint8_t blob_id[BLOB_BLOB_ID_SIZE],
+                               blob_manifest_t **out_manifest) {
+    if (!dir || !blob_id || !out_manifest) {
+        return BLOB_ERR_INVAL;
+    }
+
+    *out_manifest = NULL;
+
+    /* 1. 打开 Manifest 文件 */
+    char path[1024];
+    int rc = blob_manifest_final_path(dir, blob_id, path, sizeof(path));
+    if (rc != 0) return rc;
+
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        return BLOB_ERR_NOTFOUND;
+    }
+
+    /* 2. 检查文件大小 */
+    struct stat st;
+    if (fstat(fileno(fp), &st) != 0) {
+        fclose(fp);
+        return BLOB_ERR_IO;
+    }
+
+    /* 最小文件大小：header(28) + 至少一个 chunk(44) */
+    size_t min_size = BLOB_MANIFEST_HEADER_SIZE + BLOB_MANIFEST_CHUNK_SIZE;
+    if ((size_t)st.st_size < min_size) {
+        fclose(fp);
+        return BLOB_ERR_CORRUPT;
+    }
+
+    /* 最大文件大小限制（防止整数溢出）: 100MB */
+    const size_t max_size = 100 * 1024 * 1024;
+    if ((size_t)st.st_size > max_size) {
+        fclose(fp);
+        return BLOB_ERR_CORRUPT;
+    }
+
+    /* 3. 读取头部 */
+    uint8_t header_buf[BLOB_MANIFEST_HEADER_SIZE];
+    size_t nread = fread(header_buf, 1, BLOB_MANIFEST_HEADER_SIZE, fp);
+    if (nread != BLOB_MANIFEST_HEADER_SIZE) {
+        fclose(fp);
+        return BLOB_ERR_CORRUPT;
+    }
+
+    blob_manifest_header_t hdr;
+    manifest_header_deserialize(header_buf, &hdr);
+
+    /* 4. 校验 magic */
+    if (hdr.magic != BLOB_MANIFEST_MAGIC) {
+        fclose(fp);
+        return BLOB_ERR_CORRUPT;
+    }
+
+    /* 5. 校验 version */
+    if (hdr.version != BLOB_MANIFEST_VERSION) {
+        fclose(fp);
+        return BLOB_ERR_CORRUPT;
+    }
+
+    /* 6. 校验头部校验和 */
+    uint32_t computed_cksum = blob_manifest_header_checksum(&hdr);
+    if (computed_cksum != hdr.manifest_checksum) {
+        fclose(fp);
+        return BLOB_ERR_CORRUPT;
+    }
+
+    /* 7. 校验 blob_id 一致性 */
+    if (memcmp(blob_id, hdr.blob_sha256, BLOB_BLOB_ID_SIZE) != 0) {
+        fclose(fp);
+        return BLOB_ERR_CORRUPT;
+    }
+
+    /* 8. 校验 chunk_count 合理性 */
+    if (hdr.chunk_count == 0) {
+        fclose(fp);
+        return BLOB_ERR_CORRUPT;
+    }
+
+    /* 计算期望的文件大小 */
+    size_t expected_size = BLOB_MANIFEST_HEADER_SIZE
+                         + hdr.content_type_len
+                         + hdr.metadata_len
+                         + ((size_t)hdr.chunk_count * BLOB_MANIFEST_CHUNK_SIZE);
+
+    if ((size_t)st.st_size != expected_size) {
+        fclose(fp);
+        return BLOB_ERR_CORRUPT;
+    }
+
+    /* 9. 创建 Manifest 内存结构 */
+    blob_manifest_t *manifest = blob_manifest_create(
+        hdr.chunk_count,
+        (hdr.content_type_len > 0) ? "" : NULL,
+        NULL, 0);
+    if (!manifest) {
+        fclose(fp);
+        return BLOB_ERR_NOMEM;
+    }
+
+    /* 复制头部信息 */
+    manifest->header = hdr;
+
+    /* 10. 读取 content_type */
+    if (hdr.content_type_len > 0) {
+        manifest->content_type = (char *)malloc(hdr.content_type_len + 1);
+        if (!manifest->content_type) {
+            fclose(fp);
+            blob_manifest_free(manifest);
+            return BLOB_ERR_NOMEM;
+        }
+        if (fread(manifest->content_type, 1, hdr.content_type_len, fp) != hdr.content_type_len) {
+            fclose(fp);
+            blob_manifest_free(manifest);
+            return BLOB_ERR_CORRUPT;
+        }
+        manifest->content_type[hdr.content_type_len] = '\0';
+    }
+
+    /* 11. 读取 metadata */
+    if (hdr.metadata_len > 0) {
+        manifest->metadata = malloc(hdr.metadata_len);
+        if (!manifest->metadata) {
+            fclose(fp);
+            blob_manifest_free(manifest);
+            return BLOB_ERR_NOMEM;
+        }
+        if (fread(manifest->metadata, 1, hdr.metadata_len, fp) != hdr.metadata_len) {
+            fclose(fp);
+            blob_manifest_free(manifest);
+            return BLOB_ERR_CORRUPT;
+        }
+    }
+
+    /* 12. 读取 Chunk 条目数组 */
+    uint64_t prev_offset = 0;
+    for (uint32_t i = 0; i < hdr.chunk_count; i++) {
+        uint8_t chunk_buf[BLOB_MANIFEST_CHUNK_SIZE];
+        if (fread(chunk_buf, 1, BLOB_MANIFEST_CHUNK_SIZE, fp) != BLOB_MANIFEST_CHUNK_SIZE) {
+            fclose(fp);
+            blob_manifest_free(manifest);
+            return BLOB_ERR_CORRUPT;
+        }
+
+        manifest_chunk_deserialize(chunk_buf, &manifest->chunks[i]);
+
+        /* 校验条目校验和 */
+        uint32_t computed_chunk_cksum = blob_manifest_chunk_checksum(&manifest->chunks[i]);
+        if (computed_chunk_cksum != manifest->chunks[i].chunk_checksum) {
+            fclose(fp);
+            blob_manifest_free(manifest);
+            return BLOB_ERR_CORRUPT;
+        }
+
+        /* 校验 offset 单调递增 */
+        if (i > 0 && manifest->chunks[i].logical_offset <= prev_offset) {
+            fclose(fp);
+            blob_manifest_free(manifest);
+            return BLOB_ERR_CORRUPT;
+        }
+        prev_offset = manifest->chunks[i].logical_offset;
+    }
+
+    fclose(fp);
+
+    /* 13. 计算并校验 blob 整体 SHA-256
+     * 由于 blob 内容可能分散在多个 Chunk 中，这里只校验 Manifest 自身完整性
+     * 整体 blob_sha256 校验将在 blob_get 时进行 */
+    (void)0; /* 预留扩展点 */
+
+    *out_manifest = manifest;
     return BLOB_OK;
 }

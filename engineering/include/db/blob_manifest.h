@@ -1,8 +1,8 @@
 /**
  * @file blob_manifest.h
- * @brief Blob Chunk 固定格式与原子发布接口（Task 2）
+ * @brief Blob Chunk/Manifest 固定格式与原子发布接口（Task 2+3）
  *
- * 定义 Chunk 文件的固定二进制格式（56 字节头 + payload + payload_checksum），
+ * 定义 Chunk 和 Manifest 文件的固定二进制格式，
  * 提供临时文件写入、原子发布（不覆盖式创建）和完整性校验读取。
  */
 #ifndef DB_BLOB_MANIFEST_H
@@ -33,6 +33,25 @@ extern "C" {
 #define BLOB_CHUNK_LOGICAL_SIZE  (4U * 1024U * 1024U)
 
 /* ========================================================================
+ * Manifest 格式常量
+ * ======================================================================== */
+
+/** Manifest 文件魔数，'BLMF' 的十六进制 */
+#define BLOB_MANIFEST_MAGIC     0x424C4D46U
+
+/** Manifest 格式版本 */
+#define BLOB_MANIFEST_VERSION   1
+
+/** Manifest 头部固定大小（28 字节） */
+#define BLOB_MANIFEST_HEADER_SIZE  28U
+
+/** Manifest Chunk 条目固定大小（44 字节） */
+#define BLOB_MANIFEST_CHUNK_SIZE   44U
+
+/** Blob ID 长度（SHA-256 摘要） */
+#define BLOB_BLOB_ID_SIZE      32
+
+/* ========================================================================
  * Chunk 文件布局
  * ======================================================================== */
 
@@ -53,6 +72,53 @@ typedef struct blob_chunk_header_s {
 
 /** Chunk 头部固定大小 */
 #define BLOB_CHUNK_HEADER_SIZE  56U
+
+/* ========================================================================
+ * Manifest 文件布局
+ * ======================================================================== */
+
+/**
+ * @brief Manifest 文件头（固定 28 字节）
+ *
+ * 文件布局：header(28) + content_type + metadata + chunks[]
+ *
+ * 所有多字节字段按 little-endian 写入。
+ */
+typedef struct blob_manifest_header_s {
+    uint32_t magic;                    /**< 魔数，必须为 BLOB_MANIFEST_MAGIC */
+    uint32_t version;                  /**< 格式版本，必须为 BLOB_MANIFEST_VERSION */
+    uint32_t flags;                    /**< 保留标志位，当前为 0 */
+    uint64_t blob_size;                /**< Blob 总字节数 */
+    uint32_t chunk_size;               /**< 单个 Chunk 大小上限（字节） */
+    uint32_t chunk_count;              /**< Chunk 条目数量 */
+    uint16_t content_type_len;         /**< content_type 字符串长度（字节） */
+    uint16_t metadata_len;             /**< metadata 字节长度 */
+    uint8_t  blob_sha256[BLOB_BLOB_ID_SIZE]; /**< Blob 整体 SHA-256 摘要 */
+    uint32_t manifest_checksum;        /**< 除自身外头部的 CRC32 */
+} blob_manifest_header_t;
+
+/**
+ * @brief Manifest 中单个 Chunk 条目（固定 44 字节）
+ */
+typedef struct blob_manifest_chunk_s {
+    uint8_t  chunk_sha256[BLOB_CHUNK_ID_SIZE]; /**< Chunk ID（SHA-256） */
+    uint64_t logical_offset;           /**< 在 Blob 中的逻辑偏移 */
+    uint32_t chunk_size;               /**< 该 Chunk 实际大小（字节） */
+    uint32_t chunk_checksum;           /**< chunk_sha256 + logical_offset + chunk_size 的 CRC32 */
+} blob_manifest_chunk_t;
+
+/**
+ * @brief Manifest 内存结构
+ *
+ * 包含 header、chunks 数组、content_type 和 metadata 的完整内存表示。
+ */
+typedef struct blob_manifest_s {
+    blob_manifest_header_t header;     /**< Manifest 头部 */
+    blob_manifest_chunk_t *chunks;      /**< Chunk 条目数组 */
+    uint32_t chunk_count;               /**< Chunk 数量（与 header.chunk_count 一致） */
+    char *content_type;                 /**< 内容类型字符串（可为 NULL） */
+    void *metadata;                     /**< 元数据（可为 NULL） */
+} blob_manifest_t;
 
 /* ========================================================================
  * 返回码定义
@@ -186,6 +252,120 @@ uint32_t blob_chunk_header_checksum(const blob_chunk_header_t *hdr);
  * @brief 计算 payload 的 CRC32
  */
 uint32_t blob_chunk_payload_checksum(const void *data, size_t len);
+
+/* ========================================================================
+ * Manifest 内存结构管理
+ * ======================================================================== */
+
+/**
+ * @brief 创建 Manifest 内存结构
+ *
+ * @param chunk_count Chunk 数量
+ * @param content_type 内容类型字符串（可为 NULL）
+ * @param metadata 元数据（可为 NULL）
+ * @param metadata_len 元数据长度
+ * @return 分配的 Manifest 结构，失败返回 NULL
+ */
+blob_manifest_t *blob_manifest_create(uint32_t chunk_count,
+                                      const char *content_type,
+                                      const void *metadata, size_t metadata_len);
+
+/**
+ * @brief 释放 Manifest 内存结构
+ *
+ * @param manifest 要释放的 Manifest
+ */
+void blob_manifest_free(blob_manifest_t *manifest);
+
+/* ========================================================================
+ * Manifest 写入与发布
+ * ======================================================================== */
+
+/**
+ * @brief 原子写入 Manifest 文件
+ *
+ * 使用临时文件写入，完成后 fsync 并 rename 为正式文件。
+ * 临时文件格式：.tmp.{upload_id}
+ *
+ * @param dir        manifests 目录路径
+ * @param manifest   Manifest 内存结构
+ * @param upload_id  上传会话标识
+ * @return BLOB_OK 成功，负值为错误码
+ */
+int blob_manifest_write_atomic(const char *dir,
+                               const blob_manifest_t *manifest,
+                               const char *upload_id);
+
+/**
+ * @brief 读取并校验 Manifest 文件
+ *
+ * 依次校验：magic -> version -> manifest_checksum -> blob_sha256
+ *
+ * @param dir       manifests 目录路径
+ * @param blob_id   Blob ID（用于定位 manifest 文件）
+ * @param out_manifest 输出 Manifest 结构（调用者负责释放）
+ * @return BLOB_OK 成功，负值为错误码
+ */
+int blob_manifest_load_checked(const char *dir,
+                               const uint8_t blob_id[BLOB_BLOB_ID_SIZE],
+                               blob_manifest_t **out_manifest);
+
+/**
+ * @brief 获取 Manifest 正式文件路径
+ *
+ * 格式：{dir}/{blob_id_hex}.manifest
+ *
+ * @param dir       manifests 目录路径
+ * @param blob_id   Blob ID
+ * @param path_buf  输出路径缓冲区
+ * @param buf_size  缓冲区大小
+ * @return BLOB_OK 成功
+ */
+int blob_manifest_final_path(const char *dir,
+                              const uint8_t blob_id[BLOB_BLOB_ID_SIZE],
+                              char *path_buf, size_t buf_size);
+
+/**
+ * @brief 获取 Manifest 临时文件路径
+ *
+ * 格式：{dir}/.tmp.{upload_id}
+ *
+ * @param dir        manifests 目录路径
+ * @param upload_id  上传会话标识
+ * @param path_buf   输出路径缓冲区
+ * @param buf_size   缓冲区大小
+ * @return BLOB_OK 成功
+ */
+int blob_manifest_tmp_path(const char *dir, const char *upload_id,
+                           char *path_buf, size_t buf_size);
+
+/**
+ * @brief 计算 Manifest 头部的 CRC32
+ *
+ * 覆盖前 24 字节：magic + version + flags + blob_size + chunk_size +
+ *                 chunk_count + content_type_len + metadata_len + blob_sha256
+ */
+uint32_t blob_manifest_header_checksum(const blob_manifest_header_t *hdr);
+
+/**
+ * @brief 计算 Manifest Chunk 条目的 CRC32
+ *
+ * 覆盖前 40 字节：chunk_sha256(32) + logical_offset(8)
+ */
+uint32_t blob_manifest_chunk_checksum(const blob_manifest_chunk_t *chunk);
+
+/* ========================================================================
+ * SHA-256 转十六进制工具函数
+ * ======================================================================== */
+
+/**
+ * @brief SHA-256 摘要转十六进制字符串
+ *
+ * @param digest     SHA-256 摘要（32 字节）
+ * @param hex        输出缓冲区（至少 65 字节）
+ */
+void blob_sha256_to_hex(const uint8_t digest[BLOB_BLOB_ID_SIZE],
+                        char hex[BLOB_BLOB_ID_SIZE * 2 + 1]);
 
 #ifdef __cplusplus
 }
