@@ -10,7 +10,7 @@
 #include "db/buffer.h"
 #include "db/wal.h"
 #include "db/lock.h"
-#include "db/mmdb_lock.h"  /* C1-3 T2 */
+#include "db/common_rwlock.h"  /* C1-3 T2 */
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -70,8 +70,8 @@ struct kv_s {
     size_t         num_keys;       /**< 键数量 */
     lock_manager_t *lock_mgr;      /**< 锁管理器 */
     void          *ttl_mgr;        /**< TTL 管理器 */
-    /* C1-3 T2：mmdb_rwlock 并发保护（put/get/delete 包裹） */
-    mmdb_rwlock_t  rwlock;
+    /* C1-3 T2：common_rwlock 并发保护（put/get/delete 包裹） */
+    common_rwlock_t *rwlock;
 };
 
 /** KV 数据库（公开类型） */

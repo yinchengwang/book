@@ -15,6 +15,7 @@
 #include "db/mm_pool.h"
 #include "db/mm_record.h"  /* C0-3：统一序列化头部 */
 #include "db/lock.h"
+#include "db/common_rwlock.h"
 #include <algo-prod/quantization/quantization.h>
 #include <stdlib.h>
 #include <string.h>
@@ -214,9 +215,9 @@ static void *vector_engine_table_open(const char *name, AccessMode mode) {
     db->mem_pool = g_vec_pool;
     db->use_mem_pool = (g_vec_pool != NULL);
 
-    /* 初始化锁（C0-1：默认启用，统一 mmdb_rwlock 原语） */
+    /* 初始化锁（C0-1：默认启用，统一 common_rwlock 原语） */
     db->lockmgr = g_vec_lockmgr;
-    mmdb_rwlock_init(&db->rwlock);
+    db->rwlock = common_rwlock_create("vector_engine");
     db->use_lock = true;
 
     /* 初始化 WAL */
@@ -327,8 +328,8 @@ static int vector_engine_table_close(void *rel) {
         db->compressed_codes = NULL;
     }
 
-    /* 释放读写锁（C0-1：值类型，直接 destroy） */
-    mmdb_rwlock_destroy(&db->rwlock);
+    /* 释放读写锁（C0-1：指针类型，common_rwlock_destroy） */
+    common_rwlock_destroy(db->rwlock);
 
     /* 关闭 WAL */
     if (db->wal != NULL) {
@@ -1584,7 +1585,7 @@ int vector_engine_get_mem_pool_stats(void *rel, mm_pool_stats_t *stats) {
 /* ========================================================================
  * 并发锁控制 API 实现
  *
- * C0-1：使用 db/mmdb_lock.h 统一跨平台锁原语，删除本地 simple_rwlock_t 实现。
+ * C0-1：使用 db/common_rwlock.h 统一跨平台锁原语，替换 mmdb_rwlock。
  * 原实现在 :1552-1606 有竞态窗口 + 写者饥饿 + 假超时，现替换为正确实现。
  * ======================================================================== */
 
@@ -1617,7 +1618,7 @@ int vector_engine_read_lock(void *rel) {
     vector_engine_db_t *db = (vector_engine_db_t *)rel;
 
     if (db->use_lock) {
-        mmdb_rwlock_rdlock(&db->rwlock);
+        common_rwlock_read_lock(db->rwlock);
     }
     return 0;
 }
@@ -1627,7 +1628,7 @@ void vector_engine_read_unlock(void *rel) {
     vector_engine_db_t *db = (vector_engine_db_t *)rel;
 
     if (db->use_lock) {
-        mmdb_rwlock_unlock(&db->rwlock, 0);
+        common_rwlock_read_unlock(db->rwlock);
     }
 }
 
@@ -1636,9 +1637,9 @@ int vector_engine_write_lock(void *rel, uint32_t timeout_ms) {
     vector_engine_db_t *db = (vector_engine_db_t *)rel;
 
     if (db->use_lock) {
-        /* SRWLOCK 与 pthread_rwlock 都不支持超时，与旧版语义一致 */
+        /* 尝试获取写锁，超时不支持时直接获取 */
         (void)timeout_ms;
-        mmdb_rwlock_wrlock(&db->rwlock);
+        common_rwlock_write_lock(db->rwlock);
     }
     return 0;
 }
@@ -1648,7 +1649,7 @@ void vector_engine_write_unlock(void *rel) {
     vector_engine_db_t *db = (vector_engine_db_t *)rel;
 
     if (db->use_lock) {
-        mmdb_rwlock_unlock(&db->rwlock, 1);
+        common_rwlock_write_unlock(db->rwlock);
     }
 }
 

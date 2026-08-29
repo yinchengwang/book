@@ -11,7 +11,7 @@
 #include "db/buffer.h"
 #include "db/core/log.h"
 #include "db/storage/kv/kv_ttl.h"
-#include "db/mmdb_lock.h"  /* C1-3 T2 */
+#include "db/common_rwlock.h"  /* C1-3 T2 */
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -320,7 +320,7 @@ kv_t *kv_open(const char *path) {
     db->ttl_mgr = kv_ttl_mgr_create(db->db_path);
 
     /* C1-3 T2：初始化并发保护锁 */
-    mmdb_rwlock_init(&db->rwlock);
+    db->rwlock = common_rwlock_create("kv_db");
 
     return db;
 }
@@ -395,7 +395,7 @@ kv_result_t kv_put(kv_t *db,
     }
 
     /* C1-3 T2：写锁包裹读-改-写序列，避免并发 put 丢更新 */
-    mmdb_rwlock_wrlock(&db->rwlock);
+    common_rwlock_write_lock(db->rwlock);
 
     /* 获取旧值（用于 WAL 记录） */
     void *old_value = NULL;
@@ -489,7 +489,7 @@ kv_result_t kv_put(kv_t *db,
     free(old_value);
 
 kv_put_unlock:
-    mmdb_rwlock_unlock(&db->rwlock, 1);
+    common_rwlock_write_unlock(db->rwlock);
     return result;
 }
 
@@ -501,7 +501,7 @@ kv_result_t kv_get(kv_t *db,
     }
 
     /* C1-3 T2：读锁包裹 */
-    mmdb_rwlock_rdlock(&db->rwlock);
+    common_rwlock_read_lock(db->rwlock);
 
     kv_result_t result;
 
@@ -548,7 +548,7 @@ kv_result_t kv_get(kv_t *db,
     result = KV_OK;
 
 kv_get_unlock:
-    mmdb_rwlock_unlock(&db->rwlock, 0);
+    common_rwlock_read_unlock(db->rwlock);
     return result;
 }
 
@@ -558,7 +558,7 @@ kv_result_t kv_delete(kv_t *db, const void *key, size_t key_len) {
     }
 
     /* C1-3 T2：写锁包裹 */
-    mmdb_rwlock_wrlock(&db->rwlock);
+    common_rwlock_write_lock(db->rwlock);
 
     kv_result_t result;
 
@@ -607,7 +607,7 @@ kv_result_t kv_delete(kv_t *db, const void *key, size_t key_len) {
     result = KV_OK;
 
 kv_delete_unlock:
-    mmdb_rwlock_unlock(&db->rwlock, 1);
+    common_rwlock_write_unlock(db->rwlock);
     return result;
 }
 
@@ -794,7 +794,7 @@ void kv_set_comparator(kv_t *db, kv_comparator_fn cmp) {
 /* C3-5 T20：CAS（compare-and-swap）
  *
  * 在已持有 wrlock 时直接查询（不递归加锁），比较后再写入。
- * 由于 mmdb_rwlock 在 POSIX pthread_rwlock 默认下支持递归写锁、SRWLOCK 也支持
+ * 由于 common_rwlock 在 POSIX pthread_rwlock 默认下支持递归写锁、SRWLOCK 也支持
  * 递归，本实现假定调用方已通过其他方式互斥；保守用法：调用本函数前不持锁。
  */
 kv_result_t kv_cas(kv_t *db,
@@ -807,7 +807,7 @@ kv_result_t kv_cas(kv_t *db,
     }
     if (expected_old_len > 0 && !expected_old) return KV_INVALID;
 
-    mmdb_rwlock_wrlock(&db->rwlock);
+    common_rwlock_write_lock(db->rwlock);
 
     /* 读当前值（直接走 page 层，绕过 lock） */
     void *cur = NULL;
@@ -833,12 +833,12 @@ kv_result_t kv_cas(kv_t *db,
     } else if (expected_old == NULL) {
         match = true;
     } else {
-        mmdb_rwlock_unlock(&db->rwlock, 1);
+        common_rwlock_write_unlock(db->rwlock);
         return KV_CONFLICT;
     }
 
     if (!match) {
-        mmdb_rwlock_unlock(&db->rwlock, 1);
+        common_rwlock_write_unlock(db->rwlock);
         return KV_CONFLICT;
     }
 
@@ -846,15 +846,15 @@ kv_result_t kv_cas(kv_t *db,
     if (db->wal) {
         uint64_t lsn = wal_write_insert(db->wal, 0, key, key_len, new_value, new_value_len);
         if (lsn == 0) {
-            mmdb_rwlock_unlock(&db->rwlock, 1);
+            common_rwlock_write_unlock(db->rwlock);
             return KV_ERROR;
         }
     }
     if (kv_page_insert(db->pool, data_page_id, key, key_len, new_value, new_value_len) != 0) {
-        mmdb_rwlock_unlock(&db->rwlock, 1);
+        common_rwlock_write_unlock(db->rwlock);
         return KV_FULL;
     }
     db->num_keys++;
-    mmdb_rwlock_unlock(&db->rwlock, 1);
+    common_rwlock_write_unlock(db->rwlock);
     return KV_OK;
 }

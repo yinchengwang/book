@@ -366,14 +366,19 @@ static bool rtree_insert_impl(rtree_t *tree, rtree_node_t *node,
 int rtree_insert(rtree_t *tree, uint64_t id, const bbox_t *bbox) {
     if (!tree || !bbox) return -1;
 
+    rtree_write_lock(tree);
     if (rtree_insert_impl(tree, tree->root, id, bbox)) {
+        rtree_write_unlock(tree);
         return 0;
     }
 
     /* 根节点已满，需要分裂根节点 */
     /* 简化实现：扩展树高度 */
     rtree_node_t *new_root = rtree_node_create(tree, false);
-    if (!new_root) return -1;
+    if (!new_root) {
+        rtree_write_unlock(tree);
+        return -1;
+    }
 
     new_root->data.internal.children[0] = tree->root;
     new_root->num_entries = 1;
@@ -399,6 +404,7 @@ int rtree_insert(rtree_t *tree, uint64_t id, const bbox_t *bbox) {
     tree->height++;
     tree->num_items++;
 
+    rtree_write_unlock(tree);
     return 0;
 }
 
@@ -443,8 +449,10 @@ int rtree_search(rtree_t *tree, const bbox_t *query,
                   rtree_result_t *results, int max_results) {
     if (!tree || !query || !results || max_results <= 0) return 0;
 
+    rtree_read_lock(tree);
     int count = 0;
     rtree_search_impl(tree->root, query, results, max_results, &count);
+    rtree_read_unlock(tree);
     return count;
 }
 
@@ -470,12 +478,17 @@ int rtree_knn(rtree_t *tree, const point_t *point, int k,
                rtree_result_t *results, int max_results) {
     if (!tree || !point || !results || k <= 0) return 0;
 
+    rtree_read_lock(tree);
+
     /* 简化实现：收集所有项，计算距离，排序取前 k 个 */
     int capacity = (int)tree->num_items;
     if (capacity <= 0) capacity = 256;
 
     knn_entry_t *entries = (knn_entry_t *)calloc(capacity, sizeof(knn_entry_t));
-    if (!entries) return 0;
+    if (!entries) {
+        rtree_read_unlock(tree);
+        return 0;
+    }
 
     int count = 0;
 
@@ -488,6 +501,7 @@ int rtree_knn(rtree_t *tree, const point_t *point, int k,
     stack_t *stack = (stack_t *)calloc(tree->height * 100, sizeof(stack_t));
     if (!stack) {
         free(entries);
+        rtree_read_unlock(tree);
         return 0;
     }
 
@@ -529,6 +543,7 @@ int rtree_knn(rtree_t *tree, const point_t *point, int k,
     }
 
     free(entries);
+    rtree_read_unlock(tree);
     return result_count;
 }
 
@@ -539,8 +554,13 @@ int rtree_knn(rtree_t *tree, const point_t *point, int k,
 int rtree_save(rtree_t *tree, const char *path) {
     if (!tree || !path) return -1;
 
+    rtree_read_lock(tree);
+
     FILE *fp = fopen(path, "wb");
-    if (!fp) return -1;
+    if (!fp) {
+        rtree_read_unlock(tree);
+        return -1;
+    }
 
     /* 写入头 */
     uint32_t magic = 0x52545245;  /* 'RTRE' */
@@ -581,6 +601,7 @@ int rtree_save(rtree_t *tree, const char *path) {
 
     free(stack);
     fclose(fp);
+    rtree_read_unlock(tree);
     return 0;
 }
 
@@ -638,6 +659,8 @@ rtree_t *rtree_load(const char *path) {
 void rtree_stats(rtree_t *tree, rtree_stats_t *stats) {
     if (!tree || !stats) return;
 
+    rtree_read_lock(tree);
+
     stats->num_items = tree->num_items;
     stats->height = tree->height;
     stats->max_fill = tree->max_entries;
@@ -665,6 +688,8 @@ void rtree_stats(rtree_t *tree, rtree_stats_t *stats) {
 
     free(stack);
     stats->num_nodes = node_count;
+
+    rtree_read_unlock(tree);
 }
 
 /* ========================================================================
