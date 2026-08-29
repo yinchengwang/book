@@ -88,7 +88,8 @@ typedef enum wal_log_type_e {
     WAL_LOG_HEAP_UPDATE    = 22,  /**< Relational 堆表更新 */
     WAL_LOG_TS_APPEND      = 23,  /**< Timeseries 点追加 */
     WAL_LOG_SPATIAL_UPSERT = 24,  /**< Spatial 几何 upsert */
-    WAL_LOG_YANG_DS_WR     = 25   /**< Yang datastore 写（C2-5 配套） */
+    WAL_LOG_YANG_DS_WR     = 25,  /**< Yang datastore 写（C2-5 配套） */
+    WAL_LOG_VECTOR_APPEND  = 26   /**< Vector 向量追加 */
 } wal_log_type_t;
 
 /* ============================================================
@@ -307,6 +308,19 @@ uint64_t wal_write_spatial_upsert(wal_t *wal, uint32_t geom_id,
  */
 uint64_t wal_write_yang_ds(wal_t *wal, uint32_t datastore_id,
                            const void *data, size_t data_len);
+
+/**
+ * @brief 写入 Vector 向量追加记录
+ * @param wal WAL 句柄
+ * @param segment_id 向量段 ID
+ * @param vector_id 向量 ID
+ * @param dims 向量维度
+ * @param vector 向量数据
+ * @return LSN，失败返回 0
+ */
+uint64_t wal_write_vector_append(wal_t *wal, uint32_t segment_id,
+                                 int32_t vector_id, int32_t dims,
+                                 const float *vector);
 
 /* ============================================================
  * C0-2：当前活跃 WAL（线程局部）

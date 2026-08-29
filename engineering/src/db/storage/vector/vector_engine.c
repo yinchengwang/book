@@ -16,6 +16,7 @@
 #include "db/mm_record.h"  /* C0-3：统一序列化头部 */
 #include "db/lock.h"
 #include "db/common_rwlock.h"
+#include "db/storage/wal/wal.h"  /* C1-2 T5: 统一 WAL API */
 #include <algo-prod/quantization/quantization.h>
 #include <stdlib.h>
 #include <string.h>
@@ -404,11 +405,15 @@ static int vector_engine_tuple_insert(void *rel, const void *data, size_t len) {
     if (db->use_page_pool && db->page_pool != NULL) {
         actual_vec_id = vector_page_append(db->page_pool, vector, -1);
         if (actual_vec_id >= 0) {
-            /* C1-2 T5：WAL 写真实 vec_id */
-            if (db->use_wal && db->wal != NULL) {
-                if (vector_wal_append(db->wal, db->segment_id, actual_vec_id,
-                                      dim, vector) != 0) {
-                    LOG_WARN("WAL 写入失败，数据可能不安全");
+            /* C1-2 T5：使用统一 WAL 写真实 vec_id */
+            wal_t *cur_wal = wal_get_current();
+            if (cur_wal != NULL) {
+                uint64_t lsn = wal_write_vector_append(cur_wal, db->segment_id,
+                                                       actual_vec_id, dim, vector);
+                if (lsn == 0) {
+                    /* WAL 写入失败：返回错误而非静默吞掉 */
+                    LOG_ERROR("统一 WAL 写入失败，向量 ID=%d", actual_vec_id);
+                    return -1;
                 }
             }
             /* 如果启用了 PQ 量化，同时进行编码 */
