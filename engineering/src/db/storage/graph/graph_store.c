@@ -6,6 +6,7 @@
  */
 #include "db/graph/graph.h"
 #include "db/storage/kv/kv.h"
+#include "db/common_rwlock.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -40,6 +41,9 @@ struct graph_s {
     graph_edge_id_t   next_edge_id;
     graph_label_id_t  next_label_id;
     graph_label_id_t  next_rel_type_id;
+
+    /* 读写锁保护 */
+    common_rwlock_t *rwlock;        /**< 读写锁 */
 };
 
 /* ============================================================
@@ -312,6 +316,15 @@ graph_t *graph_create(const char *path) {
     g->next_label_id = 1;
     g->next_rel_type_id = 1;
 
+    /* 初始化读写锁 */
+    g->rwlock = common_rwlock_create("graph");
+    if (!g->rwlock) {
+        kv_close(g->kv);
+        free(g->db_path);
+        free(g);
+        return NULL;
+    }
+
     return g;
 }
 
@@ -321,6 +334,12 @@ graph_t *graph_open(const char *path) {
 
 int graph_close(graph_t *g) {
     if (!g) return -1;
+
+    /* 销毁读写锁 */
+    if (g->rwlock) {
+        common_rwlock_destroy(g->rwlock);
+        g->rwlock = NULL;
+    }
 
     kv_close(g->kv);
     free(g->db_path);
@@ -473,9 +492,14 @@ graph_vertex_id_t graph_vertex_create(graph_t *g,
                                       size_t n_props) {
     if (!g) return GRAPH_INVALID_ID;
 
+    common_rwlock_write_lock(g->rwlock);
+
     /* 分配顶点 ID */
     graph_vertex_id_t vid = graph_alloc_vertex_id(g);
-    if (vid == GRAPH_INVALID_ID) return vid;
+    if (vid == GRAPH_INVALID_ID) {
+        common_rwlock_write_unlock(g->rwlock);
+        return vid;
+    }
 
     /* 创建顶点结构 */
     graph_vertex_t vertex;
@@ -505,14 +529,18 @@ graph_vertex_id_t graph_vertex_create(graph_t *g,
 
     if (kv_put(g->kv, key, key_len, &vertex, sizeof(vertex)) != KV_OK) {
         graph_set_error(g, "Failed to store vertex");
+        common_rwlock_write_unlock(g->rwlock);
         return GRAPH_INVALID_ID;
     }
 
+    common_rwlock_write_unlock(g->rwlock);
     return vid;
 }
 
 int graph_vertex_get(graph_t *g, graph_vertex_id_t vid, graph_vertex_t **out_vertex) {
     if (!g || !out_vertex) return -1;
+
+    common_rwlock_read_lock(g->rwlock);
 
     char key[64];
     size_t key_len;
@@ -524,6 +552,7 @@ int graph_vertex_get(graph_t *g, graph_vertex_id_t vid, graph_vertex_t **out_ver
 
     if (r == KV_NOT_FOUND) {
         *out_vertex = NULL;
+        common_rwlock_read_unlock(g->rwlock);
         return -1;
     }
 
@@ -531,6 +560,7 @@ int graph_vertex_get(graph_t *g, graph_vertex_id_t vid, graph_vertex_t **out_ver
     memcpy(*out_vertex, value, sizeof(graph_vertex_t));
     free(value);
 
+    common_rwlock_read_unlock(g->rwlock);
     return 0;
 }
 
@@ -764,15 +794,21 @@ graph_edge_id_t graph_edge_create(graph_t *g,
                                   size_t n_props) {
     if (!g) return GRAPH_INVALID_ID;
 
+    common_rwlock_write_lock(g->rwlock);
+
     /* 验证顶点存在 */
     if (!graph_vertex_exists(g, src) || !graph_vertex_exists(g, dst)) {
         graph_set_error(g, "Vertex not found");
+        common_rwlock_write_unlock(g->rwlock);
         return GRAPH_INVALID_ID;
     }
 
     /* 分配边 ID */
     graph_edge_id_t eid = graph_alloc_edge_id(g);
-    if (eid == GRAPH_INVALID_ID) return eid;
+    if (eid == GRAPH_INVALID_ID) {
+        common_rwlock_write_unlock(g->rwlock);
+        return eid;
+    }
 
     /* 创建边结构 */
     graph_edge_t edge;
@@ -802,6 +838,7 @@ graph_edge_id_t graph_edge_create(graph_t *g,
     kv_result_t put_r = kv_put(g->kv, key, key_len, &edge, sizeof(edge));
     if (put_r != KV_OK) {
         graph_set_error(g, "Failed to store edge");
+        common_rwlock_write_unlock(g->rwlock);
         return GRAPH_INVALID_ID;
     }
 
@@ -832,6 +869,7 @@ graph_edge_id_t graph_edge_create(graph_t *g,
         free(vertex);
     }
 
+    common_rwlock_write_unlock(g->rwlock);
     return eid;
 }
 
