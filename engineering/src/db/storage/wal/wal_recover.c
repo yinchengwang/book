@@ -86,7 +86,7 @@ int db_startup_recover(const char *wal_path, uint32_t page_size) {
         return 0;
     }
 
-    wal_t *wal = wal_open(wal_path, page_size);
+    wal_t *wal = wal_open(wal_path);
     if (wal == NULL) {
         /* WAL 不存在 = 新库或未启用 WAL，正常 */
         LOG_INFO("db_startup_recover: WAL %s 不存在，按空库启动", wal_path);

@@ -4,6 +4,7 @@
  */
 #include "yang_engine.h"
 #include "log.h"
+#include "db/storage/wal/wal.h"  /* C0-2：WAL 接入 */
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -201,6 +202,22 @@ static int yang_engine_tuple_insert(void *rel, const void *data, size_t len) {
     ptr += name_len;
 
     const char *value = (const char *)ptr;
+
+    /* C0-2：WAL-first — 主存修改前先写 redo 日志 */
+    {
+        wal_t *cur_wal = wal_get_current();
+        if (cur_wal != NULL) {
+            /* 序列化完整记录用于恢复：path_len + path + name_len + name + type + value_len + value */
+            uint8_t *wal_data = (uint8_t *)malloc(len);
+            if (wal_data != NULL) {
+                memcpy(wal_data, data, len);
+                uint64_t lsn = wal_write_yang_ds(cur_wal, (uint32_t)(uintptr_t)rel,
+                                                  wal_data, len);
+                free(wal_data);
+                if (lsn == 0) return -1;
+            }
+        }
+    }
 
     /* 解析路径并插入节点 */
     /* 路径格式: /parent/child/grandchild */
