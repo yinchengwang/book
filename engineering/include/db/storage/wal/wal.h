@@ -36,8 +36,8 @@
  * - ABORT:  事务回滚
  * - CHECKPOINT: 检查点标记
  */
-#ifndef DB_WAL_H
-#define DB_WAL_H
+#ifndef DB_STORAGE_WAL_WAL_H
+#define DB_STORAGE_WAL_WAL_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -124,6 +124,19 @@ typedef enum wal_state_e {
 /** WAL 句柄 */
 typedef struct wal_s wal_t;
 
+/**
+ * @brief WAL 同步模式
+ *
+ * - WAL_SYNC_FULL: write + fsync（防系统崩溃）
+ * - WAL_SYNC_BUFFERED: write + fflush（仅防进程崩溃）
+ * - WAL_SYNC_NONE: 异步写入
+ */
+typedef enum wal_sync_mode_e {
+    WAL_SYNC_FULL = 0,      /**< 强制 fsync，数据绝对持久化 */
+    WAL_SYNC_BUFFERED = 1,  /**< 仅 fflush，进程崩溃不丢数据 */
+    WAL_SYNC_NONE = 2       /**< 异步写入，不保证持久化 */
+} WalSyncMode;
+
 /** WAL 统计信息 */
 typedef struct wal_stats_s {
     uint64_t total_records;      /**< 总日志记录数 */
@@ -172,6 +185,14 @@ int wal_flush(wal_t *wal);
  * @return 当前 LSN
  */
 uint64_t wal_get_lsn(wal_t *wal);
+
+/**
+ * @brief 设置 WAL 同步模式
+ * @param wal WAL 句柄
+ * @param mode 同步模式
+ * @return 0 成功
+ */
+int wal_set_sync_mode(wal_t *wal, WalSyncMode mode);
 
 /* ============================================================
  * 日志写入 API
@@ -424,4 +445,4 @@ const char *wal_errmsg(wal_t *wal);
 }
 #endif
 
-#endif /* DB_WAL_H */
+#endif /* DB_STORAGE_WAL_WAL_H */
