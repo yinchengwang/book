@@ -9,7 +9,7 @@
 
 #include "storage_engine.h"
 #include "db/mm_pool.h"
-#include "db/mmdb_lock.h"  /* C0-1：统一并发原语 */
+#include "db/common_rwlock.h"  /* C0-1：统一并发原语 */
 #include "db/storage/doc/bm25.h"
 #include "db/storage/doc/doc_inverted.h"
 #include <stdbool.h>
@@ -67,9 +67,9 @@ typedef struct doc_engine_db_s {
     void *inverted_index;      /**< 倒排索引指针 */
     bool use_inverted_index;   /**< 是否使用倒排索引 */
 
-    /* 并发控制（C0-1：统一 mmdb_rwlock 原语） */
+    /* 并发控制（C0-1：统一 common_rwlock 原语） */
     lock_manager_t *lockmgr;   /**< 锁管理器 */
-    mmdb_rwlock_t rwlock;      /**< 跨平台读写锁（值类型，open 时 init） */
+    common_rwlock_t *rwlock;   /**< 读写锁（堆对象，open 时 create） */
     bool use_lock;             /**< 是否启用锁（C0-1：默认 true） */
 
     /* BM25 打分器 */

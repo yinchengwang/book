@@ -8,6 +8,7 @@
 #include "db/storage/doc/bm25.h"
 #include "db/mm_pool.h"
 #include "db/lock.h"
+#include "db/common_rwlock.h"
 #include "log.h"
 #include <stdlib.h>
 #include <string.h>
@@ -110,9 +111,8 @@ static void *doc_engine_table_open(const char *name, AccessMode mode) {
 
     /* 初始化锁（默认禁用） */
     db->lockmgr = NULL;
-    /* 初始化锁（C0-1：默认启用，统一 mmdb_rwlock 原语） */
-    db->lockmgr = NULL;
-    mmdb_rwlock_init(&db->rwlock);
+    /* 初始化锁（C0-1：默认启用，使用 common_rwlock） */
+    db->rwlock = common_rwlock_create("doc_engine");
     db->use_lock = true;
 
     /* 初始化倒排索引 */
@@ -162,9 +162,8 @@ static int doc_engine_table_close(void *rel) {
         fclose(fp);
     }
 
-    /* 释放读写锁 */
-    /* 释放读写锁（C0-1：值类型，直接 destroy） */
-    mmdb_rwlock_destroy(&db->rwlock);
+    /* 释放读写锁（C0-1：使用 common_rwlock_destroy 释放堆对象） */
+    common_rwlock_destroy(db->rwlock);
 
     free(db);
     return 0;
@@ -779,7 +778,7 @@ int doc_engine_read_lock(void *rel) {
     if (rel == NULL) return -1;
     doc_engine_db_t *db = (doc_engine_db_t *)rel;
     if (db->use_lock) {
-        mmdb_rwlock_rdlock(&db->rwlock);
+        common_rwlock_read_lock(db->rwlock);
     }
     return 0;
 }
@@ -788,7 +787,7 @@ void doc_engine_read_unlock(void *rel) {
     if (rel == NULL) return;
     doc_engine_db_t *db = (doc_engine_db_t *)rel;
     if (db->use_lock) {
-        mmdb_rwlock_unlock(&db->rwlock, 0);
+        common_rwlock_read_unlock(db->rwlock);
     }
 }
 
@@ -797,7 +796,7 @@ int doc_engine_write_lock(void *rel, uint32_t timeout_ms) {
     doc_engine_db_t *db = (doc_engine_db_t *)rel;
     if (db->use_lock) {
         (void)timeout_ms;
-        mmdb_rwlock_wrlock(&db->rwlock);
+        common_rwlock_write_lock(db->rwlock);
     }
     return 0;
 }
@@ -806,7 +805,7 @@ void doc_engine_write_unlock(void *rel) {
     if (rel == NULL) return;
     doc_engine_db_t *db = (doc_engine_db_t *)rel;
     if (db->use_lock) {
-        mmdb_rwlock_unlock(&db->rwlock, 1);
+        common_rwlock_write_unlock(db->rwlock);
     }
 }
 
