@@ -81,7 +81,15 @@ typedef enum wal_log_type_e {
     WAL_LOG_COMMIT = 4,   /**< 事务提交 */
     WAL_LOG_ABORT = 5,    /**< 事务回滚 */
     WAL_LOG_CHECKPOINT = 6, /**< 检查点 */
-    WAL_LOG_BEGIN = 7     /**< 事务开始 */
+    WAL_LOG_BEGIN = 7,    /**< 事务开始 */
+    /* C0-2：扩展至多模态写路径 */
+    WAL_LOG_HEAP_INSERT    = 20,  /**< Relational 堆表插入 */
+    WAL_LOG_HEAP_DELETE    = 21,  /**< Relational 堆表删除 */
+    WAL_LOG_HEAP_UPDATE    = 22,  /**< Relational 堆表更新 */
+    WAL_LOG_TS_APPEND      = 23,  /**< Timeseries 点追加 */
+    WAL_LOG_SPATIAL_UPSERT = 24,  /**< Spatial 几何 upsert */
+    WAL_LOG_YANG_DS_WR     = 25,  /**< Yang datastore 写（C2-5 配套） */
+    WAL_LOG_VECTOR_APPEND  = 26   /**< Vector 向量追加（C1-2 T5） */
 } wal_log_type_t;
 
 /* ============================================================
@@ -115,6 +123,19 @@ typedef enum wal_state_e {
 
 /** WAL 句柄 */
 typedef struct wal_s wal_t;
+
+/**
+ * @brief WAL 同步模式
+ *
+ * - WAL_SYNC_FULL: write + fsync（防系统崩溃）
+ * - WAL_SYNC_BUFFERED: write + fflush（仅防进程崩溃）
+ * - WAL_SYNC_NONE: 异步写入
+ */
+typedef enum wal_sync_mode_e {
+    WAL_SYNC_FULL = 0,      /**< 强制 fsync，数据绝对持久化 */
+    WAL_SYNC_BUFFERED = 1,  /**< 仅 fflush，进程崩溃不丢数据 */
+    WAL_SYNC_NONE = 2       /**< 异步写入，不保证持久化 */
+} WalSyncMode;
 
 /** WAL 统计信息 */
 typedef struct wal_stats_s {
@@ -157,6 +178,14 @@ int wal_close(wal_t *wal);
  * @return 0 成功
  */
 int wal_flush(wal_t *wal);
+
+/**
+ * @brief 设置 WAL 同步模式
+ * @param wal WAL 句柄
+ * @param mode 同步模式
+ * @return 0 成功
+ */
+int wal_set_sync_mode(wal_t *wal, WalSyncMode mode);
 
 /**
  * @brief 获取当前 LSN
@@ -246,6 +275,27 @@ uint64_t wal_write_abort(wal_t *wal, uint32_t txn_id);
  * @return LSN，失败返回 0
  */
 uint64_t wal_write_checkpoint(wal_t *wal, const uint32_t *dirty_pages, size_t num_pages);
+
+/**
+ * @brief 设置 WAL 同步模式
+ * @param wal WAL 句柄
+ * @param mode 同步模式
+ * @return 0 成功
+ */
+int wal_set_sync_mode(wal_t *wal, WalSyncMode mode);
+
+/**
+ * @brief 写入 Vector 向量追加记录（C1-2 T5）
+ * @param wal WAL 句柄
+ * @param segment_id 向量段 ID
+ * @param vector_id 向量 ID
+ * @param dims 向量维度
+ * @param vector 向量数据
+ * @return LSN，失败返回 0
+ */
+uint64_t wal_write_vector_append(wal_t *wal, uint32_t segment_id,
+                                int32_t vector_id, int32_t dims,
+                                const float *vector);
 
 /* ============================================================
  * 恢复 API

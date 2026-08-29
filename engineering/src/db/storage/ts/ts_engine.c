@@ -10,6 +10,7 @@
 #include "db/storage/wal/wal.h"  /* C0-2：WAL 接入 */
 #include "db/mm_pool.h"
 #include "db/lock.h"
+#include "db/common_rwlock.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -128,9 +129,9 @@ static void *ts_engine_table_open(const char *name, AccessMode mode) {
     db->mem_pool = g_ts_pool;
     db->use_mem_pool = (g_ts_pool != NULL);
 
-    /* 初始化锁（C0-1：默认启用，统一 mmdb_rwlock 原语） */
+    /* 初始化锁（C0-1：默认启用，统一 common_rwlock 原语） */
     db->lockmgr = NULL;
-    mmdb_rwlock_init(&db->rwlock);
+    db->rwlock = common_rwlock_create(db->name);
     db->use_lock = true;
 
     /* 初始化分段索引 */
@@ -203,8 +204,8 @@ static int ts_engine_table_close(void *rel) {
     ts_retention_policy_save(g_ts_engine.data_dir, db->name, &policy);
 
     /* 释放读写锁 */
-    /* 释放读写锁（C0-1：值类型，直接 destroy） */
-    mmdb_rwlock_destroy(&db->rwlock);
+    /* 释放读写锁（C0-1：指针类型，调用 destroy 释放） */
+    common_rwlock_destroy(db->rwlock);
 
     free(db);
     return 0;
@@ -783,7 +784,7 @@ int ts_engine_read_lock(void *rel) {
     if (rel == NULL) return -1;
     ts_engine_db_t *db = (ts_engine_db_t *)rel;
     if (db->use_lock) {
-        mmdb_rwlock_rdlock(&db->rwlock);
+        common_rwlock_read_lock(db->rwlock);
     }
     return 0;
 }
@@ -792,7 +793,7 @@ void ts_engine_read_unlock(void *rel) {
     if (rel == NULL) return;
     ts_engine_db_t *db = (ts_engine_db_t *)rel;
     if (db->use_lock) {
-        mmdb_rwlock_unlock(&db->rwlock, 0);
+        common_rwlock_read_unlock(db->rwlock);
     }
 }
 
@@ -801,7 +802,7 @@ int ts_engine_write_lock(void *rel, uint32_t timeout_ms) {
     ts_engine_db_t *db = (ts_engine_db_t *)rel;
     if (db->use_lock) {
         (void)timeout_ms;
-        mmdb_rwlock_wrlock(&db->rwlock);
+        common_rwlock_write_lock(db->rwlock);
     }
     return 0;
 }
@@ -810,6 +811,6 @@ void ts_engine_write_unlock(void *rel) {
     if (rel == NULL) return;
     ts_engine_db_t *db = (ts_engine_db_t *)rel;
     if (db->use_lock) {
-        mmdb_rwlock_unlock(&db->rwlock, 1);
+        common_rwlock_write_unlock(db->rwlock);
     }
 }

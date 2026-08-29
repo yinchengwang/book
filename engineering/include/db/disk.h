@@ -122,6 +122,13 @@ const char *disk_get_path(const db_file_t *file);
 uint64_t disk_get_size(db_file_t *file);
 
 /**
+ * @brief 获取文件描述符（用于 fsync 等系统调用）
+ * @param file 文件句柄
+ * @return 文件描述符（POSIX: int, Windows: HANDLE）
+ */
+void *disk_get_fd(db_file_t *file);
+
+/**
  * @brief 读取文件指定偏移的数据
  * @param file 文件句柄
  * @param offset 文件偏移

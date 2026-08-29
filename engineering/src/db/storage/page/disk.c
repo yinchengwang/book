@@ -403,6 +403,11 @@ uint64_t disk_get_size(db_file_t *file) {
 #endif
 }
 
+void *disk_get_fd(db_file_t *file) {
+    if (!file) return NULL;
+    return (void *)(intptr_t)file->fd;
+}
+
 ssize_t disk_pread(db_file_t *file, uint64_t offset, void *buf, size_t count) {
     if (!file || !buf) return -1;
     return file_pread(file->fd, buf, count, (off_t)offset);

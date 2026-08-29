@@ -63,6 +63,7 @@
 
 #include "db/wal.h"
 #include "db/disk.h"
+#include "db/storage/wal/wal_flush.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -90,6 +91,7 @@ struct wal_s {
     uint64_t    current_lsn;    /**< 当前 LSN */
     uint64_t    checkpoint_lsn; /**< 上次检查点 LSN */
     wal_state_t state;          /**< WAL 状态 */
+    WalSyncMode sync_mode;      /**< 同步模式 */
 
     /* 缓冲区 */
     uint8_t     *buffer;        /**< 写缓冲区 */
@@ -153,6 +155,7 @@ wal_t *wal_create(const char *path, uint32_t page_size) {
     wal->current_lsn = 0;
     wal->checkpoint_lsn = 0;
     wal->state = WAL_STATE_ACTIVE;
+    wal->sync_mode = WAL_SYNC_FULL;  /* 默认全同步模式 */
 
     /* 分配缓冲区 */
     wal->buffer_size = WAL_BUFFER_SIZE;
@@ -264,6 +267,7 @@ wal_t *wal_open(const char *path) {
 
     wal->page_size = header.page_size;
     wal->state = WAL_STATE_ACTIVE;
+    wal->sync_mode = WAL_SYNC_FULL;  /* 默认全同步模式 */
 
     /* 计算当前 LSN（文件大小 - 头大小） */
     uint64_t file_size = disk_get_size(wal->file);
@@ -597,6 +601,30 @@ uint64_t wal_write_yang_ds(wal_t *wal, uint32_t datastore_id,
                             &datastore_id, sizeof(datastore_id), data, data_len);
 }
 
+uint64_t wal_write_vector_append(wal_t *wal, uint32_t segment_id,
+                                 int32_t vector_id, int32_t dims,
+                                 const float *vector) {
+    /* 打包：vector_id(4) + dims(4) + vector_data */
+    size_t vec_size = (size_t)dims * sizeof(float);
+    size_t total = sizeof(vector_id) + sizeof(dims) + vec_size;
+    uint8_t *payload = (uint8_t *)malloc(total);
+    if (!payload) return 0;
+
+    size_t off = 0;
+    memcpy(payload + off, &vector_id, sizeof(vector_id));
+    off += sizeof(vector_id);
+    memcpy(payload + off, &dims, sizeof(dims));
+    off += sizeof(dims);
+    if (vector && vec_size > 0) {
+        memcpy(payload + off, vector, vec_size);
+    }
+
+    uint64_t lsn = wal_write_record(wal, WAL_LOG_VECTOR_APPEND, segment_id, 0,
+                                    &segment_id, sizeof(segment_id), payload, total);
+    free(payload);
+    return lsn;
+}
+
 /* ============================================================
  * 刷盘与查询
  * ============================================================ */
@@ -613,7 +641,25 @@ int wal_flush(wal_t *wal) {
         return -1;
     }
 
+    /* 根据同步模式执行对应的刷盘策略 */
+    if (wal->sync_mode == WAL_SYNC_FULL) {
+        /* fsync 确保数据真正落盘，防止系统崩溃 */
+        if (db_fsync((int)(intptr_t)disk_get_fd(wal->file)) != 0) {
+            wal_set_error(wal, "fsync failed");
+            return -1;
+        }
+    } else if (wal->sync_mode == WAL_SYNC_BUFFERED) {
+        /* BUFFERED: 依赖 OS 刷盘，不额外处理 */
+    }
+    /* WAL_SYNC_NONE: 异步写入，不做任何同步 */
+
     wal->buffer_used = 0;
+    return 0;
+}
+
+int wal_set_sync_mode(wal_t *wal, WalSyncMode mode) {
+    if (!wal) return -1;
+    wal->sync_mode = mode;
     return 0;
 }
 

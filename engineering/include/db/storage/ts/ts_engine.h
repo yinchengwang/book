@@ -9,7 +9,7 @@
 
 #include "storage_engine.h"
 #include "db/mm_pool.h"
-#include "db/mmdb_lock.h"  /* C0-1：统一并发原语 */
+#include "db/common_rwlock.h"  /* C0-1：统一并发原语 */
 #include "db/storage/ts/ts_segment.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -97,9 +97,9 @@ typedef struct ts_engine_db_s {
     uint64_t expired_points;             /**< 过期数据点数 */
     uint64_t deleted_points;             /**< 已删除数据点数 */
 
-    /* 并发控制（C0-1：统一 mmdb_rwlock 原语） */
+    /* 并发控制（C0-1：统一 common_rwlock 原语） */
     lock_manager_t *lockmgr;     /**< 锁管理器 */
-    mmdb_rwlock_t rwlock;        /**< 跨平台读写锁（值类型，open 时 init） */
+    common_rwlock_t *rwlock;     /**< 跨平台读写锁（指针类型，open 时 create） */
     bool use_lock;               /**< 是否启用锁（C0-1：默认 true） */
 } ts_engine_db_t;
 
