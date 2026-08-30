@@ -133,7 +133,7 @@ DocTermAggResult *doc_term_agg_execute(void *agg,
         total += result->buckets[i].doc_count;
     }
     for (size_t i = 0; i < result->num_buckets; i++) {
-        result->buckets[i].占比 = total > 0 ? (double)result->buckets[i].doc_count / total : 0;
+        result->buckets[i].proportion = total > 0 ? (double)result->buckets[i].doc_count / total : 0;
     }
 
     return result;

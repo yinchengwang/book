@@ -1,6 +1,7 @@
 #include "db/doc_engine.h"
 #include "db/core/log.h"
 #include <string.h>
+#include <stdlib.h>
 
 /* C3-2 T4: Unified Highlighter（骨架） */
 char *doc_highlight_unified(const char *text, size_t text_len,
