@@ -611,34 +611,3 @@ static bool bbox_disjoint(const bbox_t *a, const bbox_t *b) {
     return a->max_x < b->min_x || a->min_x > b->max_x
         || a->max_y < b->min_y || a->min_y > b->max_y;
 }
-
-bool spatial_within(const SpatialGeometry *inner, const SpatialGeometry *outer) {
-    if (!inner || !outer || !inner->bbox || !outer->bbox) return false;
-    /* inner.bbox ⊆ outer.bbox → 可能 within（保守近似） */
-    return inner->bbox->min_x >= outer->bbox->min_x
-        && inner->bbox->max_x <= outer->bbox->max_x
-        && inner->bbox->min_y >= outer->bbox->min_y
-        && inner->bbox->max_y <= outer->bbox->max_y;
-}
-
-bool spatial_intersects(const SpatialGeometry *a, const SpatialGeometry *b) {
-    if (!a || !b || !a->bbox || !b->bbox) return false;
-    return !bbox_disjoint(a->bbox, b->bbox);
-}
-
-bool spatial_contains(const SpatialGeometry *outer, const SpatialGeometry *inner) {
-    if (!outer || !inner || !outer->bbox || !inner->bbox) return false;
-    /* 反向调用 within */
-    return spatial_within(inner, outer);
-}
-
-double spatial_distance(const SpatialGeometry *a, const SpatialGeometry *b) {
-    if (!a || !b || !a->bbox || !b->bbox) return -1.0;
-    /* bbox 中心距离下界（保守近似；精确距离需点-多边形最近边） */
-    double dx = 0.0, dy = 0.0;
-    if (a->bbox->max_x < b->bbox->min_x) dx = b->bbox->min_x - a->bbox->max_x;
-    else if (a->bbox->min_x > b->bbox->max_x) dx = a->bbox->min_x - b->bbox->max_x;
-    if (a->bbox->max_y < b->bbox->min_y) dy = b->bbox->min_y - a->bbox->max_y;
-    else if (a->bbox->min_y > b->bbox->max_y) dy = a->bbox->min_y - b->bbox->max_y;
-    return sqrt(dx*dx + dy*dy);
-}
