@@ -52,7 +52,26 @@ add_custom_target(db_all_tests
         test_sla
 )
 
+
 # 便捷别名
 add_custom_target(test_db
     COMMAND echo "Use: test_sql, test_storage, test_mvcc_test, etc."
 )
+
+# ========================================================================
+# 跨模态集成测试
+# ========================================================================
+add_executable(cross_modality_test cross_modality_test.c)
+target_link_libraries(cross_modality_test
+    PRIVATE
+        db_storage
+        db_core
+        vector_api
+        storage_graph
+        project_includes
+)
+target_include_directories(cross_modality_test PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+)
+add_test(NAME cross_modality_test COMMAND cross_modality_test)
