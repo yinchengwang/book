@@ -203,6 +203,21 @@ graph_csr_t *graph_csr_open(const char *data_dir) {
     /* 构建反向边索引（简化版本） */
     /* TODO: 实现完整的反向边索引 */
 
+    /* 读取标签数据 */
+    char labels_path[512];
+    get_file_path(csr, "labels.bin", labels_path, sizeof(labels_path));
+    fp = fopen(labels_path, "rb");
+    if (fp != NULL) {
+        uint32_t saved_label_count = 0;
+        if (fread(&saved_label_count, sizeof(saved_label_count), 1, fp) == 1) {
+            csr->label_count = saved_label_count;
+            if (saved_label_count > 0 && saved_label_count <= GRAPH_CSR_MAX_LABELS) {
+                fread(csr->labels, sizeof(graph_csr_label_t), saved_label_count, fp);
+            }
+        }
+        fclose(fp);
+    }
+
     LOG_INFO("CSR 图加载成功: vertices=%lu, edges=%lu",
              vertex_count, edge_count);
 
