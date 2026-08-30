@@ -139,6 +139,14 @@ static void *yang_engine_table_open(const char *name, AccessMode mode) {
     db->num_nodes = header.num_nodes;
     db->root = yang_node_create("/", YANG_NODE_ROOT, NULL);
 
+    /* 创建读写锁，保护并发访问 */
+    db->rwlock = common_rwlock_create(db->name);
+    if (db->rwlock == NULL) {
+        yang_node_free(db->root);
+        free(db);
+        return NULL;
+    }
+
     /* 从文件加载树 */
     yang_engine_load_tree(db);
 
@@ -148,6 +156,11 @@ static void *yang_engine_table_open(const char *name, AccessMode mode) {
 static int yang_engine_table_close(void *rel) {
     if (rel == NULL) return -1;
     yang_engine_db_t *db = (yang_engine_db_t *)rel;
+
+    /* 先解锁，再保存 */
+    if (db->rwlock) {
+        common_rwlock_write_lock(db->rwlock);
+    }
 
     /* 保存树到文件 */
     yang_engine_save_tree(db);
@@ -164,6 +177,12 @@ static int yang_engine_table_close(void *rel) {
         fclose(fp);
     }
 
+    if (db->rwlock) {
+        common_rwlock_write_unlock(db->rwlock);
+        common_rwlock_destroy(db->rwlock);
+        db->rwlock = NULL;
+    }
+
     if (db->root) yang_node_free(db->root);
     free(db);
     return 0;
@@ -177,7 +196,14 @@ static int yang_engine_table_drop(const char *name) {
 static int yang_engine_tuple_insert(void *rel, const void *data, size_t len) {
     if (rel == NULL || data == NULL) return -1;
     yang_engine_db_t *db = (yang_engine_db_t *)rel;
-    if (len < sizeof(uint32_t) * 4) return -1;
+
+    /* 写锁：独占访问 */
+    if (db->rwlock) common_rwlock_write_lock(db->rwlock);
+
+    if (len < sizeof(uint32_t) * 4) {
+        if (db->rwlock) common_rwlock_write_unlock(db->rwlock);
+        return -1;
+    }
 
     const uint8_t *ptr = (const uint8_t *)data;
     uint32_t path_len, name_len, value_len;
@@ -290,6 +316,7 @@ static int yang_engine_tuple_insert(void *rel, const void *data, size_t len) {
     yang_add_child(current, new_node);
     db->num_nodes++;
 
+    if (db->rwlock) common_rwlock_write_unlock(db->rwlock);
     return 0;
 }
 
@@ -709,6 +736,10 @@ int yang_engine_get(void *rel, const void *key, size_t key_len,
     if (!rel || !key || key_len == 0) return -1;
 
     yang_engine_db_t *db = (yang_engine_db_t *)rel;
+
+    /* 读锁：允许并发读 */
+    if (db->rwlock) common_rwlock_read_lock(db->rwlock);
+
     const char *path = (const char *)key;
 
     /* 解析路径查找节点 */
@@ -737,13 +768,17 @@ int yang_engine_get(void *rel, const void *key, size_t key_len,
     }
 
     if (!current || current == db->root) {
+        if (db->rwlock) common_rwlock_read_unlock(db->rwlock);
         return 1;  /* 未找到 */
     }
 
     /* 序列化节点数据 */
     size_t buf_size = 1024;
     uint8_t *buf = (uint8_t *)malloc(buf_size);
-    if (!buf) return -1;
+    if (!buf) {
+        if (db->rwlock) common_rwlock_read_unlock(db->rwlock);
+        return -1;
+    }
 
     size_t offset = 0;
 
@@ -771,6 +806,8 @@ int yang_engine_get(void *rel, const void *key, size_t key_len,
 
     *out_data = buf;
     *out_len = offset;
+
+    if (db->rwlock) common_rwlock_read_unlock(db->rwlock);
     return 0;
 }
 
@@ -778,6 +815,9 @@ yang_node_t *yang_engine_find(void *rel, const char *path) {
     if (!rel || !path) return NULL;
 
     yang_engine_db_t *db = (yang_engine_db_t *)rel;
+
+    /* 读锁：允许并发读 */
+    if (db->rwlock) common_rwlock_read_lock(db->rwlock);
     yang_node_t *current = db->root;
 
     /* 跳过开头的 '/' */
@@ -802,7 +842,9 @@ yang_node_t *yang_engine_find(void *rel, const char *path) {
         while (*p == '/') p++;
     }
 
-    return (current == db->root) ? NULL : current;
+    yang_node_t *result = (current == db->root) ? NULL : current;
+    if (db->rwlock) common_rwlock_read_unlock(db->rwlock);
+    return result;
 }
 
 int yang_engine_traverse(void *rel,
@@ -811,6 +853,9 @@ int yang_engine_traverse(void *rel,
     if (!rel || !callback) return -1;
 
     yang_engine_db_t *db = (yang_engine_db_t *)rel;
+
+    /* 读锁：允许并发读，回调期间保持锁（短操作假设） */
+    if (db->rwlock) common_rwlock_read_lock(db->rwlock);
 
     /* 递归遍历树 */
     int count = 0;
@@ -834,7 +879,7 @@ int yang_engine_traverse(void *rel,
             /* 调用回调（进入节点） */
             if (top->node != db->root) {
                 if (!callback(top->node->path, top->node, ctx)) {
-                    return count;
+                    goto traverse_done;
                 }
                 count++;
             }
@@ -857,5 +902,7 @@ int yang_engine_traverse(void *rel,
         }
     }
 
+traverse_done:
+    if (db->rwlock) common_rwlock_read_unlock(db->rwlock);
     return count;
 }

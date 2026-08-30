@@ -627,5 +627,25 @@ netconf_result_t netconf_handle_rpc(netconf_session_t *s,
         return rc;
     }
 
+    /* NETCONF 1.1: get-capabilities */
+    if (strcmp(op_name, "get-capabilities") == 0) {
+        char caps_buf[4096];
+        caps_buf[0] = '\0';
+        int n = snprintf(caps_buf, sizeof(caps_buf),
+            "<capabilities>"
+            "<capability>urn:ietf:params:netconf:base:1.0</capability>"
+            "<capability>urn:ietf:params:netconf:base:1.1</capability>"
+            "<capability>urn:ietf:params:netconf:capability:notification:1.0</capability>"
+            "</capabilities>");
+        if (n < 0 || (size_t)n >= sizeof(caps_buf)) return NETCONF_ERR_INTERNAL;
+        int reply_n = snprintf(reply_out, reply_size,
+            "<rpc-reply xmlns=\"%s\" xmlns:nc=\"%s\" message-id=\"%s\">"
+            "%s"
+            "</rpc-reply>",
+            NETCONF_NS, NETCONF_NS_1_1, msg_id ? msg_id : "0", caps_buf);
+        if (reply_n < 0 || (size_t)reply_n >= reply_size) return NETCONF_ERR_INTERNAL;
+        return NETCONF_OK;
+    }
+
     return NETCONF_ERR_UNKNOWN_OP;
 }

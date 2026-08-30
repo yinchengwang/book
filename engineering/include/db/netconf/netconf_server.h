@@ -36,6 +36,7 @@ extern "C" {
 
 /** NETCONF XML 命名空间（占位） */
 #define NETCONF_NS            "urn:ietf:params:xml:ns:netconf:base:1.0"
+#define NETCONF_NS_1_1        "urn:ietf:params:xml:ns:netconf:base:1.1"
 
 /** 默认消息缓冲区大小 */
 #define NETCONF_BUF_SIZE      (16 * 1024)
@@ -133,6 +134,8 @@ yang_datastore_t *netconf_session_get_datastore(netconf_session_t *s,
  * @return NETCONF_OK 或错误码
  *
  * reply_out 内容为 NETCONF reply XML。
+ * 支持 NETCONF 1.0 和 1.1 RPC：get、get-config、edit-config、copy-config、
+ * delete-config、get-capabilities。
  */
 netconf_result_t netconf_handle_rpc(netconf_session_t *s,
                                     const char *rpc_in, size_t rpc_len,
