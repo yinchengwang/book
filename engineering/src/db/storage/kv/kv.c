@@ -28,8 +28,13 @@ typedef struct kv_record_s {
 } kv_record_t;
 
 /* ============================================================
- * 工具函数
+ * Forward declarations
  * ============================================================ */
+
+/* C3-5 T22：watch 回调触发（定义在下方） */
+static void kv_trigger_watches(kv_t *db, const char *key, size_t key_len,
+                                const void *old_value, size_t old_len,
+                                const void *new_value, size_t new_len);
 
 /** 比较两个键 */
 static int key_compare(const void *key1, size_t len1,
@@ -363,6 +368,25 @@ kv_result_t kv_close(kv_t *db) {
         free(db->db_path);
     }
 
+    /* 释放 watch 链表 */
+    {
+        typedef struct kw_node_s {
+            void *key;
+            size_t key_len;
+            kv_watch_callback_t callback;
+            void *user_data;
+            struct kw_node_s *next;
+        } kw_node_t;
+        kw_node_t *node = (kw_node_t *)db->watch_list;
+        while (node) {
+            kw_node_t *next = node->next;
+            free(node->key);
+            free(node);
+            node = next;
+        }
+        db->watch_list = NULL;
+    }
+
     free(db);
     return KV_OK;
 }
@@ -397,28 +421,32 @@ kv_result_t kv_put(kv_t *db,
     /* C1-3 T2：写锁包裹读-改-写序列，避免并发 put 丢更新 */
     common_rwlock_write_lock(db->rwlock);
 
-    /* 获取旧值（用于 WAL 记录） */
+    /* 获取旧值（用于 WAL 记录）— 直接用页面操作，避免递归加锁 */
     void *old_value = NULL;
     size_t old_value_len = 0;
     kv_result_t result;
 
-    bool key_exists = (kv_get(db, key, key_len, &old_value, &old_value_len) == KV_OK);
-    (void)key_exists;  /* 用于 WAL 记录，已获取到 old_value */
-
     page_id_t data_page_id = kv_get_data_page_id(db);
     page_t *page = buffer_get_page(db->pool, data_page_id);
     if (!page) {
-        free(old_value);
         kv_set_error(db, "Failed to get data page");
-        result = KV_ERROR;
-        goto kv_put_unlock;
+        common_rwlock_write_unlock(db->rwlock);
+        return KV_ERROR;
     }
 
     /* 查找是否已存在 */
     uint16_t offset;
     int found = (kv_page_find(page, key, key_len, &offset) == 0);
 
-    /* 查找完成，解除页面固定 */
+    if (found) {
+        kv_record_t *rec = (kv_record_t *)(page->data + offset);
+        old_value_len = rec->value_len;
+        old_value = malloc(old_value_len);
+        if (old_value) {
+            memcpy(old_value, page->data + offset + sizeof(kv_record_t) + rec->key_len,
+                   old_value_len);
+        }
+    }
     buffer_unpin_page(db->pool, data_page_id);
 
     if (found) {
@@ -463,6 +491,10 @@ kv_result_t kv_put(kv_t *db,
             goto kv_put_unlock;
         }
         result = KV_OK;
+
+        /* 触发 watch 回调 */
+        kv_trigger_watches(db, (const char *)key, key_len,
+                           old_value, old_value_len, value, value_len);
     } else {
         /* C0-2：WAL-first 铁律 — INSERT 路径同上 */
         if (db->wal) {
@@ -484,6 +516,10 @@ kv_result_t kv_put(kv_t *db,
         }
         db->num_keys++;
         result = KV_OK;
+
+        /* 触发 watch 回调（新键 old_value=NULL） */
+        kv_trigger_watches(db, (const char *)key, key_len,
+                           NULL, 0, value, value_len);
     }
 
     free(old_value);
@@ -562,10 +598,30 @@ kv_result_t kv_delete(kv_t *db, const void *key, size_t key_len) {
 
     kv_result_t result;
 
-    /* 获取旧值（用于 WAL 记录） */
+    /* 获取旧值（用于 WAL 记录）— 直接用页面操作，避免递归加锁 */
     void *old_value = NULL;
     size_t old_value_len = 0;
-    kv_get(db, key, key_len, &old_value, &old_value_len);
+
+    page_id_t data_page_id = kv_get_data_page_id(db);
+    page_t *page = buffer_get_page(db->pool, data_page_id);
+    if (!page) {
+        result = KV_NOT_FOUND;
+        goto kv_delete_unlock;
+    }
+
+    uint16_t offset;
+    int found = (kv_page_find(page, key, key_len, &offset) == 0);
+
+    if (found) {
+        kv_record_t *rec = (kv_record_t *)(page->data + offset);
+        old_value_len = rec->value_len;
+        old_value = malloc(old_value_len);
+        if (old_value) {
+            memcpy(old_value, page->data + offset + sizeof(kv_record_t) + rec->key_len,
+                   old_value_len);
+        }
+    }
+    buffer_unpin_page(db->pool, data_page_id);
 
     /* 同时从 TTL 管理器中删除 */
     kv_ttl_mgr_t *ttl_mgr = (kv_ttl_mgr_t *)db->ttl_mgr;
@@ -573,34 +629,27 @@ kv_result_t kv_delete(kv_t *db, const void *key, size_t key_len) {
         kv_ttl_delete(ttl_mgr, key, key_len);
     }
 
-    page_id_t data_page_id = kv_get_data_page_id(db);
-    page_t *page = buffer_get_page(db->pool, data_page_id);
-    if (!page) {
+    if (!found) {
         free(old_value);
         result = KV_NOT_FOUND;
         goto kv_delete_unlock;
     }
 
-    uint16_t offset;
-    if (kv_page_find(page, key, key_len, &offset) != 0) {
-        buffer_unpin_page(db->pool, data_page_id);
-        free(old_value);
-        result = KV_NOT_FOUND;
-        goto kv_delete_unlock;
-    }
-
-    /* 删除记录（保持页面 pinned，由 kv_page_delete 处理 unpin） */
+    /* 删除记录 */
     if (kv_page_delete(db->pool, data_page_id, offset) != 0) {
-        buffer_unpin_page(db->pool, data_page_id);  /* 确保 unpin */
         free(old_value);
         result = KV_ERROR;
         goto kv_delete_unlock;
     }
 
-    /* 写入 WAL DELETE 记录 */
-    if (db->wal && old_value) {
+    /* C0-2：WAL-first 铁律 — DELETE 之后写 WAL */
+    if (db->wal) {
         wal_write_delete(db->wal, 0, key, key_len, old_value, old_value_len);
     }
+
+    /* 触发 watch 回调 */
+    kv_trigger_watches(db, (const char *)key, key_len,
+                       old_value, old_value_len, NULL, 0);
 
     db->num_keys--;
     free(old_value);
@@ -812,24 +861,29 @@ kv_result_t kv_cas(kv_t *db,
     /* 读当前值（直接走 page 层，绕过 lock） */
     void *cur = NULL;
     size_t cur_len = 0;
+    bool key_found = false;
+    uint16_t offset = 0;
     page_id_t data_page_id = kv_get_data_page_id(db);
     page_t *page = buffer_get_page(db->pool, data_page_id);
     if (page) {
-        uint16_t offset;
         if (kv_page_find(page, key, key_len, &offset) == 0) {
             kv_record_t *rec = (kv_record_t *)(page->data + offset);
             cur_len = rec->value_len;
             cur = malloc(cur_len);
-            if (cur) memcpy(cur, page->data + offset + sizeof(kv_record_t) + rec->key_len, cur_len);
+            if (cur) {
+                memcpy(cur, page->data + offset + sizeof(kv_record_t) + rec->key_len, cur_len);
+                key_found = true;
+            }
         }
         buffer_unpin_page(db->pool, data_page_id);
     }
 
     bool match;
-    if (cur) {
+    if (key_found) {
         match = (cur_len == expected_old_len
                  && memcmp(cur, expected_old, cur_len) == 0);
         free(cur);
+        cur = NULL;
     } else if (expected_old == NULL) {
         match = true;
     } else {
@@ -842,7 +896,7 @@ kv_result_t kv_cas(kv_t *db,
         return KV_CONFLICT;
     }
 
-    /* 写入新值（WAL + page insert）。wal_write_insert + kv_page_insert 内部不加锁 */
+    /* 写入新值（WAL + page 操作）— 与 kv_put 保持一致 */
     if (db->wal) {
         uint64_t lsn = wal_write_insert(db->wal, 0, key, key_len, new_value, new_value_len);
         if (lsn == 0) {
@@ -850,11 +904,320 @@ kv_result_t kv_cas(kv_t *db,
             return KV_ERROR;
         }
     }
-    if (kv_page_insert(db->pool, data_page_id, key, key_len, new_value, new_value_len) != 0) {
+
+    bool update_ok = false;
+    if (key_found) {
+        /* 键存在：长度不变时原地更新，长度变化时删除后重插 */
+        if (cur_len == new_value_len) {
+            update_ok = (kv_page_update(db->pool, data_page_id,
+                                         offset, new_value, new_value_len) == 0);
+        } else if (kv_page_delete(db->pool, data_page_id, offset) == 0 &&
+                   kv_page_insert(db->pool, data_page_id,
+                                  key, key_len, new_value, new_value_len) == 0) {
+            update_ok = true;
+        }
+    } else {
+        /* 键不存在：直接插入 */
+        update_ok = (kv_page_insert(db->pool, data_page_id,
+                                     key, key_len, new_value, new_value_len) == 0);
+    }
+
+    if (!update_ok) {
         common_rwlock_write_unlock(db->rwlock);
         return KV_FULL;
     }
-    db->num_keys++;
+
+    /* 触发 watch 回调 */
+    kv_trigger_watches(db, (const char *)key, key_len,
+                       key_found ? (const void *)"" : NULL, key_found ? 0 : 0,
+                       new_value, new_value_len);
+
     common_rwlock_write_unlock(db->rwlock);
     return KV_OK;
+}
+
+/* ============================================================
+ * Watch 通知实现（C3-5 T22）
+ * ============================================================ */
+
+/* 内部 watch 节点结构 */
+typedef struct kw_node_s {
+    void *key;                /**< 监听的键（副本） */
+    size_t key_len;           /**< 键长度 */
+    kv_watch_callback_t callback;  /**< 回调函数 */
+    void *user_data;          /**< 回调用户数据 */
+    struct kw_node_s *next;   /**< 下一个节点 */
+} kw_node_t;
+
+/**
+ * @brief 触发指定键的 watch 回调
+ */
+static void kv_trigger_watches(kv_t *db, const char *key, size_t key_len,
+                                const void *old_value, size_t old_len,
+                                const void *new_value, size_t new_len) {
+    if (!db || !db->watch_list) return;
+
+    kw_node_t *node = (kw_node_t *)db->watch_list;
+    while (node) {
+        /* 匹配 watch 的键（key==NULL 表示监听所有） */
+        if (node->key == NULL ||
+            (node->key_len == key_len &&
+             memcmp(node->key, key, key_len) == 0)) {
+            node->callback(node->user_data, key, key_len,
+                           old_value, old_len,
+                           new_value, new_len);
+        }
+        node = node->next;
+    }
+}
+
+/**
+ * @brief 订阅键变更通知
+ */
+kv_watch_t *kv_watch(kv_t *db, const void *key, size_t key_len,
+                     kv_watch_callback_t callback, void *user_data) {
+    if (!db || !callback) return NULL;
+
+    kw_node_t *node = (kw_node_t *)malloc(sizeof(kw_node_t));
+    if (!node) return NULL;
+
+    /* 复制键（如果有） */
+    if (key && key_len > 0) {
+        node->key = malloc(key_len);
+        if (!node->key) {
+            free(node);
+            return NULL;
+        }
+        memcpy(node->key, key, key_len);
+        node->key_len = key_len;
+    } else {
+        node->key = NULL;
+        node->key_len = 0;
+    }
+    node->callback = callback;
+    node->user_data = user_data;
+
+    /* 插入链表头部 */
+    common_rwlock_write_lock(db->rwlock);
+    node->next = (kw_node_t *)db->watch_list;
+    db->watch_list = node;
+    common_rwlock_write_unlock(db->rwlock);
+
+    return (kv_watch_t *)node;
+}
+
+/**
+ * @brief 取消订阅
+ */
+void kv_unwatch(kv_t *db, kv_watch_t *watch) {
+    if (!db || !watch) return;
+
+    kw_node_t *node = (kw_node_t *)watch;
+    kw_node_t *prev = NULL;
+    kw_node_t *curr = (kw_node_t *)db->watch_list;
+
+    common_rwlock_write_lock(db->rwlock);
+    while (curr) {
+        if (curr == node) {
+            if (prev) {
+                prev->next = curr->next;
+            } else {
+                db->watch_list = curr->next;
+            }
+            break;
+        }
+        prev = curr;
+        curr = curr->next;
+    }
+    common_rwlock_write_unlock(db->rwlock);
+
+    /* 释放节点 */
+    if (node->key) free(node->key);
+    free(node);
+}
+
+/* ============================================================
+ * Multi 批量操作实现（C3-5 T22）
+ * ============================================================ */
+
+/**
+ * @brief 批量读取
+ */
+kv_result_t kv_multi_get(kv_t *db, kv_multi_entry_t *entries, size_t count) {
+    if (!db || !entries || count == 0) return KV_INVALID;
+
+    common_rwlock_read_lock(db->rwlock);
+
+    page_id_t data_page_id = kv_get_data_page_id(db);
+    page_t *page = buffer_get_page(db->pool, data_page_id);
+
+    for (size_t i = 0; i < count; i++) {
+        if (!entries[i].key || entries[i].key_len == 0) {
+            entries[i].value = NULL;
+            entries[i].value_len = 0;
+            entries[i].is_set = false;
+            continue;
+        }
+
+        /* 查找键 */
+        uint16_t offset;
+        if (kv_page_find(page, entries[i].key, entries[i].key_len, &offset) == 0) {
+            kv_record_t *rec = (kv_record_t *)(page->data + offset);
+            entries[i].value_len = rec->value_len;
+            entries[i].value = malloc(rec->value_len);
+            if (entries[i].value) {
+                memcpy(entries[i].value,
+                       page->data + offset + sizeof(kv_record_t) + rec->key_len,
+                       rec->value_len);
+                entries[i].is_set = true;
+            } else {
+                entries[i].value_len = 0;
+                entries[i].is_set = false;
+            }
+        } else {
+            entries[i].value = NULL;
+            entries[i].value_len = 0;
+            entries[i].is_set = false;
+        }
+    }
+
+    buffer_unpin_page(db->pool, data_page_id);
+    common_rwlock_read_unlock(db->rwlock);
+    return KV_OK;
+}
+
+/**
+ * @brief 批量写入
+ */
+kv_result_t kv_multi_set(kv_t *db, kv_multi_entry_t *entries, size_t count) {
+    if (!db || !entries || count == 0) return KV_INVALID;
+
+    common_rwlock_write_lock(db->rwlock);
+
+    page_id_t data_page_id = kv_get_data_page_id(db);
+
+    kv_result_t result = KV_OK;
+    for (size_t i = 0; i < count; i++) {
+        if (!entries[i].key || entries[i].key_len == 0 ||
+            !entries[i].value || entries[i].value_len > KV_MAX_VALUE_SIZE) {
+            result = KV_INVALID;
+            break;
+        }
+
+        /* 读取旧值（用于 watch 回调） */
+        uint16_t old_offset = 0;
+        void *old_value = NULL;
+        size_t old_len = 0;
+        {
+            page_t *page = buffer_get_page(db->pool, data_page_id);
+            if (page && kv_page_find(page, entries[i].key, entries[i].key_len, &old_offset) == 0) {
+                kv_record_t *rec = (kv_record_t *)(page->data + old_offset);
+                old_len = rec->value_len;
+                old_value = malloc(old_len);
+                if (old_value) {
+                    memcpy(old_value, page->data + old_offset + sizeof(kv_record_t) + rec->key_len,
+                           old_len);
+                }
+            }
+            buffer_unpin_page(db->pool, data_page_id);
+        }
+
+        /* WAL 写入 */
+        if (db->wal) {
+            uint64_t lsn = wal_write_insert(db->wal, 0, entries[i].key, entries[i].key_len,
+                                            entries[i].value, entries[i].value_len);
+            if (lsn == 0) {
+                result = KV_ERROR;
+                break;
+            }
+        }
+
+        /* 写入 page */
+        {
+            if (old_value) {
+                /* 更新 */
+                if (kv_page_update(db->pool, data_page_id, old_offset,
+                                   entries[i].value, entries[i].value_len) != 0) {
+                    result = KV_FULL;
+                }
+            } else {
+                /* 插入 */
+                if (kv_page_insert(db->pool, data_page_id,
+                                   entries[i].key, entries[i].key_len,
+                                   entries[i].value, entries[i].value_len) != 0) {
+                    result = KV_FULL;
+                } else {
+                    db->num_keys++;
+                }
+            }
+        }
+
+        /* 触发 watch 回调 */
+        kv_trigger_watches(db, (const char *)entries[i].key, entries[i].key_len,
+                           old_value, old_len,
+                           entries[i].value, entries[i].value_len);
+        if (old_value) free(old_value);
+    }
+
+    common_rwlock_write_unlock(db->rwlock);
+    return result;
+}
+
+/**
+ * @brief 批量删除
+ */
+kv_result_t kv_multi_del(kv_t *db, kv_multi_entry_t *entries, size_t count) {
+    if (!db || !entries || count == 0) return KV_INVALID;
+
+    common_rwlock_write_lock(db->rwlock);
+
+    page_id_t data_page_id = kv_get_data_page_id(db);
+
+    kv_result_t result = KV_OK;
+    for (size_t i = 0; i < count; i++) {
+        if (!entries[i].key || entries[i].key_len == 0) {
+            result = KV_INVALID;
+            break;
+        }
+
+        /* 读取旧值（用于 watch 回调） */
+        uint16_t offset;
+        void *old_value = NULL;
+        size_t old_len = 0;
+        {
+            page_t *page = buffer_get_page(db->pool, data_page_id);
+            if (page && kv_page_find(page, entries[i].key, entries[i].key_len, &offset) == 0) {
+                kv_record_t *rec = (kv_record_t *)(page->data + offset);
+                old_len = rec->value_len;
+                old_value = malloc(old_len);
+                if (old_value) {
+                    memcpy(old_value, page->data + offset + sizeof(kv_record_t) + rec->key_len,
+                           old_len);
+                }
+            }
+            buffer_unpin_page(db->pool, data_page_id);
+        }
+
+        /* WAL 写入 */
+        if (db->wal) {
+            wal_write_delete(db->wal, 0, entries[i].key, entries[i].key_len,
+                             old_value, old_len);
+        }
+
+        /* Page 删除 */
+        {
+            if (kv_page_delete(db->pool, data_page_id, offset) != 0) {
+                result = KV_NOT_FOUND;
+            } else {
+                db->num_keys--;
+                /* 触发 watch 回调 */
+                kv_trigger_watches(db, (const char *)entries[i].key, entries[i].key_len,
+                                   old_value, old_len, NULL, 0);
+            }
+        }
+        if (old_value) free(old_value);
+    }
+
+    common_rwlock_write_unlock(db->rwlock);
+    return result;
 }
