@@ -116,3 +116,17 @@ set_target_properties(blob_engine_test PROPERTIES
 )
 
 add_test(NAME blob_engine_test COMMAND blob_engine_test)
+
+# WAL 集成测试
+add_executable(test_storage_wal wal_integration_test.c)
+target_link_libraries(test_storage_wal
+    PRIVATE
+    db_storage
+    db_core
+    project_includes
+)
+target_include_directories(test_storage_wal PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+)
+add_test(NAME test_storage_wal COMMAND test_storage_wal)
