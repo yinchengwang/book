@@ -1,6 +1,7 @@
 # core 模块：核心基础设施（errors, log, guc, initdb, pg_ctl, db_server, structured_log）
 add_library(db_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/errors.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/error_codes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/log.c
     ${CMAKE_CURRENT_SOURCE_DIR}/guc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/initdb.c
