@@ -12,6 +12,18 @@
 #include <stdio.h>
 #include <time.h>
 
+/* 平台特定的目录和文件操作头文件 */
+#ifdef _WIN32
+#include <io.h>
+#include <direct.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#else
+#include <dirent.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
+
 #define RETENTION_META_SUFFIX ".retention"
 
 /* ========================================================================
@@ -214,6 +226,151 @@ bool ts_retention_need_cleanup(int64_t last_timestamp,
     return last_timestamp < cutoff;
 }
 
+/**
+ * @brief 扫描数据目录中的 .tsd 文件并删除过期文件
+ *
+ * @param data_dir   数据目录
+ * @param policy     保留策略
+ * @param now_ms     当前时间戳（毫秒）
+ * @param result     输出清理结果
+ * @return 删除的文件数，失败返回 -1
+ */
+static int scan_and_cleanup_files(const char *data_dir,
+                                   const ts_retention_policy_t *policy,
+                                   int64_t now_ms,
+                                   ts_cleanup_result_t *result) {
+    if (!data_dir || !policy) return -1;
+
+    int deleted_count = 0;
+    int64_t hot_cutoff = ts_retention_cutoff_time(TS_RETENTION_HOT, policy);
+    int64_t warm_cutoff = ts_retention_cutoff_time(TS_RETENTION_WARM, policy);
+    int64_t cold_cutoff = ts_retention_cutoff_time(TS_RETENTION_COLD, policy);
+
+    /* 构建搜索路径 */
+    char search_path[1024];
+    snprintf(search_path, sizeof(search_path), "%s/*.tsd", data_dir);
+
+    /* 使用平台特定的目录扫描 */
+#ifdef _WIN32
+    /* Windows: 使用 _findfirst/_findnext */
+    struct _finddata_t fileinfo;
+    intptr_t handle = _findfirst(search_path, &fileinfo);
+    if (handle == -1) {
+        LOG_INFO("数据目录为空或不存在: %s", data_dir);
+        return 0;
+    }
+
+    do {
+        /* 跳过目录 */
+        if (fileinfo.attrib & _A_SUBDIR) continue;
+
+        /* 获取文件完整路径 */
+        char filepath[1024];
+        snprintf(filepath, sizeof(filepath), "%s/%s", data_dir, fileinfo.name);
+
+        /* 获取文件修改时间（毫秒） */
+        int64_t file_mtime_ms = (int64_t)fileinfo.time_write * 1000;
+
+        /* 判断文件是否过期 */
+        bool expired = false;
+
+        /* 热层过期：文件修改时间早于 hot_cutoff */
+        if (hot_cutoff > 0 && file_mtime_ms < hot_cutoff) {
+            expired = true;
+            LOG_INFO("文件 %s 已过热层保留期，将删除", fileinfo.name);
+        }
+        /* 温层过期：文件修改时间早于 warm_cutoff */
+        else if (warm_cutoff > 0 && file_mtime_ms < warm_cutoff) {
+            expired = true;
+            LOG_INFO("文件 %s 已过温层保留期，将删除", fileinfo.name);
+        }
+        /* 冷层过期：文件修改时间早于 cold_cutoff */
+        else if (cold_cutoff > 0 && file_mtime_ms < cold_cutoff) {
+            expired = true;
+            LOG_INFO("文件 %s 已过冷层保留期，将删除", fileinfo.name);
+        }
+
+        /* 删除过期文件 */
+        if (expired) {
+            if (remove(filepath) == 0) {
+                deleted_count++;
+                LOG_INFO("已删除过期文件: %s", filepath);
+            } else {
+                LOG_ERROR("删除文件失败: %s", filepath);
+            }
+        }
+    } while (_findnext(handle, &fileinfo) == 0);
+
+    _findclose(handle);
+#else
+    /* POSIX: 使用 opendir/readdir */
+    DIR *dir = opendir(data_dir);
+    if (!dir) {
+        LOG_INFO("无法打开数据目录: %s", data_dir);
+        return 0;
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        /* 跳过目录和非 .tsd 文件 */
+        if (entry->d_type == DT_DIR) continue;
+
+        const char *name = entry->d_name;
+        size_t name_len = strlen(name);
+        if (name_len < 4 || strcmp(name + name_len - 4, ".tsd") != 0) {
+            continue;
+        }
+
+        /* 获取文件完整路径 */
+        char filepath[1024];
+        snprintf(filepath, sizeof(filepath), "%s/%s", data_dir, name);
+
+        /* 获取文件状态 */
+        struct stat file_stat;
+        if (stat(filepath, &file_stat) != 0) {
+            LOG_ERROR("获取文件状态失败: %s", filepath);
+            continue;
+        }
+
+        /* 获取文件修改时间（毫秒） */
+        int64_t file_mtime_ms = (int64_t)file_stat.st_mtime * 1000;
+
+        /* 判断文件是否过期 */
+        bool expired = false;
+
+        /* 热层过期 */
+        if (hot_cutoff > 0 && file_mtime_ms < hot_cutoff) {
+            expired = true;
+            LOG_INFO("文件 %s 已过热层保留期，将删除", name);
+        }
+        /* 温层过期 */
+        else if (warm_cutoff > 0 && file_mtime_ms < warm_cutoff) {
+            expired = true;
+            LOG_INFO("文件 %s 已过温层保留期，将删除", name);
+        }
+        /* 冷层过期 */
+        else if (cold_cutoff > 0 && file_mtime_ms < cold_cutoff) {
+            expired = true;
+            LOG_INFO("文件 %s 已过冷层保留期，将删除", name);
+        }
+
+        /* 删除过期文件 */
+        if (expired) {
+            if (remove(filepath) == 0) {
+                deleted_count++;
+                LOG_INFO("已删除过期文件: %s", filepath);
+            } else {
+                LOG_ERROR("删除文件失败: %s", filepath);
+            }
+        }
+    }
+
+    closedir(dir);
+#endif
+
+    return deleted_count;
+}
+
 /** 执行数据清理 */
 int ts_retention_cleanup(const char *data_dir,
                          ts_retention_policy_t *policy,
@@ -249,9 +406,12 @@ int ts_retention_cleanup(const char *data_dir,
     (void)warm_cutoff;
     (void)cold_cutoff;
 
-    /* TODO: 遍历数据目录，清理过期文件
-     * 需要与 ts_engine.c 集成，扫描 .tsd 文件并删除过期数据
-     */
+    /* 扫描并清理过期文件 */
+    int deleted_count = scan_and_cleanup_files(data_dir, policy, now_ms, result);
+    if (deleted_count < 0) {
+        LOG_ERROR("文件扫描清理失败");
+        return -1;
+    }
 
     /* 更新清理时间 */
     policy->last_cleanup_time = now_ms;
@@ -261,8 +421,8 @@ int ts_retention_cleanup(const char *data_dir,
         result->next_cleanup_time = now_ms + policy->cleanup_interval_ms;
     }
 
-    LOG_INFO("时序数据清理完成，耗时 %lld ms",
-             (long long)(result ? result->duration_ms : 0));
+    LOG_INFO("时序数据清理完成，删除 %d 个过期文件，耗时 %lld ms",
+             deleted_count, (long long)(result ? result->duration_ms : 0));
 
     return 0;
 }

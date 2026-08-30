@@ -80,8 +80,31 @@ int ts_agg_execute(const TsAggArgs *args,
                    uint32_t max_results, uint32_t *out_count) {
     if (!args || !out_count) return -1;
 
-    /* 简化实现：返回空结果 */
     *out_count = 0;
+
+    /* 验证参数 */
+    if (!args->measurement || !args->time_col || !args->value_col) {
+        return -1;
+    }
+
+    if (start_time > end_time) {
+        return -1;
+    }
+
+    /* 验证输出缓冲区 */
+    if (!out_timestamps || !out_values || max_results == 0) {
+        return -1;
+    }
+
+    /* 简化实现：返回空结果
+     * 完整实现需要：
+     * 1. 根据 measurement 和 tag_filters 查询存储引擎
+     * 2. 获取时间范围 [start_time, end_time] 内的数据
+     * 3. 按 bucket 粒度分组
+     * 4. 应用聚合函数 (SUM, AVG, MIN, MAX, COUNT, etc.)
+     * 5. 输出聚合结果
+     */
+
     (void)start_time;
     (void)end_time;
     (void)out_timestamps;
@@ -125,13 +148,38 @@ int ts_first_execute(const TsFirstLastArgs *args,
                      uint32_t max_results, uint32_t *out_count) {
     if (!args || !out_count) return -1;
 
-    /* 简化实现：返回空 */
     *out_count = 0;
+
+    /* 验证参数 */
+    if (!args->measurement || !args->time_col || !args->value_col) {
+        return -1;
+    }
+
+    if (start_time > end_time) {
+        return -1;
+    }
+
+    /* 验证输出缓冲区 */
+    if (!out_timestamps || !out_values || max_results == 0) {
+        return -1;
+    }
+
+    /* 验证 n 参数 */
+    uint32_t n = (args->n > 0) ? (uint32_t)args->n : max_results;
+    if (n > max_results) n = max_results;
+
+    /* 简化实现：返回空结果
+     * 完整实现需要：
+     * 1. 根据 measurement 和 tag_filters 查询存储引擎
+     * 2. 获取时间范围 [start_time, end_time] 内的数据
+     * 3. 按时间排序（ascending）
+     * 4. 返回前 n 个记录
+     */
+
     (void)start_time;
     (void)end_time;
     (void)out_timestamps;
     (void)out_values;
-    (void)max_results;
 
     return 0;
 }
@@ -140,8 +188,42 @@ int ts_last_execute(const TsFirstLastArgs *args,
                     int64_t start_time, int64_t end_time,
                     int64_t *out_timestamps, double *out_values,
                     uint32_t max_results, uint32_t *out_count) {
-    return ts_first_execute(args, start_time, end_time,
-                            out_timestamps, out_values, max_results, out_count);
+    if (!args || !out_count) return -1;
+
+    *out_count = 0;
+
+    /* 验证参数 */
+    if (!args->measurement || !args->time_col || !args->value_col) {
+        return -1;
+    }
+
+    if (start_time > end_time) {
+        return -1;
+    }
+
+    /* 验证输出缓冲区 */
+    if (!out_timestamps || !out_values || max_results == 0) {
+        return -1;
+    }
+
+    /* 验证 n 参数 */
+    uint32_t n = (args->n > 0) ? (uint32_t)args->n : max_results;
+    if (n > max_results) n = max_results;
+
+    /* 简化实现：返回空结果
+     * 完整实现需要：
+     * 1. 根据 measurement 和 tag_filters 查询存储引擎
+     * 2. 获取时间范围 [start_time, end_time] 内的数据
+     * 3. 按时间排序（descending）
+     * 4. 返回前 n 个记录
+     */
+
+    (void)start_time;
+    (void)end_time;
+    (void)out_timestamps;
+    (void)out_values;
+
+    return 0;
 }
 
 /* ========================================================================

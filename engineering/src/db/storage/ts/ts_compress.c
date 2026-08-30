@@ -331,11 +331,20 @@ const uint8_t *ts_compress_get_data(const ts_compressor_t *comp, size_t *out_siz
  */
 const uint8_t *ts_compress_get_last_block_data(const ts_compressor_t *comp, size_t *out_size) {
     if (!comp || out_size == NULL) return NULL;
-    /* 上一个块在压缩后被替换，可以通过 total_compressed_size 判断是否有数据 */
+
+    /* 获取上一个压缩块的数据（时间戳和值数据合并） */
     if (comp->total_compressed_size == 0) return NULL;
-    /* 返回值压缩数据（时间戳压缩数据需要单独处理） */
-    *out_size = comp->total_compressed_size;
-    return (const uint8_t *)"1";  /* 占位，实际需要合并两个缓冲区 */
+
+    /* 上一个块的数据存储在压缩后的缓冲区中 */
+    /* 注意：这里返回的是最后一个已压缩块的数据 */
+    /* 实际实现中，应该有一个块链表来跟踪所有压缩后的块 */
+    /* 简化实现：返回总压缩大小，但数据需要从块链表中获取 */
+
+    /* 由于当前实现中 flush 后会创建新块，
+     * 我们需要一个机制来跟踪历史块。
+     * 简化处理：返回 NULL，调用者应使用 ts_compress_get_data 获取当前块数据 */
+    *out_size = 0;
+    return NULL;
 }
 
 void ts_compress_get_stats(const ts_compressor_t *comp,
@@ -434,10 +443,35 @@ int ts_compress_get_info(const uint8_t *compressed_data,
     uint64_t first_ts = read_bits(compressed_data, &bit_offset, 64);
     if (out_first_timestamp) *out_first_timestamp = (int64_t)first_ts;
 
-    /* 估算点数（简化实现） */
+    /* 估算点数：通过遍历时间戳压缩数据计算 */
     if (out_num_points) {
-        size_t remaining_bits = 0;  /* 需要更好的方式计算 */
-        *out_num_points = 0;  /* 暂时设为0，调用者需要使用 ts_decompress */
+        /* 压缩格式：每个点的时间戳压缩为 1 bit 控制位 + (14 或 32) bits 数据 */
+        /* 第一个点用 64 bits，后续点平均约 15 bits */
+        /* 总大小（字节）* 8 / 平均每点位数 */
+        /* 简化估算：假设每点约 16 bits（1 + 14 + 1 填充） */
+        size_t total_bits = 0;
+        size_t temp_offset = 0;
+
+        /* 跳过首个时间戳（64 bits） */
+        temp_offset = 64;
+
+        /* 计算剩余位数 */
+        while (temp_offset < 64 * 1024) {  /* 最大 64KB 数据 */
+            int control = read_bits(compressed_data, &temp_offset, 1);
+            if (control == 0) {
+                temp_offset += TIMESTAMP_DELTA_BITS;  /* 14 bits */
+            } else {
+                temp_offset += 32;  /* 32 bits */
+            }
+            total_bits = temp_offset;
+        }
+
+        /* 估算点数：首点 64 bits + 后续每点约 15 bits */
+        uint32_t estimated = 1;
+        if (total_bits > 64) {
+            estimated = 1 + (uint32_t)((total_bits - 64) / 15);
+        }
+        *out_num_points = estimated;
     }
 
     return 0;
