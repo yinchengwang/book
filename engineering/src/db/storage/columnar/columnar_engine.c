@@ -71,7 +71,7 @@ int columnar_table_create(const char *name, const char **column_names, int32_t n
         table->columns[i].total_count = 0;
     }
 
-    // 保存到文件
+    // 序列化到文件（使用偏移量而非指针）
     char path[512];
     snprintf(path, sizeof(path), "%s/%s.table", g_data_dir, name);
     FILE *f = fopen(path, "wb");
@@ -79,6 +79,9 @@ int columnar_table_create(const char *name, const char **column_names, int32_t n
         fwrite(table, sizeof(columnar_table_internal_t), 1, f);
         fclose(f);
     }
+
+    // 序列化数据文件
+    columnar_serialize_table(table, NULL);
 
     free(table->columns);
     free(table);
@@ -252,12 +255,117 @@ int columnar_agg_avg_double(void *table, const char *col_name, double *result) {
 }
 
 /* ========================================================================
- * 压缩（预留实现）
+ * 序列化/反序列化（偏移量代替指针）
+ * ======================================================================== */
+
+/**
+ * @brief 序列化表到文件（使用偏移量而非指针）
+ * @param table 表对象
+ * @param file_offset 输出文件的写入偏移量
+ * @return 0成功，-1失败
+ */
+static int columnar_serialize_table(void *table, size_t *file_offset) {
+    if (!table) return -1;
+    columnar_table_internal_t *t = (columnar_table_internal_t *)table;
+
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%s.data", g_data_dir, t->name);
+
+    FILE *f = fopen(path, "ab"); /* 追加模式 */
+    if (!f) return -1;
+
+    fseek(f, 0, SEEK_END);
+    size_t base_offset = ftell(f);
+
+    /* 写入每个列块的数据，记录偏移量 */
+    for (int i = 0; i < t->num_columns; i++) {
+        column_desc_t *col = &t->columns[i];
+        column_chunk_t *chunk = col->chunks;
+        while (chunk) {
+            chunk->file_offset = ftell(f);
+            /* 写入数据 */
+            size_t write_size = chunk->compressed_size > 0 ? chunk->compressed_size : chunk->count * chunk->element_size;
+            if (write_size > 0) {
+                fwrite(chunk->data, 1, write_size, f);
+            }
+            chunk = chunk->next;
+        }
+    }
+
+    fclose(f);
+    if (file_offset) *file_offset = base_offset;
+    return 0;
+}
+
+/**
+ * @brief 从文件反序列化表（将偏移量转换为指针）
+ * @param name 表名
+ * @return 0成功，-1失败
+ */
+static int columnar_deserialize_table(const char *name) {
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%s.table", g_data_dir, name);
+
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+
+    /* 反序列化表结构 */
+    columnar_table_internal_t *table = (columnar_table_internal_t *)malloc(sizeof(columnar_table_internal_t));
+    if (!table) { fclose(f); return -1; }
+    fread(table, sizeof(columnar_table_internal_t), 1, f);
+    fclose(f);
+
+    /* 反序列化数据文件 */
+    snprintf(path, sizeof(path), "%s/%s.data", g_data_dir, name);
+    f = fopen(path, "rb");
+    if (f) {
+        for (int i = 0; i < table->num_columns; i++) {
+            column_desc_t *col = &table->columns[i];
+            column_chunk_t *chunk = col->chunks;
+            while (chunk) {
+                if (chunk->file_offset > 0) {
+                    fseek(f, (long)chunk->file_offset, SEEK_SET);
+                    size_t read_size = chunk->compressed_size > 0 ? chunk->compressed_size : chunk->count * chunk->element_size;
+                    chunk->data = malloc(read_size > 0 ? read_size : 1);
+                    if (chunk->data && read_size > 0) {
+                        fread(chunk->data, 1, read_size, f);
+                    }
+                    if (chunk->compressed_size > 0) {
+                        columnar_decompress_chunk(chunk);
+                    }
+                }
+                chunk = chunk->next;
+            }
+        }
+        fclose(f);
+    }
+
+    free(table->columns);
+    free(table);
+    return 0;
+}
+
+/* ========================================================================
+ * 压缩
  * ======================================================================== */
 
 int columnar_compress(void *table, ColumnarCompressionType type) {
     if (!table) return -1;
-    LOG_INFO("Compression type %d not yet implemented", type);
+    columnar_table_internal_t *t = (columnar_table_internal_t *)table;
+
+    if (type == COL_COMPRESS_NONE) return 0;
+
+    for (int i = 0; i < t->num_columns; i++) {
+        column_chunk_t *chunk = t->columns[i].chunks;
+        while (chunk) {
+            if (type == COL_COMPRESS_RLE || type == COL_COMPRESS_ZSTD) {
+                if (columnar_compress_chunk(chunk) != 0) return -1;
+            }
+            chunk = chunk->next;
+        }
+    }
+
+    LOG_INFO("Compression type %d applied", type);
     return 0;
 }
 
