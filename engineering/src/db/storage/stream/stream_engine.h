@@ -29,6 +29,7 @@ typedef struct stream_record_s {
     void *data;               /**< 数据指针 */
     size_t len;               /**< 数据长度 */
     struct stream_record_s *next;
+    struct stream_record_s *prev;  /**< 前驱指针（用于高效遍历） */
 } stream_record_t;
 
 /** 分区 */
@@ -39,6 +40,10 @@ typedef struct stream_partition_s {
     int64_t first_offset;     /**< 起始偏移 */
     int64_t last_offset;      /**< 最后偏移 */
     int64_t record_count;     /**< 消息数量 */
+    /* 偏移索引: 按需创建，避免内存浪费 */
+    int64_t index_base;       /**< 索引基偏移 */
+    int64_t index_size;       /**< 索引大小 */
+    stream_record_t **offset_index;  /**< 偏移索引表 */
 #ifdef _WIN32
     CRITICAL_SECTION mutex;
 #else
@@ -65,6 +70,7 @@ typedef struct stream_consumer_impl_s {
     stream_partition_t *partition;  /**< 消费的分区 */
     int64_t current_offset;         /**< 当前消费位置 */
     StreamConsumerState state;      /**< 状态 */
+    char stream_name[256];           /**< 流名称（用于偏移持久化） */
 #ifdef _WIN32
     CRITICAL_SECTION mutex;
 #else

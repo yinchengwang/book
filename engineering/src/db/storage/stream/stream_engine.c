@@ -34,6 +34,7 @@ static int stream_produce_to_partition(void *stream, const void *data, size_t le
 
 static char g_data_dir[512] = {0};
 static bool g_initialized = false;
+static int32_t g_next_partition = 0;  /* 轮询分区分配 */
 
 /* ========================================================================
  * 工具函数
@@ -120,6 +121,105 @@ static int64_t get_next_offset(stream_partition_t *part) {
 }
 
 /* ========================================================================
+ * 偏移索引管理
+ * ======================================================================== */
+
+/**
+ * 为分区构建偏移索引，加速 stream_consume 的定位
+ */
+static int build_offset_index(stream_partition_t *part) {
+    if (!part || !part->head) return 0;
+
+    /* 计算索引范围 */
+    int64_t min_off = part->head->offset;
+    int64_t max_off = part->last_offset;
+    int64_t index_count = max_off - min_off + 1;
+
+    /* 限制索引大小：最多索引 10000 条记录 */
+    if (index_count > 10000) {
+        index_count = 10000;
+    }
+
+    stream_record_t **index = (stream_record_t **)calloc(index_count, sizeof(stream_record_t *));
+    if (!index) return -1;
+
+    stream_record_t *r = part->head;
+    int64_t base = min_off;
+    while (r) {
+        int64_t off = r->offset - base;
+        if (off >= 0 && off < index_count) {
+            index[off] = r;
+        }
+        r = r->next;
+    }
+
+    part->index_base = base;
+    part->index_size = index_count;
+    part->offset_index = index;
+    return 0;
+}
+
+/**
+ * 根据偏移快速查找记录（使用索引或二分）
+ */
+static stream_record_t *find_record_by_offset(stream_partition_t *part, int64_t target_offset) {
+    if (!part || target_offset < 0) return NULL;
+
+    /* 无索引时退化为线性扫描 */
+    if (!part->offset_index) {
+        stream_record_t *r = part->head;
+        while (r) {
+            if (r->offset >= target_offset) {
+                if (r->offset == target_offset) return r;
+                if (r->offset > target_offset && !r->prev) return r;
+            }
+            r = r->next;
+        }
+        return NULL;
+    }
+
+    /* 使用索引查找 */
+    if (target_offset < part->index_base) return NULL;
+    int64_t idx = target_offset - part->index_base;
+    if (idx >= part->index_size) {
+        /* 超出索引范围，找最后一条 */
+        return part->tail;
+    }
+    return part->offset_index[idx];
+}
+
+/* ========================================================================
+ * 消费者偏移持久化
+ * ======================================================================== */
+
+/* 消费者偏移存储路径 */
+static int get_consumer_offset_path(const char *stream_name, int32_t partition, char *buf, size_t bufsize) {
+    snprintf(buf, bufsize, "%s/%s.consumer.p%d.offset", g_data_dir, stream_name, partition);
+    return 0;
+}
+
+static int64_t load_consumer_offset(const char *stream_name, int32_t partition) {
+    char path[512];
+    get_consumer_offset_path(stream_name, partition, path, sizeof(path));
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;  /* 无文件则返回 -1，表示从头开始 */
+    int64_t offset = -1;
+    fread(&offset, sizeof(offset), 1, f);
+    fclose(f);
+    return offset;
+}
+
+static int save_consumer_offset(const char *stream_name, int32_t partition, int64_t offset) {
+    char path[512];
+    get_consumer_offset_path(stream_name, partition, path, sizeof(path));
+    FILE *f = fopen(path, "wb");
+    if (!f) return -1;
+    fwrite(&offset, sizeof(offset), 1, f);
+    fclose(f);
+    return 0;
+}
+
+/* ========================================================================
  * 生命周期
  * ======================================================================== */
 
@@ -184,10 +284,12 @@ int stream_create(const char *name, const stream_config_t *config) {
     char path[512];
     snprintf(path, sizeof(path), "%s/%s.handle", g_data_dir, name);
 
-    // 存储到文件（简化实现，实际应持久化）
+    /* 持久化元数据（与 stream_open 读取格式一致） */
     FILE *f = fopen(path, "wb");
     if (f) {
-        fwrite(handle, sizeof(stream_handle_t), 1, f);
+        fwrite(handle->name, sizeof(handle->name), 1, f);
+        fwrite(&handle->config, sizeof(handle->config), 1, f);
+        fwrite(&handle->num_partitions, sizeof(handle->num_partitions), 1, f);
         fclose(f);
     }
 
@@ -205,14 +307,92 @@ void *stream_open(const char *name) {
     FILE *f = fopen(path, "rb");
     if (!f) return NULL;
 
-    stream_handle_t *handle = (stream_handle_t *)malloc(sizeof(stream_handle_t));
-    if (!handle) {
-        fclose(f);
+    /* 只读取元数据（避免读取悬空指针） */
+    char saved_name[256] = {0};
+    stream_config_t saved_config = {0};
+    int32_t saved_num_partitions = 0;
+
+    fread(saved_name, sizeof(saved_name), 1, f);
+    fread(&saved_config, sizeof(saved_config), 1, f);
+    fread(&saved_num_partitions, sizeof(saved_num_partitions), 1, f);
+    fclose(f);
+
+    /* 重建 handle */
+    stream_handle_t *handle = (stream_handle_t *)calloc(1, sizeof(stream_handle_t));
+    if (!handle) return NULL;
+
+    strncpy(handle->name, name, sizeof(handle->name) - 1);
+    memcpy(&handle->config, &saved_config, sizeof(stream_config_t));
+    handle->num_partitions = saved_num_partitions > 0 ? saved_num_partitions : 1;
+
+    /* 重建分区数组 */
+    handle->partitions = (stream_partition_t *)calloc(handle->num_partitions, sizeof(stream_partition_t));
+    if (!handle->partitions) {
+        free(handle);
         return NULL;
     }
 
-    fread(handle, sizeof(stream_handle_t), 1, f);
-    fclose(f);
+    for (int i = 0; i < handle->num_partitions; i++) {
+        stream_partition_t *part = create_partition(i);
+        if (!part) {
+            for (int j = 0; j < i; j++) {
+                destroy_partition(&handle->partitions[j]);
+            }
+            free(handle->partitions);
+            free(handle);
+            return NULL;
+        }
+        handle->partitions[i] = *part;
+        free(part);
+
+        /* 从持久化文件加载记录 */
+        char record_path[512];
+        snprintf(record_path, sizeof(record_path), "%s/%s.records.p%d", g_data_dir, name, i);
+        FILE *rf = fopen(record_path, "rb");
+        if (rf) {
+            stream_record_t *prev = NULL;
+            while (1) {
+                int64_t off = 0, ts = 0;
+                int32_t datalen = 0;
+                if (fread(&off, sizeof(off), 1, rf) != 1) break;
+                if (fread(&ts, sizeof(ts), 1, rf) != 1) break;
+                if (fread(&datalen, sizeof(datalen), 1, rf) != 1) break;
+
+                stream_record_t *rec = (stream_record_t *)malloc(sizeof(stream_record_t));
+                if (!rec) break;
+                rec->offset = off;
+                rec->timestamp = ts;
+                rec->partition = i;
+                rec->len = datalen;
+                rec->data = malloc(datalen);
+                if (!rec->data) {
+                    free(rec);
+                    break;
+                }
+                if (fread(rec->data, datalen, 1, rf) != 1) {
+                    free(rec->data);
+                    free(rec);
+                    break;
+                }
+
+                rec->next = NULL;
+                if (prev) {
+                    prev->next = rec;
+                    rec->prev = prev;
+                    handle->partitions[i].tail = rec;
+                } else {
+                    handle->partitions[i].head = handle->partitions[i].tail = rec;
+                    rec->prev = NULL;
+                }
+                handle->partitions[i].last_offset = off;
+                handle->partitions[i].record_count++;
+                handle->total_records++;
+                prev = rec;
+            }
+            fclose(rf);
+            build_offset_index(&handle->partitions[i]);
+        }
+    }
 
     return handle;
 }
@@ -295,14 +475,38 @@ static int stream_produce_to_partition(void *stream, const void *data, size_t le
     // 添加到链表
     if (part->tail) {
         part->tail->next = record;
+        record->prev = part->tail;
         part->tail = record;
     } else {
         part->head = part->tail = record;
+        record->prev = NULL;
     }
 
     part->last_offset = record->offset;
     part->record_count++;
     handle->total_records++;
+
+    /* 持久化记录到分区文件 */
+    char record_path[512];
+    snprintf(record_path, sizeof(record_path), "%s/%s.records.p%d",
+             g_data_dir, handle->name, partition);
+    FILE *rf = fopen(record_path, "ab");
+    if (rf) {
+        fwrite(&record->offset, sizeof(record->offset), 1, rf);
+        fwrite(&record->timestamp, sizeof(record->timestamp), 1, rf);
+        int32_t datalen = (int32_t)record->len;
+        fwrite(&datalen, sizeof(datalen), 1, rf);
+        fwrite(record->data, record->len, 1, rf);
+        fclose(rf);
+    }
+
+    /* 更新偏移索引 */
+    if (part->offset_index) {
+        int64_t idx = record->offset - part->index_base;
+        if (idx >= 0 && idx < part->index_size) {
+            part->offset_index[idx] = record;
+        }
+    }
 
     unlock_mutex(&part->mutex);
     return 0;
@@ -333,12 +537,25 @@ stream_consumer_t *stream_subscribe(void *stream, int64_t start_offset) {
 
     stream_handle_t *handle = (stream_handle_t *)stream;
 
+    /* 轮询分配分区 */
+    int assigned_partition = g_next_partition % handle->num_partitions;
+    g_next_partition++;
+
     stream_consumer_impl_t *impl = (stream_consumer_impl_t *)calloc(1, sizeof(stream_consumer_impl_t));
     if (!impl) return NULL;
 
-    impl->current_offset = start_offset >= 0 ? start_offset : 0;
+    impl->partition = &handle->partitions[assigned_partition];
+    strncpy(impl->stream_name, handle->name, sizeof(impl->stream_name) - 1);
+
+    /* 尝试从持久化存储恢复偏移量 */
+    if (start_offset < 0) {
+        int64_t saved = load_consumer_offset(handle->name, assigned_partition);
+        impl->current_offset = (saved >= 0) ? saved : 0;
+    } else {
+        impl->current_offset = start_offset;
+    }
+
     impl->state = CONSUMER_STATE_RUNNING;
-    impl->partition = &handle->partitions[0];
 #ifdef _WIN32
     InitializeCriticalSection(&impl->mutex);
 #else
@@ -369,14 +586,17 @@ int stream_consume(stream_consumer_t *consumer, void *out_data, size_t *out_len,
 #endif
 
     stream_partition_t *part = impl->partition;
-    stream_record_t *record = part->head;
 
-    // 找到指定偏移的记录
-    while (record) {
-        if (record->offset >= impl->current_offset) {
-            break;
+    /* 使用偏移索引快速定位记录 */
+    stream_record_t *record = find_record_by_offset(part, impl->current_offset);
+
+    /* 索引未命中或无索引时，退化为线性扫描找下一条有效记录 */
+    if (!record || record->offset < impl->current_offset) {
+        record = part->head;
+        while (record) {
+            if (record->offset >= impl->current_offset) break;
+            record = record->next;
         }
-        record = record->next;
     }
 
     if (!record) {
@@ -386,7 +606,7 @@ int stream_consume(stream_consumer_t *consumer, void *out_data, size_t *out_len,
         pthread_mutex_unlock(&impl->mutex);
 #endif
         *out_len = 0;
-        return -1;  // 无新消息
+        return -1;  /* 无新消息 */
     }
 
     size_t copy_len = record->len < max_len ? record->len : max_len;
@@ -394,6 +614,9 @@ int stream_consume(stream_consumer_t *consumer, void *out_data, size_t *out_len,
     *out_len = copy_len;
     impl->current_offset = record->offset + 1;
     consumer->current_offset = impl->current_offset;
+
+    /* 持久化消费者偏移 */
+    save_consumer_offset(impl->stream_name, part->id, impl->current_offset);
 
 #ifdef _WIN32
     LeaveCriticalSection(&impl->mutex);
@@ -413,6 +636,10 @@ int stream_commit_offset(stream_consumer_t *consumer, int64_t offset) {
 #endif
     impl->current_offset = offset;
     consumer->current_offset = offset;
+
+    /* 持久化偏移量 */
+    save_consumer_offset(impl->stream_name, impl->partition->id, offset);
+
 #ifdef _WIN32
     LeaveCriticalSection(&impl->mutex);
 #else
