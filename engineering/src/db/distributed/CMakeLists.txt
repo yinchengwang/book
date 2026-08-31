@@ -9,8 +9,6 @@ add_subdirectory(shard)
 # RPC 模块（始终构建）
 add_subdirectory(rpc)
 
-# 分布式事务模块（始终构建）
-add_subdirectory(txn)
 
 # 分布式事务增量模块（Gap#1, 骨架）
 add_subdirectory(tso)
