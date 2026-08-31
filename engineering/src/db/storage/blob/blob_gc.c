@@ -24,6 +24,7 @@
 #include "db/blob_engine.h"
 #include "db/blob_catalog.h"
 #include "db/blob_manifest.h"
+#include "db/blob_reader_table.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -107,110 +108,6 @@ static int get_chunk_path(const char *chunks_dir,
  * ======================================================================== */
 
 /* blob_engine_get_reader_table 在 blob_engine.h 中声明 */
-
-/* ========================================================================
- * 读者计数表（来自 blob_engine.c）
- * ======================================================================== */
-
-/**
- * @brief 读者计数条目
- */
-typedef struct reader_entry_s {
-    uint8_t  chunk_id[32];      /**< Chunk ID */
-    uint32_t reader_count;      /**< 当前读者数量 */
-    bool     occupied;          /**< 是否被占用 */
-} reader_entry_t;
-
-/**
- * @brief 读者计数表
- */
-typedef struct reader_table_s {
-    reader_entry_t *entries;
-    size_t          size;
-} reader_table_t;
-
-#define READER_TABLE_SIZE 1024
-
-/**
- * @brief DJB2 哈希函数
- */
-static size_t hash_chunk_id(const uint8_t chunk_id[32]) {
-    uint32_t h = 5381;
-    for (int i = 0; i < 32; i++) {
-        h = ((h << 5) + h) ^ chunk_id[i];
-    }
-    return h;
-}
-
-/**
- * @brief 增加读者计数
- */
-static uint32_t reader_table_inc(reader_table_t *table, const uint8_t chunk_id[32]) {
-    size_t idx = hash_chunk_id(chunk_id) % table->size;
-
-    for (size_t i = 0; i < table->size; i++) {
-        size_t pos = (idx + i) % table->size;
-
-        if (!table->entries[pos].occupied) {
-            memcpy(table->entries[pos].chunk_id, chunk_id, 32);
-            table->entries[pos].reader_count = 1;
-            table->entries[pos].occupied = true;
-            return 1;
-        }
-
-        if (memcmp(table->entries[pos].chunk_id, chunk_id, 32) == 0) {
-            table->entries[pos].reader_count++;
-            return table->entries[pos].reader_count;
-        }
-    }
-
-    return 0;
-}
-
-/**
- * @brief 减少读者计数
- */
-static uint32_t reader_table_dec(reader_table_t *table, const uint8_t chunk_id[32]) {
-    size_t idx = hash_chunk_id(chunk_id) % table->size;
-
-    for (size_t i = 0; i < table->size; i++) {
-        size_t pos = (idx + i) % table->size;
-
-        if (!table->entries[pos].occupied) {
-            continue;
-        }
-
-        if (memcmp(table->entries[pos].chunk_id, chunk_id, 32) == 0) {
-            if (table->entries[pos].reader_count > 0) {
-                table->entries[pos].reader_count--;
-            }
-            return table->entries[pos].reader_count;
-        }
-    }
-
-    return 0;
-}
-
-/**
- * @brief 获取读者计数
- */
-static uint32_t reader_table_get(reader_table_t *table, const uint8_t chunk_id[32]) {
-    size_t idx = hash_chunk_id(chunk_id) % table->size;
-
-    for (size_t i = 0; i < table->size; i++) {
-        size_t pos = (idx + i) % table->size;
-
-        if (!table->entries[pos].occupied) {
-            continue;
-        }
-
-        if (memcmp(table->entries[pos].chunk_id, chunk_id, 32) == 0) {
-            return table->entries[pos].reader_count;
-        }
-    }
-
-    return 0;
-}
 
 /* ========================================================================
  * 活动读取者保护

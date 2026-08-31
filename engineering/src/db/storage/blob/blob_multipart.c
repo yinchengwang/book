@@ -19,6 +19,9 @@ typedef struct multipart_session_s {
     int part_capacity;
 } multipart_session_t;
 
+/* 简化的 session 跟踪：使用静态变量存储当前 session */
+static multipart_session_t *g_current_session = NULL;
+
 int blob_multipart_begin(blob_engine_t *engine, const char *upload_id,
                           size_t total_size) {
     if (!engine || !upload_id) return -1;
@@ -48,9 +51,8 @@ int blob_multipart_begin(blob_engine_t *engine, const char *upload_id,
         return -1;
     }
 
-    /* 将 session 指针存储在某处（简化实现直接返回 0） */
-    /* 实际实现中应该用哈希表管理 session */
-    (void)session;  /* 暂时不保存 */
+    /* 保存 session */
+    g_current_session = session;
 
     return 0;
 }
@@ -71,7 +73,24 @@ int blob_multipart_complete(blob_engine_t *engine, const char *upload_id,
 }
 
 int blob_multipart_abort(blob_engine_t *engine, const char *upload_id) {
-    (void)engine; (void)upload_id;
-    /* TODO: 实现中止上传 */
+    (void)engine;
+    (void)upload_id;
+
+    if (!g_current_session) {
+        return 0;
+    }
+
+    /* 中止上传 */
+    if (g_current_session->upload) {
+        blob_upload_abort(g_current_session->upload);
+    }
+
+    /* 释放 part 列表 */
+    free(g_current_session->part_numbers);
+
+    /* 释放 session */
+    free(g_current_session);
+    g_current_session = NULL;
+
     return 0;
 }
