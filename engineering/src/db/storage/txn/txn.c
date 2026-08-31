@@ -10,13 +10,54 @@
  * 5. 崩溃恢复时根据 WAL 重做已提交事务，撤销未提交事务
  */
 
-#include "db/txn.h"
 #include "db/wal.h"
 #include "db/kv.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
+
+/* ============================================================
+ * 事务常量和类型（本地定义，避免与 db/txn.h 冲突）
+ * ============================================================ */
+
+/** 事务返回码 */
+#define TXN_OK       0
+#define TXN_ERROR   (-1)
+#define TXN_NOT_FOUND 1
+
+/** 事务状态 */
+typedef enum txn_state_e {
+    TXN_STATE_ACTIVE    = 0,
+    TXN_STATE_COMMITTED = 1,
+    TXN_STATE_ABORTED   = 2,
+    TXN_STATE_PREPARED  = 3
+} txn_state_t;
+
+/** 无效事务ID */
+#define TXN_ID_NONE 0
+
+/** 最大并发事务数 */
+#define TXN_MAX_ACTIVE 1024
+
+/* ============================================================
+ * MVCC 隔离级别
+ * ============================================================ */
+
+/** 事务隔离级别 */
+typedef enum txn_isolation_e {
+    TXN_ISOLATION_READ_COMMITTED = 0,   /**< 读已提交 */
+    TXN_ISOLATION_REPEATABLE_READ = 1,  /**< 可重复读 */
+    TXN_ISOLATION_SERIALIZABLE = 2      /**< 可串行化 */
+} txn_isolation_t;
+
+/** 元组头（MVCC 版本信息） */
+typedef struct tuple_header_s {
+    uint32_t t_xmin;       /**< 创建事务 ID */
+    uint32_t t_xmax;       /**< 删除事务 ID (0 = 未删除) */
+    uint64_t t_csn;        /**< 提交序列号 */
+    bool     committed;    /**< 是否已提交 */
+} tuple_header_t;
 
 /* ============================================================
  * 内部数据结构
@@ -42,6 +83,11 @@ struct txn_s {
     uint64_t         start_lsn;      /**< 事务开始时的 LSN */
     uint64_t         start_time;     /**< 开始时间（毫秒） */
     uint32_t         last_lsn;       /**< 最后一条日志的 LSN */
+
+    /* MVCC 字段 */
+    txn_isolation_t  isolation;      /**< 隔离级别 */
+    uint64_t         snapshot_lsn;   /**< 快照 LSN（事务开始时） */
+    bool             is_mvcc;        /**< 是否使用 MVCC */
 
     /* 未提交值列表（用于回滚） */
     txn_uncommitted_t *uncommitted;
@@ -391,4 +437,175 @@ void txn_print_active(void) {
                    txn->txn_id, state_str, (unsigned long long)txn->start_time);
         }
     }
+}
+
+/* ============================================================
+ * MVCC 快照隔离
+ * ============================================================ */
+
+/**
+ * @brief 获取事务的快照 LSN
+ * @param txn 事务句柄
+ * @return 快照 LSN，事务不存在返回 0
+ */
+uint64_t txn_get_snapshot_lsn(const txn_t *txn) {
+    if (!txn) return 0;
+    return txn->snapshot_lsn;
+}
+
+/**
+ * @brief 检查事务是否使用 MVCC
+ * @param txn 事务句柄
+ * @return true 如果使用 MVCC
+ */
+bool txn_is_mvcc(const txn_t *txn) {
+    if (!txn) return false;
+    return txn->is_mvcc;
+}
+
+/**
+ * @brief 获取事务隔离级别
+ * @param txn 事务句柄
+ * @return 隔离级别
+ */
+txn_isolation_t txn_get_isolation_level(const txn_t *txn) {
+    if (!txn) return TXN_ISOLATION_READ_COMMITTED;
+    return txn->isolation;
+}
+
+/**
+ * @brief 开始 MVCC 事务
+ *
+ * 创建一个使用 MVCC 快照隔离的事务，获取 IS 锁。
+ * 在修改数据时会升级为 X 锁。
+ *
+ * @param txn 事务句柄
+ * @param level 隔离级别
+ * @return TXN_OK 成功，TXN_ERROR 失败
+ */
+int txn_begin_mvcc(txn_t *txn, txn_isolation_t level) {
+    if (!txn) return TXN_ERROR;
+    if (txn->state != TXN_STATE_ACTIVE) {
+        txn_set_error(txn, "Transaction not active");
+        return TXN_ERROR;
+    }
+
+    /* 设置 MVCC 隔离级别 */
+    txn->isolation = level;
+    txn->is_mvcc = true;
+
+    /* 记录快照 LSN */
+    if (txn->wal) {
+        txn->snapshot_lsn = wal_get_lsn(txn->wal);
+    } else {
+        txn->snapshot_lsn = txn->start_lsn;
+    }
+
+    /* 获取 IS 锁（意向共享锁） */
+    lock_acquire(txn->db->lock_mgr, txn, LOCK_DATABASE, 0, 0, LOCK_MODE_IS, 1000);
+
+    return TXN_OK;
+}
+
+/**
+ * @brief 检查元组对当前事务是否可见
+ *
+ * MVCC 可见性判断规则：
+ * 1. 事务自己的修改始终可见
+ * 2. xmin 事务已提交且在快照之前 -> 可见
+ * 3. xmax 事务已提交且在快照之前 -> 不可见（已被删除）
+ *
+ * @param txn 事务句柄
+ * @param tuple 元组头（包含 xmin/xmax）
+ * @return 1 可见，0 不可见
+ */
+int txn_visibility_check(txn_t *txn, const tuple_header_t *tuple) {
+    if (!txn || !tuple) return 0;
+
+    /* 事务自己的修改始终可见 */
+    if (tuple->t_xmin == txn->txn_id) return 1;
+
+    /* 检查 xmin 是否在快照之前 */
+    if (tuple->t_xmin < txn->snapshot_lsn && tuple->committed) {
+        /* xmin 已提交且在快照之前，检查 xmax */
+        if (tuple->t_xmax == 0) {
+            /* 未被删除，可见 */
+            return 1;
+        }
+        if (tuple->t_xmax >= txn->snapshot_lsn) {
+            /* 删除操作在快照之后，仍可见 */
+            return 1;
+        }
+        /* 已被删除且删除操作在快照之前，不可见 */
+        return 0;
+    }
+
+    /* xmin 在快照之后或未提交，不可见 */
+    return 0;
+}
+
+/**
+ * @brief 写修改操作的 WAL（带 MVCC 信息）
+ *
+ * 在 MVCC 模式下，写操作会记录 xmin/xmax 信息到 WAL。
+ *
+ * @param txn 事务句柄
+ * @param key 键
+ * @param key_len 键长度
+ * @param old_value 旧值（更新/删除时）
+ * @param old_len 旧值长度
+ * @param new_value 新值（插入/更新时）
+ * @param new_len 新值长度
+ * @param is_delete 是否是删除操作
+ * @return WAL LSN
+ */
+uint64_t txn_write_mvcc_wal(txn_t *txn,
+                            const void *key, size_t key_len,
+                            const void *old_value, size_t old_len,
+                            const void *new_value, size_t new_len,
+                            bool is_delete) {
+    if (!txn || !txn->wal) return 0;
+
+    uint64_t lsn = 0;
+
+    if (is_delete) {
+        lsn = wal_write_delete(txn->wal, txn->txn_id,
+                               key, key_len,
+                               old_value, old_len);
+    } else if (old_value && old_len > 0) {
+        lsn = wal_write_update(txn->wal, txn->txn_id,
+                               key, key_len,
+                               old_value, old_len,
+                               new_value, new_len);
+    } else {
+        lsn = wal_write_insert(txn->wal, txn->txn_id,
+                               key, key_len,
+                               new_value, new_len);
+    }
+
+    txn->last_lsn = lsn;
+    return lsn;
+}
+
+/**
+ * @brief 升级锁到排他模式
+ *
+ * 在 MVCC 模式下，修改数据前需要升级锁。
+ *
+ * @param txn 事务句柄
+ * @return TXN_OK 成功，TXN_ERROR 失败
+ */
+int txn_upgrade_lock_to_exclusive(txn_t *txn) {
+    if (!txn) return TXN_ERROR;
+
+    /* 释放 IS 锁 */
+    lock_release(txn->db->lock_mgr, txn, LOCK_DATABASE, 0, LOCK_MODE_IS);
+
+    /* 获取 X 锁 */
+    if (lock_acquire(txn->db->lock_mgr, txn, LOCK_DATABASE, 0, 0, LOCK_MODE_X, 1000) != LOCK_OK) {
+        txn_set_error(txn, "Failed to acquire exclusive lock");
+        return TXN_ERROR;
+    }
+
+    return TXN_OK;
 }

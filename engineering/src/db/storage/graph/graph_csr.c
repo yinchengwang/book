@@ -64,6 +64,16 @@ static int grow_edges(graph_csr_t *csr, uint64_t new_capacity) {
     return 0;
 }
 
+/**
+ * @brief 内部合并（无锁，由调用者持有写锁）
+ */
+static int graph_csr_compact_internal(graph_csr_t *csr);
+
+/**
+ * @brief 内部构建反向索引（无锁，由调用者持有锁）
+ */
+static void graph_csr_build_reverse_index_internal(graph_csr_t *csr);
+
 /* ========================================================================
  * 生命周期 API 实现
  * ======================================================================== */
@@ -345,22 +355,31 @@ uint64_t graph_csr_add_vertex(graph_csr_t *csr, uint32_t label_id,
                               const void *props, size_t prop_size) {
     if (csr == NULL) return UINT64_MAX;
 
+    graph_csr_write_lock(csr);
+
     /* 检查是否需要扩容 */
     if (csr->vertex_count >= csr->max_vertices) {
         uint64_t new_max = csr->max_vertices * 2;
         if (grow_vertices(csr, new_max) != 0) {
+            graph_csr_write_unlock(csr);
             return UINT64_MAX;
         }
         /* 扩展 offsets 数组 */
         uint64_t *new_offsets = (uint64_t *)realloc(
             csr->offsets, (new_max + 1) * sizeof(uint64_t));
-        if (new_offsets == NULL) return UINT64_MAX;
+        if (new_offsets == NULL) {
+            graph_csr_write_unlock(csr);
+            return UINT64_MAX;
+        }
         csr->offsets = new_offsets;
 
         /* 扩展入边 offsets 数组 */
         uint64_t *new_in_offsets = (uint64_t *)realloc(
             csr->in_offsets, (new_max + 1) * sizeof(uint64_t));
-        if (new_in_offsets == NULL) return UINT64_MAX;
+        if (new_in_offsets == NULL) {
+            graph_csr_write_unlock(csr);
+            return UINT64_MAX;
+        }
         csr->in_offsets = new_in_offsets;
     }
 
@@ -375,6 +394,7 @@ uint64_t graph_csr_add_vertex(graph_csr_t *csr, uint32_t label_id,
     csr->offsets[csr->vertex_count] = csr->offsets[csr->vertex_count - 1];
 
     LOG_DEBUG("添加顶点: id=%lu, label=%u", vertex_id, label_id);
+    graph_csr_write_unlock(csr);
     return vertex_id;
 }
 
@@ -383,7 +403,10 @@ const graph_csr_vertex_t *graph_csr_get_vertex(const graph_csr_t *csr,
     if (csr == NULL || vertex_id >= csr->vertex_count) {
         return NULL;
     }
-    return &csr->vertices[vertex_id];
+    graph_csr_read_lock((graph_csr_t *)csr);
+    const graph_csr_vertex_t *result = &csr->vertices[vertex_id];
+    graph_csr_read_unlock((graph_csr_t *)csr);
+    return result;
 }
 
 /* ========================================================================
@@ -398,11 +421,14 @@ uint64_t graph_csr_add_edge(graph_csr_t *csr,
         return UINT64_MAX;
     }
 
+    graph_csr_write_lock(csr);
+
     /* 添加到 COO 缓冲区 */
     if (csr->coo_count >= csr->coo_capacity) {
-        /* 触发自动合并 */
-        if (graph_csr_compact(csr) != 0) {
+        /* 触发自动合并（内部版本，不重复加锁） */
+        if (graph_csr_compact_internal(csr) != 0) {
             LOG_ERROR("COO 缓冲区满且合并失败");
+            graph_csr_write_unlock(csr);
             return UINT64_MAX;
         }
     }
@@ -426,6 +452,7 @@ uint64_t graph_csr_add_edge(graph_csr_t *csr,
 
     LOG_DEBUG("添加边到 COO: src=%lu, dst=%lu, edge_id=%lu",
               src, dst, csr->coo_entries[idx].edge_id);
+    graph_csr_write_unlock(csr);
     return csr->coo_entries[idx].edge_id;
 }
 
@@ -436,11 +463,13 @@ const graph_csr_edge_t *graph_csr_get_out_edges(const graph_csr_t *csr,
         return NULL;
     }
 
+    graph_csr_read_lock((graph_csr_t *)csr);
     uint64_t start = csr->offsets[src];
     uint64_t end = csr->offsets[src + 1];
-
     if (out_count) *out_count = (uint32_t)(end - start);
-    return &csr->edges[start];
+    const graph_csr_edge_t *result = &csr->edges[start];
+    graph_csr_read_unlock((graph_csr_t *)csr);
+    return result;
 }
 
 const graph_csr_edge_t *graph_csr_get_in_edges(const graph_csr_t *csr,
@@ -450,11 +479,13 @@ const graph_csr_edge_t *graph_csr_get_in_edges(const graph_csr_t *csr,
         return NULL;
     }
 
+    graph_csr_read_lock((graph_csr_t *)csr);
     uint64_t start = csr->in_offsets[dst];
     uint64_t end = csr->in_offsets[dst + 1];
-
     if (out_count) *out_count = (uint32_t)(end - start);
-    return &csr->in_edges[start];
+    const graph_csr_edge_t *result = &csr->in_edges[start];
+    graph_csr_read_unlock((graph_csr_t *)csr);
+    return result;
 }
 
 /* ========================================================================
@@ -462,6 +493,14 @@ const graph_csr_edge_t *graph_csr_get_in_edges(const graph_csr_t *csr,
  * ======================================================================== */
 
 int graph_csr_compact(graph_csr_t *csr) {
+    if (csr == NULL) return -1;
+    graph_csr_write_lock(csr);
+    int ret = graph_csr_compact_internal(csr);
+    graph_csr_write_unlock(csr);
+    return ret;
+}
+
+static int graph_csr_compact_internal(graph_csr_t *csr) {
     if (csr == NULL || csr->coo_count == 0) return 0;
 
     LOG_INFO("开始合并 COO 缓冲区: %u 条边", csr->coo_count);
@@ -526,8 +565,8 @@ int graph_csr_compact(graph_csr_t *csr) {
 
     csr->edge_count = new_edge_count;
 
-    /* 构建反向边索引 */
-    graph_csr_build_reverse_index(csr);
+    /* 构建反向边索引（内部版本，不重复加锁） */
+    graph_csr_build_reverse_index_internal(csr);
 
     LOG_INFO("COO 合并完成: edges=%lu", csr->edge_count);
     return 0;
@@ -543,7 +582,7 @@ double graph_csr_coo_usage(const graph_csr_t *csr) {
     return (double)csr->coo_count / csr->coo_capacity;
 }
 
-void graph_csr_build_reverse_index(graph_csr_t *csr) {
+void graph_csr_build_reverse_index_internal(graph_csr_t *csr) {
     if (csr == NULL) return;
 
     LOG_INFO("构建反向边索引: vertices=%lu, edges=%lu",
@@ -612,6 +651,13 @@ void graph_csr_build_reverse_index(graph_csr_t *csr) {
     LOG_INFO("反向边索引构建完成: total_in_edges=%lu", total_in_edges);
 }
 
+void graph_csr_build_reverse_index(graph_csr_t *csr) {
+    if (csr == NULL) return;
+    graph_csr_write_lock(csr);
+    graph_csr_build_reverse_index_internal(csr);
+    graph_csr_write_unlock(csr);
+}
+
 int graph_csr_scan(graph_csr_t *csr, uint64_t **out_ids, uint32_t *out_count) {
     if (csr == NULL || out_ids == NULL || out_count == NULL) {
         return -1;
@@ -620,13 +666,17 @@ int graph_csr_scan(graph_csr_t *csr, uint64_t **out_ids, uint32_t *out_count) {
     *out_ids = NULL;
     *out_count = 0;
 
+    graph_csr_read_lock(csr);
+
     if (csr->vertex_count == 0) {
+        graph_csr_read_unlock(csr);
         return 0;
     }
 
     uint64_t *ids = (uint64_t *)malloc(
         csr->vertex_count * sizeof(uint64_t));
     if (ids == NULL) {
+        graph_csr_read_unlock(csr);
         return -1;
     }
 
@@ -637,6 +687,7 @@ int graph_csr_scan(graph_csr_t *csr, uint64_t **out_ids, uint32_t *out_count) {
     *out_ids = ids;
     *out_count = (uint32_t)csr->vertex_count;
 
+    graph_csr_read_unlock(csr);
     return 0;
 }
 
@@ -647,9 +698,12 @@ int graph_csr_scan(graph_csr_t *csr, uint64_t **out_ids, uint32_t *out_count) {
 uint32_t graph_csr_get_or_create_label(graph_csr_t *csr, const char *label_name) {
     if (csr == NULL || label_name == NULL) return UINT32_MAX;
 
+    graph_csr_write_lock(csr);
+
     /* 查找已存在的标签 */
     for (uint32_t i = 0; i < csr->label_count; i++) {
         if (strcmp(csr->labels[i].name, label_name) == 0) {
+            graph_csr_write_unlock(csr);
             return i;
         }
     }
@@ -657,6 +711,7 @@ uint32_t graph_csr_get_or_create_label(graph_csr_t *csr, const char *label_name)
     /* 创建新标签 */
     if (csr->label_count >= GRAPH_CSR_MAX_LABELS) {
         LOG_ERROR("标签数量已达上限");
+        graph_csr_write_unlock(csr);
         return UINT32_MAX;
     }
 
@@ -665,6 +720,7 @@ uint32_t graph_csr_get_or_create_label(graph_csr_t *csr, const char *label_name)
             sizeof(csr->labels[label_id].name) - 1);
     csr->labels[label_id].vertex_count = 0;
 
+    graph_csr_write_unlock(csr);
     return label_id;
 }
 
@@ -672,7 +728,10 @@ const char *graph_csr_get_label_name(const graph_csr_t *csr, uint32_t label_id) 
     if (csr == NULL || label_id >= csr->label_count) {
         return NULL;
     }
-    return csr->labels[label_id].name;
+    graph_csr_read_lock((graph_csr_t *)csr);
+    const char *name = csr->labels[label_id].name;
+    graph_csr_read_unlock((graph_csr_t *)csr);
+    return name;
 }
 
 uint64_t *graph_csr_get_vertices_by_label(const graph_csr_t *csr,
@@ -683,10 +742,13 @@ uint64_t *graph_csr_get_vertices_by_label(const graph_csr_t *csr,
         return NULL;
     }
 
+    graph_csr_read_lock((graph_csr_t *)csr);
+
     /* 首先确保标签索引已构建 */
     if (csr->label_index == NULL || csr->label_index_count == 0) {
         /* 返回空结果 */
         if (out_count) *out_count = 0;
+        graph_csr_read_unlock((graph_csr_t *)csr);
         return NULL;
     }
 
@@ -701,16 +763,20 @@ uint64_t *graph_csr_get_vertices_by_label(const graph_csr_t *csr,
                 memcpy(result, csr->label_index[i].vertex_ids,
                        csr->label_index[i].count * sizeof(uint64_t));
             }
+            graph_csr_read_unlock((graph_csr_t *)csr);
             return result;
         }
     }
 
     if (out_count) *out_count = 0;
+    graph_csr_read_unlock((graph_csr_t *)csr);
     return NULL;
 }
 
 void graph_csr_build_label_index(graph_csr_t *csr) {
     if (csr == NULL) return;
+
+    graph_csr_write_lock(csr);
 
     LOG_INFO("构建标签索引: vertices=%lu", csr->vertex_count);
 
@@ -755,6 +821,8 @@ void graph_csr_build_label_index(graph_csr_t *csr) {
     }
 
     LOG_INFO("标签索引构建完成: %u 个标签", csr->label_index_count);
+
+    graph_csr_write_unlock(csr);
 }
 
 /* ========================================================================
@@ -766,9 +834,11 @@ void graph_csr_get_stats(const graph_csr_t *csr,
                          uint32_t *out_labels) {
     if (csr == NULL) return;
 
+    graph_csr_read_lock((graph_csr_t *)csr);
     if (out_vertices) *out_vertices = csr->vertex_count;
     if (out_edges) *out_edges = csr->edge_count + csr->coo_count;
     if (out_labels) *out_labels = csr->label_count;
+    graph_csr_read_unlock((graph_csr_t *)csr);
 }
 
 /* ========================================================================
