@@ -12,11 +12,14 @@
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
+#include <dirent.h>
 
 #ifdef _WIN32
 #include <direct.h>
 #include <errno.h>
 #define mkdir(path) _mkdir(path)
+#define unlink(path) _unlink(path)
+#define rmdir(path) _rmdir(path)
 #else
 #include <sys/stat.h>
 #include <unistd.h>
@@ -216,6 +219,14 @@ static void *st_engine_table_open(const char *name, AccessMode mode) {
     db->end_time = header.end_time;
     db->spatial_bounds = header.spatial_bounds;
 
+    /* 创建/加载空间索引 */
+    char index_path[512];
+    snprintf(index_path, sizeof(index_path), "%s/spatial_index.bin", db->data_dir);
+    db->spatial_index = rtree_load(index_path);
+    if (!db->spatial_index) {
+        db->spatial_index = rtree_create(16);
+    }
+
     return db;
 }
 
@@ -240,6 +251,14 @@ static int st_engine_table_close(void *rel) {
         fclose(fp);
     }
 
+    /* 保存并释放空间索引 */
+    if (db->spatial_index) {
+        char index_path[512];
+        snprintf(index_path, sizeof(index_path), "%s/spatial_index.bin", db->data_dir);
+        rtree_save(db->spatial_index, index_path);
+        rtree_free(db->spatial_index);
+    }
+
     free(db);
     return 0;
 }
@@ -250,14 +269,20 @@ static int st_engine_table_drop(const char *name) {
     char dir_path[512];
     get_dir_path(name, dir_path, sizeof(dir_path));
 
-    /* 删除目录及其内容 */
-    char cmd[1024];
-#ifdef _WIN32
-    snprintf(cmd, sizeof(cmd), "rmdir /s /q \"%s\"", dir_path);
-#else
-    snprintf(cmd, sizeof(cmd), "rm -rf \"%s\"", dir_path);
-#endif
-    system(cmd);
+    /* 删除目录及其内容（先删文件，再删目录） */
+    DIR *d = opendir(dir_path);
+    if (d) {
+        struct dirent *entry;
+        while ((entry = readdir(d)) != NULL) {
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+                continue;
+            char file_path[768];
+            snprintf(file_path, sizeof(file_path), "%s/%s", dir_path, entry->d_name);
+            unlink(file_path);
+        }
+        closedir(d);
+    }
+    rmdir(dir_path);
 
     LOG_INFO("ST table dropped: %s", name);
     return 0;
@@ -303,6 +328,17 @@ static int st_engine_tuple_insert(void *rel, const void *data, size_t len) {
             db->spatial_bounds.min_y = obj->position.y;
         if (obj->position.y > db->spatial_bounds.max_y)
             db->spatial_bounds.max_y = obj->position.y;
+    }
+
+    /* 插入到空间索引 */
+    if (db->spatial_index) {
+        bbox_t obj_bbox = {
+            .min_x = obj->position.x,
+            .min_y = obj->position.y,
+            .max_x = obj->position.x,
+            .max_y = obj->position.y
+        };
+        rtree_insert(db->spatial_index, obj->id, &obj_bbox);
     }
 
     return 0;
@@ -419,36 +455,59 @@ int st_engine_nearest_time(void *rel, const st_point_t *point,
 
     if (load_all_objects(db, &objects, &total) != 0) return -1;
 
-    /* 过滤时间窗口内的对象 */
+    /* 过滤时间窗口内的所有候选对象 */
     int64_t min_time = point->timestamp - time_window;
     int64_t max_time = point->timestamp + time_window;
 
-    /* 使用简单的选择排序找 k 个最近邻 */
+    /* 收集所有候选 */
+    uint32_t capacity = 1024;
+    st_query_result_t *candidates = (st_query_result_t *)malloc(sizeof(st_query_result_t) * capacity);
+    if (!candidates) {
+        free(objects);
+        return -1;
+    }
+
     uint32_t count = 0;
-    for (size_t i = 0; i < total && count < k; i++) {
+    for (size_t i = 0; i < total; i++) {
         st_point_t pt = objects[i].position;
         if (pt.timestamp >= min_time && pt.timestamp <= max_time) {
-            results[count].id = objects[i].id;
-            results[count].distance = st_distance(point, &pt);
-            results[count].time_diff = llabs(pt.timestamp - point->timestamp);
-            results[count].score = st_combined_distance(point, &pt, 1.0, 0.001);
+            if (count >= capacity) {
+                capacity *= 2;
+                st_query_result_t *new_cands = (st_query_result_t *)realloc(candidates, sizeof(st_query_result_t) * capacity);
+                if (!new_cands) {
+                    free(candidates);
+                    free(objects);
+                    return -1;
+                }
+                candidates = new_cands;
+            }
+            candidates[count].id = objects[i].id;
+            candidates[count].distance = st_distance(point, &pt);
+            candidates[count].time_diff = llabs(pt.timestamp - point->timestamp);
+            candidates[count].score = st_combined_distance(point, &pt, 1.0, 0.001);
             count++;
         }
     }
 
-    /* 按综合评分排序 */
+    /* 按综合评分排序，取全局 top-k */
     for (uint32_t i = 0; i < count; i++) {
         for (uint32_t j = i + 1; j < count; j++) {
-            if (results[j].score < results[i].score) {
-                st_query_result_t tmp = results[i];
-                results[i] = results[j];
-                results[j] = tmp;
+            if (candidates[j].score < candidates[i].score) {
+                st_query_result_t tmp = candidates[i];
+                candidates[i] = candidates[j];
+                candidates[j] = tmp;
             }
         }
     }
 
+    uint32_t result_count = (count < k) ? count : k;
+    for (uint32_t i = 0; i < result_count; i++) {
+        results[i] = candidates[i];
+    }
+
+    free(candidates);
     free(objects);
-    *num_results = count;
+    *num_results = result_count;
     return 0;
 }
 
