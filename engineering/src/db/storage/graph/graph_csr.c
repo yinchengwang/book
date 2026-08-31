@@ -469,31 +469,41 @@ int graph_csr_compact(graph_csr_t *csr) {
     /* 计算新的边总数 */
     uint64_t new_edge_count = csr->edge_count + csr->coo_count;
 
-    /* 重新分配边数组 */
-    graph_csr_edge_t *new_edges = (graph_csr_edge_t *)realloc(
-        csr->edges, new_edge_count * sizeof(graph_csr_edge_t));
+    /* 使用 malloc 分配新内存（不要用 realloc，避免指针失效） */
+    graph_csr_edge_t *new_edges = (graph_csr_edge_t *)malloc(
+        new_edge_count * sizeof(graph_csr_edge_t));
     if (new_edges == NULL) {
         LOG_ERROR("分配边数组失败");
         return -1;
     }
-    csr->edges = new_edges;
 
-    /* 复制 COO 条目到边数组 */
-    for (uint32_t i = 0; i < csr->coo_count; i++) {
-        csr->edges[csr->edge_count + i].dst = csr->coo_entries[i].dst;
-        csr->edges[csr->edge_count + i].edge_type = csr->coo_entries[i].edge_type;
-        csr->edges[csr->edge_count + i].edge_id = csr->coo_entries[i].edge_id;
+    /* 复制已有的边 */
+    if (csr->edge_count > 0 && csr->edges != NULL) {
+        memcpy(new_edges, csr->edges, csr->edge_count * sizeof(graph_csr_edge_t));
     }
+
+    /* 复制 COO 条目到边数组（同时填充 src 字段） */
+    for (uint32_t i = 0; i < csr->coo_count; i++) {
+        new_edges[csr->edge_count + i].src = csr->coo_entries[i].src;
+        new_edges[csr->edge_count + i].dst = csr->coo_entries[i].dst;
+        new_edges[csr->edge_count + i].edge_type = csr->coo_entries[i].edge_type;
+        new_edges[csr->edge_count + i].edge_id = csr->coo_entries[i].edge_id;
+    }
+
+    /* 释放旧的边数组并替换为新的 */
+    free(csr->edges);
+    csr->edges = new_edges;
 
     /* 更新 offsets 数组 */
     /* 首先重新计算每个顶点的出边数 */
     memset(csr->offsets, 0, (csr->vertex_count + 1) * sizeof(uint64_t));
 
-    /* 统计已有边的出边数 */
+    /* 统计已有边的出边数（从 src 字段获取源顶点） */
     for (uint64_t i = 0; i < csr->edge_count; i++) {
-        uint64_t src_vertex = 0;  /* 需要从边中获取源顶点 */
-        /* TODO: 边结构需要包含 src 字段，或者通过其他方式获取 */
-        (void)src_vertex;  /* 暂时避免警告 */
+        uint64_t src_vertex = csr->edges[i].src;
+        if (src_vertex < csr->vertex_count) {
+            csr->offsets[src_vertex + 1]++;
+        }
     }
 
     /* 加上 COO 中的出边数 */
@@ -516,6 +526,9 @@ int graph_csr_compact(graph_csr_t *csr) {
 
     csr->edge_count = new_edge_count;
 
+    /* 构建反向边索引 */
+    graph_csr_build_reverse_index(csr);
+
     LOG_INFO("COO 合并完成: edges=%lu", csr->edge_count);
     return 0;
 }
@@ -528,6 +541,103 @@ bool graph_csr_needs_compact(const graph_csr_t *csr) {
 double graph_csr_coo_usage(const graph_csr_t *csr) {
     if (csr == NULL || csr->coo_capacity == 0) return 0.0;
     return (double)csr->coo_count / csr->coo_capacity;
+}
+
+void graph_csr_build_reverse_index(graph_csr_t *csr) {
+    if (csr == NULL) return;
+
+    LOG_INFO("构建反向边索引: vertices=%lu, edges=%lu",
+             csr->vertex_count, csr->edge_count);
+
+    /* 释放旧的反向索引 */
+    free(csr->in_edges);
+    csr->in_edges = NULL;
+
+    /* 统计每个顶点的入度 */
+    uint64_t *in_degree = (uint64_t *)calloc(
+        csr->vertex_count, sizeof(uint64_t));
+    if (in_degree == NULL) return;
+
+    for (uint64_t i = 0; i < csr->edge_count; i++) {
+        uint64_t dst = csr->edges[i].dst;
+        if (dst < csr->vertex_count) {
+            in_degree[dst]++;
+        }
+    }
+
+    /* 计算入边偏移的前缀和 */
+    csr->in_offsets[0] = 0;
+    for (uint64_t i = 0; i < csr->vertex_count; i++) {
+        csr->in_offsets[i + 1] = csr->in_offsets[i] + in_degree[i];
+    }
+
+    /* 分配入边数组 */
+    uint64_t total_in_edges = csr->in_offsets[csr->vertex_count];
+    csr->in_edges = (graph_csr_edge_t *)malloc(
+        total_in_edges * sizeof(graph_csr_edge_t));
+    if (csr->in_edges == NULL) {
+        free(in_degree);
+        return;
+    }
+
+    /* 填充入边数组（逆序：dst 成为 src，src 成为 dst） */
+    uint64_t *insert_pos = (uint64_t *)calloc(
+        csr->vertex_count, sizeof(uint64_t));
+    if (insert_pos == NULL) {
+        free(in_degree);
+        free(csr->in_edges);
+        csr->in_edges = NULL;
+        return;
+    }
+
+    /* 复制一份 in_offsets 用来跟踪插入位置 */
+    memcpy(insert_pos, csr->in_offsets, csr->vertex_count * sizeof(uint64_t));
+
+    for (uint64_t i = 0; i < csr->edge_count; i++) {
+        uint64_t src = csr->edges[i].src;
+        uint64_t dst = csr->edges[i].dst;
+        if (dst < csr->vertex_count && src < csr->vertex_count) {
+            uint64_t pos = insert_pos[dst]++;
+            /* 反转：原来的 dst 变成新的 src（入边的源点） */
+            csr->in_edges[pos].src = dst;   /* 原目标作为新源 */
+            csr->in_edges[pos].dst = src;   /* 原源作为新目标 */
+            csr->in_edges[pos].edge_type = csr->edges[i].edge_type;
+            csr->in_edges[pos].edge_id = csr->edges[i].edge_id;
+        }
+    }
+
+    free(in_degree);
+    free(insert_pos);
+
+    LOG_INFO("反向边索引构建完成: total_in_edges=%lu", total_in_edges);
+}
+
+int graph_csr_scan(graph_csr_t *csr, uint64_t **out_ids, uint32_t *out_count) {
+    if (csr == NULL || out_ids == NULL || out_count == NULL) {
+        return -1;
+    }
+
+    *out_ids = NULL;
+    *out_count = 0;
+
+    if (csr->vertex_count == 0) {
+        return 0;
+    }
+
+    uint64_t *ids = (uint64_t *)malloc(
+        csr->vertex_count * sizeof(uint64_t));
+    if (ids == NULL) {
+        return -1;
+    }
+
+    for (uint64_t i = 0; i < csr->vertex_count; i++) {
+        ids[i] = i;
+    }
+
+    *out_ids = ids;
+    *out_count = (uint32_t)csr->vertex_count;
+
+    return 0;
 }
 
 /* ========================================================================

@@ -294,6 +294,30 @@ TEST_F(GraphCsrTest, NullOperations) {
     EXPECT_EQ(graph_csr_get_vertices_by_label(NULL, 0, &count), nullptr);
 }
 
+TEST_F(GraphCsrTest, CompactReverseIndex) {
+    for (uint64_t i = 0; i < 5; i++) graph_csr_add_vertex(csr, 0, NULL, 0);
+    graph_csr_add_edge(csr, 0, 1, 0, NULL, 0);
+    graph_csr_add_edge(csr, 1, 2, 0, NULL, 0);
+    graph_csr_add_edge(csr, 2, 0, 0, NULL, 0);
+    graph_csr_compact(csr);
+    uint32_t in_count = 0;
+    const graph_csr_edge_t *in_edges = graph_csr_get_in_edges(csr, 0, &in_count);
+    EXPECT_EQ(in_count, 1u);
+    EXPECT_EQ(in_edges[0].src, 2u);
+}
+
+TEST_F(GraphCsrTest, ScanAfterCompact) {
+    for (uint64_t i = 0; i < 3; i++) graph_csr_add_vertex(csr, 0, NULL, 0);
+    graph_csr_add_edge(csr, 0, 1, 0, NULL, 0);
+    graph_csr_add_edge(csr, 0, 2, 0, NULL, 0);
+    graph_csr_compact(csr);
+    uint64_t *ids; uint32_t count;
+    int ret = graph_csr_scan(csr, &ids, &count);
+    EXPECT_EQ(ret, 0);
+    EXPECT_EQ(count, 3u);
+    free(ids);
+}
+
 /* ========================================================================
  * main
  * ======================================================================== */
