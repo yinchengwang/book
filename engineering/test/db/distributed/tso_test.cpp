@@ -243,3 +243,43 @@ TEST(TsoPersist, WatermarkPreventsRegressionAcrossRestart) {
     tso_oracle_destroy(o2);
     remove(path);
 }
+
+// ---------- C1 回归：Gap#1 物理游标持平逻辑时水位续前 ----------
+TEST(TsoPersist, SamePhysicalClockEqualsWatermarkLogicalContinues_RegressionC1) {
+    /* C1 回归用例，覆盖 tso_oracle_insert_watermark 的"同物理、逻辑更大"分支。
+       旧实现仅当 phys > last_physical 时推进 last_physical/last_logical；
+       若重启后物理时钟恰等于水位物理值（phys == last_physical 且 ts&MASK > 0），
+       分支不执行，last_logical 保持 init 初值 0，下一次 tso_alloc 在同物理内
+       从 logical 0 复发上一轮已发过的旧戳（低于旧最大 e），违反"重启后任何分配
+       严格 > 旧最大"的不倒退保证。
+       本用例在重启阶段把时钟设成与初次分配相同的物理（9000，而非回退到 1000），
+       注入水位后分配 1 条，验证修正后即便物理持平也按"逻辑更大"正确续前。
+       注意：tso_set_clock_source 是全局的，此处用本用例独立的可控时钟源并各自
+       重设 fake_now，避免与其它 TSO 测试串扰。 */
+    static int64_t fake_now = 9000;
+    tso_set_clock_source([](int64_t *ms) -> int { *ms = fake_now; return 0; });
+    const char *path = "test-results/engineering/tso_watermark_samephys.bin";
+    std::filesystem::create_directories("test-results/engineering");
+
+    tso_oracle_t *o = nullptr;
+    tso_oracle_init(&o);
+    int64_t s = 0, e = 0;
+    tso_alloc(o, 100, &s, &e);                    /* 已到 ~9000<<18，旧最大 e */
+    ASSERT_EQ(0, tso_persist_save(o, path));
+    tso_oracle_destroy(o);
+
+    /* 重启：物理时钟与初次分配一致（9000），使 insert 后水位物理 == last_physical，
+       直击"同物理"分支。 */
+    fake_now = 9000;                              /* 与初次分配物理相同，非回退 */
+    tso_oracle_t *o2 = nullptr;
+    tso_oracle_init(&o2);                         /* init 读到 9000 -> last_physical=9000 */
+    int64_t wm = tso_persist_load(path);
+    ASSERT_GT(wm, 0);
+    tso_oracle_insert_watermark(o2, wm);          /* 恢复水位，物理与游标持平 */
+    int64_t s2 = 0, e2 = 0;
+    tso_alloc(o2, 1, &s2, &e2);
+    EXPECT_GT(s2, e);                             /* 新戳严格 > 旧最大 e，未倒退 */
+    EXPECT_GT((s2 & TSO_LOGICAL_MASK), (e & TSO_LOGICAL_MASK)); /* 同物理下逻辑序正确续前 */
+    tso_oracle_destroy(o2);
+    remove(path);
+}

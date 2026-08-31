@@ -120,9 +120,11 @@ int tso_oracle_insert_watermark(tso_oracle_t *o, int64_t ts) {
     if (!o || ts <= 0) return -1;
     if (ts > o->watermark) o->watermark = ts;
     int64_t phys = ts >> TSO_LOGICAL_BITS;
-    if (phys > o->last_physical) {
+    int64_t logi = ts & TSO_LOGICAL_MASK;
+    if (phys > o->last_physical ||
+        (phys == o->last_physical && logi > o->last_logical)) {
         o->last_physical = phys;
-        o->last_logical = (uint32_t)(ts & TSO_LOGICAL_MASK);
+        o->last_logical  = (uint32_t)logi;
     }
     return 0;
 }
