@@ -373,39 +373,47 @@ int rtree_insert(rtree_t *tree, uint64_t id, const bbox_t *bbox) {
     }
 
     /* 根节点已满，需要分裂根节点 */
-    /* 简化实现：扩展树高度 */
+    /* 激活 rtree_split_root：将根节点分裂为两个子节点 */
+    rtree_node_t *old_root = tree->root;
     rtree_node_t *new_root = rtree_node_create(tree, false);
     if (!new_root) {
         rtree_write_unlock(tree);
         return -1;
     }
 
-    new_root->data.internal.children[0] = tree->root;
-    new_root->num_entries = 1;
-    new_root->bbox = tree->root->bbox;
-
-    /* 添加新条目到新根节点 */
-    rtree_node_t *new_child = rtree_node_create(tree, true);
-    if (!new_child) {
+    /* 创建两个新子节点 */
+    rtree_node_t *child_a = rtree_node_create(tree, old_root->is_leaf);
+    rtree_node_t *child_b = rtree_node_create(tree, old_root->is_leaf);
+    if (!child_a || !child_b) {
+        free(child_a);
+        free(child_b);
         free(new_root);
+        rtree_write_unlock(tree);
         return -1;
     }
 
-    new_child->data.leaf.ids[0] = id;
-    new_child->data.leaf.bboxes[0] = *bbox;
-    new_child->num_entries = 1;
-    new_child->bbox = *bbox;
+    /* 使用 quadratic split 分裂旧根节点的内容到两个子节点 */
+    rtree_quadratic_split(old_root, 0, old_root->num_entries, child_a, child_b);
 
-    new_root->data.internal.children[1] = new_child;
+    /* 设置新根节点 */
+    new_root->data.internal.children[0] = child_a;
+    new_root->data.internal.children[1] = child_b;
     new_root->num_entries = 2;
-    new_root->bbox = bbox_union(&tree->root->bbox, bbox);
+    new_root->bbox = bbox_union(&child_a->bbox, &child_b->bbox);
 
     tree->root = new_root;
     tree->height++;
-    tree->num_items++;
 
+    /* 释放旧根节点（其内容已分裂到 child_a 和 child_b） */
+    rtree_node_free(old_root);
+
+    /* 释放新根节点的子节点分配的额外空间（不需要，因为 split 已复制） */
+
+    /* 现在尝试将新条目插入到分裂后的节点中 */
     rtree_write_unlock(tree);
-    return 0;
+
+    /* 重新尝试插入 */
+    return rtree_insert(tree, id, bbox);
 }
 
 int rtree_remove(rtree_t *tree, uint64_t id, const bbox_t *bbox) {

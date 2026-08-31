@@ -40,6 +40,15 @@ typedef struct spatial_header_s {
     uint64_t num_geometries;
 } spatial_header_t;
 
+/* 几何对象数据结构（与 insert 格式对应） */
+typedef struct geometry_record_s {
+    uint64_t id;
+    geometry_type_t type;
+    point_t centroid;
+    bbox_t bounds;
+    uint8_t data[256];
+} geometry_record_t;
+
 static int get_dir_path(const char *name, char *path, size_t path_size) {
     snprintf(path, path_size, "%s/%s%s",
              g_spatial_engine.data_dir, SPATIAL_DATA_PREFIX, name);
@@ -271,10 +280,7 @@ static int spatial_engine_tuple_update(void *rel, const void *old_data, size_t o
     uint64_t new_id;
     memcpy(&new_id, new_ptr, sizeof(uint64_t));
 
-    /* 简化实现：删除旧数据，插入新数据 */
-    /* 实际实现需要找到并更新特定记录 */
-
-    /* 读取数据文件 */
+    /* 读取数据文件以获取旧记录 */
     char data_path[512];
     snprintf(data_path, sizeof(data_path), "%s/geometries.bin", db->data_dir);
 
@@ -305,7 +311,40 @@ static int spatial_engine_tuple_update(void *rel, const void *old_data, size_t o
     fclose(fp);
 
     /* 查找并更新记录（简化实现：直接替换） */
-    /* 实际实现需要根据记录大小遍历 */
+
+    /* C0-2：WAL-first — 更新前先记旧值用于 undo */
+    {
+        wal_t *cur_wal = wal_get_current();
+        if (cur_wal != NULL) {
+            /* 从新数据中解析边界框 */
+            const uint8_t *ptr = (const uint8_t *)new_data + sizeof(uint64_t) + sizeof(geometry_type_t) + sizeof(point_t);
+            bbox_t new_bounds;
+            memcpy(&new_bounds, ptr, sizeof(bbox_t));
+
+            /* 从旧数据中解析边界框（如果有的话） */
+            bbox_t old_bounds = {0};
+            if (old_len >= sizeof(uint64_t) + sizeof(geometry_type_t) + sizeof(point_t) + sizeof(bbox_t)) {
+                const uint8_t *optr = (const uint8_t *)old_data + sizeof(uint64_t) + sizeof(geometry_type_t) + sizeof(point_t);
+                memcpy(&old_bounds, optr, sizeof(bbox_t));
+            }
+
+            /* WAL 记录旧值和新值 */
+            float old_bbox4[4] = { old_bounds.min_x, old_bounds.min_y,
+                                   old_bounds.max_x, old_bounds.max_y };
+            float new_bbox4[4] = { new_bounds.min_x, new_bounds.min_y,
+                                   new_bounds.max_x, new_bounds.max_y };
+
+            /* 使用通用 update WAL 接口 */
+            uint64_t lsn = wal_write_update(cur_wal, 0,
+                                           &old_id, sizeof(uint64_t),
+                                           old_bbox4, sizeof(old_bbox4),
+                                           new_bbox4, sizeof(new_bbox4));
+            if (lsn == 0) {
+                free(all_data);
+                return -1;
+            }
+        }
+    }
 
     /* 写入新数据 */
     fp = fopen(data_path, "wb");
@@ -361,6 +400,42 @@ static int spatial_engine_tuple_delete(void *rel, const void *key, size_t key_le
         return -1;
     }
     fclose(fp);
+
+    /* C0-2：WAL-first — 删除前先记旧值用于 undo */
+    {
+        wal_t *cur_wal = wal_get_current();
+        if (cur_wal != NULL) {
+            /* 尝试查找被删除记录的边界框 */
+            bbox_t del_bbox = {0};
+            size_t offset = 0;
+            while (offset + sizeof(uint64_t) <= (size_t)file_size) {
+                uint64_t rec_id;
+                memcpy(&rec_id, all_data + offset, sizeof(uint64_t));
+                if (rec_id == id) {
+                    /* 找到记录，解析边界框 */
+                    if (offset + sizeof(uint64_t) + sizeof(geometry_type_t) + sizeof(point_t) + sizeof(bbox_t) <= (size_t)file_size) {
+                        const uint8_t *ptr = all_data + offset + sizeof(uint64_t) + sizeof(geometry_type_t) + sizeof(point_t);
+                        memcpy(&del_bbox, ptr, sizeof(bbox_t));
+                    }
+                    break;
+                }
+                /* 简化：跳过固定大小记录（实际需按记录格式遍历） */
+                offset += sizeof(geometry_record_t);
+            }
+
+            float bbox4[4] = { del_bbox.min_x, del_bbox.min_y,
+                               del_bbox.max_x, del_bbox.max_y };
+
+            /* WAL 记录删除 */
+            uint64_t lsn = wal_write_delete(cur_wal, 0,
+                                           &id, sizeof(uint64_t),
+                                           bbox4, sizeof(bbox4));
+            if (lsn == 0) {
+                free(all_data);
+                return -1;
+            }
+        }
+    }
 
     /* 查找并删除记录（简化实现：重建文件） */
     /* 实际实现需要根据记录大小遍历 */
@@ -496,15 +571,6 @@ int spatial_engine_stats(const char *name, storage_stats_t *stats) {
 /* ========================================================================
  * 空间查询实现（暴力扫描）
  * ======================================================================== */
-
-/* 几何对象数据结构（与 insert 格式对应） */
-typedef struct geometry_record_s {
-    uint64_t id;
-    geometry_type_t type;
-    point_t centroid;
-    bbox_t bounds;
-    uint8_t data[256];
-} geometry_record_t;
 
 static double distance_point_to_point(const point_t *a, const point_t *b) {
     double dx = a->x - b->x;
