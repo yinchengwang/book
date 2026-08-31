@@ -61,9 +61,13 @@ int wfg_add_edge(wfg_t *g, int64_t waiter, int64_t holder,
                  const uint8_t *lock_key, size_t klen, int64_t now_ms) {
     wfg_edge_t *e;
     if (!g) return -1;
-    /* waiter/holder 未登记时自动登记(等待时刻取 now_ms 简化) */
-    if (wfg_add_txn(g, waiter, now_ms) != 0) return -1;
-    if (wfg_add_txn(g, holder, now_ms) != 0) return -1;
+    /* waiter/holder 仅未登记时自动登记(等待时刻取 now_ms);已登记则保留其原有 wait_start_ms */
+    if (!find_txn(g, waiter)) {
+        if (wfg_add_txn(g, waiter, now_ms) != 0) return -1;
+    }
+    if (!find_txn(g, holder)) {
+        if (wfg_add_txn(g, holder, now_ms) != 0) return -1;
+    }
     e = (wfg_edge_t *)malloc(sizeof *e);
     if (!e) return -1;
     e->waiter    = waiter;
