@@ -148,3 +148,65 @@ TEST(TsoOracle, ConcurrentAllocMonotonic) {
     pthread_mutex_destroy(&mtx);
     tso_oracle_destroy(o);
 }
+
+// ---------- Task 3：客户端批量缓存 + HLC 单调推进 ----------
+
+TEST(TsoClient, CacheServesUntilExhaustedThenRefills) {
+    static int64_t fake_next = 1000;
+    auto fake_backend = [](void *, int count, int64_t *s, int64_t *e) -> int {
+        *s = fake_next;
+        *e = fake_next + count - 1;
+        fake_next += count;
+        return 0;
+    };
+    tso_client_t *c = tso_client_new(10);
+    tso_client_set_backend(c, fake_backend, nullptr);
+    /* 前 10 次走缓存，连续 */
+    int64_t first = tso_client_get(c);
+    for (int i = 1; i < 10; ++i) EXPECT_EQ(first + i, tso_client_get(c));
+    /* 第 11 次触发 refill，从假后端续 */
+    EXPECT_EQ(first + 10, tso_client_get(c));
+    tso_client_destroy(c);
+}
+
+TEST(TsoClient, HlcAdvancesMonotonic) {
+    /* 修正：原简报未给 client 设 backend，默认后端无 Oracle ctx 时 get 返 0 使断言失败。
+       此处接一个真 Oracle 作后端；核心断言"HLC 单调、物理回退不倒退"保留。 */
+    static int64_t fake_clock_ms = 5000;
+    tso_oracle_t *o = nullptr;
+    tso_oracle_init(&o);
+    tso_set_clock_source([](int64_t *ms) -> int { *ms = fake_clock_ms; return 0; });
+    tso_client_t *c = tso_client_new(2);
+    tso_client_set_backend(c, [](void *ctx, int count, int64_t *s, int64_t *e) {
+        return tso_alloc((tso_oracle_t *)ctx, count, s, e);
+    }, o);
+    /* 物理 5000，首批后端按 5000 供给，戳不低于物理 */
+    int64_t t1 = tso_client_get(c);
+    EXPECT_GE(t1, (5000LL << TSO_LOGICAL_BITS));
+    /* 缓存内严格递增 */
+    int64_t t2 = tso_client_get(c);
+    EXPECT_GT(t2, t1);
+    /* 物理时钟回退到 4999：HLC 不倒退，仍 5000 起，单调推进 */
+    fake_clock_ms = 4999;
+    int64_t t3 = tso_client_get(c);   /* 缓存耗尽，refill 读取 Oracle -> 仍 5000 */
+    EXPECT_GE(t3, (5000LL << TSO_LOGICAL_BITS));
+    EXPECT_GE(t3, t2);
+    int64_t t4 = tso_client_get(c);
+    EXPECT_GE(t4, t3);
+    tso_client_destroy(c);
+    tso_oracle_destroy(o);
+}
+
+TEST(TsoClient, BackendServe) {
+    tso_oracle_t *o = nullptr;
+    tso_oracle_init(&o);
+    tso_client_t *c = tso_client_new(3);
+    tso_client_set_backend(c, [](void *ctx, int count, int64_t *s, int64_t *e) {
+        return tso_alloc((tso_oracle_t *)ctx, count, s, e);
+    }, o);
+    int64_t a = tso_client_get(c);
+    int64_t b = tso_client_get(c);
+    EXPECT_LT(a, b);
+    tso_client_destroy(c);
+    tso_oracle_destroy(o);
+}

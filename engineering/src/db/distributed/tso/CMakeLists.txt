@@ -1,6 +1,7 @@
 # 分布式 TSO 模块
 add_library(db_tso STATIC
     tso_codec.c
+    tso_client.c
 )
 
 target_include_directories(db_tso PUBLIC
