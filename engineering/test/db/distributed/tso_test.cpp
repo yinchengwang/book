@@ -69,6 +69,40 @@ TEST(TsoOracle, CrossLogicalBoundaryReturnLen) {
     tso_oracle_destroy(o);
 }
 
+TEST(TsoOracle, ExactBoundaryCountWrapsPhysical) {
+    /* 精确占满边界：count 恰好等于当前物理剩余逻辑槽（slots_left）时，
+       旧实现走 count<=slots_left 分支取 new_logical = start_logical + count，
+       会越界到 262144（== TSO_LOGICAL_MASK+1），且 last_physical 未进位；
+       下一次分配以 start_logical=262144 开局，low-18-bit 溢出进位进 physical，
+       在奇数（非 0）base 下会返回重复/过小戳，破坏全局单调。
+       本用例直击该边界：第一批 count==262144==slots_left（last_logical 初始为 0）。 */
+    tso_oracle_t *o = nullptr;
+    fake_now_ms = 4000;                    /* 恒定物理时钟，屏蔽时钟跳跃 */
+    ASSERT_EQ(0, tso_oracle_init(&o));
+    tso_set_clock_source(fake_clock);
+
+    /* 第一批恰好占满整个物理的 262144 个逻辑槽 */
+    int64_t s1 = 0, e1 = 0;
+    int64_t slots = (int64_t)TSO_LOGICAL_MASK + 1;   /* 262144 */
+    ASSERT_EQ(0, tso_alloc(o, (int)slots, &s1, &e1));
+    EXPECT_EQ(e1 - s1 + 1, slots);                    /* 区间长度必须 == count */
+    /* 终点必须是当前物理的 MASK，物理尚未进位，故仍落在当前物理 */
+    EXPECT_EQ((int64_t)(e1 & TSO_LOGICAL_MASK), (int64_t)TSO_LOGICAL_MASK);
+
+    /* 第二批仅取 1 条：游标必须已进位到下一物理且 logical 归 0，严格 > 上一批终点 */
+    /* 时钟在边界后前进 1ms：旧实现因未推进 last_physical，raw 低 18 位进位会
+       使本批起点跳到 P+2（多跳一拍/留空洞），物理比终点多 2；新实现正确为 P+1。 */
+    fake_now_ms += 1;                          /* 4000 -> 4001 */
+    int64_t s2 = 0, e2 = 0;
+    ASSERT_EQ(0, tso_alloc(o, 1, &s2, &e2));
+    EXPECT_GT(s2, e1);                                 /* 严格单调，绝不重复/回退 */
+    /* 下一戳 physical 比上一批终点物理恰好 +1，logical==0 */
+    EXPECT_EQ((e1 >> TSO_LOGICAL_BITS) + 1, s2 >> TSO_LOGICAL_BITS);
+    EXPECT_EQ((int64_t)(s2 & TSO_LOGICAL_MASK), 0);
+
+    tso_oracle_destroy(o);
+}
+
 TEST(TsoOracle, ConcurrentAllocMonotonic) {
     tso_oracle_t *o = nullptr;
     fake_now_ms = 2000;                    /* 恒定物理时钟：让分配区间严格 +1 */

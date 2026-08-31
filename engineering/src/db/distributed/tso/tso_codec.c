@@ -66,14 +66,24 @@ int tso_alloc(tso_oracle_t *o, int count, int64_t *out_start, int64_t *out_end) 
     uint32_t slots_left = (uint32_t)(TSO_LOGICAL_MASK + 1) - start_logical;
     int64_t end;
     uint32_t new_logical;
-    if (count <= (int)slots_left) {
-        end  = ((int64_t)base << TSO_LOGICAL_BITS) | (start_logical + (uint32_t)count - 1);
+    int64_t base_stays = base;
+    if (count < (int)slots_left) {
+        /* 不跨物理：批全部落于当前物理内，游标同物理续进 */
+        end = ((int64_t)base << TSO_LOGICAL_BITS) | (start_logical + (uint32_t)count - 1);
         new_logical = start_logical + (uint32_t)count;
     } else {
-        base += 1;
+        /* 批占满当前物理剩余槽(slots_left)，必要时余数跨入下一物理 */
         int remainder = count - (int)slots_left;
-        end  = ((int64_t)base << TSO_LOGICAL_BITS) | ((uint32_t)remainder - 1);
-        new_logical = (uint32_t)remainder;
+        base += 1;
+        if (remainder == 0) {
+            /* 恰好占满：终点为当前物理 MASK，下一物理 logical 归 0 且物理进位 */
+            end = ((int64_t)(base - 1) << TSO_LOGICAL_BITS) | TSO_LOGICAL_MASK;
+            new_logical = 0;
+        } else {
+            /* 多余的 remainder 落在 base+1 物理 */
+            end = ((int64_t)base << TSO_LOGICAL_BITS) | ((uint32_t)remainder - 1);
+            new_logical = (uint32_t)remainder;
+        }
     }
     o->last_physical = base;
     o->last_logical = new_logical;
