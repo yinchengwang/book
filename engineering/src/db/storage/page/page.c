@@ -8,25 +8,47 @@
 #include <string.h>
 #include <stdio.h>
 
-/* 简单校验和计算：XOR 除 checksum 外的所有字节 */
-static uint16_t calc_checksum(const page_t *page) {
-    uint16_t sum = 0;
-    const uint8_t *bytes = (const uint8_t *)page;
-    size_t len = sizeof(page_t);
+/* ============================================================
+ * CRC32 校验和实现
+ * ============================================================ */
 
-    /* 计算整个页面的 XOR，跳过 checksum 字段 */
-    for (size_t i = 0; i < len; i++) {
-        /* 跳过 checksum 字段 (偏移 6-7，共 2 字节) */
-        if (i >= 6 && i < 8) continue;
-        sum ^= (uint16_t)bytes[i] << ((i % 2) ? 0 : 8);
+/** CRC32 查找表 */
+static uint32_t crc32_table[256];
+static int crc32_table_initialized = 0;
+
+/** 初始化 CRC32 查找表 */
+static void crc32_init(void) {
+    if (crc32_table_initialized) return;
+    for (uint32_t i = 0; i < 256; i++) {
+        uint32_t crc = i;
+        for (int j = 0; j < 8; j++) {
+            if (crc & 1) {
+                crc = (crc >> 1) ^ 0xEDB88320;
+            } else {
+                crc >>= 1;
+            }
+        }
+        crc32_table[i] = crc;
     }
-    return sum;
+    crc32_table_initialized = 1;
+}
+
+/** 计算 CRC32 校验和 */
+static uint32_t calc_crc32(const void *data, size_t len) {
+    crc32_init();
+    const uint8_t *bytes = (const uint8_t *)data;
+    uint32_t crc = 0xFFFFFFFF;
+    for (size_t i = 0; i < len; i++) {
+        crc = crc32_table[(crc ^ bytes[i]) & 0xFF] ^ (crc >> 8);
+    }
+    return crc ^ 0xFFFFFFFF;
 }
 
 page_t *page_create(uint32_t page_id, page_type_t type) {
     page_t *page = (page_t *)calloc(1, sizeof(page_t));
     if (!page) return NULL;
 
+    page->header.magic = PAGE_MAGIC;
     page->header.page_id = page_id;
     page->header.page_type = (uint8_t)type;
     page->header.free_space_offset = PAGE_HEADER_SIZE;
@@ -64,12 +86,27 @@ uint16_t page_alloc_space(page_t *page, size_t size) {
 }
 
 void page_set_checksum(page_t *page) {
-    page->header.checksum = calc_checksum(page);
+    if (!page) return;
+    page->header.checksum = page_compute_checksum(page);
 }
 
 bool page_verify_checksum(const page_t *page) {
     if (!page) return false;
-    return page->header.checksum == calc_checksum(page);
+    return page->header.checksum == page_compute_checksum(page);
+}
+
+uint32_t page_compute_checksum(const page_t *page) {
+    if (!page) return 0xFFFFFFFF;
+    page_t temp = *page;
+    temp.header.checksum = 0;
+    return calc_crc32(&temp, sizeof(page_t));
+}
+
+int page_verify(const page_t *page) {
+    if (!page) return -1;
+    if (page->header.magic != PAGE_MAGIC) return -2;
+    if (page->header.checksum != page_compute_checksum(page)) return -3;
+    return 0;
 }
 
 const char *page_type_name(page_type_t type) {

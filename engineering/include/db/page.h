@@ -29,6 +29,9 @@ extern "C" {
 /** 页面数据区大小 */
 #define PAGE_DATA_SIZE (DEFAULT_PAGE_SIZE - PAGE_HEADER_SIZE)
 
+/** 页面魔数，用于验证页面有效性 */
+#define PAGE_MAGIC 0x50414745  /* "PAGE" */
+
 /* ============================================================
  * 页面类型枚举
  * ============================================================ */
@@ -51,11 +54,12 @@ typedef enum page_type_e {
  */
 #pragma pack(push, 1)
 typedef struct page_header_s {
+    uint32_t magic;             /**< 页面魔数 */
     uint32_t page_id;           /**< 页面 ID */
-    uint8_t  page_type;         /**< 页面类型 */
-    uint16_t checksum;          /**< 校验和 */
+    uint32_t checksum;          /**< CRC32 校验和 */
     uint16_t free_space_offset; /**< 空闲空间起始偏移 */
-    uint8_t  reserved[7];       /**< 保留字段 */
+    uint8_t  page_type;         /**< 页面类型 */
+    uint8_t  reserved;          /**< 保留字段 */
 } page_header_t;
 #pragma pack(pop)
 
@@ -123,6 +127,20 @@ void page_set_checksum(page_t *page);
  * @return 校验通过返回 true
  */
 bool page_verify_checksum(const page_t *page);
+
+/**
+ * @brief 计算页面 CRC32 校验和
+ * @param page 页面指针
+ * @return CRC32 校验和，NULL 输入返回非零值
+ */
+uint32_t page_compute_checksum(const page_t *page);
+
+/**
+ * @brief 验证页面完整性和校验和
+ * @param page 页面指针
+ * @return 校验通过返回 0，失败返回非零值，NULL 返回非零值
+ */
+int page_verify(const page_t *page);
 
 /**
  * @brief 获取页面类型名称
