@@ -4,12 +4,102 @@
  *
  * 将稠密向量检索、稀疏向量检索、BM25 全文检索的分数进行加权融合。
  * 支持 Min-Max 归一化，确保各路分数处于相同量级。
+ * top-k 选择使用 min-heap，复杂度 O(n log k)。
  */
 #include "db/hybrid_retrieval.h"
 #include "log.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+
+/* ========================================================================
+ * Min-Heap（最小堆）用于 top-k 选择
+ *
+ * 维护一个大小为 k 的最小堆，堆顶为当前 k 个最大元素中的最小值。
+ * 遍历所有候选时，若新候选分数大于堆顶，则替换堆顶并调整。
+ * 最终堆中即为 top-k 结果，依次弹出即为降序排列。
+ * ======================================================================== */
+
+typedef struct {
+    float *scores;
+    uint32_t *ids;
+    int size;
+    int capacity;
+} min_heap_t;
+
+static void min_heap_siftdown(min_heap_t *heap, int i) {
+    while (1) {
+        int smallest = i;
+        int left = 2 * i + 1;
+        int right = 2 * i + 2;
+        if (left < heap->size && heap->scores[left] < heap->scores[smallest])
+            smallest = left;
+        if (right < heap->size && heap->scores[right] < heap->scores[smallest])
+            smallest = right;
+        if (smallest == i) break;
+        /* swap */
+        float tmp_s = heap->scores[i];
+        heap->scores[i] = heap->scores[smallest];
+        heap->scores[smallest] = tmp_s;
+        uint32_t tmp_id = heap->ids[i];
+        heap->ids[i] = heap->ids[smallest];
+        heap->ids[smallest] = tmp_id;
+        i = smallest;
+    }
+}
+
+static void min_heap_siftup(min_heap_t *heap, int i) {
+    while (i > 0) {
+        int parent = (i - 1) / 2;
+        if (heap->scores[i] >= heap->scores[parent]) break;
+        float tmp_s = heap->scores[i];
+        heap->scores[i] = heap->scores[parent];
+        heap->scores[parent] = tmp_s;
+        uint32_t tmp_id = heap->ids[i];
+        heap->ids[i] = heap->ids[parent];
+        heap->ids[parent] = tmp_id;
+        i = parent;
+    }
+}
+
+static void min_heap_init(min_heap_t *heap, int capacity) {
+    heap->scores = (float *)malloc((size_t)capacity * sizeof(float));
+    heap->ids = (uint32_t *)malloc((size_t)capacity * sizeof(uint32_t));
+    heap->size = 0;
+    heap->capacity = capacity;
+}
+
+static void min_heap_push(min_heap_t *heap, float score, uint32_t id) {
+    int i = heap->size++;
+    heap->scores[i] = score;
+    heap->ids[i] = id;
+    min_heap_siftup(heap, i);
+}
+
+static float min_heap_peek(min_heap_t *heap) {
+    return heap->scores[0];
+}
+
+static void min_heap_pop(min_heap_t *heap) {
+    heap->size--;
+    heap->scores[0] = heap->scores[heap->size];
+    heap->ids[0] = heap->ids[heap->size];
+    if (heap->size > 0)
+        min_heap_siftdown(heap, 0);
+}
+
+static int min_heap_size(min_heap_t *heap) {
+    return heap->size;
+}
+
+static void min_heap_destroy(min_heap_t *heap) {
+    free(heap->scores);
+    free(heap->ids);
+    heap->scores = NULL;
+    heap->ids = NULL;
+    heap->size = 0;
+    heap->capacity = 0;
+}
 
 /* ========================================================================
  * 内部辅助函数
@@ -211,18 +301,75 @@ int hybrid_search(
     }
 
     /*
-     * Step 5: 排序并取 top-k
+     * Step 5: 使用 min-heap 取 top-k（O(n log k)，优于 O(n log n) 排序）
+     *
+     * 策略：先对前 k 个元素建最小堆，再遍历剩余 n-k 个候选。
+     * 若某候选分数大于堆顶（当前 k 个中的最小），则替换堆顶并调整。
+     * 最终堆中即为 top-k（无序），依次 pop 堆顶得到降序结果。
      */
-    qsort(results, candidate_count, sizeof(hybrid_result_t), compare_results_desc);
+    if (candidate_count <= top_k) {
+        /* 候选数 <= k，直接排序返回 */
+        qsort(results, candidate_count, sizeof(hybrid_result_t), compare_results_desc);
+        *num_results = candidate_count;
+    } else {
+        min_heap_t heap;
+        min_heap_init(&heap, (int)top_k);
 
-    uint32_t result_count = candidate_count < top_k ? candidate_count : top_k;
+        /* 填充前 k 个元素建初始堆（自下而上堆化 O(k)）*/
+        for (uint32_t i = 0; i < top_k; i++) {
+            heap.scores[heap.size] = results[i].final_score;
+            heap.ids[heap.size] = i;
+            heap.size++;
+        }
+        for (int i = (int)(top_k / 2) - 1; i >= 0; i--) {
+            min_heap_siftdown(&heap, i);
+        }
+
+        /* 遍历剩余候选，比堆顶大则替换并调整（O((n-k) log k)）*/
+        for (uint32_t i = top_k; i < candidate_count; i++) {
+            if (results[i].final_score > min_heap_peek(&heap)) {
+                heap.scores[0] = results[i].final_score;
+                heap.ids[0] = i;
+                min_heap_siftdown(&heap, 0);
+            }
+        }
+
+        /* 依次弹出堆顶得到降序排列，同时将结果写回 results[0..top_k-1] */
+        hybrid_result_t *sorted = (hybrid_result_t *)malloc((size_t)top_k * sizeof(hybrid_result_t));
+        if (!sorted) {
+            min_heap_destroy(&heap);
+            free(candidate_ids);
+            free(dense_scores);
+            free(sparse_scores);
+            free(bm25_scores_arr);
+            LOG_ERROR("hybrid_search: 内存分配失败");
+            return -1;
+        }
+        for (uint32_t i = 0; i < top_k; i++) {
+            /* 堆顶是当前 k 个中的最小值 */
+            uint32_t src_idx = heap.ids[0];
+            sorted[top_k - 1 - i] = results[src_idx]; /* 逆序填入：第 i 次 pop 是第 i 大 */
+            /* 弹出堆顶 */
+            heap.size--;
+            if (heap.size > 0) {
+                heap.scores[0] = heap.scores[heap.size];
+                heap.ids[0] = heap.ids[heap.size];
+                min_heap_siftdown(&heap, 0);
+            }
+        }
+        /* 复制排序结果回 results */
+        memcpy(results, sorted, (size_t)top_k * sizeof(hybrid_result_t));
+        free(sorted);
+
+        min_heap_destroy(&heap);
+        *num_results = top_k;
+    }
 
     free(candidate_ids);
     free(dense_scores);
     free(sparse_scores);
     free(bm25_scores_arr);
 
-    *num_results = result_count;
-    LOG_INFO("hybrid_search: 候选数=%u, 返回=%u", candidate_count, result_count);
+    LOG_INFO("hybrid_search: 候选数=%u, 返回=%u", candidate_count, *num_results);
     return 0;
 }
