@@ -28,8 +28,8 @@
  */
 
 #include "db/buf.h"
-#include "db/kv.h"
 #include "db/lock.h"
+#include "db/disk.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -83,8 +83,8 @@ struct BufferPool_s {
 static BufferPool *buffer_pool = NULL;
 static bool buf_initialized = false;
 
-/* KV 存储（可选，用于页面持久化） */
-static kv_t *kv_store = NULL;
+/* 数据库文件句柄 */
+static db_file_t *db_file = NULL;
 
 /* ============================================================
  * Hash 函数
@@ -100,14 +100,26 @@ static uint32_t buf_hash(uint32_t relfilenode, BlockNumber blocknum) {
  * 初始化
  * ============================================================ */
 
-int buf_init(int nbuffers) {
+int buf_init(const char *path) {
     if (buf_initialized) {
         return 0;
     }
 
-    /* 默认 Buffer 数量 */
-    if (nbuffers <= 0) {
-        nbuffers = BUF_DEFAULT_NBUFFERS;
+    /* path 不能为 NULL */
+    if (path == NULL) {
+        return -1;
+    }
+
+    int nbuffers = BUF_DEFAULT_NBUFFERS;
+
+    /* 如果提供了有效路径，打开数据库文件 */
+    if (path[0] != '\0') {
+        db_file = disk_open(path, BUF_PAGE_SIZE);
+        if (db_file == NULL) {
+            return -1;
+        }
+    } else {
+        db_file = NULL;
     }
 
     buffer_pool = (BufferPool *)calloc(1, sizeof(BufferPool));
@@ -197,10 +209,10 @@ void buf_shutdown(void) {
     /* 刷写所有脏页 */
     buf_flush_all();
 
-    /* 关闭 KV 存储（如果有） */
-    if (kv_store) {
-        kv_close(kv_store);
-        kv_store = NULL;
+    /* 关闭数据库文件 */
+    if (db_file) {
+        disk_close(db_file);
+        db_file = NULL;
     }
 
     /* 释放 Hash 表 */
@@ -654,10 +666,14 @@ BufferDesc *buf_read(uint32_t relfilenode, BlockNumber blocknum, int access_mode
      */
     hash_insert(relfilenode, blocknum, buf_id);
 
-    /* 从磁盘读取页面数据
-     * 这里简化实现，实际应调用 page_read()
-     * 目前统计 reads 但未执行实际 IO
-     */
+    /* 从磁盘读取页面数据 */
+    if (db_file != NULL) {
+        page_t *page = disk_read_page(db_file, (page_id_t)blocknum);
+        if (page != NULL) {
+            memcpy(buffer_pool->buffers[buf_id], page, BUF_PAGE_SIZE);
+            page_free(page);
+        }
+    }
     buffer_pool->reads++;
 
     return buf;
@@ -877,16 +893,18 @@ int buf_write(BufferDesc *buf) {
         return 0;
     }
 
-    /* 写入到持久存储
-     * 简化实现：此处仅更新统计
-     * 实际应调用底层存储层的写接口
-     */
+    /* 检查是否脏页 */
+    if (!(buf->state & BM_DIRTY)) {
+        return 0;
+    }
+
+    /* 写入到持久存储 */
+    if (db_file != NULL) {
+        disk_write_page(db_file, (page_id_t)buf->blocknum, (page_t *)buffer_pool->buffers[buf->buf_id]);
+    }
     buffer_pool->writes++;
 
-    /* 清除脏标记
-     * 注意：BM_DIRTY 清除后，BM_JUST_DIRTIED 也应清除
-     * 此处简化处理，仅清除 BM_DIRTY
-     */
+    /* 清除脏标记 */
     buf->state &= ~BM_DIRTY;
 
     return 0;
