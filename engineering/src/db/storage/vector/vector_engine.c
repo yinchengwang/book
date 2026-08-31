@@ -25,6 +25,155 @@
 #include <sys/stat.h>
 #include <errno.h>
 
+/* ========================================================================
+ * Min-Heap for Top-K Search (O(n log k))
+ * ======================================================================== */
+
+typedef struct vector_heap_node_s {
+    float distance;
+    uint64_t id;
+} vector_heap_node_t;
+
+typedef struct vector_min_heap_s {
+    vector_heap_node_t *nodes;
+    size_t size;
+    size_t capacity;
+} vector_min_heap_t;
+
+static int vector_heap_init(vector_min_heap_t *heap, size_t capacity) {
+    heap->nodes = (vector_heap_node_t *)malloc(sizeof(vector_heap_node_t) * capacity);
+    if (heap->nodes == NULL) return -1;
+    heap->size = 0;
+    heap->capacity = capacity;
+    return 0;
+}
+
+static void vector_heap_swap(vector_heap_node_t *a, vector_heap_node_t *b) {
+    vector_heap_node_t tmp = *a;
+    *a = *b;
+    *b = tmp;
+}
+
+static void vector_heapify_up(vector_min_heap_t *heap, size_t idx) {
+    while (idx > 0) {
+        size_t parent = (idx - 1) / 2;
+        if (heap->nodes[idx].distance < heap->nodes[parent].distance) {
+            vector_heap_swap(&heap->nodes[idx], &heap->nodes[parent]);
+            idx = parent;
+        } else {
+            break;
+        }
+    }
+}
+
+static void vector_heapify_down(vector_min_heap_t *heap, size_t idx) {
+    while (1) {
+        size_t smallest = idx;
+        size_t left = 2 * idx + 1;
+        size_t right = 2 * idx + 2;
+
+        if (left < heap->size && heap->nodes[left].distance < heap->nodes[smallest].distance) {
+            smallest = left;
+        }
+        if (right < heap->size && heap->nodes[right].distance < heap->nodes[smallest].distance) {
+            smallest = right;
+        }
+        if (smallest != idx) {
+            vector_heap_swap(&heap->nodes[idx], &heap->nodes[smallest]);
+            idx = smallest;
+        } else {
+            break;
+        }
+    }
+}
+
+static size_t vector_heap_size(vector_min_heap_t *heap) {
+    return heap->size;
+}
+
+static vector_heap_node_t vector_heap_peek(vector_min_heap_t *heap) {
+    return heap->nodes[0];
+}
+
+static void vector_heap_push(vector_min_heap_t *heap, float distance, uint64_t id) {
+    heap->nodes[heap->size].distance = distance;
+    heap->nodes[heap->size].id = id;
+    vector_heapify_up(heap, heap->size);
+    heap->size++;
+}
+
+static vector_heap_node_t vector_heap_pop(vector_min_heap_t *heap) {
+    vector_heap_node_t result = heap->nodes[0];
+    heap->size--;
+    if (heap->size > 0) {
+        heap->nodes[0] = heap->nodes[heap->size];
+        vector_heapify_down(heap, 0);
+    }
+    return result;
+}
+
+static void vector_heap_free(vector_min_heap_t *heap) {
+    if (heap->nodes) {
+        free(heap->nodes);
+        heap->nodes = NULL;
+    }
+}
+
+/**
+ * @brief Top-K search using min-heap (O(n log k))
+ *
+ * @param engine 向量引擎
+ * @param query 查询向量
+ * @param k 返回结果数量
+ * @return vector_search_result_t* 结果数组（需调用方释放）
+ */
+static vector_search_result_t *vector_search(vector_engine_t *engine, const float *query, int k) {
+    vector_min_heap_t heap;
+    if (vector_heap_init(&heap, k) != 0) return NULL;
+
+    for (uint64_t i = 0; i < engine->num_vectors; i++) {
+        float *vec = NULL;
+        float vec_buf[256];  /* 临时缓冲区 */
+
+        /* 获取向量数据 */
+        if (engine->use_page_pool && engine->page_pool != NULL) {
+            if (vector_page_get_vector(engine->page_pool, (int32_t)i, vec_buf) != 0) continue;
+            vec = vec_buf;
+        } else {
+            continue;  /* 文件存储暂不支持 */
+        }
+
+        /* 计算距离 */
+        float dist;
+        if (engine->metric == METRIC_L2) {
+            dist = vector_l2_distance(query, vec, engine->dimension);
+        } else if (engine->metric == METRIC_COSINE) {
+            dist = 1.0f - vector_cosine_similarity(query, vec, engine->dimension);
+        } else {
+            dist = vector_l2_distance(query, vec, engine->dimension);
+        }
+
+        if (heap.size < (size_t)k) {
+            vector_heap_push(&heap, dist, i);
+        } else if (dist < vector_heap_peek(&heap).distance) {
+            vector_heap_pop(&heap);
+            vector_heap_push(&heap, dist, i);
+        }
+    }
+
+    vector_search_result_t *results = (vector_search_result_t *)malloc(k * sizeof(vector_search_result_t));
+    if (results) {
+        for (int i = (int)heap.size - 1; i >= 0; i--) {
+            vector_heap_node_t node = vector_heap_pop(&heap);
+            results[i].id = node.id;
+            results[i].distance = node.distance;
+        }
+    }
+
+    vector_heap_free(&heap);
+    return results;
+}
+
 /* HNSW 持久化外部函数声明（来自 rag 模块） */
 extern int hnsw_persist_save(void *hnsw, const char *path, void *result);
 extern void *hnsw_persist_load(const char *path, void *result);

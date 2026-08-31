@@ -291,11 +291,38 @@ int vector_index_save_diskann(void *diskann_index, const char *path) {
         return -1;
     }
 
-    /* TODO: 实现 DiskANN 索引持久化 */
-    LOG_WARN("DiskANN 索引持久化尚未实现");
-    (void)diskann_index;
-    (void)path;
-    return -1;
+    diskann_t *index = (diskann_t *)diskann_index;
+    FILE *fp = fopen(path, "wb");
+    if (!fp) {
+        LOG_ERROR("打开文件失败: %s", path);
+        return -1;
+    }
+
+    /* 写文件头 */
+    vector_index_file_header_t header;
+    memset(&header, 0, sizeof(header));
+    header.magic = VECTOR_INDEX_MAGIC;
+    header.version = VECTOR_INDEX_VERSION;
+    header.index_type = VECTOR_PERSIST_INDEX_DISKANN;
+    header.dims = diskann_index_dims(index);
+    header.num_vectors = diskann_index_size(index);
+
+    if (fwrite(&header, sizeof(header), 1, fp) != 1) {
+        LOG_ERROR("写入文件头失败");
+        fclose(fp);
+        return -1;
+    }
+
+    /* 保存索引（使用 DiskANN 内置持久化） */
+    if (diskann_index_save(index, path) != 0) {
+        LOG_ERROR("DiskANN 索引保存失败");
+        fclose(fp);
+        return -1;
+    }
+
+    fclose(fp);
+    LOG_INFO("保存 DiskANN 索引成功: path=%s, vectors=%d", path, header.num_vectors);
+    return 0;
 }
 
 /**
@@ -307,10 +334,15 @@ void *vector_index_load_diskann(const char *path) {
         return NULL;
     }
 
-    /* TODO: 实现 DiskANN 索引加载 */
-    LOG_WARN("DiskANN 索引加载尚未实现");
-    (void)path;
-    return NULL;
+    /* 使用 DiskANN 内置加载 */
+    diskann_t *index = diskann_index_load(path);
+    if (!index) {
+        LOG_ERROR("加载 DiskANN 索引失败: %s", path);
+        return NULL;
+    }
+
+    LOG_INFO("加载 DiskANN 索引成功: path=%s, vectors=%d", path, diskann_index_size(index));
+    return index;
 }
 
 /* ============================================================
