@@ -269,10 +269,10 @@ wal_t *wal_open(const char *path) {
     wal->state = WAL_STATE_ACTIVE;
     wal->sync_mode = WAL_SYNC_FULL;  /* 默认全同步模式 */
 
-    /* 计算当前 LSN（文件大小 - 头大小） */
+    /* 计算当前 LSN（字节偏移 = 文件大小 - 头大小） */
     uint64_t file_size = disk_get_size(wal->file);
     if (file_size > WAL_HEADER_SIZE) {
-        wal->current_lsn = (file_size - WAL_HEADER_SIZE) / 1024;
+        wal->current_lsn = file_size - WAL_HEADER_SIZE;
     }
 
     return wal;
@@ -439,7 +439,7 @@ static uint64_t wal_write_record(wal_t *wal, wal_log_type_t type,
     header->checksum = wal_calc_checksum(record + 1, total_size - 1);
 
     /* 写入文件（追加） */
-    uint64_t file_offset = WAL_HEADER_SIZE + wal->current_lsn * 1024;
+    uint64_t file_offset = WAL_HEADER_SIZE + wal->current_lsn;
 
     /* 如果缓冲区有空间，先放缓冲区 */
     if (wal->buffer_used + total_size <= wal->buffer_size) {
@@ -448,7 +448,7 @@ static uint64_t wal_write_record(wal_t *wal, wal_log_type_t type,
     } else {
         /* 缓冲区满了，刷盘 */
         if (wal->buffer_used > 0) {
-            disk_pwrite(wal->file, WAL_HEADER_SIZE + (wal->current_lsn - (wal->buffer_used / 1024)) * 1024,
+            disk_pwrite(wal->file, WAL_HEADER_SIZE + (wal->current_lsn - wal->buffer_used),
                         wal->buffer, wal->buffer_used);
         }
         /* 直接写记录 */
@@ -456,12 +456,12 @@ static uint64_t wal_write_record(wal_t *wal, wal_log_type_t type,
         wal->buffer_used = 0;
     }
 
-    /* 更新 LSN */
+    /* 更新 LSN（字节偏移 += 记录大小） */
     uint64_t lsn = wal->current_lsn;
-    wal->current_lsn++;
+    wal->current_lsn += total_size;
 
     free(record);
-    return lsn + 1;  /* 返回1-based LSN */
+    return lsn;  /* 返回字节偏移作为 LSN */
 }
 
 /* ============================================================
@@ -633,8 +633,7 @@ int wal_flush(wal_t *wal) {
     if (!wal || wal->buffer_used == 0) return 0;
 
     /* 计算起始偏移 */
-    uint64_t start_lsn = (wal->current_lsn * 1024 - wal->buffer_used) / 1024;
-    uint64_t offset = WAL_HEADER_SIZE + start_lsn * 1024;
+    uint64_t offset = WAL_HEADER_SIZE + (wal->current_lsn - wal->buffer_used);
 
     if (disk_pwrite(wal->file, offset, wal->buffer, wal->buffer_used) != (ssize_t)wal->buffer_used) {
         wal_set_error(wal, "Failed to flush WAL");
@@ -672,7 +671,7 @@ int wal_get_stats(wal_t *wal, wal_stats_t *stats) {
     if (!wal || !stats) return -1;
 
     stats->total_records = wal->current_lsn;
-    stats->total_bytes = WAL_HEADER_SIZE + wal->current_lsn * 1024;
+    stats->total_bytes = WAL_HEADER_SIZE + wal->current_lsn;
     stats->current_lsn = wal->current_lsn;
     stats->checkpoint_lsn = wal->checkpoint_lsn;
     stats->active_txns = (uint32_t)wal->active_txn_count;
@@ -826,7 +825,7 @@ int wal_redo(const char *path, uint64_t start_lsn,
     if (!file) return -1;
 
     uint64_t file_size = disk_get_size(file);
-    uint64_t offset = WAL_HEADER_SIZE + start_lsn * 1024;
+    uint64_t offset = WAL_HEADER_SIZE + start_lsn;
 
     /* 正向遍历所有日志记录 */
     while (offset < file_size) {
@@ -839,12 +838,15 @@ int wal_redo(const char *path, uint64_t start_lsn,
         size_t data_size = rec->size[0] | (rec->size[1] << 8) | (rec->size[2] << 16);
 
         /* 读取数据部分 */
-        uint8_t *data = (uint8_t *)malloc(data_size);
-        if (!data) break;
+        uint8_t *data = NULL;
+        if (data_size > 0) {
+            data = (uint8_t *)malloc(data_size);
+            if (!data) break;
 
-        if (disk_pread(file, offset + WAL_RECORD_HEADER_SIZE, data, data_size) != (ssize_t)data_size) {
-            free(data);
-            break;
+            if (disk_pread(file, offset + WAL_RECORD_HEADER_SIZE, data, data_size) != (ssize_t)data_size) {
+                free(data);
+                break;
+            }
         }
 
         /* 解析数据：key_len, key, value_len, value */
@@ -852,7 +854,7 @@ int wal_redo(const char *path, uint64_t start_lsn,
         uint32_t key_len = 0, value_len = 0;
         const void *key = NULL, *value = NULL;
 
-        if (data_size >= sizeof(uint32_t)) {
+        if (data && data_size >= sizeof(uint32_t)) {
             memcpy(&key_len, data, sizeof(uint32_t));
             data_offset += sizeof(uint32_t);
 
@@ -871,12 +873,10 @@ int wal_redo(const char *path, uint64_t start_lsn,
             }
         }
 
-        /* 应用日志：只重做插入和更新 */
-        if (rec->type == WAL_LOG_INSERT || rec->type == WAL_LOG_UPDATE) {
-            apply_fn(ctx, (wal_log_type_t)rec->type, key, key_len, value, value_len);
-        }
+        /* 应用日志：重做所有记录类型 */
+        apply_fn(ctx, (wal_log_type_t)rec->type, key, key_len, value, value_len);
 
-        free(data);
+        if (data) free(data);
         offset += WAL_RECORD_HEADER_SIZE + data_size;
     }
 
@@ -921,11 +921,23 @@ int wal_undo(const char *path, uint32_t txn_id, uint64_t start_lsn,
     if (!file) return -1;
 
     uint64_t file_size = disk_get_size(file);
-    uint64_t offset = WAL_HEADER_SIZE + start_lsn * 1024;
+    uint64_t offset = WAL_HEADER_SIZE + start_lsn;
 
-    /* 遍历日志记录，查找指定事务
-     * 注意：简化实现，未实现真正的逆序回滚
-     */
+    /* 第一遍：收集该事务所有记录的位置和大小 */
+    typedef struct {
+        uint64_t offset;
+        uint32_t data_size;
+        uint8_t  type;
+    } record_info_t;
+
+    size_t capacity = 64;
+    size_t count = 0;
+    record_info_t *records = (record_info_t *)malloc(capacity * sizeof(record_info_t));
+    if (!records) {
+        disk_close(file);
+        return -1;
+    }
+
     while (offset < file_size) {
         uint8_t header[WAL_RECORD_HEADER_SIZE];
         if (disk_pread(file, offset, header, WAL_RECORD_HEADER_SIZE) != WAL_RECORD_HEADER_SIZE) {
@@ -933,23 +945,47 @@ int wal_undo(const char *path, uint32_t txn_id, uint64_t start_lsn,
         }
 
         wal_record_header_t *rec = (wal_record_header_t *)header;
+        uint32_t data_size = rec->size[0] | (rec->size[1] << 8) | (rec->size[2] << 16);
 
-        /* 只处理指定事务的记录 */
-        if (rec->txn_id != txn_id) {
-            size_t data_size = rec->size[0] | (rec->size[1] << 8) | (rec->size[2] << 16);
-            offset += WAL_RECORD_HEADER_SIZE + data_size;
+        /* 只收集指定事务的记录（排除 COMMIT/ABORT/CHECKPOINT） */
+        if (rec->txn_id == txn_id &&
+            rec->type != WAL_LOG_COMMIT &&
+            rec->type != WAL_LOG_ABORT &&
+            rec->type != WAL_LOG_CHECKPOINT &&
+            rec->type != WAL_LOG_BEGIN) {
+            if (count >= capacity) {
+                capacity *= 2;
+                records = (record_info_t *)realloc(records, capacity * sizeof(record_info_t));
+                if (!records) {
+                    disk_close(file);
+                    return -1;
+                }
+            }
+            records[count].offset = offset;
+            records[count].data_size = data_size;
+            records[count].type = rec->type;
+            count++;
+        }
+
+        offset += WAL_RECORD_HEADER_SIZE + data_size;
+    }
+
+    /* 第二遍：逆序回滚 */
+    for (size_t i = count; i > 0; i--) {
+        record_info_t *ri = &records[i - 1];
+        uint8_t header[WAL_RECORD_HEADER_SIZE];
+        if (disk_pread(file, ri->offset, header, WAL_RECORD_HEADER_SIZE) != WAL_RECORD_HEADER_SIZE) {
             continue;
         }
 
-        size_t data_size = rec->size[0] | (rec->size[1] << 8) | (rec->size[2] << 16);
-
-        /* 读取数据 */
-        uint8_t *data = (uint8_t *)malloc(data_size);
-        if (!data) break;
-
-        if (disk_pread(file, offset + WAL_RECORD_HEADER_SIZE, data, data_size) != (ssize_t)data_size) {
-            free(data);
-            break;
+        uint8_t *data = NULL;
+        if (ri->data_size > 0) {
+            data = (uint8_t *)malloc(ri->data_size);
+            if (!data) continue;
+            if (disk_pread(file, ri->offset + WAL_RECORD_HEADER_SIZE, data, ri->data_size) != (ssize_t)ri->data_size) {
+                free(data);
+                continue;
+            }
         }
 
         /* 解析数据 */
@@ -957,43 +993,65 @@ int wal_undo(const char *path, uint32_t txn_id, uint64_t start_lsn,
         uint32_t key_len = 0, old_value_len = 0, new_value_len = 0;
         const void *key = NULL, *old_value = NULL;
 
-        if (data_size >= sizeof(uint32_t)) {
+        if (data && ri->data_size >= sizeof(uint32_t)) {
             memcpy(&key_len, data, sizeof(uint32_t));
             data_offset += sizeof(uint32_t);
 
-            if (key_len > 0 && data_offset + key_len <= data_size) {
+            if (key_len > 0 && data_offset + key_len <= ri->data_size) {
                 key = data + data_offset;
                 data_offset += key_len;
             }
 
-            /* UPDATE 记录存储 (old_value, new_value) */
-            if (data_offset + sizeof(uint32_t) * 2 <= data_size) {
-                memcpy(&old_value_len, data + data_offset, sizeof(uint32_t));
-                data_offset += sizeof(uint32_t);
-
-                memcpy(&new_value_len, data + data_offset, sizeof(uint32_t));
-                data_offset += sizeof(uint32_t);
-
-                /* old_value 在 new_value 前面 */
-                if (old_value_len > 0 && data_offset + old_value_len <= data_size) {
-                    old_value = data + data_offset;
+            if (ri->type == WAL_LOG_UPDATE) {
+                /* UPDATE 记录存储 (old_value_len, new_value_len, old_value, new_value) */
+                if (data_offset + sizeof(uint32_t) * 2 <= ri->data_size) {
+                    memcpy(&old_value_len, data + data_offset, sizeof(uint32_t));
+                    data_offset += sizeof(uint32_t);
+                    memcpy(&new_value_len, data + data_offset, sizeof(uint32_t));
+                    data_offset += sizeof(uint32_t);
+                    if (old_value_len > 0 && data_offset + old_value_len <= ri->data_size) {
+                        old_value = data + data_offset;
+                    }
+                }
+            } else if (ri->type == WAL_LOG_DELETE) {
+                /* DELETE 记录存储 key_len, key, value_len, value (旧值用于重新插入) */
+                if (data_offset + sizeof(uint32_t) <= ri->data_size) {
+                    memcpy(&old_value_len, data + data_offset, sizeof(uint32_t));
+                    data_offset += sizeof(uint32_t);
+                    if (old_value_len > 0 && data_offset + old_value_len <= ri->data_size) {
+                        old_value = data + data_offset;
+                    }
                 }
             }
         }
 
         /* 逆向应用操作 */
-        if (rec->type == WAL_LOG_UPDATE && old_value) {
-            /* UPDATE → 恢复旧值 */
-            apply_fn(ctx, WAL_LOG_UPDATE, key, key_len, old_value, old_value_len);
-        } else if (rec->type == WAL_LOG_INSERT) {
-            /* INSERT → 删除 */
-            apply_fn(ctx, WAL_LOG_DELETE, key, key_len, NULL, 0);
+        switch (ri->type) {
+            case WAL_LOG_INSERT:
+                /* INSERT → 删除 */
+                apply_fn(ctx, WAL_LOG_DELETE, key, key_len, NULL, 0);
+                break;
+            case WAL_LOG_UPDATE:
+                /* UPDATE → 恢复旧值 */
+                if (old_value) {
+                    apply_fn(ctx, WAL_LOG_UPDATE, key, key_len, old_value, old_value_len);
+                }
+                break;
+            case WAL_LOG_DELETE:
+                /* DELETE → 重新插入（用旧值） */
+                if (old_value) {
+                    apply_fn(ctx, WAL_LOG_INSERT, key, key_len, old_value, old_value_len);
+                }
+                break;
+            default:
+                /* BEGIN/COMMIT/ABORT/CHECKPOINT: 无操作 */
+                break;
         }
 
-        free(data);
-        offset += WAL_RECORD_HEADER_SIZE + data_size;
+        if (data) free(data);
     }
 
+    free(records);
     disk_close(file);
     return 0;
 }
