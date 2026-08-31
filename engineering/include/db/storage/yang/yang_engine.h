@@ -8,6 +8,7 @@
 #define DB_YANG_ENGINE_H
 
 #include "storage_engine.h"
+#include "common_rwlock.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -15,6 +16,14 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* ========================================================================
+ * Yang 错误码定义
+ * ======================================================================== */
+
+#define YANG_ERR_INVALID_TREE   (-1)   /**< 无效树（NULL tree/root） */
+#define YANG_ERR_INVALID_PARAM  (-2)   /**< 无效参数 */
+#define YANG_ERR_NOT_FOUND      (-3)   /**< 未找到 */
 
 /* ========================================================================
  * Yang 树相关类型定义
@@ -54,6 +63,7 @@ typedef struct yang_engine_db_s {
 
     yang_node_t *root;         /**< 根节点 */
     uint64_t num_nodes;        /**< 节点数量 */
+    common_rwlock_t *rwlock;   /**< 读写锁：保护并发访问 */
 } yang_engine_db_t;
 
 /**

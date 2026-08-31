@@ -231,20 +231,23 @@ void yang_free_matches(YangPatternMatch *matches, size_t count);
  *
  * TREE_ANCESTORS(path)
  *
- * 示例:
- *   SELECT TREE_ANCESTORS('/root/users/alice/profile')
+ * @param tree 树引擎句柄（NULL 安全）
+ * @param path 节点路径
+ * @return JSON 字符串（调用者负责释放），NULL 表示错误
  */
-char *yang_sql_ancestors(const char *path);
+char *yang_sql_ancestors(void *tree, const char *path);
 
 /**
  * @brief TREE_DESCENDANTS SQL 函数
  *
  * TREE_DESCENDANTS(path, max_depth)
  *
- * 示例:
- *   SELECT TREE_DESCENDANTS('/root/users', 2)
+ * @param tree 树引擎句柄（NULL 安全）
+ * @param path 起始路径
+ * @param max_depth 最大深度（-1 表示无限制）
+ * @return JSON 字符串（调用者负责释放），NULL 表示错误
  */
-char *yang_sql_descendants(const char *path, int max_depth);
+char *yang_sql_descendants(void *tree, const char *path, int max_depth);
 
 /**
  * @brief TREE_DEPTH SQL 函数

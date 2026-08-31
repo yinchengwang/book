@@ -114,7 +114,10 @@ YangAncestor *yang_get_ancestors(void *tree,
                                 const char *path,
                                 bool include_self,
                                 size_t *out_count) {
-    if (!tree || !path || !out_count) return NULL;
+    if (!tree || !path || !out_count) {
+        if (out_count) *out_count = 0;
+        return NULL;
+    }
 
     size_t num_segs;
     char **segs = split_path(path, "/", &num_segs);
@@ -246,7 +249,10 @@ YangDescendant *yang_get_descendants(void *tree,
                                      const char *path,
                                      int max_depth,
                                      size_t *out_count) {
-    if (!tree || !path || !out_count) return NULL;
+    if (!tree || !path || !out_count) {
+        if (out_count) *out_count = 0;
+        return NULL;
+    }
 
     yang_engine_db_t *db = (yang_engine_db_t *)tree;
     yang_node_t *start_node = find_node_by_path(db->root, path);
@@ -520,9 +526,11 @@ void yang_free_matches(YangPatternMatch *matches, size_t count) {
  * SQL 函数
  * ======================================================================== */
 
-char *yang_sql_ancestors(const char *path) {
+char *yang_sql_ancestors(void *tree, const char *path) {
+    if (!tree || !((yang_engine_db_t *)tree)->root) return NULL;
+
     size_t count;
-    YangAncestor *ancestors = yang_get_ancestors(NULL, path, true, &count);
+    YangAncestor *ancestors = yang_get_ancestors(tree, path, true, &count);
 
     char *result = (char *)malloc(4096);
     char *p = result;
@@ -539,9 +547,11 @@ char *yang_sql_ancestors(const char *path) {
     return result;
 }
 
-char *yang_sql_descendants(const char *path, int max_depth) {
+char *yang_sql_descendants(void *tree, const char *path, int max_depth) {
+    if (!tree || !((yang_engine_db_t *)tree)->root) return NULL;
+
     size_t count;
-    YangDescendant *descendants = yang_get_descendants(NULL, path, max_depth, &count);
+    YangDescendant *descendants = yang_get_descendants(tree, path, max_depth, &count);
 
     char *result = (char *)malloc(4096);
     char *p = result;
