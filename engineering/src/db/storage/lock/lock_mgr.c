@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
 
 /* Windows 平台定义 */
 #if defined(_WIN32) || defined(_WIN64)
@@ -191,6 +192,8 @@ static void lock_entry_destroy(lock_entry_t *entry)
         req = next;
     }
 
+    pthread_mutex_destroy(&entry->mutex);
+    pthread_cond_destroy(&entry->cond);
     free(entry);
 }
 
@@ -211,7 +214,8 @@ static void wake_up_next_waiter(lock_entry_t *entry)
 
     if (waiter) {
         waiter->granted = true;
-        /* 标记事务可以继续执行（实际唤醒由调用者处理） */
+        /* 唤醒等待线程 */
+        pthread_cond_signal(&entry->cond);
     }
 }
 
@@ -315,6 +319,8 @@ lock_result_t lock_acquire(lock_manager_t *mgr, txn_t *txn,
         atomic_init(&entry->recursion_count, 0);
         entry->hash_next = NULL;
         entry->hash_prev_ptr = entry_ptr;
+        pthread_mutex_init(&entry->mutex, NULL);
+        pthread_cond_init(&entry->cond, NULL);
         *entry_ptr = entry;
     } else {
         atomic_fetch_add(&entry->ref_count, 1);
@@ -392,10 +398,12 @@ lock_result_t lock_acquire(lock_manager_t *mgr, txn_t *txn,
     uint64_t start_time = get_current_time_ms();
     uint32_t wait_timeout = timeout_ms > 0 ? timeout_ms : LOCK_DEFAULT_TIMEOUT_MS;
 
+    pthread_mutex_lock(&entry->mutex);
     while (!req->granted) {
         /* 检查超时 */
         uint64_t elapsed = get_current_time_ms() - start_time;
         if (elapsed >= wait_timeout) {
+            pthread_mutex_unlock(&entry->mutex);
             /* 从等待队列中移除 */
             if (req->prev) {
                 req->prev->next = req->next;
@@ -416,6 +424,7 @@ lock_result_t lock_acquire(lock_manager_t *mgr, txn_t *txn,
                 /* 检测到死锁，选择一个 victim 回滚 */
                 txn_t *victim = lock_detect_and_resolve_deadlock(mgr);
                 if (victim == txn) {
+                    pthread_mutex_unlock(&entry->mutex);
                     /* 当前事务是 victim */
                     if (req->prev) {
                         req->prev->next = req->next;
@@ -433,13 +442,14 @@ lock_result_t lock_acquire(lock_manager_t *mgr, txn_t *txn,
             }
         }
 
-        /* 简单的自旋等待（实际应该使用条件变量） */
-#if defined(_WIN32)
-        Sleep(1);  /* Windows: 1毫秒 */
-#else
-        usleep(1000);  /* Unix: 1000微秒 = 1毫秒 */
-#endif
+        /* 使用条件变量等待，设置绝对超时时间 */
+        struct timespec ts;
+        uint64_t remaining = wait_timeout - elapsed;
+        ts.tv_sec = remaining / 1000;
+        ts.tv_nsec = (remaining % 1000) * 1000000;
+        pthread_cond_timedwait(&entry->cond, &entry->mutex, &ts);
     }
+    pthread_mutex_unlock(&entry->mutex);
 
     /* 锁已授予 */
     atomic_fetch_sub(&entry->ref_count, 1);
@@ -534,6 +544,9 @@ void lock_release_all(lock_manager_t *mgr, txn_t *txn)
     for (int i = 0; i < LOCK_HASH_SIZE; i++) {
         lock_entry_t *entry = mgr->lock_table[i];
         while (entry) {
+            /* 保存下一个条目（在调用 lock_release 之前） */
+            lock_entry_t *next = entry->hash_next;
+
             /* 检查是否独占持有 */
             if (entry->exclusive_holder == txn) {
                 lock_release(mgr, txn, entry->obj_type, entry->object_id, LOCK_MODE_X);
@@ -549,7 +562,7 @@ void lock_release_all(lock_manager_t *mgr, txn_t *txn)
                 req = req->next;
             }
 
-            entry = entry->hash_next;
+            entry = next;
         }
     }
 }
