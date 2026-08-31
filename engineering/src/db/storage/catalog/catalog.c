@@ -72,9 +72,17 @@ typedef struct index_entry_s {
     struct index_entry_s *next;     /**< 链表下一项 */
 } index_entry_t;
 
+/** 表名缓存条目 (name -> OID) */
+typedef struct name_entry_s {
+    char            name[NAMEDATALEN]; /**< 表名 */
+    Oid             oid;            /**< 表 OID */
+    struct name_entry_s *next;       /**< 链表下一项 */
+} name_entry_t;
+
 /** Catalog 缓存 */
 typedef struct catalog_cache_s {
-    catalog_entry_t     *tables[CATALOG_HASH_SIZE];  /**< 表缓存 */
+    catalog_entry_t     *tables[CATALOG_HASH_SIZE];  /**< 表缓存 (OID -> entry) */
+    name_entry_t        *names[CATALOG_HASH_SIZE];   /**< 表名缓存 (name -> OID) */
     column_entry_t      *columns[CATALOG_HASH_SIZE]; /**< 列缓存 */
     index_entry_t       *indexes[CATALOG_HASH_SIZE]; /**< 索引缓存 */
     Oid                 next_oid;     /**< 下一个可用 OID */
@@ -97,6 +105,14 @@ static bool catalog_initialized = false;
 
 static uint32_t oid_hash(Oid oid) {
     return oid % CATALOG_HASH_SIZE;
+}
+
+static uint32_t name_hash(const char *name) {
+    uint32_t h = 5381;
+    for (const char *p = name; *p; p++) {
+        h = ((h << 5) + h) + (uint32_t)*p;
+    }
+    return h % CATALOG_HASH_SIZE;
 }
 
 /* ============================================================
@@ -162,6 +178,16 @@ void catalog_shutdown(void) {
             free(entry);
             entry = next;
         }
+        catalog_cache->tables[i] = NULL;
+
+        /* 清理名字缓存 */
+        name_entry_t *ne = catalog_cache->names[i];
+        while (ne) {
+            name_entry_t *next = ne->next;
+            free(ne);
+            ne = next;
+        }
+        catalog_cache->names[i] = NULL;
 
         /* 清理列缓存 */
         column_entry_t *col = catalog_cache->columns[i];
@@ -170,6 +196,7 @@ void catalog_shutdown(void) {
             free(col);
             col = next;
         }
+        catalog_cache->columns[i] = NULL;
 
         /* 清理索引缓存 */
         index_entry_t *idx = catalog_cache->indexes[i];
@@ -179,6 +206,7 @@ void catalog_shutdown(void) {
             free(idx);
             idx = next;
         }
+        catalog_cache->indexes[i] = NULL;
     }
 
     free(catalog_cache);
@@ -259,10 +287,21 @@ Oid catalog_create_table(const char *name, column_def_t *columns, int ncolumns) 
     entry->info.has_index = false;
     entry->info.has_pkey = false;
 
-    /* 插入哈希表 */
+    /* 插入 OID 哈希表 */
     uint32_t bucket = oid_hash(table_oid);
     entry->next = catalog_cache->tables[bucket];
     catalog_cache->tables[bucket] = entry;
+
+    /* 插入名字哈希表 (O(1) name lookup) */
+    name_entry_t *name_entry = (name_entry_t *)malloc(sizeof(name_entry_t));
+    if (name_entry) {
+        strncpy(name_entry->name, name, NAMEDATALEN - 1);
+        name_entry->name[NAMEDATALEN - 1] = '\0';
+        name_entry->oid = table_oid;
+        uint32_t name_bucket = name_hash(name);
+        name_entry->next = catalog_cache->names[name_bucket];
+        catalog_cache->names[name_bucket] = name_entry;
+    }
 
     /* 创建列缓存条目 */
     for (int i = 0; i < ncolumns; i++) {
@@ -301,6 +340,24 @@ catalog_result_t catalog_drop_table(Oid table_oid) {
 
     while (entry) {
         if (entry->oid == table_oid) {
+            /* 先从名字哈希表移除 */
+            char tablename[NAMEDATALEN];
+            strncpy(tablename, entry->info.name, NAMEDATALEN - 1);
+            tablename[NAMEDATALEN - 1] = '\0';
+
+            uint32_t name_bucket = name_hash(tablename);
+            name_entry_t **name_prev = &catalog_cache->names[name_bucket];
+            name_entry_t *name_entry = *name_prev;
+            while (name_entry) {
+                if (name_entry->oid == table_oid) {
+                    *name_prev = name_entry->next;
+                    free(name_entry);
+                    break;
+                }
+                name_prev = &name_entry->next;
+                name_entry = name_entry->next;
+            }
+
             *prev = entry->next;
             free(entry);
             return CATALOG_SUCCESS;
@@ -355,18 +412,18 @@ Oid catalog_lookup_table(const char *name) {
         return InvalidOid;
     }
 
-    for (int i = 0; i < CATALOG_HASH_SIZE; i++) {
-        catalog_entry_t *entry = catalog_cache->tables[i];
-        while (entry) {
-            if (strcmp(entry->info.name, name) == 0) {
-                catalog_cache->hits++;  /* 命中统计 */
-                return entry->oid;
-            }
-            entry = entry->next;
+    uint32_t bucket = name_hash(name);
+    name_entry_t *entry = catalog_cache->names[bucket];
+
+    while (entry) {
+        if (strcmp(entry->name, name) == 0) {
+            catalog_cache->hits++;
+            return entry->oid;
         }
+        entry = entry->next;
     }
 
-    catalog_cache->misses++;  /* 未命中统计 */
+    catalog_cache->misses++;
     return InvalidOid;
 }
 
@@ -484,9 +541,10 @@ catalog_result_t catalog_add_column(Oid table_oid, column_def_t *column) {
         return CATALOG_ERROR;
     }
 
-    /* 获取当前列数 */
+    /* 获取当前列数 (must free result) */
     int ncols = 0;
-    catalog_get_columns(table_oid, &ncols);
+    column_info_t *existing = catalog_get_columns(table_oid, &ncols);
+    free(existing);
 
     /* 创建新列条目 */
     column_entry_t *entry = (column_entry_t *)malloc(sizeof(column_entry_t));
@@ -793,6 +851,10 @@ void catalog_invalidate_all(void) {
         while (t) { catalog_entry_t *next = t->next; free(t); t = next; }
         catalog_cache->tables[i] = NULL;
 
+        name_entry_t *n = catalog_cache->names[i];
+        while (n) { name_entry_t *next = n->next; free(n); n = next; }
+        catalog_cache->names[i] = NULL;
+
         column_entry_t *c = catalog_cache->columns[i];
         while (c) { column_entry_t *next = c->next; free(c); c = next; }
         catalog_cache->columns[i] = NULL;
@@ -806,4 +868,180 @@ void catalog_invalidate_all(void) {
 void catalog_get_cache_stats(uint64_t *hits, uint64_t *misses) {
     if (hits) *hits = catalog_cache ? catalog_cache->hits : 0;
     if (misses) *misses = catalog_cache ? catalog_cache->misses : 0;
+}
+
+/* ============================================================
+ * 持久化
+ * ============================================================ */
+
+/**
+ * @brief 持久化 Catalog 到磁盘
+ *
+ * 将当前 Catalog 状态序列化到文件
+ *
+ * @param path 文件路径
+ * @return 0 成功，-1 失败
+ */
+int catalog_persist(const char *path) {
+    if (!catalog_initialized || !path) {
+        return -1;
+    }
+
+    FILE *fp = fopen(path, "wb");
+    if (!fp) {
+        return -1;
+    }
+
+    /* 写入 magic 头 */
+    uint32_t magic = 0x43415447; /* "CATG" */
+    fwrite(&magic, sizeof(magic), 1, fp);
+
+    /* 写入 next_oid */
+    fwrite(&catalog_cache->next_oid, sizeof(catalog_cache->next_oid), 1, fp);
+
+    /* 写入表数量 */
+    int ntables = 0;
+    for (int i = 0; i < CATALOG_HASH_SIZE; i++) {
+        catalog_entry_t *e = catalog_cache->tables[i];
+        while (e) { ntables++; e = e->next; }
+    }
+    fwrite(&ntables, sizeof(ntables), 1, fp);
+
+    /* 写入每个表 */
+    for (int i = 0; i < CATALOG_HASH_SIZE; i++) {
+        catalog_entry_t *e = catalog_cache->tables[i];
+        while (e) {
+            /* 写入表信息 */
+            table_info_t info = e->info;
+            fwrite(&info, sizeof(info), 1, fp);
+
+            /* 写入列数量 */
+            int ncols = 0;
+            uint32_t col_bucket = oid_hash(e->oid);
+            column_entry_t *c = catalog_cache->columns[col_bucket];
+            while (c) {
+                if (c->table_oid == e->oid && !c->info.is_dropped) ncols++;
+                c = c->next;
+            }
+            fwrite(&ncols, sizeof(ncols), 1, fp);
+
+            /* 写入列信息 */
+            c = catalog_cache->columns[col_bucket];
+            while (c) {
+                if (c->table_oid == e->oid && !c->info.is_dropped) {
+                    fwrite(&c->info, sizeof(c->info), 1, fp);
+                }
+                c = c->next;
+            }
+
+            e = e->next;
+        }
+    }
+
+    fclose(fp);
+    return 0;
+}
+
+/**
+ * @brief 从磁盘恢复 Catalog
+ *
+ * 从序列化文件加载 Catalog 状态
+ *
+ * @param path 文件路径
+ * @return 0 成功，-1 失败
+ */
+int catalog_recover(const char *path) {
+    if (!catalog_initialized || !path) {
+        return -1;
+    }
+
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        return -1;
+    }
+
+    /* 读取 magic 头 */
+    uint32_t magic = 0;
+    if (fread(&magic, sizeof(magic), 1, fp) != 1 || magic != 0x43415447) {
+        fclose(fp);
+        return -1;
+    }
+
+    /* 读取 next_oid */
+    if (fread(&catalog_cache->next_oid, sizeof(catalog_cache->next_oid), 1, fp) != 1) {
+        fclose(fp);
+        return -1;
+    }
+
+    /* 读取表数量 */
+    int ntables = 0;
+    if (fread(&ntables, sizeof(ntables), 1, fp) != 1) {
+        fclose(fp);
+        return -1;
+    }
+
+    /* 读取每个表 */
+    for (int t = 0; t < ntables; t++) {
+        table_info_t info;
+        if (fread(&info, sizeof(info), 1, fp) != 1) {
+            fclose(fp);
+            return -1;
+        }
+
+        /* 创建表条目 */
+        catalog_entry_t *entry = (catalog_entry_t *)malloc(sizeof(catalog_entry_t));
+        if (!entry) {
+            fclose(fp);
+            return -1;
+        }
+        entry->oid = info.oid;
+        entry->info = info;
+        entry->next = NULL;
+
+        /* 插入 OID 哈希表 */
+        uint32_t bucket = oid_hash(info.oid);
+        entry->next = catalog_cache->tables[bucket];
+        catalog_cache->tables[bucket] = entry;
+
+        /* 插入名字哈希表 */
+        name_entry_t *name_entry = (name_entry_t *)malloc(sizeof(name_entry_t));
+        if (name_entry) {
+            strncpy(name_entry->name, info.name, NAMEDATALEN - 1);
+            name_entry->name[NAMEDATALEN - 1] = '\0';
+            name_entry->oid = info.oid;
+            uint32_t name_bucket = name_hash(info.name);
+            name_entry->next = catalog_cache->names[name_bucket];
+            catalog_cache->names[name_bucket] = name_entry;
+        }
+
+        /* 读取列数量 */
+        int ncols = 0;
+        if (fread(&ncols, sizeof(ncols), 1, fp) != 1) {
+            fclose(fp);
+            return -1;
+        }
+
+        /* 读取列信息 */
+        for (int c = 0; c < ncols; c++) {
+            column_info_t col_info;
+            if (fread(&col_info, sizeof(col_info), 1, fp) != 1) {
+                fclose(fp);
+                return -1;
+            }
+
+            column_entry_t *col_entry = (column_entry_t *)malloc(sizeof(column_entry_t));
+            if (!col_entry) continue;
+
+            col_entry->table_oid = info.oid;
+            col_entry->attnum = col_info.attnum;
+            col_entry->info = col_info;
+
+            uint32_t col_bucket = oid_hash(info.oid);
+            col_entry->next = catalog_cache->columns[col_bucket];
+            catalog_cache->columns[col_bucket] = col_entry;
+        }
+    }
+
+    fclose(fp);
+    return 0;
 }
