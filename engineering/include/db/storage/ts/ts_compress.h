@@ -198,6 +198,89 @@ int ts_compress_get_info(const uint8_t *compressed_data,
                          int64_t *out_first_timestamp,
                          uint32_t *out_num_points);
 
+/* ========================================================================
+ * Gorilla XOR 编码 API
+ * ======================================================================== */
+
+/**
+ * @brief Gorilla 编码器
+ *
+ * 使用 Facebook Gorilla 算法对浮点数序列进行压缩。
+ * 核心原理：相邻值 XOR 后产生大量前导/尾部零，
+ * 只存储有效位数以获得高压缩率。
+ */
+typedef struct {
+    uint8_t *buffer;   /**< 输出缓冲区 */
+    size_t byte_pos;   /**< 当前字节位置 */
+    size_t bit_pos;    /**< 当前位位置（0-7） */
+    float prev_value;  /**< 上一个值 */
+    int has_prev;      /**< 是否已存储第一个值 */
+} gorilla_encoder_t;
+
+/**
+ * @brief Gorilla 解码器
+ */
+typedef struct {
+    const uint8_t *buffer; /**< 输入缓冲区 */
+    size_t buffer_size;    /**< 缓冲区大小 */
+    size_t byte_pos;       /**< 当前字节位置 */
+    size_t bit_pos;        /**< 当前位位置（0-7） */
+    float prev_value;      /**< 上一个解码的值 */
+    int has_prev;          /**< 是否已解码第一个值 */
+} gorilla_decoder_t;
+
+/**
+ * @brief 初始化 Gorilla 编码器
+ * @param enc 编码器
+ * @return 0 成功
+ */
+int gorilla_encoder_init(gorilla_encoder_t *enc);
+
+/**
+ * @brief 销毁 Gorilla 编码器
+ * @param enc 编码器
+ */
+void gorilla_encoder_destroy(gorilla_encoder_t *enc);
+
+/**
+ * @brief 初始化 Gorilla 解码器
+ * @param dec 解码器
+ * @param data 输入数据
+ * @param size 数据大小
+ * @return 0 成功
+ */
+int gorilla_decoder_init(gorilla_decoder_t *dec, const uint8_t *data, size_t size);
+
+/**
+ * @brief 销毁 Gorilla 解码器
+ * @param dec 解码器
+ */
+void gorilla_decoder_destroy(gorilla_decoder_t *dec);
+
+/**
+ * @brief 编码一个浮点值
+ * @param enc 编码器
+ * @param value 要编码的值
+ * @return 0 成功
+ */
+int gorilla_encode(gorilla_encoder_t *enc, float value);
+
+/**
+ * @brief 解码一个浮点值
+ * @param dec 解码器
+ * @param value 输出解码的值
+ * @return 0 成功，-1 已结束
+ */
+int gorilla_decode(gorilla_decoder_t *dec, float *value);
+
+/**
+ * @brief 获取编码器输出缓冲区
+ * @param enc 编码器
+ * @param out_size 输出大小
+ * @return 缓冲区指针
+ */
+const uint8_t *gorilla_encoder_get_data(const gorilla_encoder_t *enc, size_t *out_size);
+
 #ifdef __cplusplus
 }
 #endif

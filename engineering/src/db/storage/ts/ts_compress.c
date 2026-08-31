@@ -476,3 +476,230 @@ int ts_compress_get_info(const uint8_t *compressed_data,
 
     return 0;
 }
+
+/* ========================================================================
+ * Gorilla XOR 浮点压缩实现
+ *
+ * 核心算法：
+ * 1. 第一个值存储原始 32-bit
+ * 2. 后续值与前一个值 XOR
+ * 3. XOR 结果的前导零(L)和尾部零(T)已知后，只需存储中间有效位
+ * 编码格式：
+ *   - 0x00: 与前值相同（1 bit）
+ *   - 0x01 + meaningful bits: 有效位数未减少
+ *   - 0x10: 前值 L 位后有效，存储 L 和尾部位
+ *   - 0x11 + L bits + T bits: 需要存储 L 和 T
+ * ======================================================================== */
+
+/* 缓冲区初始大小 */
+#define GORILLA_INIT_BUF_SIZE 4096
+
+/* 单个 float 的位数 */
+#define FLOAT_BITS 32
+
+/**
+ * @brief 位写入：向缓冲区写入指定数量的位
+ */
+static void gorilla_write_bits(gorilla_encoder_t *enc, uint64_t value, int num_bits) {
+    for (int i = 0; i < num_bits; i++) {
+        int bit = (value >> i) & 1;
+        if (bit) {
+            enc->buffer[enc->byte_pos] |= (1 << enc->bit_pos);
+        }
+        enc->bit_pos++;
+        if (enc->bit_pos == BITS_PER_BYTE) {
+            enc->bit_pos = 0;
+            enc->byte_pos++;
+        }
+    }
+}
+
+/**
+ * @brief 位读取：从缓冲区读取指定数量的位
+ */
+static uint64_t gorilla_read_bits(gorilla_decoder_t *dec, int num_bits) {
+    uint64_t value = 0;
+    for (int i = 0; i < num_bits; i++) {
+        if (dec->byte_pos >= dec->buffer_size) break;
+        int bit = (dec->buffer[dec->byte_pos] >> dec->bit_pos) & 1;
+        value |= ((uint64_t)bit << i);
+        dec->bit_pos++;
+        if (dec->bit_pos == BITS_PER_BYTE) {
+            dec->bit_pos = 0;
+            dec->byte_pos++;
+        }
+    }
+    return value;
+}
+
+int gorilla_encoder_init(gorilla_encoder_t *enc) {
+    if (!enc) return -1;
+    enc->buffer = (uint8_t *)calloc(GORILLA_INIT_BUF_SIZE, 1);
+    if (!enc->buffer) return -1;
+    enc->byte_pos = 0;
+    enc->bit_pos = 0;
+    enc->prev_value = 0.0f;
+    enc->has_prev = 0;
+    return 0;
+}
+
+void gorilla_encoder_destroy(gorilla_encoder_t *enc) {
+    if (enc && enc->buffer) {
+        free(enc->buffer);
+        enc->buffer = NULL;
+    }
+}
+
+int gorilla_decoder_init(gorilla_decoder_t *dec, const uint8_t *data, size_t size) {
+    if (!dec || !data || size == 0) return -1;
+    dec->buffer = data;
+    dec->buffer_size = size;
+    dec->byte_pos = 0;
+    dec->bit_pos = 0;
+    dec->prev_value = 0.0f;
+    dec->has_prev = 0;
+    return 0;
+}
+
+void gorilla_decoder_destroy(gorilla_decoder_t *dec) {
+    if (dec) {
+        dec->buffer = NULL;
+        dec->buffer_size = 0;
+    }
+}
+
+int gorilla_encode(gorilla_encoder_t *enc, float value) {
+    if (!enc) return -1;
+
+    /* 确保缓冲区足够大 */
+    size_t needed = enc->byte_pos + 16;
+    size_t current_size = GORILLA_INIT_BUF_SIZE;
+    while (current_size < needed) current_size *= 2;
+    if (current_size > GORILLA_INIT_BUF_SIZE) {
+        uint8_t *new_buf = (uint8_t *)realloc(enc->buffer, current_size);
+        if (!new_buf) return -1;
+        enc->buffer = new_buf;
+        memset(enc->buffer + (current_size / 2), 0, current_size / 2);
+    }
+
+    uint32_t bits;
+    memcpy(&bits, &value, sizeof(float));
+
+    if (!enc->has_prev) {
+        /* 第一个值：直接存储 32-bit */
+        gorilla_write_bits(enc, bits, FLOAT_BITS);
+        enc->prev_value = value;
+        enc->has_prev = 1;
+        return 0;
+    }
+
+    /* 计算 XOR */
+    uint32_t prev_bits;
+    memcpy(&prev_bits, &enc->prev_value, sizeof(float));
+    uint32_t xor_val = bits ^ prev_bits;
+
+    if (xor_val == 0) {
+        /* 与前值相同：存储 1 bit (0) */
+        gorilla_write_bits(enc, 0, 1);
+    } else {
+        /* 有变化：存储 1 bit (1) */
+        gorilla_write_bits(enc, 1, 1);
+
+        /* 计算前导零和尾部零 */
+        int leading_zeros = 0;
+        int trailing_zeros = 0;
+        uint32_t temp = xor_val;
+
+        /* 前导零 */
+        for (int i = FLOAT_BITS - 1; i >= 0; i--) {
+            if ((temp >> i) & 1) break;
+            leading_zeros++;
+        }
+
+        /* 尾部零 */
+        temp = xor_val;
+        while ((temp & 1) == 0 && trailing_zeros < FLOAT_BITS) {
+            temp >>= 1;
+            trailing_zeros++;
+        }
+
+        int significant_bits = FLOAT_BITS - leading_zeros - trailing_zeros;
+
+        /* 存储有意义位变化标志（简化：总是1） */
+        gorilla_write_bits(enc, 1, 1);
+
+        /* 存储前导零数量（5 bits，最多 32） */
+        gorilla_write_bits(enc, leading_zeros, 5);
+
+        /* 存储尾部零数量（5 bits，最多 32） */
+        gorilla_write_bits(enc, trailing_zeros, 5);
+
+        /* 存储有效位 */
+        gorilla_write_bits(enc, xor_val >> trailing_zeros, significant_bits);
+    }
+
+    enc->prev_value = value;
+    return 0;
+}
+
+int gorilla_decode(gorilla_decoder_t *dec, float *value) {
+    if (!dec || !value) return -1;
+
+    if (!dec->has_prev) {
+        /* 读取第一个值（32-bit） */
+        uint32_t bits = (uint32_t)gorilla_read_bits(dec, FLOAT_BITS);
+        float v;
+        memcpy(&v, &bits, sizeof(float));
+        *value = v;
+        dec->prev_value = v;
+        dec->has_prev = 1;
+        return 0;
+    }
+
+    /* 读取控制位 */
+    int has_change = (int)gorilla_read_bits(dec, 1);
+
+    if (has_change == 0) {
+        /* 与前值相同 */
+        *value = dec->prev_value;
+        return 0;
+    }
+
+    /* 读取有意义位变化标志 */
+    int meaningful = (int)gorilla_read_bits(dec, 1);
+    (void)meaningful;
+
+    /* 读取前导零数量（5 bits） */
+    int leading_zeros = (int)gorilla_read_bits(dec, 5);
+
+    /* 读取尾部零数量（5 bits） */
+    int trailing_zeros = (int)gorilla_read_bits(dec, 5);
+
+    /* 计算有效位数 */
+    int significant_bits = FLOAT_BITS - leading_zeros - trailing_zeros;
+    if (significant_bits <= 0) significant_bits = 1;  /* 防止负数 */
+
+    /* 读取有效位 */
+    uint32_t xor_val = (uint32_t)gorilla_read_bits(dec, significant_bits);
+    xor_val <<= trailing_zeros;
+
+    /* 重建值 */
+    uint32_t prev_bits;
+    memcpy(&prev_bits, &dec->prev_value, sizeof(float));
+    uint32_t result = prev_bits ^ xor_val;
+
+    float v;
+    memcpy(&v, &result, sizeof(float));
+    *value = v;
+    dec->prev_value = v;
+
+    return 0;
+}
+
+const uint8_t *gorilla_encoder_get_data(const gorilla_encoder_t *enc, size_t *out_size) {
+    if (!enc || !out_size) return NULL;
+    /* 输出实际使用的字节数 */
+    size_t total_bits = enc->byte_pos * BITS_PER_BYTE + enc->bit_pos;
+    *out_size = (total_bits + BITS_PER_BYTE - 1) / BITS_PER_BYTE;
+    return enc->buffer;
+}

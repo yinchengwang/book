@@ -2,19 +2,45 @@
  * @file test_ts.c
  * @brief 时序存储模态追赶测试
  *
- * 测试 ts_compress, ts_sql_functions, ts_label_index, ts_retention 模块
+ * 测试 ts_compress, ts_sql_functions, ts_label_index, ts_retention, ts_partition, ts_tag_index 模块
  */
 #include <gtest/gtest.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <time.h>
+#include <sys/stat.h>
 
 /* 头文件 */
 #include "db/storage/ts/ts_compress.h"
 #include "db/storage/ts/ts_sql_functions.h"
 #include "db/storage/ts/ts_retention.h"
 #include "db/storage/ts/ts_label_index.h"
+#include "db/storage/ts/ts_tag_index.h"
+
+/* ========================================================================
+ * ts_partition 前向声明（与 ts_partition.c 中的实现对应）
+ * ======================================================================== */
+typedef struct ts_partition_internal {
+    uint64_t start_time;
+    uint64_t end_time;
+    char filepath[256];
+    uint32_t segment_count;
+} ts_partition_internal_t;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+ts_partition_internal_t *ts_partition_create(const char *dir, uint64_t start, uint64_t end);
+int ts_partition_insert(ts_partition_internal_t *part, const ts_record_t *point);
+int ts_partition_query(ts_partition_internal_t *part, uint64_t start, uint64_t end,
+                       ts_record_t **results, uint32_t *count);
+void ts_partition_destroy(ts_partition_internal_t *part);
+
+#ifdef __cplusplus
+}
+#endif
 
 /* ========================================================================
  * ts_compress 测试
@@ -375,4 +401,331 @@ TEST_F(TsLabelIndexTest, HighCardinality) {
     }
 
     EXPECT_TRUE(ts_label_index_is_high_cardinality(idx));
+}
+
+/* ========================================================================
+ * ts_compress Gorilla 测试
+ * ======================================================================== */
+
+class TsGorillaTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        enc = NULL;
+        dec = NULL;
+    }
+
+    void TearDown() override {
+        if (enc) gorilla_encoder_destroy(enc);
+        if (dec) gorilla_decoder_destroy(dec);
+    }
+
+    gorilla_encoder_t *enc;
+    gorilla_decoder_t *dec;
+};
+
+TEST_F(TsGorillaTest, InitAndDestroy) {
+    enc = (gorilla_encoder_t *)calloc(1, sizeof(gorilla_encoder_t));
+    ASSERT_NE(enc, nullptr);
+    EXPECT_EQ(gorilla_encoder_init(enc), 0);
+    EXPECT_NE(enc->buffer, nullptr);
+    gorilla_encoder_destroy(enc);
+    enc = NULL;
+
+    dec = (gorilla_decoder_t *)calloc(1, sizeof(gorilla_decoder_t));
+    ASSERT_NE(dec, nullptr);
+    const uint8_t dummy_data[8] = {0};
+    EXPECT_EQ(gorilla_decoder_init(dec, dummy_data, 8), 0);
+    gorilla_decoder_destroy(dec);
+    dec = NULL;
+}
+
+TEST_F(TsGorillaTest, SingleValueRoundTrip) {
+    enc = (gorilla_encoder_t *)calloc(1, sizeof(gorilla_encoder_t));
+    gorilla_encoder_init(enc);
+
+    float val = 123.456f;
+    EXPECT_EQ(gorilla_encode(enc, val), 0);
+
+    size_t compressed_size = 0;
+    const uint8_t *data = gorilla_encoder_get_data(enc, &compressed_size);
+    ASSERT_NE(data, nullptr);
+    EXPECT_GT(compressed_size, 0u);
+
+    dec = (gorilla_decoder_t *)calloc(1, sizeof(gorilla_decoder_t));
+    gorilla_decoder_init(dec, data, compressed_size);
+
+    float decoded = 0.0f;
+    EXPECT_EQ(gorilla_decode(dec, &decoded), 0);
+    EXPECT_FLOAT_EQ(decoded, val);
+
+    /* 第二次解码应该失败（没有更多数据） */
+    EXPECT_EQ(gorilla_decode(dec, &decoded), -1);
+}
+
+TEST_F(TsGorillaTest, MultipleValuesRoundTrip) {
+    enc = (gorilla_encoder_t *)calloc(1, sizeof(gorilla_encoder_t));
+    gorilla_encoder_init(enc);
+
+    /* 测试序列 */
+    float values[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+    const int count = 5;
+
+    for (int i = 0; i < count; i++) {
+        EXPECT_EQ(gorilla_encode(enc, values[i]), 0);
+    }
+
+    size_t compressed_size = 0;
+    const uint8_t *data = gorilla_encoder_get_data(enc, &compressed_size);
+    ASSERT_NE(data, nullptr);
+
+    dec = (gorilla_decoder_t *)calloc(1, sizeof(gorilla_decoder_t));
+    gorilla_decoder_init(dec, data, compressed_size);
+
+    for (int i = 0; i < count; i++) {
+        float decoded = 0.0f;
+        EXPECT_EQ(gorilla_decode(dec, &decoded), 0);
+        EXPECT_FLOAT_EQ(decoded, values[i]) << "Mismatch at index " << i;
+    }
+}
+
+TEST_F(TsGorillaTest, SimilarValuesHighCompression) {
+    enc = (gorilla_encoder_t *)calloc(1, sizeof(gorilla_encoder_t));
+    gorilla_encoder_init(enc);
+
+    /* 相似的值会压缩得很好（XOR 后有很多零） */
+    float base = 1000000.0f;
+    float values[100];
+    for (int i = 0; i < 100; i++) {
+        values[i] = base + (float)i * 0.001f;
+        gorilla_encode(enc, values[i]);
+    }
+
+    size_t compressed_size = 0;
+    const uint8_t *data = gorilla_encoder_get_data(enc, &compressed_size);
+
+    /* 100 个 float 原始需要 400 bytes，压缩后应该小得多 */
+    EXPECT_LT(compressed_size, 400u);
+}
+
+TEST_F(TsGorillaTest, DuplicateValues) {
+    enc = (gorilla_encoder_t *)calloc(1, sizeof(gorilla_encoder_t));
+    gorilla_encoder_init(enc);
+
+    /* 重复值只需要 1 bit 存储 */
+    float val = 42.0f;
+    for (int i = 0; i < 10; i++) {
+        gorilla_encode(enc, val);
+    }
+
+    size_t compressed_size = 0;
+    const uint8_t *data = gorilla_encoder_get_data(enc, &compressed_size);
+
+    /* 10 个重复值应该只需要很少空间 */
+    EXPECT_LT(compressed_size, 50u);
+
+    /* 解码验证 */
+    dec = (gorilla_decoder_t *)calloc(1, sizeof(gorilla_decoder_t));
+    gorilla_decoder_init(dec, data, compressed_size);
+
+    for (int i = 0; i < 10; i++) {
+        float decoded = 0.0f;
+        EXPECT_EQ(gorilla_decode(dec, &decoded), 0);
+        EXPECT_FLOAT_EQ(decoded, val);
+    }
+}
+
+TEST_F(TsGorillaTest, NullAndInvalidParams) {
+    EXPECT_EQ(gorilla_encoder_init(NULL), -1);
+    EXPECT_EQ(gorilla_decoder_init(NULL, NULL, 0), -1);
+    EXPECT_EQ(gorilla_encode(NULL, 1.0f), -1);
+    EXPECT_EQ(gorilla_decode(NULL, NULL), -1);
+    EXPECT_EQ(gorilla_encoder_get_data(NULL, NULL), nullptr);
+}
+
+/* ========================================================================
+ * ts_partition 测试
+ * ======================================================================== */
+
+class TsPartitionTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        /* 创建临时测试目录 */
+#ifdef _WIN32
+        _mkdir("./test_ts_part");
+#else
+        mkdir("./test_ts_part", 0755);
+#endif
+    }
+
+    void TearDown() override {
+        /* 清理测试目录 */
+#ifdef _WIN32
+        _rmdir("./test_ts_part");
+#else
+        rmdir("./test_ts_part");
+#endif
+    }
+};
+
+TEST_F(TsPartitionTest, CreateDestroy) {
+    ts_partition_internal_t *part = ts_partition_create("./test_ts_part", 0, 1000);
+    ASSERT_NE(part, nullptr);
+    EXPECT_EQ(part->start_time, 0u);
+    EXPECT_EQ(part->end_time, 1000u);
+    EXPECT_EQ(part->segment_count, 0u);
+    ts_partition_destroy(part);
+}
+
+TEST_F(TsPartitionTest, InsertAndQuery) {
+    ts_partition_internal_t *part = ts_partition_create("./test_ts_part", 0, 1000);
+    ASSERT_NE(part, nullptr);
+
+    /* 插入三个数据点 */
+    ts_record_t p1 = {100, 1.0};
+    ts_record_t p2 = {200, 2.0};
+    ts_record_t p3 = {500, 3.0};
+
+    EXPECT_EQ(ts_partition_insert(part, &p1), 0);
+    EXPECT_EQ(ts_partition_insert(part, &p2), 0);
+    EXPECT_EQ(ts_partition_insert(part, &p3), 0);
+    EXPECT_EQ(part->segment_count, 3u);
+
+    /* 查询时间范围 [150, 300]，应该只返回 p2 */
+    ts_record_t *results = nullptr;
+    uint32_t count = 0;
+    EXPECT_EQ(ts_partition_query(part, 150, 300, &results, &count), 0);
+    EXPECT_EQ(count, 1u);
+    EXPECT_DOUBLE_EQ(results[0].value, 2.0);
+    free(results);
+
+    /* 查询时间范围 [0, 1000]，应该返回全部 */
+    EXPECT_EQ(ts_partition_query(part, 0, 1000, &results, &count), 0);
+    EXPECT_EQ(count, 3u);
+    free(results);
+
+    /* 清理文件 */
+    remove(part->filepath);
+    ts_partition_destroy(part);
+}
+
+TEST_F(TsPartitionTest, EmptyPartitionQuery) {
+    ts_partition_internal_t *part = ts_partition_create("./test_ts_part", 0, 1000);
+    ASSERT_NE(part, nullptr);
+
+    /* 空分区查询 */
+    ts_record_t *results = nullptr;
+    uint32_t count = 0;
+    EXPECT_EQ(ts_partition_query(part, 0, 1000, &results, &count), 0);
+    EXPECT_EQ(count, 0u);
+
+    ts_partition_destroy(part);
+}
+
+/* ========================================================================
+ * ts_tag_index 查询过滤测试
+ * ======================================================================== */
+
+class TsTagIndexQueryTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        idx = tag_index_create("./test_tag_idx");
+    }
+
+    void TearDown() override {
+        tag_index_destroy(idx);
+    }
+
+    TagIndex *idx;
+};
+
+TEST_F(TsTagIndexQueryTest, FilterByKeyAndValue) {
+    /* 注册三个 series */
+    TagSet *tags1 = tagset_create(4);
+    tagset_add(tags1, "host", "server1");
+    tag_index_register_series(idx, 1, tags1);
+    tagset_free(tags1);
+
+    TagSet *tags2 = tagset_create(4);
+    tagset_add(tags2, "host", "server2");
+    tag_index_register_series(idx, 2, tags2);
+    tagset_free(tags2);
+
+    TagSet *tags3 = tagset_create(4);
+    tagset_add(tags3, "region", "us-east");
+    tag_index_register_series(idx, 3, tags3);
+    tagset_free(tags3);
+
+    /* 查询 host=server1，应该只返回 series_id=1 */
+    TagQuery *q = tag_query_create("host", TAG_OP_EQ);
+    q->value_type = TAG_STRING;
+    q->value.str_val.str = strdup("server1");
+    q->value.str_val.len = strlen("server1");
+
+    TagQueryResult result;
+    EXPECT_EQ(tag_index_query(idx, q, &result), 0);
+    EXPECT_EQ(result.count, 1u);
+    EXPECT_EQ(result.series_ids[0], 1);
+    tag_query_result_free(&result);
+    tag_query_free(q);
+
+    /* 查询 region=us-east，应该只返回 series_id=3 */
+    q = tag_query_create("region", TAG_OP_EQ);
+    q->value_type = TAG_STRING;
+    q->value.str_val.str = strdup("us-east");
+    q->value.str_val.len = strlen("us-east");
+
+    EXPECT_EQ(tag_index_query(idx, q, &result), 0);
+    EXPECT_EQ(result.count, 1u);
+    EXPECT_EQ(result.series_ids[0], 3);
+    tag_query_result_free(&result);
+    tag_query_free(q);
+
+    /* 查询 host=server3（不存在），应该返回空 */
+    q = tag_query_create("host", TAG_OP_EQ);
+    q->value_type = TAG_STRING;
+    q->value.str_val.str = strdup("server3");
+    q->value.str_val.len = strlen("server3");
+
+    EXPECT_EQ(tag_index_query(idx, q, &result), 0);
+    EXPECT_EQ(result.count, 0u);
+    tag_query_result_free(&result);
+    tag_query_free(q);
+}
+
+TEST_F(TsTagIndexQueryTest, ExistsQuery) {
+    /* 注册两个 series */
+    TagSet *tags1 = tagset_create(4);
+    tagset_add(tags1, "host", "server1");
+    tagset_add(tags1, "env", "prod");
+    tag_index_register_series(idx, 10, tags1);
+    tagset_free(tags1);
+
+    TagSet *tags2 = tagset_create(4);
+    tagset_add(tags2, "host", "server2");
+    tag_index_register_series(idx, 20, tags2);
+    tagset_free(tags2);
+
+    /* 查询 EXISTS host，应该返回 10 和 20 */
+    TagQuery *q = tag_query_create("host", TAG_OP_EXISTS);
+    TagQueryResult result;
+    EXPECT_EQ(tag_index_query(idx, q, &result), 0);
+    EXPECT_EQ(result.count, 2u);
+    /* 结果应该包含 10 和 20 */
+    bool found10 = false, found20 = false;
+    for (uint32_t i = 0; i < result.count; i++) {
+        if (result.series_ids[i] == 10) found10 = true;
+        if (result.series_ids[i] == 20) found20 = true;
+    }
+    EXPECT_TRUE(found10);
+    EXPECT_TRUE(found20);
+    tag_query_result_free(&result);
+    tag_query_free(q);
+
+    /* 查询 EXISTS env，应该只返回 10 */
+    q = tag_query_create("env", TAG_OP_EXISTS);
+    EXPECT_EQ(tag_index_query(idx, q, &result), 0);
+    EXPECT_EQ(result.count, 1u);
+    EXPECT_EQ(result.series_ids[0], 10);
+    tag_query_result_free(&result);
+    tag_query_free(q);
 }
