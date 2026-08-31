@@ -2,7 +2,7 @@
  * @file log_engine.c
  * @brief 可观测日志引擎实现（C3-3）
  */
-#include "db/log_engine.h"
+#include "db/storage/log/log_engine_ext.h"
 #include "db/core/log.h"
 
 #include <stdio.h>
@@ -84,8 +84,38 @@ int log_push(log_engine_t *engine, const log_labels_t *labels,
     return 0;
 }
 
-/* 简单文件扫描 + 时间 + 关键字过滤 */
-static int scan_file(const char *path, const char *filter,
+/* 辅助：从 log line 文本中提取标签字段值 */
+static int extract_label(const char *line, size_t line_len,
+                         const char *label_name, char *out_val, size_t val_cap) {
+    if (!line || !label_name || !out_val) return -1;
+    char pattern[64];
+    snprintf(pattern, sizeof(pattern), "%s=", label_name);
+    const char *p = strstr(line, pattern);
+    if (!p) return -1;
+    p += strlen(pattern);
+    /* 支持带引号或不带引号的值 */
+    if (*p == '"') {
+        p++;
+        const char *end = strchr(p, '"');
+        if (!end) return -1;
+        size_t len = (size_t)(end - p);
+        if (len >= val_cap) len = val_cap - 1;
+        memcpy(out_val, p, len);
+        out_val[len] = '\0';
+    } else {
+        size_t len = 0;
+        while (p[len] && !isspace((unsigned char)p[len]) && p[len] != ',') len++;
+        if (len >= val_cap) len = val_cap - 1;
+        memcpy(out_val, p, len);
+        out_val[len] = '\0';
+    }
+    return 0;
+}
+
+/* 简单文件扫描 + 时间 + 关键字过滤 + selector 过滤 */
+static int scan_file(const char *path,
+                     char **sel_labels, char **sel_values, int sel_n,
+                     const char *filter,
                      int64_t start_ms, int64_t end_ms,
                      log_line_t *out, size_t max_out, size_t *count) {
     FILE *fp = fopen(path, "rb");
@@ -100,6 +130,17 @@ static int scan_file(const char *path, const char *filter,
         buf[n] = '\0';
         if (ts >= start_ms && ts <= end_ms
             && (!filter || strstr(buf, filter))) {
+            /* selector 过滤：检查行是否包含所有选择的标签 */
+            int matched = 1;
+            for (int i = 0; i < sel_n && matched; i++) {
+                char val[256];
+                if (extract_label(buf, n, sel_labels[i], val, sizeof(val)) == 0) {
+                    if (strcmp(val, sel_values[i]) != 0) matched = 0;
+                } else {
+                    matched = 0;
+                }
+            }
+            if (!matched) continue;
             out[*count].timestamp = ts;
             out[*count].line = strdup(buf);
             out[*count].line_len = n;
@@ -116,25 +157,41 @@ int log_query(log_engine_t *engine, const char *selector,
               log_line_t *out, size_t max_out, size_t *out_count) {
     if (!engine || !out || !out_count) return -1;
     *out_count = 0;
+
+    /* 解析 selector */
+    char **sel_labels = NULL;
+    char **sel_values = NULL;
+    int sel_n = 0;
+    if (selector && *selector) {
+        if (log_parse_logql_selector(selector, &sel_labels, &sel_values, &sel_n) != 0) {
+            return -1;
+        }
+    }
+
     char stream_dir[600];
     snprintf(stream_dir, sizeof(stream_dir), "%s/streams", engine->data_dir);
-    /* POSIX 目录扫描 */
 #ifdef _WIN32
     WIN32_FIND_DATAA fd;
     char pattern[700];
     snprintf(pattern, sizeof(pattern), "%s/*.log", stream_dir);
     HANDLE h = FindFirstFileA(pattern, &fd);
-    if (h == INVALID_HANDLE_VALUE) return 0;
+    if (h == INVALID_HANDLE_VALUE) {
+        log_free_logql_parsed(sel_labels, sel_values, sel_n);
+        return 0;
+    }
     do {
         if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
             char path[700]; snprintf(path, sizeof(path), "%s/%s", stream_dir, fd.cFileName);
-            scan_file(path, filter, start_ms, end_ms, out, max_out, out_count);
+            scan_file(path, sel_labels, sel_values, sel_n, filter, start_ms, end_ms, out, max_out, out_count);
         }
     } while (FindNextFileA(h, &fd) && *out_count < max_out);
     FindClose(h);
 #else
     DIR *d = opendir(stream_dir);
-    if (!d) return 0;
+    if (!d) {
+        log_free_logql_parsed(sel_labels, sel_values, sel_n);
+        return 0;
+    }
     struct dirent *de;
     while ((de = readdir(d)) != NULL && *out_count < max_out) {
         if (de->d_name[0] == '.') continue;
@@ -142,20 +199,54 @@ int log_query(log_engine_t *engine, const char *selector,
         snprintf(path, sizeof(path), "%s/%s", stream_dir, de->d_name);
         struct stat st;
         if (stat(path, &st) == 0 && S_ISREG(st.st_mode)) {
-            scan_file(path, filter, start_ms, end_ms, out, max_out, out_count);
+            scan_file(path, sel_labels, sel_values, sel_n, filter, start_ms, end_ms, out, max_out, out_count);
         }
     }
     closedir(d);
 #endif
-    (void)selector;  /* TODO: parse {k="v"} selector */
+    log_free_logql_parsed(sel_labels, sel_values, sel_n);
     return 0;
 }
 
 int log_rate(log_engine_t *engine, const char *selector,
              int64_t start_ms, int64_t end_ms, int64_t step_ms,
              double *out_values, size_t max_out, size_t *out_count) {
-    (void)engine; (void)selector; (void)start_ms; (void)end_ms;
-    (void)step_ms; (void)out_values; (void)max_out;
+    if (!engine || !out_values || !out_count) return -1;
     *out_count = 0;
-    return -1;
+    if (step_ms <= 0) return -1;
+
+    /* 分配足够大的缓冲区用于查询 */
+    size_t buf_cap = 4096;
+    log_line_t *buf = calloc(buf_cap, sizeof(log_line_t));
+    if (!buf) return -1;
+
+    int64_t window_start = start_ms;
+    while (window_start < end_ms && *out_count < max_out) {
+        int64_t window_end = window_start + step_ms;
+        if (window_end > end_ms) window_end = end_ms;
+
+        size_t n_matched = 0;
+        /* 查询该时间窗口内的日志 */
+        int ret = log_query(engine, selector, NULL, window_start, window_end,
+                           buf, buf_cap, &n_matched);
+        if (ret != 0) {
+            free(buf);
+            return -1;
+        }
+
+        /* 计算速率：count / time_window（秒） */
+        double time_window_s = (double)(window_end - window_start) / 1000.0;
+        double rate = time_window_s > 0 ? (double)n_matched / time_window_s : 0.0;
+        out_values[*out_count] = rate;
+        (*out_count)++;
+
+        window_start = window_end;
+    }
+
+    /* 释放查询缓冲区 */
+    for (size_t i = 0; i < buf_cap; i++) {
+        if (buf[i].line) free((char *)buf[i].line);
+    }
+    free(buf);
+    return 0;
 }
