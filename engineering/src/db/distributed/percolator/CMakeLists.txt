@@ -1,6 +1,7 @@
 # 分布式 Percolator 事务模块
 add_library(db_percolator STATIC
     percolator.c
+    percolator_recover.c
 )
 
 target_include_directories(db_percolator PUBLIC

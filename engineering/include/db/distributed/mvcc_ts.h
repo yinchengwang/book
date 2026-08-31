@@ -62,6 +62,21 @@ int ts_store_has_pending_write(ts_store_t *s, const void *key, uint32_t klen,
 void ts_store_discard_pending(ts_store_t *s, const void *key, uint32_t klen,
                               int64_t start_ts);
 
+/* InDoubt 提权（恢复补提交原语）：把键上"start_ts 匹配且 commit_ts==0"的预写节点
+ * 原地提升为已提交版本（仅置 commit_ts，value 保留在链内）。用于宕机后补提交——
+ * 客户端已死、value 只在预写节点里，无法重写，只能提权。
+ * 返回 0 = 成功提权；-1 = 无匹配的预写节点（无节点 / 节点已提交 / 无匹配 start_ts）。
+ * 只提权正在挂起的节点，已提交版本不动（幂等安全）。 */
+int ts_store_promote(ts_store_t *s, const void *key, uint32_t klen,
+                     int64_t start_ts, int64_t commit_ts);
+
+/* 按 start_ts 判定键的提交态（InDoubt 裁定）：沿版本链找"start_ts 匹配"的节点。
+ * 返回 0 = 该节点已提交（commit_ts>0），填 out（深拷贝版本副本，调用方 ts_version_free）；
+ *       1 = 该节点仍为预写（commit_ts==0，未提交）；
+ *      -1 = 无任何 start_ts 匹配的节点。 */
+int ts_store_get_by_start(ts_store_t *s, const void *key, uint32_t klen,
+                          int64_t start_ts, ts_version_t *out);
+
 /* 快照读取（Percolator 2PC 的 read 面）：
  *   沿版本链选择"commit_ts>0 且 commit_ts<=read_ts 且 start_ts 不在 active 集"
  *   的可见版本中 commit_ts 最大的版本作为可见候选。

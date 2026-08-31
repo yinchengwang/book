@@ -215,3 +215,87 @@ TEST(Percolator, ErrorStringNonNull) {
     EXPECT_NE(pcol_error_string(PCOL_OK), nullptr);
     EXPECT_NE(pcol_error_string(PCOL_ERR_ALREADY_COMMITTED), nullptr);
 }
+
+// ---------- InDoubt 恢复（Task 7） ----------
+
+// 关键：prewrite 后 primary 只被 ts_store_promote 提权（模拟"commit 写了 primary 才崩溃"）
+TEST(PercolatorRecover, PrimaryCommittedThenSecondariesCommitted) {
+    ts_store_t s; ts_store_init(&s);
+    tso_oracle_t *o = nullptr; EXPECT_EQ(0, tso_oracle_init(&o));
+    pcol_lock_table_t lt; EXPECT_EQ(0, pcol_lock_table_init(&lt));
+    uint8_t pk[] = {'p'}, sk[] = {'s'}, v[] = {'v'};
+    pcol_txn_t *t = pcol_txn_begin(&s, o, 100);
+    pcol_txn_set_lock_table(t, &lt);
+    pcol_write_t w1 = {pk, 1, v, 1, false}, w2 = {sk, 1, v, 1, false};
+    pcol_txn_add_write(t, &w1); pcol_txn_add_write(t, &w2);
+    EXPECT_EQ(PCOL_OK, pcol_prewrite(t));   /* 两键挂预写锁 + 登记 two locks */
+    /* 模拟宕机撕裂提交：只提权 primary，secondary 保持预写 */
+    EXPECT_EQ(0, ts_store_promote(&s, pk, 1, 100, 500));
+    pcol_txn_free(t);
+    ASSERT_EQ(2u, lt.n);
+    int c = 0, r = 0;
+    EXPECT_EQ(0, pcol_recover_txn(&s, &lt, pk, 1, 100, &c, &r));
+    EXPECT_EQ(1, c); EXPECT_EQ(0, r);       /* 裁定提交并补提交 secondary */
+    EXPECT_EQ(0u, lt.n);                    /* 锁被移除 */
+    ts_version_t out;
+    EXPECT_EQ(0, ts_store_get(&s, sk, 1, 600, nullptr, 0, &out)); /* secondary 现可见 */
+    ts_version_free(&out);
+    pcol_lock_table_destroy(&lt); tso_oracle_destroy(o); ts_store_destroy(&s);
+}
+
+// primary 未提交 → 整体回滚，锁与预写均被清
+TEST(PercolatorRecover, PrimaryNotCommittedRollsBack) {
+    ts_store_t s; ts_store_init(&s);
+    tso_oracle_t *o = nullptr; EXPECT_EQ(0, tso_oracle_init(&o));
+    pcol_lock_table_t lt; EXPECT_EQ(0, pcol_lock_table_init(&lt));
+    uint8_t pk[] = {'P'}, sk[] = {'S'}, v[] = {'v'};
+    pcol_txn_t *t = pcol_txn_begin(&s, o, 200);
+    pcol_txn_set_lock_table(t, &lt);
+    pcol_write_t w1 = {pk, 1, v, 1, false}, w2 = {sk, 1, v, 1, false};
+    pcol_txn_add_write(t, &w1); pcol_txn_add_write(t, &w2);
+    EXPECT_EQ(PCOL_OK, pcol_prewrite(t));
+    pcol_txn_free(t);                        /* 崩溃：从不 commit */
+    int c = 1, r = 0;
+    EXPECT_EQ(0, pcol_recover_txn(&s, &lt, pk, 1, 200, &c, &r));
+    EXPECT_EQ(0, c); EXPECT_EQ(1, r);
+    EXPECT_EQ(0, ts_store_has_pending_write(&s, sk, 1, -1)); /* secondary 锁已清 */
+    EXPECT_EQ(0, ts_store_has_pending_write(&s, pk, 1, -1)); /* primary 锁已清 */
+    EXPECT_EQ(0u, lt.n);
+    ts_version_t out;
+    EXPECT_NE(0, ts_store_get(&s, sk, 1, 600, nullptr, 0, &out)); /* 无可见值 */
+    pcol_lock_table_destroy(&lt); tso_oracle_destroy(o); ts_store_destroy(&s);
+}
+
+// 超期锁：未提交事务被回滚；撕裂提交事务被补提交。now_ms 用极大值使全部锁过期。
+TEST(PercolatorGc, StaleLocksRecoveredOrRolledBack) {
+    ts_store_t s; ts_store_init(&s);
+    tso_oracle_t *o = nullptr; EXPECT_EQ(0, tso_oracle_init(&o));
+    pcol_lock_table_t lt; EXPECT_EQ(0, pcol_lock_table_init(&lt));
+    uint8_t x[] = {'X'}, w[] = {'W'}, y[] = {'Y'}, z[] = {'Z'}, v[] = {'v'};
+
+    /* 事务 A：prewrite-only 永不提交（将回滚） */
+    pcol_txn_t *ta = pcol_txn_begin(&s, o, 500); pcol_txn_set_lock_table(ta, &lt);
+    pcol_write_t wa1 = {x, 1, v, 1, false}, wa2 = {w, 1, v, 1, false};
+    pcol_txn_add_write(ta, &wa1); pcol_txn_add_write(ta, &wa2);
+    EXPECT_EQ(PCOL_OK, pcol_prewrite(ta)); pcol_txn_free(ta);
+
+    /* 事务 B：撕裂提交（只提权 primary Y） */
+    pcol_txn_t *tb = pcol_txn_begin(&s, o, 600); pcol_txn_set_lock_table(tb, &lt);
+    pcol_write_t wb1 = {y, 1, v, 1, false}, wb2 = {z, 1, v, 1, false};
+    pcol_txn_add_write(tb, &wb1); pcol_txn_add_write(tb, &wb2);
+    EXPECT_EQ(PCOL_OK, pcol_prewrite(tb));
+    EXPECT_EQ(0, ts_store_promote(&s, y, 1, 600, 700)); pcol_txn_free(tb);
+
+    ASSERT_EQ(4u, lt.n);
+    int nc = 0, nr = 0;
+    EXPECT_EQ(0, pcol_gc_stale_locks(&s, &lt, INT64_MAX / 2, &nc, &nr));
+    EXPECT_EQ(1, nc); EXPECT_EQ(1, nr);       /* B 补提交、A 回滚 */
+    EXPECT_EQ(0u, lt.n);
+
+    ts_version_t out;
+    EXPECT_EQ(0, ts_store_get(&s, z, 1, 800, nullptr, 0, &out));  /* B.secondary 可见 */
+    ts_version_free(&out);
+    EXPECT_NE(0, ts_store_get(&s, w, 1, 800, nullptr, 0, &out));  /* A 无可见值 */
+    EXPECT_EQ(0, ts_store_has_pending_write(&s, x, 1, -1));       /* A 锁已清 */
+    pcol_lock_table_destroy(&lt); tso_oracle_destroy(o); ts_store_destroy(&s);
+}

@@ -41,6 +41,7 @@ struct pcol_txn {
     bool           any_prewritten;  /* 是否已发生预写 */
     bool           committed;       /* 已提交（置位后可判定幂等） */
     bool           rolled_back;     /* 已回滚（不再允许提交） */
+    pcol_lock_table_t *lock_table;  /* 锁登记表（可选挂接；非空则 prewrite 登记本事务锁） */
 };
 
 /* ---------- 错误串 ---------- */
@@ -101,6 +102,11 @@ void pcol_txn_free(pcol_txn_t *t) {
     free(t);
 }
 
+/* 挂接锁登记表：使 prewrite 把本事务锁登记进表（增强恢复语义） */
+void pcol_txn_set_lock_table(pcol_txn_t *t, pcol_lock_table_t *lt) {
+    if (t) t->lock_table = lt;
+}
+
 /* ---------- 冲突检测 ---------- */
 
 /* 写写冲突：键存在"最新已提交版本"且其 commit_ts > start_ts。
@@ -148,6 +154,10 @@ int pcol_prewrite(pcol_txn_t *t) {
         if (rc != 0) { pcol_rollback(t); return PCOL_ERR_NOT_FOUND; }
         slot->prewritten = true;
         t->any_prewritten = true;
+        /* 登记本事务锁进登记表（尽力而为：登记失败仅失去恢复语义，不影响预写本身） */
+        if (t->lock_table)
+            pcol_lock_add(t->lock_table, slot->key, (uint32_t)slot->klen,
+                          t->start_ts, slot->is_primary, pcol_now_ms());
     }
     return PCOL_OK;
 }
@@ -171,6 +181,8 @@ int pcol_commit(pcol_txn_t *t, int64_t commit_ts) {
     }
     t->committed = true;
     t->any_prewritten = false;   /* 预写已收敛为提交，锁随之失效 */
+    /* 提交完成即清自己的锁，避免 recovery/GC 再见到本事务 */
+    if (t->lock_table) pcol_lock_remove_start(t->lock_table, t->start_ts);
     return PCOL_OK;
 }
 
@@ -185,5 +197,7 @@ int pcol_rollback(pcol_txn_t *t) {
     }
     t->rolled_back = true;
     t->any_prewritten = false;
+    /* 回滚完毕即清自己的锁，避免 recovery/GC 残留本事务 */
+    if (t->lock_table) pcol_lock_remove_start(t->lock_table, t->start_ts);
     return PCOL_OK;
 }

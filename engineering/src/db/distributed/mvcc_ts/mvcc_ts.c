@@ -287,6 +287,42 @@ void ts_store_discard_pending(ts_store_t *s, const void *key, uint32_t klen,
     }
 }
 
+/* InDoubt 提权：把"commit_ts==0 且 start_ts 匹配"的预写节点原地置为已提交 */
+int ts_store_promote(ts_store_t *s, const void *key, uint32_t klen,
+                     int64_t start_ts, int64_t commit_ts) {
+    if (!s || !key) return -1;
+
+    int found = 0;
+    size_t pos = lower_bound(s, key, klen, &found);
+    if (!found) return -1;   /* 键不存在：无待提权节点 */
+
+    for (ts_version_t *v = ((ts_store_entry *)s->entries)[pos].versions; v; v = v->next) {
+        if (v->commit_ts == 0 && v->start_ts == start_ts) {
+            v->commit_ts = commit_ts;   /* value 保留在链内，仅提权 */
+            return 0;
+        }
+    }
+    return -1;   /* 链尽未中：节点已提交 / 无匹配 start_ts */
+}
+
+/* 按 start_ts 裁定键的提交态；命中已提交则深拷贝填 out */
+int ts_store_get_by_start(ts_store_t *s, const void *key, uint32_t klen,
+                          int64_t start_ts, ts_version_t *out) {
+    if (!s || !key || !out) return -1;
+
+    int found = 0;
+    size_t pos = lower_bound(s, key, klen, &found);
+    if (!found) return -1;   /* 无任何 start_ts 匹配的节点 */
+
+    for (ts_version_t *v = ((ts_store_entry *)s->entries)[pos].versions; v; v = v->next) {
+        if (v->start_ts != start_ts) continue;
+        if (v->commit_ts > 0)          /* 已提交：深拷贝填 out */
+            return copy_version(v, out) == 0 ? 0 : -1;
+        return 1;                      /* 仍为预写（commit_ts==0，未提交） */
+    }
+    return -1;   /* 链内无匹配 start_ts */
+}
+
 /* ---------- 扫描 ---------- */
 
 void ts_store_scan(ts_store_t *s, const void *start, uint32_t start_klen,
