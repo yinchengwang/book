@@ -130,3 +130,61 @@ target_include_directories(test_storage_wal PRIVATE
     ${ENGINEERING_SOURCE_DIR}/include/db
 )
 add_test(NAME test_storage_wal COMMAND test_storage_wal)
+
+# ========================================================================
+# KV 测试（C3-5 T22）
+# ========================================================================
+add_executable(test_storage_kv kv.cpp)
+target_link_libraries(test_storage_kv
+    PRIVATE
+    db_storage
+    db_core
+    project_includes
+    gtest
+    gtest_main
+)
+target_include_directories(test_storage_kv PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+)
+add_test(NAME test_storage_kv COMMAND test_storage_kv)
+
+# ========================================================================
+# TID 管道测试
+# ========================================================================
+add_executable(tid_pipe_test tid_pipe_test.c)
+target_link_libraries(tid_pipe_test
+    PRIVATE
+    db_storage
+    db_core
+    project_includes
+)
+target_include_directories(tid_pipe_test PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+)
+add_test(NAME tid_pipe_test COMMAND tid_pipe_test)
+
+# ========================================================================
+# RDF SPARQL 解析器测试（T39: FILTER, OPTIONAL, GROUP BY）
+# ========================================================================
+add_executable(test_rdf_sparql test_rdf_sparql.c)
+target_link_libraries(test_rdf_sparql
+    PRIVATE
+    storage_rdf
+    db_storage
+    db_core
+    project_includes
+    gtest
+    gtest_main
+)
+target_include_directories(test_rdf_sparql PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googletest/include
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googlemock/include
+)
+set_target_properties(test_rdf_sparql PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+add_test(NAME test_rdf_sparql COMMAND test_rdf_sparql)
