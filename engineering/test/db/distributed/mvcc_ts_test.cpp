@@ -210,3 +210,28 @@ TEST(TsStore, ScanEmpty) {
     EXPECT_EQ(1, ts_iter_next(&it, &out));
     ts_store_destroy(&s);
 }
+
+// ts_store_has_pending_write：判他人未提交(commit_ts==0)预写，供 Percolator 判锁
+TEST(TsStore, HasPendingWriteHelper) {
+    ts_store_t s;
+    ts_store_init(&s);
+    const char *k = "k";
+
+    // 键不存在 → 0
+    EXPECT_EQ(0, ts_store_has_pending_write(&s, k, KL(k), 9));
+
+    // 只有已提交版本 → 0（非 pending）
+    ts_store_put(&s, k, KL(k), 5, 200, "v", 1);
+    EXPECT_EQ(0, ts_store_has_pending_write(&s, k, KL(k), 9));
+
+    // 他事务(ts=1)预写 commit_ts=0 → 1
+    ts_store_put(&s, k, KL(k), 1, 0, "w", 1);
+    EXPECT_EQ(1, ts_store_has_pending_write(&s, k, KL(k), 9));
+    // except 排除自身 start_ts=1 → 0（自己预写不判为他人锁）
+    EXPECT_EQ(0, ts_store_has_pending_write(&s, k, KL(k), 1));
+
+    // 另一个键无 pending
+    EXPECT_EQ(0, ts_store_has_pending_write(&s, "k2", KL("k2"), 9));
+
+    ts_store_destroy(&s);
+}

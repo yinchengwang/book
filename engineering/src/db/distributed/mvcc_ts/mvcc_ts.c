@@ -247,6 +247,46 @@ int ts_store_get(ts_store_t *s, const void *key, uint32_t klen,
     return copy_version(best, out) == 0 ? 0 : -1;
 }
 
+/* 待提交写检查（Percolator 判锁 helper）：见头文件声明语义 */
+int ts_store_has_pending_write(ts_store_t *s, const void *key, uint32_t klen,
+                               int64_t except_start_ts) {
+    if (!s || !key) return 0;
+
+    int found = 0;
+    size_t pos = lower_bound(s, key, klen, &found);
+    if (!found) return 0;   /* 键不存在：无任何未提交写 */
+
+    for (ts_version_t *v = ((ts_store_entry *)s->entries)[pos].versions; v; v = v->next) {
+        if (v->commit_ts == 0 && v->start_ts != except_start_ts)
+            return 1;       /* 存在他人未提交(prewrite)版本 → 锁冲突 */
+    }
+    return 0;
+}
+
+/* 释放预写锁：物理移除键链上"commit_ts==0 且 start_ts 匹配"的预写节点 */
+void ts_store_discard_pending(ts_store_t *s, const void *key, uint32_t klen,
+                              int64_t start_ts) {
+    if (!s || !key) return;
+
+    int found = 0;
+    size_t pos = lower_bound(s, key, klen, &found);
+    if (!found) return;
+
+    ts_store_entry *e = &((ts_store_entry *)s->entries)[pos];
+    ts_version_t **pp = &e->versions;
+    while (*pp) {
+        ts_version_t *v = *pp;
+        if (v->commit_ts == 0 && v->start_ts == start_ts) {
+            *pp = v->next;                  /* 摘链并释放该预写节点 */
+            free(v->key);
+            free(v->value);
+            free(v);
+        } else {
+            pp = &v->next;
+        }
+    }
+}
+
 /* ---------- 扫描 ---------- */
 
 void ts_store_scan(ts_store_t *s, const void *start, uint32_t start_klen,

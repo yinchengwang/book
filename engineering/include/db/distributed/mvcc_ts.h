@@ -46,6 +46,22 @@ int ts_store_put(ts_store_t *s, const void *key, uint32_t klen,
 int ts_store_put_delete(ts_store_t *s, const void *key, uint32_t klen,
                         int64_t start_ts, int64_t commit_ts);
 
+/* 待提交写检查（Percolator 判锁 helper）：
+ * 沿键的版本链查询是否存在"未提交(prewrite, commit_ts==0) 且
+ * start_ts != except_start_ts"的版本，即是否有别的事务对本键持有未提交写（锁）。
+ * 返回 1 = 存在他人未提交写（需回报锁冲突）；0 = 不存在（含键不存在、
+ *          只有已提交版本、或未提交写恰为 except_start_ts 本人）。
+ * 用于 prewrite 阶段的锁冲突检测，合理扩展自 mvcc_ts 版本链。 */
+int ts_store_has_pending_write(ts_store_t *s, const void *key, uint32_t klen,
+                               int64_t except_start_ts);
+
+/* 释放预写锁（Percolator commit/rollback helper）：
+ * 沿键的版本链物理移除所有"commit_ts==0 且 start_ts 匹配"的预写版本节点，
+ * 使该事务的预写锁在提交/回滚后立即失效（否则残留的 commit_ts==0 节点会
+ * 被后续 ts_store_has_pending_write 误判为他人锁）。读可见性不受影响。 */
+void ts_store_discard_pending(ts_store_t *s, const void *key, uint32_t klen,
+                              int64_t start_ts);
+
 /* 快照读取（Percolator 2PC 的 read 面）：
  *   沿版本链选择"commit_ts>0 且 commit_ts<=read_ts 且 start_ts 不在 active 集"
  *   的可见版本中 commit_ts 最大的版本作为可见候选。
