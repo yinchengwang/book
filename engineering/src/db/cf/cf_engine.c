@@ -37,6 +37,11 @@ struct cf_db_s {
     kv_t  *kv;                /**< 底层 KV 存储 */
     char   path[CF_MAX_PATH_LEN]; /**< 数据库路径 */
     char  *error_msg;         /**< 错误信息 */
+
+    /* 统计信息缓存 */
+    char                *stats_cf_name;    /**< 已缓存的列族名 */
+    bool                 stats_dirty;      /**< 需要重新统计 */
+    cf_family_stats_t    cached_stats;    /**< 缓存的统计值 */
 };
 
 /* ============================================================
@@ -170,6 +175,14 @@ static void cf_set_error(cf_db_t *db, const char *msg) {
     db->error_msg = msg ? strdup(msg) : NULL;
 }
 
+/** 使统计缓存失效（如果针对同一列族） */
+static void cf_invalidate_stats_if_same_cf(cf_db_t *db, const char *cf_name) {
+    if (!db || !cf_name) return;
+    if (db->stats_cf_name && strcmp(db->stats_cf_name, cf_name) == 0) {
+        db->stats_dirty = true;
+    }
+}
+
 /* ============================================================
  * 数据库生命周期
  * ============================================================ */
@@ -186,6 +199,7 @@ cf_db_t *cf_open(const char *path) {
         free(db);
         return NULL;
     }
+    db->stats_dirty = true;  /* 强制首次统计进行全量扫描 */
 
     LOG_INFO("CF database opened: %s", path);
     return db;
@@ -195,6 +209,7 @@ cf_result_t cf_close(cf_db_t *db) {
     if (!db) return CF_INVALID;
     if (db->kv) kv_close(db->kv);
     if (db->error_msg) free(db->error_msg);
+    if (db->stats_cf_name) free(db->stats_cf_name);
     free(db);
     return CF_OK;
 }
@@ -323,6 +338,13 @@ cf_result_t cf_drop_family(cf_db_t *db, const char *cf_name) {
             kv_delete(db->kv, meta_key, meta_key_len);
             free(meta_key);
         }
+    }
+
+    /* 使该列族的缓存统计失效 */
+    if (db->stats_cf_name && strcmp(db->stats_cf_name, cf_name) == 0) {
+        free(db->stats_cf_name);
+        db->stats_cf_name = NULL;
+        db->stats_dirty = false;
     }
 
     LOG_INFO("Column family dropped: %s", cf_name);
@@ -515,6 +537,7 @@ cf_result_t cf_put(cf_db_t *db,
     free(row_idx_key);
 
     cf_column_free(col);
+    cf_invalidate_stats_if_same_cf(db, cf_name);
     return CF_OK;
 }
 
@@ -602,6 +625,7 @@ cf_result_t cf_delete_column(cf_db_t *db,
     kv_result_t r = kv_delete(db->kv, col_key, col_key_len);
     free(col_key);
 
+    if (r == KV_OK) cf_invalidate_stats_if_same_cf(db, cf_name);
     return (r == KV_OK) ? CF_OK : CF_ERROR;
 }
 
@@ -743,6 +767,7 @@ cf_result_t cf_delete_row(cf_db_t *db,
     kv_delete(db->kv, idx_key, idx_key_len);
     free(idx_key);
 
+    cf_invalidate_stats_if_same_cf(db, cf_name);
     return CF_OK;
 }
 
@@ -774,6 +799,7 @@ struct cf_iter_s {
     cf_db_t         *db;         /**< 数据库句柄 */
     cf_row_t        *current;    /**< 当前行（延迟加载） */
     char            *cf_name;    /**< 列族名 */
+    uint32_t         cf_len;     /**< 列族名长度（预计算） */
 };
 
 cf_iter_t *cf_scan_rows(cf_db_t *db,
@@ -812,6 +838,7 @@ cf_iter_t *cf_scan_rows(cf_db_t *db,
     iter->kv_iter = kv_iter;
     iter->db = db;
     iter->cf_name = strdup(cf_name);
+    iter->cf_len = (uint32_t)strlen(cf_name);
     if (!iter->cf_name) {
         kv_iter_free(kv_iter);
         free(iter);
@@ -839,12 +866,11 @@ cf_result_t cf_iter_next(cf_iter_t *iter) {
     size_t klen = kv_iter_key_len(iter->kv_iter);
 
     /* 键格式: {cf_name}{ROW_SEP}{row_key} */
-    uint32_t cf_len = (uint32_t)strlen(iter->cf_name);
-    if (klen < (size_t)(cf_len + 1)) return CF_ERROR;
-    if (((const uint8_t *)k)[cf_len] != CF_ROW_SEP) return CF_ERROR;
+    if (klen < (size_t)(iter->cf_len + 1)) return CF_ERROR;
+    if (((const uint8_t *)k)[iter->cf_len] != CF_ROW_SEP) return CF_ERROR;
 
-    const char *row_key = (const char *)k + cf_len + 1;
-    uint32_t row_key_len = (uint32_t)(klen - cf_len - 1);
+    const char *row_key = (const char *)k + iter->cf_len + 1;
+    uint32_t row_key_len = (uint32_t)(klen - iter->cf_len - 1);
 
     /* 加载整行 */
     cf_result_t cr = cf_get_row(iter->db, iter->cf_name,
@@ -926,9 +952,16 @@ cf_result_t cf_batch_execute(cf_db_t *db,
 cf_result_t cf_family_stats(cf_db_t *db, const char *cf_name,
                             cf_family_stats_t *stats) {
     if (!db || !cf_name || !stats) return CF_INVALID;
-    memset(stats, 0, sizeof(*stats));
 
-    /* 扫描所有行索引计数 */
+    /* 缓存命中且未脏：直接返回 */
+    if (!db->stats_dirty && db->stats_cf_name &&
+        strcmp(db->stats_cf_name, cf_name) == 0) {
+        *stats = db->cached_stats;
+        return CF_OK;
+    }
+
+    /* 全量扫描 */
+    cf_family_stats_t new_stats = {0};
     void *start_key = NULL;
     size_t start_key_len = 0;
     void *end_key = NULL;
@@ -949,17 +982,17 @@ cf_result_t cf_family_stats(cf_db_t *db, const char *cf_name,
     free(start_key);
     free(end_key);
 
-    if (!iter) return CF_OK;
-
-    while (kv_iter_next(iter) == KV_OK) {
-        size_t klen = kv_iter_key_len(iter);
-        size_t vlen = kv_iter_value_len(iter);
-        stats->num_rows++;
-        stats->total_size += klen + vlen;
+    if (iter) {
+        while (kv_iter_next(iter) == KV_OK) {
+            size_t klen = kv_iter_key_len(iter);
+            size_t vlen = kv_iter_value_len(iter);
+            new_stats.num_rows++;
+            new_stats.total_size += klen + vlen;
+        }
+        kv_iter_free(iter);
     }
-    kv_iter_free(iter);
 
-    /* 计算列数：通过扫描列键范围 */
+    /* 计算列数 */
     uint32_t cf_len = (uint32_t)strlen(cf_name);
     void *col_start = malloc(cf_len + 1);
     if (!col_start) return CF_NOMEM;
@@ -978,11 +1011,19 @@ cf_result_t cf_family_stats(cf_db_t *db, const char *cf_name,
 
     if (col_iter) {
         while (kv_iter_next(col_iter) == KV_OK) {
-            stats->num_columns++;
-            stats->total_size += kv_iter_key_len(col_iter);
+            new_stats.num_columns++;
+            new_stats.total_size += kv_iter_key_len(col_iter);
         }
         kv_iter_free(col_iter);
     }
 
+    /* 更新缓存 */
+    if (db->stats_cf_name) free(db->stats_cf_name);
+    db->stats_cf_name = strdup(cf_name);
+    if (!db->stats_cf_name) return CF_NOMEM;
+    db->cached_stats = new_stats;
+    db->stats_dirty = false;
+
+    *stats = new_stats;
     return CF_OK;
 }
