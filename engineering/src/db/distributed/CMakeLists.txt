@@ -9,6 +9,15 @@ add_subdirectory(shard)
 # RPC 模块（始终构建）
 add_subdirectory(rpc)
 
+# 分布式事务模块（始终构建）
+add_subdirectory(txn)
+
+# 分布式事务增量模块（Gap#1, 骨架）
+add_subdirectory(tso)
+add_subdirectory(mvcc_ts)
+add_subdirectory(percolator)
+add_subdirectory(deadlock)
+
 # 条件编译: 仅在启用分布式能力时构建查询执行
 if(MMDB_ENABLE_DISTRIBUTED)
     # 查询执行子模块

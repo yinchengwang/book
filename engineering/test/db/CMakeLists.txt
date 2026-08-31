@@ -24,6 +24,7 @@ add_subdirectory(graph)
 add_subdirectory(yang)  # YANG/NETCONF 测试
 add_subdirectory(sharding)  # 分片测试
 add_subdirectory(cf)       # 列族存储测试
+add_subdirectory(distributed)  # 分布式事务增量测试
 
 # 订阅/对账/老化模块测试
 add_executable(test_sla sla_test.cpp)
