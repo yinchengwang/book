@@ -2,6 +2,7 @@
 add_library(db_tso STATIC
     tso_codec.c
     tso_client.c
+    tso_persist.c
 )
 
 target_include_directories(db_tso PUBLIC

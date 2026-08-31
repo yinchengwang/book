@@ -6,6 +6,8 @@ extern "C" {
 #include <pthread.h>
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
+#include <filesystem>
 #include <thread>
 #include <vector>
 
@@ -209,4 +211,35 @@ TEST(TsoClient, BackendServe) {
     EXPECT_LT(a, b);
     tso_client_destroy(c);
     tso_oracle_destroy(o);
+}
+
+// ---------- Task 4：水位线持久化（故障重启时间戳不倒退） ----------
+// 注意：tso_set_clock_source(NULL) 不会复位（现有实现仅在 src 非空时替换），
+// 故本测试不尝试复位；其末尾 fake_now=1000 不影响后续测试（各自会设置自身时钟源），自洽即可。
+TEST(TsoPersist, WatermarkPreventsRegressionAcrossRestart) {
+    static int64_t fake_now = 9000;
+    tso_set_clock_source([](int64_t *ms) -> int { *ms = fake_now; return 0; });
+    const char *path = "test-results/engineering/tso_watermark.bin";
+    /* 测试工作目录不固定（ctest 跑在 build/engineering），先确保父目录存在；
+       test-results/ 为 .gitignore 忽略的产物目录，不会污染仓库。 */
+    std::filesystem::create_directories("test-results/engineering");
+    tso_oracle_t *o = nullptr;
+    tso_oracle_init(&o);
+    int64_t s = 0, e = 0;
+    tso_alloc(o, 100, &s, &e);                    /* 已到 ~9000<<18 */
+    ASSERT_EQ(0, tso_persist_save(o, path));
+    tso_oracle_destroy(o);
+
+    /* 新进程实例，物理时钟回退到 1000 */
+    fake_now = 1000;
+    tso_oracle_t *o2 = nullptr;
+    tso_oracle_init(&o2);
+    int64_t wm = tso_persist_load(path);
+    ASSERT_GT(wm, 0);
+    tso_oracle_insert_watermark(o2, wm);          /* 恢复水位 */
+    int64_t s2 = 0, e2 = 0;
+    tso_alloc(o2, 1, &s2, &e2);
+    EXPECT_GT(s2, e);                             /* 新戳高于旧最大，未倒退 */
+    tso_oracle_destroy(o2);
+    remove(path);
 }

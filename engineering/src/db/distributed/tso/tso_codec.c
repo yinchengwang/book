@@ -30,13 +30,19 @@ struct tso_oracle {
     pthread_mutex_t mu;
     int64_t last_physical;   /* 已分配的最大物理时间 */
     uint32_t last_logical;   /* 相应逻辑计数 */
+    int64_t watermark;       /* 持久化水位：恢复后保证物理绝不倒退（默认 0 表示无水位） */
 };
 
-/* 物理时间戳绝对单调：本地物理时钟比已分配戳小则沿用已分配戳（不倒退） */
+/* 物理时间戳绝对单调：本地物理时钟比已分配戳小则沿用已分配戳（不倒退）；
+   恢复的水位再兜底一层：偶发时钟 / 故障重启回退时，至少回到水位对应物理。 */
 static int64_t next_physical(tso_oracle_t *o) {
     int64_t now = 0;
     if (g_clock(&now) != 0) now = o->last_physical;
     if (now < o->last_physical) now = o->last_physical;
+    if (o->watermark) {
+        int64_t wm_phys = o->watermark >> TSO_LOGICAL_BITS;
+        if (wm_phys > now) now = wm_phys;      /* 水位兜底：绝不再退 */
+    }
     return now;
 }
 
@@ -98,4 +104,25 @@ int64_t tso_oracle_now(tso_oracle_t *o) {
     if (!o) return 0;
     if (tso_alloc(o, 1, &s, &e) != 0) return 0;
     return s;
+}
+
+/* 峰值 = 当前已分配游标（last_physical<<BITS | last_logical），
+   即"下一个待分配戳"，作为水位上界持久化。 */
+int64_t tso_oracle_peak(const tso_oracle_t *o) {
+    if (!o) return 0;
+    return ((int64_t)o->last_physical << TSO_LOGICAL_BITS) | o->last_logical;
+}
+
+/* 恢复：把持久化水位插回本实例。提高 watermark 上界；
+   若水位对应物理更高，则同步推进 last_physical 与 last_logical 游标，
+   使重启后首条分配严格高于旧峰值，绝不回退。 */
+int tso_oracle_insert_watermark(tso_oracle_t *o, int64_t ts) {
+    if (!o || ts <= 0) return -1;
+    if (ts > o->watermark) o->watermark = ts;
+    int64_t phys = ts >> TSO_LOGICAL_BITS;
+    if (phys > o->last_physical) {
+        o->last_physical = phys;
+        o->last_logical = (uint32_t)(ts & TSO_LOGICAL_MASK);
+    }
+    return 0;
 }

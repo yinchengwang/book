@@ -28,6 +28,14 @@ void tso_oracle_destroy(tso_oracle_t *o);
 int  tso_alloc(tso_oracle_t *o, int count, int64_t *out_start, int64_t *out_end);
 int64_t tso_oracle_now(tso_oracle_t *o);
 
+/* 水位线：已分配峰值（最大保留戳）与管理（故障重启不倒退） */
+int64_t tso_oracle_peak(const tso_oracle_t *o);              /* 读取已分配最大值 */
+int tso_oracle_insert_watermark(tso_oracle_t *o, int64_t ts); /* 恢复水位插回 */
+
+/* 水位线持久化：追加式保存/读回已分配峰值 */
+int tso_persist_save(const tso_oracle_t *o, const char *path);
+int64_t tso_persist_load(const char *path);
+
 /* 可注入物理时钟源（测试） */
 typedef int (*tso_clock_source_t)(int64_t *ms);
 void tso_set_clock_source(tso_clock_source_t src);
