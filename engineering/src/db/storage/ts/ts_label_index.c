@@ -64,7 +64,8 @@ int ts_label_index_add(ts_label_index_t *idx, uint64_t series_id,
 
     /* 添加到倒排索引 */
     int result = doc_inverted_add((doc_inverted_index_t *)idx->inverted,
-                                  series_id, label_str);
+                                  series_id, label_str, strlen(label_str), 0,
+                                  NULL);
 
     free(label_str);
 

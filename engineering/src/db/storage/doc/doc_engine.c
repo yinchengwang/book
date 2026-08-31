@@ -6,6 +6,7 @@
 #include "db/storage/doc/jsonpath.h"
 #include "db/storage/doc/doc_inverted.h"
 #include "db/storage/doc/bm25.h"
+#include "db/storage/common/storage_result.h"
 #include "db/mm_pool.h"
 #include "db/lock.h"
 #include "db/common_rwlock.h"
@@ -224,6 +225,10 @@ static int doc_engine_tuple_insert(void *rel, const void *data, size_t len) {
         if (fp == NULL) return -1;
     }
 
+    /* 计算偏移量（当前文件大小 = 新记录起始位置） */
+    fseek(fp, 0, SEEK_END);
+    uint64_t doc_offset = (uint64_t)ftell(fp);
+
     uint32_t size = sizeof(uint32_t) * 2 + id_len + json_len;
     fwrite(&size, sizeof(uint32_t), 1, fp);
     fwrite(data, 1, len, fp);
@@ -231,8 +236,10 @@ static int doc_engine_tuple_insert(void *rel, const void *data, size_t len) {
 
     /* 同时添加到倒排索引 */
     if (db->use_inverted_index && db->inverted_index != NULL) {
-        const char *json_content = (const char *)json_ptr;
-        doc_inverted_add(db->inverted_index, doc_id, json_content);
+        /* 提取 doc_id 字符串 */
+        const char *doc_id_str = (const char *)ptr;
+        doc_inverted_add(db->inverted_index, doc_id,
+                         doc_id_str, id_len, doc_offset, NULL);
     }
 
     db->num_docs++;
@@ -343,14 +350,98 @@ int doc_engine_insert(void *rel, const void *data, size_t len) {
     return doc_engine_tuple_insert(rel, data, len);
 }
 
+/* 从磁盘读取文档 */
+static uint8_t *doc_read_from_disk(const char *data_dir, uint64_t offset) {
+    char data_path[512];
+    snprintf(data_path, sizeof(data_path), "%s/docs.bin", data_dir);
+
+    FILE *fp = fopen(data_path, "rb");
+    if (fp == NULL) return NULL;
+
+    if (fseek(fp, (long)offset, SEEK_SET) != 0) {
+        fclose(fp);
+        return NULL;
+    }
+
+    uint32_t record_size;
+    if (fread(&record_size, sizeof(record_size), 1, fp) != 1) {
+        fclose(fp);
+        return NULL;
+    }
+
+    uint8_t *doc = (uint8_t *)malloc(record_size);
+    if (doc == NULL) {
+        fclose(fp);
+        return NULL;
+    }
+
+    if (fread(doc, record_size, 1, fp) != 1) {
+        free(doc);
+        fclose(fp);
+        return NULL;
+    }
+
+    fclose(fp);
+    return doc;
+}
+
 int doc_engine_get(void *rel, const void *key, size_t key_len,
                    void **out_data, size_t *out_len) {
-    (void)rel;
-    (void)key;
-    (void)key_len;
-    (void)out_data;
-    (void)out_len;
-    return 1;
+    if (rel == NULL || key == NULL || out_data == NULL || out_len == NULL) {
+        return STORAGE_ERR_INVALID_ARG;
+    }
+
+    doc_engine_db_t *db = (doc_engine_db_t *)rel;
+
+    if (!db->use_inverted_index || db->inverted_index == NULL) {
+        return STORAGE_ERR_NOT_SUPPORTED;
+    }
+
+    /* 在倒排索引中查找文档偏移 */
+    uint64_t offset = doc_inverted_find(db->inverted_index, key, key_len);
+    if (offset == 0) {
+        return STORAGE_ERR_NOT_FOUND;
+    }
+
+    /* 从磁盘读取文档 */
+    uint8_t *doc = doc_read_from_disk(db->data_dir, offset);
+    if (doc == NULL) {
+        return STORAGE_ERR_IO;
+    }
+
+    /* 解析文档格式: [id_len(4)][id(id_len)][json_len(4)][json(json_len)] */
+    size_t offset_ptr = 0;
+    uint32_t id_len;
+    memcpy(&id_len, (uint8_t *)doc + offset_ptr, sizeof(uint32_t));
+    offset_ptr += sizeof(uint32_t);
+
+    /* 提取 JSON 内容 */
+    offset_ptr += id_len;  /* skip doc_id */
+    uint32_t json_len;
+    memcpy(&json_len, (uint8_t *)doc + offset_ptr, sizeof(uint32_t));
+    offset_ptr += sizeof(uint32_t);
+
+    /* 分配输出缓冲区: [id_len(4)][id][json_len(4)][json] */
+    size_t total_len = sizeof(uint32_t) * 2 + id_len + json_len;
+    uint8_t *out = (uint8_t *)malloc(total_len);
+    if (out == NULL) {
+        free(doc);
+        return STORAGE_ERR_OOM;
+    }
+
+    size_t out_ptr = 0;
+    memcpy(out + out_ptr, &id_len, sizeof(uint32_t));
+    out_ptr += sizeof(uint32_t);
+    memcpy(out + out_ptr, (uint8_t *)doc + sizeof(uint32_t), id_len);
+    out_ptr += id_len;
+    memcpy(out + out_ptr, &json_len, sizeof(uint32_t));
+    out_ptr += sizeof(uint32_t);
+    memcpy(out + out_ptr, (uint8_t *)doc + sizeof(uint32_t) * 2 + id_len, json_len);
+
+    free(doc);
+    *out_data = out;
+    *out_len = total_len;
+    return STORAGE_OK;
 }
 
 int doc_engine_stats(const char *name, storage_stats_t *stats) {

@@ -47,10 +47,12 @@ extern "C" {
  * @brief 倒排列表条目
  */
 typedef struct doc_inverted_entry_s {
-    uint64_t doc_id;          /**< 文档 ID */
+    uint64_t doc_id;          /**< 文档 ID（内部编号） */
+    char *doc_id_str;         /**< 文档 ID 字符串（用于快速查找） */
     uint32_t freq;            /**< 词频 */
     uint32_t *positions;      /**< 位置数组 */
     uint32_t pos_count;       /**< 位置数 */
+    uint64_t doc_offset;      /**< 文档在数据文件中的偏移 */
 } doc_inverted_entry_t;
 
 /**
@@ -151,12 +153,16 @@ void doc_inverted_free(doc_inverted_index_t *index);
  * @brief 索引文档
  *
  * @param index 倒排索引句柄
- * @param doc_id 文档 ID
+ * @param doc_id 文档 ID（内部编号）
+ * @param doc_id_str 文档 ID 字符串
+ * @param doc_id_str_len 文档 ID 字符串长度
+ * @param doc_offset 文档在数据文件中的偏移
  * @param doc_content 文档内容
  * @return 0 成功，-1 失败
  */
 int doc_inverted_add(doc_inverted_index_t *index, uint64_t doc_id,
-                     const char *doc_content);
+                     const char *doc_id_str, size_t doc_id_str_len,
+                     uint64_t doc_offset, const char *doc_content);
 
 /**
  * @brief 移除文档
@@ -180,6 +186,17 @@ uint32_t doc_inverted_search(const doc_inverted_index_t *index,
                               const char *query,
                               doc_inverted_result_t *results,
                               uint32_t max_results);
+
+/**
+ * @brief 查找文档（通过倒排索引获取文档偏移）
+ *
+ * @param index 倒排索引句柄
+ * @param doc_id 文档 ID
+ * @param id_len 文档 ID 长度
+ * @return 文档在数据文件中的偏移，0 表示未找到
+ */
+uint64_t doc_inverted_find(const doc_inverted_index_t *index,
+                           const char *doc_id, size_t id_len);
 
 /**
  * @brief 获取文档
