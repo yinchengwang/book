@@ -511,7 +511,7 @@ int heap_update(Relation rel, const void *tid,
         if (cur_wal != NULL) {
             uint64_t packed_tid = ((uint64_t)blocknum << 32) | (uint64_t)offset;
             uint64_t lsn = wal_write_heap_update(cur_wal, rel->rd_relfilenode,
-                                                packed_tid, newtuple, new_len);
+                                                packed_tid, newtuple, newlen);
             if (lsn == 0) return -1;
         }
     }
@@ -596,60 +596,62 @@ void *heap_getnext(TableScanDesc scan, ScanDirection direction) {
         scan->rs_cindex = 0;
     }
 
-    /* 获取页面数据 */
-    char *page = (char *)buf_get_data(scan->rs_cbuf);
-    if (!page) {
-        return NULL;
-    }
-
-    /* 获取元组计数 */
-    int tuple_count = heap_page_get_tuple_count(page);
-
-    /* 遍历当前页面的元组 */
-    while (scan->rs_cindex < tuple_count) {
-        /* 计算 LinePointer 位置 */
-        uint16_t lp_offset = SizeOfPageHeaderData + scan->rs_cindex * SizeOfHeapLinePointer;
-        HeapLinePointer lp = (HeapLinePointer)(page + lp_offset);
-
-        /* 检查元组是否有效 */
-        if (lp->t_off > 0 && lp->t_off < HEAP_PAGE_SIZE) {
-            /* 检查元组是否被删除（t_xmax 非0且标记为无效） */
-            bool is_deleted = (lp->t_xmax != 0) && (lp->t_flags & HEAP_XMAX_INVALID);
-
-            if (!is_deleted) {
-                /* 获取元组数据 */
-                char *tuple_data = page + lp->t_off;
-                scan->rs_cindex++;
-
-                /* 更新统计 */
-                global_stats.tuples_read++;
-
-                return tuple_data;
-            }
+    /* 迭代遍历所有页面，直到找到有效元组或扫描结束 */
+    while (1) {
+        /* 获取页面数据 */
+        char *page = (char *)buf_get_data(scan->rs_cbuf);
+        if (!page) {
+            return NULL;
         }
 
-        scan->rs_cindex++;
+        /* 获取元组计数 */
+        int tuple_count = heap_page_get_tuple_count(page);
+
+        /* 遍历当前页面的元组 */
+        while (scan->rs_cindex < tuple_count) {
+            /* 计算 LinePointer 位置 */
+            uint16_t lp_offset = SizeOfPageHeaderData + scan->rs_cindex * SizeOfHeapLinePointer;
+            HeapLinePointer lp = (HeapLinePointer)(page + lp_offset);
+
+            /* 检查元组是否有效 */
+            if (lp->t_off > 0 && lp->t_off < HEAP_PAGE_SIZE) {
+                /* 检查元组是否被删除（t_xmax 非0且标记为无效） */
+                bool is_deleted = (lp->t_xmax != 0) && (lp->t_flags & HEAP_XMAX_INVALID);
+
+                if (!is_deleted) {
+                    /* 获取元组数据 */
+                    char *tuple_data = page + lp->t_off;
+                    scan->rs_cindex++;
+
+                    /* 更新统计 */
+                    global_stats.tuples_read++;
+
+                    return tuple_data;
+                }
+            }
+
+            scan->rs_cindex++;
+        }
+
+        /* 移到下一页 */
+        buf_unpin(scan->rs_cbuf);
+        scan->rs_cbuf = NULL;
+        scan->rs_cblock++;
+        scan->rs_cindex = 0;
+
+        /* 检查是否还有更多页 */
+        if (scan->rs_cblock >= rel->rd_nblocks) {
+            return NULL;
+        }
+
+        /* 读取下一页 */
+        scan->rs_cbuf = buf_read(rel->rd_relfilenode, scan->rs_cblock, 0);
+        if (!scan->rs_cbuf) {
+            return NULL;
+        }
+
+        /* 继续下一轮循环（迭代方式） */
     }
-
-    /* 移到下一页 */
-    buf_unpin(scan->rs_cbuf);
-    scan->rs_cbuf = NULL;
-    scan->rs_cblock++;
-    scan->rs_cindex = 0;
-
-    /* 检查是否还有更多页 */
-    if (scan->rs_cblock >= rel->rd_nblocks) {
-        return NULL;
-    }
-
-    /* 读取下一页 */
-    scan->rs_cbuf = buf_read(rel->rd_relfilenode, scan->rs_cblock, 0);
-    if (!scan->rs_cbuf) {
-        return NULL;
-    }
-
-    /* 递归获取下一个元组 */
-    return heap_getnext(scan, direction);
 }
 
 void *heap_getcurr(TableScanDesc scan) {

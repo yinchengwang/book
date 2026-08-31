@@ -13,10 +13,13 @@
 #ifdef _WIN32
 #include <direct.h>
 #include <errno.h>
+#include <windows.h>
+#include <fileapi.h>
 #define mkdir(path) _mkdir(path)
 #else
 #include <sys/stat.h>
 #include <unistd.h>
+#include <ftw.h>
 #endif
 
 #define RDF_ENGINE_NAME "rdf_engine"
@@ -88,10 +91,11 @@ static uint64_t hash_string(const char *str) {
 }
 
 static uint64_t hash_term(const rdf_term_t *term) {
-    char buf[1024];
-    snprintf(buf, sizeof(buf), "%d:%s:%s:%s",
-             term->type, term->value, term->lang, term->datatype);
-    return hash_string(buf);
+    uint64_t h = hash_string((char *)(uintptr_t)(unsigned long)term->type);
+    h = h * 31 + hash_string(term->value);
+    h = h * 31 + hash_string(term->lang);
+    h = h * 31 + hash_string(term->datatype);
+    return h;
 }
 
 /* ========================================================================
@@ -305,13 +309,51 @@ static int rdf_engine_table_drop(const char *name) {
     char dir_path[512];
     get_dir_path(name, dir_path, sizeof(dir_path));
 
-    char cmd[1024];
+    /* 递归删除目录内容 */
 #ifdef _WIN32
-    snprintf(cmd, sizeof(cmd), "rmdir /s /q \"%s\"", dir_path);
+    char pattern[1024];
+    snprintf(pattern, sizeof(pattern), "%s\\*", dir_path);
+
+    WIN32_FIND_DATAW ffd;
+    HANDLE hFind = FindFirstFileW((LPCWSTR)pattern, &ffd);
+    if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+            if (wcscmp(ffd.cFileName, L".") != 0 && wcscmp(ffd.cFileName, L"..") != 0) {
+                char full_path[1024];
+                snprintf(full_path, sizeof(full_path), "%s\\%ls", dir_path, ffd.cFileName);
+                if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                    /* 递归删除子目录 */
+                    char sub_pattern[1024];
+                    snprintf(sub_pattern, sizeof(sub_pattern), "%s\\*", full_path);
+                    WIN32_FIND_DATAW sub_ffd;
+                    HANDLE sub_hFind = FindFirstFileW((LPCWSTR)sub_pattern, &sub_ffd);
+                    if (sub_hFind != INVALID_HANDLE_VALUE) {
+                        do {
+                            if (wcscmp(sub_ffd.cFileName, L".") != 0 && wcscmp(sub_ffd.cFileName, L"..") != 0) {
+                                char sub_file[1024];
+                                snprintf(sub_file, sizeof(sub_file), "%s\\%ls", full_path, sub_ffd.cFileName);
+                                _unlink(sub_file);
+                            }
+                        } while (FindNextFileW(sub_hFind, &sub_ffd));
+                        FindClose(sub_hFind);
+                    }
+                    _rmdir(full_path);
+                } else {
+                    _unlink(full_path);
+                }
+            }
+        } while (FindNextFileW(hFind, &ffd));
+        FindClose(hFind);
+    }
+    _rmdir(dir_path);
 #else
-    snprintf(cmd, sizeof(cmd), "rm -rf \"%s\"", dir_path);
+    /* POSIX: use nftw for recursive delete */
+    int (*unlink_cb)(const char *, const struct stat *, int, struct FTW *) = [](const char *path, const struct stat *sb, int typeflag, struct FTW *ftw) -> int {
+        (void)sb; (void)typeflag; (void)ftw;
+        return remove(path);
+    };
+    nftw(dir_path, unlink_cb, 16, FTW_DEPTH | FTW_PHYS);
 #endif
-    system(cmd);
 
     LOG_INFO("RDF graph dropped: %s", name);
     return 0;
@@ -342,6 +384,9 @@ static int rdf_engine_tuple_insert(void *rel, const void *data, size_t len) {
         db->triple_list = node;
         db->num_triples++;
     }
+
+    /* 激活索引 */
+    rdf_index_add_triple(db->num_triples, triple);
 
     return 0;
 }

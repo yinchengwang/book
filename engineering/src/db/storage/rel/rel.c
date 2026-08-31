@@ -308,7 +308,20 @@ int relation_create(Oid relid, TupleDesc tdesc, RelKind relkind,
         return -1;
     }
 
-    /* 直接返回成功（实际实现会使用 Catalog） */
+    /* 确保数据目录存在 */
+    char path[256];
+    snprintf(path, sizeof(path), "data/rel/%u.dat", relid);
+
+#ifdef _WIN32
+    int fd = open(path, O_RDWR | O_CREAT | O_BINARY, 0644);
+#else
+    int fd = open(path, O_RDWR | O_CREAT, 0644);
+#endif
+    if (fd < 0) {
+        return -1;
+    }
+    close(fd);
+
     (void)tdesc;
     (void)relkind;
     (void)amtype;
