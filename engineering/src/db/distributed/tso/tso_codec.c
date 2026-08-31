@@ -44,7 +44,6 @@ int tso_oracle_init(tso_oracle_t **out) {
     tso_oracle_t *o = calloc(1, sizeof(*o));
     if (!o) return -1;
     pthread_mutex_init(&o->mu, NULL);
-    o->last_physical = next_physical(o) ? 0 : 0;   /* 初始以时钟起 */
     int64_t now = 0;
     if (g_clock(&now) == 0) o->last_physical = now;
     *out = o;
@@ -59,25 +58,26 @@ void tso_oracle_destroy(tso_oracle_t *o) {
 
 int tso_alloc(tso_oracle_t *o, int count, int64_t *out_start, int64_t *out_end) {
     if (!o || count <= 0) return -1;
-    if (count > TSO_LOGICAL_MASK + 1) count = TSO_LOGICAL_MASK;  /* 逻辑位容量上限 */
+    if (count > TSO_LOGICAL_MASK + 1) count = TSO_LOGICAL_MASK;
     pthread_mutex_lock(&o->mu);
     int64_t base = next_physical(o);
-    int64_t raw = ((int64_t)base << TSO_LOGICAL_BITS) | o->last_logical;
-    *out_start = raw;                                    /* 从当前逻辑续起 */
-    for (int i = 0; i < count; ++i) {
-        /* 逻辑溢出：切到下一个物理时间，逻辑归 0 */
-        if (o->last_logical + (uint32_t)(i + 1) > TSO_LOGICAL_MASK) {
-            base += 1;
-            o->last_physical = base;
-            o->last_logical = 0;
-        }
+    uint32_t start_logical = o->last_logical;
+    int64_t raw = ((int64_t)base << TSO_LOGICAL_BITS) | start_logical;
+    uint32_t slots_left = (uint32_t)(TSO_LOGICAL_MASK + 1) - start_logical;
+    int64_t end;
+    uint32_t new_logical;
+    if (count <= (int)slots_left) {
+        end  = ((int64_t)base << TSO_LOGICAL_BITS) | (start_logical + (uint32_t)count - 1);
+        new_logical = start_logical + (uint32_t)count;
+    } else {
+        base += 1;
+        int remainder = count - (int)slots_left;
+        end  = ((int64_t)base << TSO_LOGICAL_BITS) | ((uint32_t)remainder - 1);
+        new_logical = (uint32_t)remainder;
     }
-    /* 校正区间终点并推进状态 */
-    int64_t end = ((int64_t)base << TSO_LOGICAL_BITS) |
-                  (o->last_logical + (uint32_t)count - 1);
-    if (end < raw) end = raw; /* 防御：保证区间终点不小于起点（真实物理时钟下原 mask 判定不成立） */
     o->last_physical = base;
-    o->last_logical = (uint32_t)((o->last_logical + (uint32_t)count) & TSO_LOGICAL_MASK);
+    o->last_logical = new_logical;
+    *out_start = raw;
     *out_end = end;
     pthread_mutex_unlock(&o->mu);
     return 0;

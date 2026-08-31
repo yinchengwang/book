@@ -3,6 +3,8 @@ extern "C" {
 #include "distributed/tso.h"
 }
 #include <gtest/gtest.h>
+#include <pthread.h>
+#include <algorithm>
 #include <atomic>
 #include <thread>
 #include <vector>
@@ -43,23 +45,72 @@ TEST(TsoOracle, MonotonicAcrossBatch) {
     tso_oracle_destroy(o);
 }
 
+TEST(TsoOracle, CrossLogicalBoundaryReturnLen) {
+    /* 针对性坏例：先推进 last_logical 至接近逻辑容量，再分配一批跨进位，验证返回区间长度始终 == count */
+    tso_oracle_t *o = nullptr;
+    fake_now_ms = 3000;                    /* 恒定物理时钟，屏蔽时钟跳跃 */
+    tso_oracle_init(&o);
+
+    /* 第一批占满除 6 槽外的逻辑空间：new_logical = 262138，slots_left = 6 */
+    int64_t s1 = 0, e1 = 0;
+    ASSERT_EQ(0, tso_alloc(o, TSO_LOGICAL_MASK - 5, &s1, &e1));
+    EXPECT_EQ(e1 - s1 + 1, (int64_t)TSO_LOGICAL_MASK - 5);
+
+    /* 第二批 count=10 > 6：必须跨物理进位，返回区间长度仍须为 10 */
+    int64_t s2 = 0, e2 = 0;
+    ASSERT_EQ(0, tso_alloc(o, 10, &s2, &e2));
+    EXPECT_EQ(e2 - s2 + 1, 10);
+
+    /* 进位后游标推进正确：再分配 1 条应续在第二也之后 +1 */
+    int64_t s3 = 0, e3 = 0;
+    ASSERT_EQ(0, tso_alloc(o, 1, &s3, &e3));
+    EXPECT_EQ(s3, e2 + 1);                 /* 旧实现会因游标多推而跳号 */
+
+    tso_oracle_destroy(o);
+}
+
 TEST(TsoOracle, ConcurrentAllocMonotonic) {
     tso_oracle_t *o = nullptr;
+    fake_now_ms = 2000;                    /* 恒定物理时钟：让分配区间严格 +1 */
     tso_oracle_init(&o);
-    std::atomic<int64_t> max_seen{0};
+
+    const int kThreads = 8, kPerThread = 1000;
+    const int64_t kTotal = kThreads * kPerThread;
+    const int64_t first = fake_now_ms << TSO_LOGICAL_BITS;  /* 首条戳 */
+
+    pthread_mutex_t mtx;
+    pthread_mutex_init(&mtx, nullptr);
+    std::vector<int64_t> stamps;           /* 全局聚合所有已分配戳 */
+
     std::vector<std::thread> threads;
-    for (int t = 0; t < 8; ++t) {
+    for (int t = 0; t < kThreads; ++t) {
         threads.emplace_back([&] {
-            for (int i = 0; i < 100; ++i) {
+            int64_t prev = -1;             /* 本线程上一条戳 */
+            for (int i = 0; i < kPerThread; ++i) {
                 int64_t s = 0, e = 0;
-                if (tso_alloc(o, 5, &s, &e) == 0) {
-                    int64_t prev = max_seen.load();
-                    while (!max_seen.compare_exchange_weak(prev, s))
-                        prev = max_seen.load();
+                if (tso_alloc(o, 1, &s, &e) != 0) continue;   /* 每批取单戳 */
+                if (prev >= 0) {
+                    EXPECT_GT(s, prev);   /* 线程内严格单调 +1 递增 */
                 }
+                EXPECT_GE(e, s);                     /* 区间端点合法 */
+                prev = s;
+                pthread_mutex_lock(&mtx);
+                stamps.push_back(s);
+                pthread_mutex_unlock(&mtx);
             }
         });
     }
     for (auto &th : threads) th.join();
+
+    /* 全局严格单调：排序后应恰好是 [first, first+kTotal-1] 且无重无漏 */
+    std::sort(stamps.begin(), stamps.end());
+    ASSERT_EQ((int64_t)stamps.size(), kTotal);
+    int64_t expect_next = first;
+    for (int64_t got : stamps) {
+        EXPECT_EQ(got, expect_next);       /* 期望值逐次 +1，无碰撞/无缺口 */
+        expect_next += 1;
+    }
+
+    pthread_mutex_destroy(&mtx);
     tso_oracle_destroy(o);
 }
