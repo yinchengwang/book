@@ -78,6 +78,9 @@ add_subdirectory(concurrency)
 # 分布式模块（分片路由层）
 add_subdirectory(distributed)
 
+# Gap#2 向量化执行引擎（列存批处理算子层，依赖 db_core，须在 core 之后）
+add_subdirectory(vectorized)
+
 # 主从复制（流复制、故障切换）
 add_subdirectory(replication)
 

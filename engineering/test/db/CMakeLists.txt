@@ -25,6 +25,7 @@ add_subdirectory(yang)  # YANG/NETCONF 测试
 add_subdirectory(sharding)  # 分片测试
 add_subdirectory(cf)       # 列族存储测试
 add_subdirectory(distributed)  # 分布式事务增量测试
+add_subdirectory(vectorized)   # Gap#2 向量化执行引擎测试
 
 # 订阅/对账/老化模块测试
 add_executable(test_sla sla_test.cpp)
@@ -52,6 +53,7 @@ add_custom_target(db_all_tests
         test_guc
         test_sla
         distributed_txn_test
+        vectorized_exec_test
 )
 
 

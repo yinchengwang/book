@@ -65,6 +65,7 @@ set(_test_targets
     mmdb_filter_test
     cross_lang_consistency_test
     distributed_txn_test
+    vectorized_exec_test
 )
 
 foreach(_t IN LISTS _test_targets)

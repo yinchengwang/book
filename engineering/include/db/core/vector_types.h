@@ -73,6 +73,7 @@ typedef struct VectorBlock_s {
     uint64_t *null_bitmap;    /**< 空值位图 */
     uint64_t *sel_bitmap;     /**< 选择位图 */
     int *selection_vector;    /**< 选择向量 */
+    int *column_types;        /**< 每列数据类型（ColumnType 枚举值）；-1=未知 */
 } VectorBlock;
 
 /** 批次 */
@@ -114,6 +115,10 @@ void *vector_block_get_column(VectorBlock *block, int col_idx);
 void vector_block_set_num_rows(VectorBlock *block, int num_rows);
 void vector_block_set_null(VectorBlock *block, int row_idx, bool isnull);
 bool vector_block_is_null(VectorBlock *block, int row_idx);
+
+/* 每列类型标签（Gap#2 向量化执行层使用；未设置时为 -1，ANN 等无类型路径行为不变） */
+void vector_block_set_column_type(VectorBlock *block, int col_idx, int col_type);
+int  vector_block_get_column_type(const VectorBlock *block, int col_idx); /* -1=越界/未知 */
 
 /* ========================================================================
  * 批次操作 API

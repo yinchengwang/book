@@ -31,6 +31,11 @@ VectorBlock *vector_block_create(int capacity, int num_columns) {
     block->sel_bitmap = (uint64_t *)calloc((size_t)((capacity + 63) / 64), sizeof(uint64_t));
     block->selection_vector = (int *)calloc((size_t)capacity, sizeof(int));
 
+    /* 每列类型标签：calloc 会清零成 0=COLUMN_INT8，必须显式填 -1（未知），
+       保证 ANN 等从不设置列类型的路径行为与现状完全一致。 */
+    block->column_types = (int *)calloc((size_t)num_columns, sizeof(int));
+    for (int i = 0; i < num_columns; i++) block->column_types[i] = -1;
+
     return block;
 }
 
@@ -41,6 +46,7 @@ void vector_block_destroy(VectorBlock *block) {
     }
     free(block->columns);
     free(block->column_sizes);
+    free(block->column_types);
     free(block->null_bitmap);
     free(block->sel_bitmap);
     free(block->selection_vector);
@@ -75,6 +81,18 @@ void vector_block_set_null(VectorBlock *block, int row_idx, bool isnull) {
 bool vector_block_is_null(VectorBlock *block, int row_idx) {
     if (!block || row_idx < 0 || row_idx >= block->capacity) return false;
     return (block->null_bitmap[row_idx / 64] & (1ULL << (row_idx % 64))) != 0;
+}
+
+/* 设置某列的数据类型标签（ColumnType 枚举值） */
+void vector_block_set_column_type(VectorBlock *block, int col_idx, int col_type) {
+    if (!block || !block->column_types || col_idx < 0 || col_idx >= block->num_columns) return;
+    block->column_types[col_idx] = col_type;
+}
+
+/* 读取某列的数据类型标签；越界/未知返回 -1 */
+int vector_block_get_column_type(const VectorBlock *block, int col_idx) {
+    if (!block || !block->column_types || col_idx < 0 || col_idx >= block->num_columns) return -1;
+    return block->column_types[col_idx];
 }
 
 /* ========================================================================
