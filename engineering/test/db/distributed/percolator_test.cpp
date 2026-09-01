@@ -499,3 +499,50 @@ TEST(PercolatorCross, LockConflictReportsHolderAndWfg) {
     pcol_context_free(ctx); wfg_free(g); tso_oracle_destroy(o);
     ts_store_destroy(&s1); ts_store_destroy(&s2);
 }
+
+// 意图日志自动接线：一次成功的 pcol_commit_cross 应由库自身把意图记入日志，
+// 无需调用方手工 pcol_intent_log_add——崩溃重放（pcol_cross_recover）由此端到端打通。
+TEST(PercolatorCross, CommitCrossAutoRecordsIntent) {
+    ts_store_t s1, s2; ts_store_init(&s1); ts_store_init(&s2);
+    ts_store_t *stores[2] = {&s1, &s2};
+    tso_oracle_t *o = nullptr; ASSERT_EQ(0, tso_oracle_init(&o));
+    pcol_context_t *ctx = pcol_context_new(stores, 2, o);
+    ASSERT_NE(nullptr, ctx);
+    pcol_intent_log_clear();   // 静态意图表跨用例隔离
+
+    const uint8_t k1[] = {'a'}, k2[] = {'b'}, v[] = {'x'};
+    const int sh1 = pcol_shard_hash(k1, 1, 2);
+    ASSERT_NE(sh1, pcol_shard_hash(k2, 1, 2));   // 前提：两键真落不同分片
+
+    pcol_write_t ws[2] = {{k1, 1, v, 1, false}, {k2, 1, v, 1, false}};
+    ASSERT_EQ(PCOL_OK, pcol_commit_cross(ctx, pcol_shard_hash, ws, 2, 100, 500, nullptr));
+
+    // 库已自动记录意图：get 命中且字段与本次提交一致（无任何手工 log_add）
+    const pcol_intent_t *got = nullptr;
+    EXPECT_EQ(0, pcol_intent_log_get(100, &got));
+    ASSERT_NE(nullptr, got);
+    EXPECT_EQ(500, got->commit_ts);
+    EXPECT_EQ(2, got->shard_count);
+    EXPECT_EQ(sh1, got->primary_shard);          // primary = 整体首写所在分片
+    EXPECT_EQ(1, got->shard_keys_n[0]);          // 每分片各一键
+    EXPECT_EQ(1, got->shard_keys_n[1]);
+
+    // 自动记录的意图须能被 recover 正确解析：模拟"commit-all 中途崩溃"撕裂态——
+    // 次分片已提交版本丢失、只剩预写锁（教学模型：重建空 store 后裸预写），
+    // primary 分片保持已提交；recover 应据自动记录的意图把次分片补提交到 500。
+    ts_store_t *sec = stores[sh1 == 0 ? 1 : 0];
+    const uint8_t *skey = (sh1 == 0) ? k2 : k1;
+    ts_store_destroy(sec);
+    ts_store_init(sec);
+    ASSERT_EQ(0, ts_store_put(sec, skey, 1, 100, 0, v, 1));  // 次分片残留预写锁
+    EXPECT_EQ(PCOL_OK, pcol_cross_recover(ctx, 100));
+    ts_version_t out;
+    memset(&out, 0, sizeof(out));
+    EXPECT_EQ(0, ts_store_get(sec, skey, 1, 600, nullptr, 0, &out));
+    EXPECT_EQ(500, out.commit_ts);               // recover 据意图补提交，键布局解析正确
+    ts_version_free(&out);
+
+    pcol_intent_log_clear();
+    pcol_context_free(ctx); tso_oracle_destroy(o);
+    ts_store_destroy(&s1); ts_store_destroy(&s2);
+}

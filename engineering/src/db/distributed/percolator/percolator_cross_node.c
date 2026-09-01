@@ -129,6 +129,65 @@ static int detect_deadlock(wfg_t *dl, ts_store_t *store, const shard_group_t *g,
     return hit;
 }
 
+/* 意图日志自动接线：全部分片 prewrite 成功后、commit-all 之前，按已分组好的
+ * per-shard 写集构造一条 intent 并记入日志，使"崩溃重放"端到端可由库自身打通，
+ * 无需调用方手工 pcol_intent_log_add。
+ * 尽力而为：内存不足等记录失败只跳过（提交本身不依赖日志），不阻断正常提交。
+ * 键缓冲布局与 pcol_cross_recover 的 intent_key_at 解析严格一致：
+ *   每分片一块连续缓冲 [uint32_t klen][key bytes][uint32_t klen][key bytes]...
+ * pcol_intent_log_add 内部深拷贝（intent_clone 逐块 malloc+memcpy），
+ * 故本函数返回前即可释放全部临时缓冲，无生命周期要求。 */
+static void record_commit_intent(const shard_group_t *groups, int shard_count,
+                                 int primary_shard, int64_t start_ts, int64_t commit_ts) {
+    pcol_intent_t it;
+    uint8_t **keys = NULL;
+    size_t   *lens = NULL;
+    int      *ns   = NULL;
+    int s, i;
+
+    keys = (uint8_t **)calloc((size_t)shard_count, sizeof(*keys));
+    lens = (size_t *)calloc((size_t)shard_count, sizeof(*lens));
+    ns   = (int *)calloc((size_t)shard_count, sizeof(*ns));
+    if (!keys || !lens || !ns) goto fail;
+
+    for (s = 0; s < shard_count; ++s) {
+        const shard_group_t *g = &groups[s];
+        size_t total = 0, off = 0;
+        ns[s] = g->n;
+        if (g->n == 0) continue;              /* 空分片：键指针/长度保持 0，recover 侧跳过 */
+        for (i = 0; i < g->n; ++i)
+            total += sizeof(uint32_t) + g->ws[i]->klen;
+        keys[s] = (uint8_t *)malloc(total ? total : 1);
+        if (!keys[s]) goto fail;
+        for (i = 0; i < g->n; ++i) {
+            uint32_t kl = (uint32_t)g->ws[i]->klen;
+            memcpy(keys[s] + off, &kl, sizeof(kl));   /* 长度前缀（本机字节序，与解析侧一致） */
+            off += sizeof(kl);
+            memcpy(keys[s] + off, g->ws[i]->key, kl);
+            off += kl;
+        }
+        lens[s] = total;
+    }
+
+    memset(&it, 0, sizeof(it));
+    it.start_ts       = start_ts;
+    it.commit_ts      = commit_ts;
+    it.shard_count    = shard_count;
+    it.primary_shard  = primary_shard;
+    it.shard_keys     = keys;
+    it.shard_keys_len = lens;
+    it.shard_keys_n   = ns;
+    (void)pcol_intent_log_add(&it);   /* 深拷贝进静态日志；返回值忽略：记录失败不阻断提交 */
+
+    for (s = 0; s < shard_count; ++s) free(keys[s]);
+    free(keys); free(lens); free(ns);
+    return;
+
+fail:
+    if (keys) { for (s = 0; s < shard_count; ++s) free(keys[s]); free(keys); }
+    free(lens); free(ns);
+}
+
 int pcol_commit_cross(pcol_context_t *ctx, pcol_shard_fn shard_fn,
                       const pcol_write_t *writes, int nwrites,
                       int64_t start_ts, int64_t commit_ts,
@@ -172,7 +231,19 @@ int pcol_commit_cross(pcol_context_t *ctx, pcol_shard_fn shard_fn,
         }
     }
 
-    /* 3) commit-all：全部分片共享同一 commit_ts，跨分片可见性同时翻转 */
+    /* 2.5) 意图日志自动接线：全部 prewrite 成功之后、commit-all 之前记录本事务意图。
+     *      冲突回滚路径在上方直接 return，不到达此处，故失败事务不留意图。
+     *      primary 分片 = 整体首个写键（writes[0]）所在分片；组内保序，该键也是
+     *      其分片缓冲中的第一个键，与 intent 的 primary 约定（缓冲首键）自洽。 */
+    {
+        int primary_shard = shard_fn(writes[0].key, writes[0].klen, ctx->shard_count);
+        if (primary_shard < 0 || primary_shard >= ctx->shard_count) primary_shard = 0;
+        record_commit_intent(groups, ctx->shard_count, primary_shard, start_ts, commit_ts);
+    }
+
+    /* 3) commit-all：全部分片共享同一 commit_ts，跨分片可见性同时翻转。
+     *    本地实现中 prewrite 全部成功后 commit 不可能失败（commit_ts>0 即可见、
+     *    无冲突检测），故忽略 pcol_commit 返回值。 */
     for (s = 0; s < ctx->shard_count; ++s) {
         if (groups[s].txn) pcol_commit(groups[s].txn, commit_ts);
     }
