@@ -4,6 +4,7 @@
  */
 
 #include "db/vectorized/vectorized.h"
+#include "db/core/vector_exec.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -115,4 +116,14 @@ VectorBlock *vecx_block_gather(const VectorBlock *src, const int *sel, int nsel)
 
     vector_block_set_num_rows(dst, nsel);
     return dst;
+}
+
+/* ========================================================================
+ * SIMD 能力上报
+ * ======================================================================== */
+
+const char *vecx_active_simd(void) {
+    /* 直接复用 db_core 的上报，保证算子层与内核层口径完全一致
+       （二者同源于 simd_get_best_extension() 的运行时 CPU 检测）。 */
+    return vector_get_simd_type();
 }

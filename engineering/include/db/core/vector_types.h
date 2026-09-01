@@ -134,7 +134,9 @@ VectorBlock *vector_batch_next(VectorBatch *batch);
  * ======================================================================== */
 
 void vector_filter_int_simd(const int32_t *a, int32_t b, int num_elements, CompareOp op, uint64_t *result);
+void vector_filter_int64_simd(const int64_t *a, int64_t b, int num_elements, CompareOp op, uint64_t *result);
 void vector_filter_float_simd(const float *a, float b, int num_elements, CompareOp op, uint64_t *result);
+void vector_filter_double_simd(const double *a, double b, int num_elements, CompareOp op, uint64_t *result);
 void vector_filter_string_simd(const char **a, const char *b, int num_elements, CompareOp op, uint64_t *result);
 VectorFilterResult *vector_filter_execute(VectorBlock *block, int column_idx, void *value, CompareOp op);
 void vector_filter_result_free(VectorFilterResult *result);

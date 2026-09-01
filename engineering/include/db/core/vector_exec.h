@@ -166,6 +166,36 @@ void vector_filter_float_simd(const float *a, float b,
                             uint64_t *result);
 
 /**
+ * @brief SIMD 64 位整数比较
+ *
+ * 语义与 vector_filter_int_simd 完全一致，只是元素类型为 int64_t。
+ * 内核按运行时 CPU 能力分派：AVX2 → SSE4.2 → 标量
+ * （SSE2 无 64 位整数比较指令，故 SSE2 级别直接落标量）。
+ *
+ * @param a            输入数组（num_elements 个元素）
+ * @param b            比较的标量
+ * @param num_elements 元素数；<= 0 时不做任何写入
+ * @param op           比较操作符
+ * @param result       输出位图，容量须 >= ceil(num_elements/64) 个 uint64_t；
+ *                     函数先清零这些字再写入
+ */
+void vector_filter_int64_simd(const int64_t *a, int64_t b,
+                             int num_elements,
+                             CompareOp op,
+                             uint64_t *result);
+
+/**
+ * @brief SIMD 双精度浮点数比较
+ *
+ * 语义与 vector_filter_float_simd 一致（含 NaN 语义：EQ/LT/LE/GT/GE 遇 NaN 为假，
+ * NE 遇 NaN 为真），内核按运行时 CPU 能力分派：AVX2 → SSE2 → 标量。
+ */
+void vector_filter_double_simd(const double *a, double b,
+                              int num_elements,
+                              CompareOp op,
+                              uint64_t *result);
+
+/**
  * @brief SIMD 字符串比较
  */
 void vector_filter_string_simd(const char **a, const char *b,
@@ -292,16 +322,29 @@ typedef enum SimdExtension_e {
 
 /**
  * @brief 检测 CPU 支持的 SIMD 扩展
+ *
+ * 基于运行时 CPUID 如实上报本实现真正具备内核的最高级别
+ * （SIMD_AVX2 / SIMD_SSE4 / SIMD_SSE2 / SIMD_NONE）。结果会被缓存。
+ *
+ * 调试/回归开关：环境变量 MMDB_SIMD 可取 scalar / sse2 / sse4.2 / avx2，
+ * 用于把分派**降级**到更低的内核以便对拍验证；它只能降不能升，
+ * 请求超出硬件能力时被忽略，因此绝不会导致非法指令。
+ * 该值在进程内只读取一次（首次调用时）。
  */
 SimdExtension simd_detect_extension(void);
 
 /**
  * @brief 检查是否支持指定扩展
+ *
+ * SIMD_NONE 恒为真；x86 扩展按能力链比较；SIMD_NEON 与 x86 系列不可比，
+ * 仅当最优扩展本身就是 NEON 时才为真。
  */
 bool simd_has_extension(SimdExtension ext);
 
 /**
  * @brief 获取最优 SIMD 扩展
+ *
+ * 与 simd_detect_extension() 同义：检测到的即为过滤内核实际会分派到的级别。
  */
 SimdExtension simd_get_best_extension(void);
 

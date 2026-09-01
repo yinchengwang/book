@@ -68,6 +68,21 @@ void vecx_bitmap_or (const uint64_t *a, const uint64_t *b, int nwords, uint64_t 
  */
 VectorBlock *vecx_block_gather(const VectorBlock *src, const int *sel, int nsel);
 
+/* ========================================================================
+ * SIMD 能力上报
+ * ======================================================================== */
+
+/**
+ * @brief 返回本次运行实际分派到的 SIMD 内核名
+ *
+ * 取值："avx2" / "sse4.2" / "sse2" / "scalar"。
+ * 结果与 db_core 的 vector_get_simd_type() 一致，二者同源于
+ * simd_get_best_extension() 的运行时 CPU 检测（不是编译期硬编码）。
+ *
+ * @return 静态字符串常量，永不为 NULL，调用方不得释放
+ */
+const char *vecx_active_simd(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -14,6 +14,80 @@
 struct TupleTableSlot_s;  /* 已在 sql_executor.h 中定义，这里仅用于类型安全 */
 
 /* ========================================================================
+ * SIMD 内核的编译期能力探测
+ *
+ * 分三层，任一层不可用都会安全退化到下一层，最终一定有可移植标量实现：
+ *   VEXEC_HAVE_SSE2   —— x86 基线（x86_64 硬件保证有 SSE2），无需 target 属性
+ *   VEXEC_HAVE_SSE42  —— 提供 _mm_cmpgt_epi64（int64 比较），靠 GCC/Clang 的
+ *                        函数级 target 属性编译，不要求整个 TU 开 -msse4.2
+ *   VEXEC_HAVE_AVX2   —— 256 位内核，同样靠函数级 target 属性
+ *
+ * MSVC 没有 __attribute__((target(...)))，也没有 __builtin_cpu_supports，
+ * 因此在 MSVC 上只编译 SSE2 与标量两层；非 x86 平台只编译标量层。
+ * ======================================================================== */
+
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#  define VEXEC_X86 1
+#endif
+
+#if defined(VEXEC_X86) && (defined(__SSE2__) || defined(_M_X64))
+#  define VEXEC_HAVE_SSE2 1
+#  include <emmintrin.h>
+#endif
+
+/* 函数级多版本编译：仅 GCC/Clang 支持，且必须同时具备运行时检测手段
+   （__builtin_cpu_supports），否则无从判断能否安全执行高版本内核。 */
+#if defined(VEXEC_HAVE_SSE2) && (defined(__GNUC__) || defined(__clang__))
+#  define VEXEC_HAVE_CPU_PROBE 1
+#  define VEXEC_HAVE_SSE42 1
+#  define VEXEC_HAVE_AVX2  1
+#  include <immintrin.h>
+#  define VEXEC_TARGET(feat) __attribute__((target(feat)))
+#else
+#  define VEXEC_TARGET(feat)
+#endif
+
+/* ========================================================================
+ * 位图写入公共辅助
+ * ======================================================================== */
+
+/**
+ * 把一次 SIMD 迭代得到的通道掩码 w（bit j 表示元素 i+j 是否命中）写入位图。
+ *
+ * 所有内核的循环都从 i=0 开始、每次前进 step 个元素，step ∈ {2,4,8} 均整除 64，
+ * 因此 (i%64) 恒为 step 的倍数，(i%64)+step <= 64 恒成立，实际永不跨字。
+ * 仍保留跨字分支作为防御：该分支只可能在 bit>0 时进入，故不存在 w>>64 的 UB。
+ */
+static inline void vexec_bits_write(uint64_t *result, int i, int step, uint64_t w) {
+    int widx = i >> 6;
+    int bit  = i & 63;
+    result[widx] |= (w << bit);
+    if (bit + step > 64) {
+        result[widx + 1] |= (w >> (64 - bit));
+    }
+}
+
+/**
+ * 标量比较尾部：从当前 i 处理到 n。
+ * 依赖上下文中已存在的 a / b / n / op / result / i 变量，四种数值类型通用。
+ * 这段逻辑就是全局唯一的「标量参考语义」，SIMD 内核必须与它逐位一致。
+ */
+#define VEXEC_SCALAR_TAIL()                                        \
+    for (; i < n; i++) {                                           \
+        bool m_ = false;                                           \
+        switch (op) {                                              \
+            case CMP_EQ: m_ = (a[i] == b); break;                  \
+            case CMP_NE: m_ = (a[i] != b); break;                  \
+            case CMP_LT: m_ = (a[i] <  b); break;                  \
+            case CMP_LE: m_ = (a[i] <= b); break;                  \
+            case CMP_GT: m_ = (a[i] >  b); break;                  \
+            case CMP_GE: m_ = (a[i] >= b); break;                  \
+            default:     m_ = false;       break;                  \
+        }                                                          \
+        if (m_) result[i >> 6] |= (1ULL << (i & 63));              \
+    }
+
+/* ========================================================================
  * 列块操作
  * ======================================================================== */
 
@@ -187,63 +261,377 @@ void vector_batch_cosine_distance_simd(const float *query, const float **vectors
 }
 
 bool vector_has_simd_support(void) {
-    return false;
+    /* 如实报告：只要检测到任一可用扩展就返回 true */
+    return simd_get_best_extension() != SIMD_NONE;
 }
 
 const char *vector_get_simd_type(void) {
-    return "scalar";
+    /* 返回本次运行**实际分派**到的内核名，而非编译期猜测 */
+    switch (simd_get_best_extension()) {
+        case SIMD_AVX512: return "avx512";
+        case SIMD_AVX2:   return "avx2";
+        case SIMD_AVX:    return "avx";
+        case SIMD_SSE4:   return "sse4.2";
+        case SIMD_SSE2:   return "sse2";
+        case SIMD_SSE:    return "sse";
+        case SIMD_NEON:   return "neon";
+        case SIMD_NONE:
+        default:          return "scalar";
+    }
 }
 
 /* ========================================================================
  * SIMD 过滤
+ *
+ * 每种数值类型有 2~3 份内核：
+ *   filter_xxx_scalar —— 可移植标量参考，**始终参与编译**，是语义的唯一真源
+ *   filter_xxx_sse2   —— 128 位内核（x86 基线）
+ *   filter_xxx_sse42  —— 仅 int64 需要（SSE2 无 64 位整数比较指令）
+ *   filter_xxx_avx2   —— 256 位内核
+ *
+ * 公开函数负责：入参校验 → 清零 ceil(n/64) 个字 → 按运行时 CPU 能力挑最快内核。
+ * 每个 SIMD 内核自己用 VEXEC_SCALAR_TAIL() 收尾，保证任意长度都正确。
+ *
+ * 浮点 NaN 语义：SSE/AVX 的 cmpeq/cmplt/cmple/cmpgt/cmpge 都是 ordered（遇 NaN 为假），
+ * cmpneq 是 unordered（遇 NaN 为真），与 C 的 == < <= > >= != 完全吻合，
+ * 因此 SIMD 结果与标量参考逐位一致，无需特殊处理。
  * ======================================================================== */
 
-static uint64_t apply_op_int(int32_t val, int32_t cmp, CompareOp op) {
-    switch (op) {
-        case CMP_EQ: return (val == cmp) ? 0xFFFFFFFFFFFFFFFFULL : 0;
-        case CMP_NE: return (val != cmp) ? 0xFFFFFFFFFFFFFFFFULL : 0;
-        case CMP_LT: return (val < cmp) ? 0xFFFFFFFFFFFFFFFFULL : 0;
-        case CMP_LE: return (val <= cmp) ? 0xFFFFFFFFFFFFFFFFULL : 0;
-        case CMP_GT: return (val > cmp) ? 0xFFFFFFFFFFFFFFFFULL : 0;
-        case CMP_GE: return (val >= cmp) ? 0xFFFFFFFFFFFFFFFFULL : 0;
-        default: return 0;
-    }
+/* ------------------------------ int32 ------------------------------ */
+
+static void filter_int32_scalar(const int32_t *a, int32_t b, int n,
+                                CompareOp op, uint64_t *result) {
+    int i = 0;
+    VEXEC_SCALAR_TAIL();
 }
+
+#ifdef VEXEC_HAVE_SSE2
+/* SSE2：每轮 4 个 int32。_mm_movemask_ps 对 4 个 32 位通道各取 1 位，正好对齐位图。 */
+static void filter_int32_sse2(const int32_t *a, int32_t b, int n,
+                              CompareOp op, uint64_t *result) {
+    const __m128i vb   = _mm_set1_epi32(b);
+    const __m128i ones = _mm_set1_epi32(-1);
+    int i = 0;
+    for (; i + 4 <= n; i += 4) {
+        __m128i va = _mm_loadu_si128((const __m128i *)(const void *)(a + i));
+        __m128i mask = _mm_setzero_si128();
+        switch (op) {
+            case CMP_EQ: mask = _mm_cmpeq_epi32(va, vb); break;
+            case CMP_NE: mask = _mm_xor_si128(_mm_cmpeq_epi32(va, vb), ones); break;
+            case CMP_GT: mask = _mm_cmpgt_epi32(va, vb); break;
+            case CMP_LT: mask = _mm_cmpgt_epi32(vb, va); break;                      /* b > a */
+            case CMP_GE: mask = _mm_xor_si128(_mm_cmpgt_epi32(vb, va), ones); break; /* !(a < b) */
+            case CMP_LE: mask = _mm_xor_si128(_mm_cmpgt_epi32(va, vb), ones); break; /* !(a > b) */
+            default: break;
+        }
+        vexec_bits_write(result, i, 4,
+                         (uint64_t)(unsigned)_mm_movemask_ps(_mm_castsi128_ps(mask)));
+    }
+    VEXEC_SCALAR_TAIL();
+}
+#endif /* VEXEC_HAVE_SSE2 */
+
+#ifdef VEXEC_HAVE_AVX2
+/* AVX2：每轮 8 个 int32 */
+VEXEC_TARGET("avx2")
+static void filter_int32_avx2(const int32_t *a, int32_t b, int n,
+                              CompareOp op, uint64_t *result) {
+    const __m256i vb   = _mm256_set1_epi32(b);
+    const __m256i ones = _mm256_set1_epi32(-1);
+    int i = 0;
+    for (; i + 8 <= n; i += 8) {
+        __m256i va = _mm256_loadu_si256((const __m256i *)(const void *)(a + i));
+        __m256i mask = _mm256_setzero_si256();
+        switch (op) {
+            case CMP_EQ: mask = _mm256_cmpeq_epi32(va, vb); break;
+            case CMP_NE: mask = _mm256_xor_si256(_mm256_cmpeq_epi32(va, vb), ones); break;
+            case CMP_GT: mask = _mm256_cmpgt_epi32(va, vb); break;
+            case CMP_LT: mask = _mm256_cmpgt_epi32(vb, va); break;
+            case CMP_GE: mask = _mm256_xor_si256(_mm256_cmpgt_epi32(vb, va), ones); break;
+            case CMP_LE: mask = _mm256_xor_si256(_mm256_cmpgt_epi32(va, vb), ones); break;
+            default: break;
+        }
+        vexec_bits_write(result, i, 8,
+                         (uint64_t)(unsigned)_mm256_movemask_ps(_mm256_castsi256_ps(mask)));
+    }
+    VEXEC_SCALAR_TAIL();
+}
+#endif /* VEXEC_HAVE_AVX2 */
 
 void vector_filter_int_simd(const int32_t *a, int32_t b,
                           int num_elements, CompareOp op, uint64_t *result) {
     if (!a || !result || num_elements <= 0) return;
-    for (int i = 0; i < num_elements; i++) {
-        if (apply_op_int(a[i], b, op)) {
-            result[i / 64] |= (1ULL << (i % 64));
-        }
+    memset(result, 0, (size_t)((num_elements + 63) / 64) * sizeof(uint64_t));
+
+    SimdExtension best = simd_get_best_extension();
+    (void)best;
+#ifdef VEXEC_HAVE_AVX2
+    if (best >= SIMD_AVX2 && best != SIMD_NEON) {
+        filter_int32_avx2(a, b, num_elements, op, result);
+        return;
     }
+#endif
+#ifdef VEXEC_HAVE_SSE2
+    if (best >= SIMD_SSE2 && best != SIMD_NEON) {
+        filter_int32_sse2(a, b, num_elements, op, result);
+        return;
+    }
+#endif
+    filter_int32_scalar(a, b, num_elements, op, result);
 }
 
-static uint64_t apply_op_float(float val, float cmp, CompareOp op) {
-    switch (op) {
-        case CMP_EQ: return (val == cmp) ? 0xFFFFFFFFFFFFFFFFULL : 0;
-        case CMP_NE: return (val != cmp) ? 0xFFFFFFFFFFFFFFFFULL : 0;
-        case CMP_LT: return (val < cmp) ? 0xFFFFFFFFFFFFFFFFULL : 0;
-        case CMP_LE: return (val <= cmp) ? 0xFFFFFFFFFFFFFFFFULL : 0;
-        case CMP_GT: return (val > cmp) ? 0xFFFFFFFFFFFFFFFFULL : 0;
-        case CMP_GE: return (val >= cmp) ? 0xFFFFFFFFFFFFFFFFULL : 0;
-        default: return 0;
-    }
+/* ------------------------------ int64 ------------------------------ */
+
+static void filter_int64_scalar(const int64_t *a, int64_t b, int n,
+                                CompareOp op, uint64_t *result) {
+    int i = 0;
+    VEXEC_SCALAR_TAIL();
 }
+
+#ifdef VEXEC_HAVE_SSE42
+/* SSE4.2：每轮 2 个 int64。SSE2 没有 _mm_cmpgt_epi64（SSE4.2 才有）、
+   也没有 _mm_cmpeq_epi64（SSE4.1 才有），所以 SSE2 级别的 int64 直接落标量。 */
+VEXEC_TARGET("sse4.2")
+static void filter_int64_sse42(const int64_t *a, int64_t b, int n,
+                               CompareOp op, uint64_t *result) {
+    const __m128i vb   = _mm_set1_epi64x(b);
+    const __m128i ones = _mm_set1_epi32(-1);
+    int i = 0;
+    for (; i + 2 <= n; i += 2) {
+        __m128i va = _mm_loadu_si128((const __m128i *)(const void *)(a + i));
+        __m128i mask = _mm_setzero_si128();
+        switch (op) {
+            case CMP_EQ: mask = _mm_cmpeq_epi64(va, vb); break;
+            case CMP_NE: mask = _mm_xor_si128(_mm_cmpeq_epi64(va, vb), ones); break;
+            case CMP_GT: mask = _mm_cmpgt_epi64(va, vb); break;
+            case CMP_LT: mask = _mm_cmpgt_epi64(vb, va); break;
+            case CMP_GE: mask = _mm_xor_si128(_mm_cmpgt_epi64(vb, va), ones); break;
+            case CMP_LE: mask = _mm_xor_si128(_mm_cmpgt_epi64(va, vb), ones); break;
+            default: break;
+        }
+        vexec_bits_write(result, i, 2,
+                         (uint64_t)(unsigned)_mm_movemask_pd(_mm_castsi128_pd(mask)));
+    }
+    VEXEC_SCALAR_TAIL();
+}
+#endif /* VEXEC_HAVE_SSE42 */
+
+#ifdef VEXEC_HAVE_AVX2
+/* AVX2：每轮 4 个 int64 */
+VEXEC_TARGET("avx2")
+static void filter_int64_avx2(const int64_t *a, int64_t b, int n,
+                              CompareOp op, uint64_t *result) {
+    const __m256i vb   = _mm256_set1_epi64x(b);
+    const __m256i ones = _mm256_set1_epi32(-1);
+    int i = 0;
+    for (; i + 4 <= n; i += 4) {
+        __m256i va = _mm256_loadu_si256((const __m256i *)(const void *)(a + i));
+        __m256i mask = _mm256_setzero_si256();
+        switch (op) {
+            case CMP_EQ: mask = _mm256_cmpeq_epi64(va, vb); break;
+            case CMP_NE: mask = _mm256_xor_si256(_mm256_cmpeq_epi64(va, vb), ones); break;
+            case CMP_GT: mask = _mm256_cmpgt_epi64(va, vb); break;
+            case CMP_LT: mask = _mm256_cmpgt_epi64(vb, va); break;
+            case CMP_GE: mask = _mm256_xor_si256(_mm256_cmpgt_epi64(vb, va), ones); break;
+            case CMP_LE: mask = _mm256_xor_si256(_mm256_cmpgt_epi64(va, vb), ones); break;
+            default: break;
+        }
+        vexec_bits_write(result, i, 4,
+                         (uint64_t)(unsigned)_mm256_movemask_pd(_mm256_castsi256_pd(mask)));
+    }
+    VEXEC_SCALAR_TAIL();
+}
+#endif /* VEXEC_HAVE_AVX2 */
+
+void vector_filter_int64_simd(const int64_t *a, int64_t b,
+                            int num_elements, CompareOp op, uint64_t *result) {
+    if (!a || !result || num_elements <= 0) return;
+    memset(result, 0, (size_t)((num_elements + 63) / 64) * sizeof(uint64_t));
+
+    SimdExtension best = simd_get_best_extension();
+    (void)best;
+#ifdef VEXEC_HAVE_AVX2
+    if (best >= SIMD_AVX2 && best != SIMD_NEON) {
+        filter_int64_avx2(a, b, num_elements, op, result);
+        return;
+    }
+#endif
+#ifdef VEXEC_HAVE_SSE42
+    if (best >= SIMD_SSE4 && best != SIMD_NEON) {
+        filter_int64_sse42(a, b, num_elements, op, result);
+        return;
+    }
+#endif
+    /* SSE2 及以下没有 64 位整数比较指令，走标量 */
+    filter_int64_scalar(a, b, num_elements, op, result);
+}
+
+/* ------------------------------ float ------------------------------ */
+
+static void filter_float_scalar(const float *a, float b, int n,
+                                CompareOp op, uint64_t *result) {
+    int i = 0;
+    VEXEC_SCALAR_TAIL();
+}
+
+#ifdef VEXEC_HAVE_SSE2
+/* SSE2：每轮 4 个 float（cmpps 的 ordered/unordered 语义与 C 一致） */
+static void filter_float_sse2(const float *a, float b, int n,
+                              CompareOp op, uint64_t *result) {
+    const __m128 vb = _mm_set1_ps(b);
+    int i = 0;
+    for (; i + 4 <= n; i += 4) {
+        __m128 va = _mm_loadu_ps(a + i);
+        __m128 mask = _mm_setzero_ps();
+        switch (op) {
+            case CMP_EQ: mask = _mm_cmpeq_ps(va, vb);  break;
+            case CMP_NE: mask = _mm_cmpneq_ps(va, vb); break;
+            case CMP_LT: mask = _mm_cmplt_ps(va, vb);  break;
+            case CMP_LE: mask = _mm_cmple_ps(va, vb);  break;
+            case CMP_GT: mask = _mm_cmpgt_ps(va, vb);  break;
+            case CMP_GE: mask = _mm_cmpge_ps(va, vb);  break;
+            default: break;
+        }
+        vexec_bits_write(result, i, 4, (uint64_t)(unsigned)_mm_movemask_ps(mask));
+    }
+    VEXEC_SCALAR_TAIL();
+}
+#endif /* VEXEC_HAVE_SSE2 */
+
+#ifdef VEXEC_HAVE_AVX2
+/* AVX2：每轮 8 个 float。谓词取与 SSE cmpps 等价的变体：
+   EQ_OQ / NEQ_UQ / LT_OS / LE_OS / GT_OS / GE_OS。 */
+VEXEC_TARGET("avx2")
+static void filter_float_avx2(const float *a, float b, int n,
+                              CompareOp op, uint64_t *result) {
+    const __m256 vb = _mm256_set1_ps(b);
+    int i = 0;
+    for (; i + 8 <= n; i += 8) {
+        __m256 va = _mm256_loadu_ps(a + i);
+        __m256 mask = _mm256_setzero_ps();
+        switch (op) {
+            case CMP_EQ: mask = _mm256_cmp_ps(va, vb, _CMP_EQ_OQ);  break;
+            case CMP_NE: mask = _mm256_cmp_ps(va, vb, _CMP_NEQ_UQ); break;
+            case CMP_LT: mask = _mm256_cmp_ps(va, vb, _CMP_LT_OS);  break;
+            case CMP_LE: mask = _mm256_cmp_ps(va, vb, _CMP_LE_OS);  break;
+            case CMP_GT: mask = _mm256_cmp_ps(va, vb, _CMP_GT_OS);  break;
+            case CMP_GE: mask = _mm256_cmp_ps(va, vb, _CMP_GE_OS);  break;
+            default: break;
+        }
+        vexec_bits_write(result, i, 8, (uint64_t)(unsigned)_mm256_movemask_ps(mask));
+    }
+    VEXEC_SCALAR_TAIL();
+}
+#endif /* VEXEC_HAVE_AVX2 */
 
 void vector_filter_float_simd(const float *a, float b,
                             int num_elements, CompareOp op, uint64_t *result) {
     if (!a || !result || num_elements <= 0) return;
-    for (int i = 0; i < num_elements; i++) {
-        if (apply_op_float(a[i], b, op)) {
-            result[i / 64] |= (1ULL << (i % 64));
-        }
+    memset(result, 0, (size_t)((num_elements + 63) / 64) * sizeof(uint64_t));
+
+    SimdExtension best = simd_get_best_extension();
+    (void)best;
+#ifdef VEXEC_HAVE_AVX2
+    if (best >= SIMD_AVX2 && best != SIMD_NEON) {
+        filter_float_avx2(a, b, num_elements, op, result);
+        return;
     }
+#endif
+#ifdef VEXEC_HAVE_SSE2
+    if (best >= SIMD_SSE2 && best != SIMD_NEON) {
+        filter_float_sse2(a, b, num_elements, op, result);
+        return;
+    }
+#endif
+    filter_float_scalar(a, b, num_elements, op, result);
 }
+
+/* ------------------------------ double ------------------------------ */
+
+static void filter_double_scalar(const double *a, double b, int n,
+                                 CompareOp op, uint64_t *result) {
+    int i = 0;
+    VEXEC_SCALAR_TAIL();
+}
+
+#ifdef VEXEC_HAVE_SSE2
+/* SSE2：每轮 2 个 double */
+static void filter_double_sse2(const double *a, double b, int n,
+                               CompareOp op, uint64_t *result) {
+    const __m128d vb = _mm_set1_pd(b);
+    int i = 0;
+    for (; i + 2 <= n; i += 2) {
+        __m128d va = _mm_loadu_pd(a + i);
+        __m128d mask = _mm_setzero_pd();
+        switch (op) {
+            case CMP_EQ: mask = _mm_cmpeq_pd(va, vb);  break;
+            case CMP_NE: mask = _mm_cmpneq_pd(va, vb); break;
+            case CMP_LT: mask = _mm_cmplt_pd(va, vb);  break;
+            case CMP_LE: mask = _mm_cmple_pd(va, vb);  break;
+            case CMP_GT: mask = _mm_cmpgt_pd(va, vb);  break;
+            case CMP_GE: mask = _mm_cmpge_pd(va, vb);  break;
+            default: break;
+        }
+        vexec_bits_write(result, i, 2, (uint64_t)(unsigned)_mm_movemask_pd(mask));
+    }
+    VEXEC_SCALAR_TAIL();
+}
+#endif /* VEXEC_HAVE_SSE2 */
+
+#ifdef VEXEC_HAVE_AVX2
+/* AVX2：每轮 4 个 double */
+VEXEC_TARGET("avx2")
+static void filter_double_avx2(const double *a, double b, int n,
+                               CompareOp op, uint64_t *result) {
+    const __m256d vb = _mm256_set1_pd(b);
+    int i = 0;
+    for (; i + 4 <= n; i += 4) {
+        __m256d va = _mm256_loadu_pd(a + i);
+        __m256d mask = _mm256_setzero_pd();
+        switch (op) {
+            case CMP_EQ: mask = _mm256_cmp_pd(va, vb, _CMP_EQ_OQ);  break;
+            case CMP_NE: mask = _mm256_cmp_pd(va, vb, _CMP_NEQ_UQ); break;
+            case CMP_LT: mask = _mm256_cmp_pd(va, vb, _CMP_LT_OS);  break;
+            case CMP_LE: mask = _mm256_cmp_pd(va, vb, _CMP_LE_OS);  break;
+            case CMP_GT: mask = _mm256_cmp_pd(va, vb, _CMP_GT_OS);  break;
+            case CMP_GE: mask = _mm256_cmp_pd(va, vb, _CMP_GE_OS);  break;
+            default: break;
+        }
+        vexec_bits_write(result, i, 4, (uint64_t)(unsigned)_mm256_movemask_pd(mask));
+    }
+    VEXEC_SCALAR_TAIL();
+}
+#endif /* VEXEC_HAVE_AVX2 */
+
+void vector_filter_double_simd(const double *a, double b,
+                             int num_elements, CompareOp op, uint64_t *result) {
+    if (!a || !result || num_elements <= 0) return;
+    memset(result, 0, (size_t)((num_elements + 63) / 64) * sizeof(uint64_t));
+
+    SimdExtension best = simd_get_best_extension();
+    (void)best;
+#ifdef VEXEC_HAVE_AVX2
+    if (best >= SIMD_AVX2 && best != SIMD_NEON) {
+        filter_double_avx2(a, b, num_elements, op, result);
+        return;
+    }
+#endif
+#ifdef VEXEC_HAVE_SSE2
+    if (best >= SIMD_SSE2 && best != SIMD_NEON) {
+        filter_double_sse2(a, b, num_elements, op, result);
+        return;
+    }
+#endif
+    filter_double_scalar(a, b, num_elements, op, result);
+}
+
+/* ------------------------------ string ------------------------------ */
 
 void vector_filter_string_simd(const char **a, const char *b,
                             int num_elements, CompareOp op, uint64_t *result) {
+    /* 字符串比较保持标量实现：变长数据的 SIMD 比较（pcmpistri / 前缀向量化 +
+       字典序回退）不在本 gap 范围，留待字符串/文本模态专项任务。
+       位图布局与写入语义与上面各数值变体完全一致。 */
     if (!a || !result || num_elements <= 0) return;
     for (int i = 0; i < num_elements; i++) {
         int cmp = strcmp(a[i], b);
@@ -370,17 +758,81 @@ int vector_filter(VectorScanExecState *state, struct Expr_s *filter_expr) {
 }
 
 /* ========================================================================
- * SIMD 检测
+ * SIMD 检测（如实报告，不再硬编码 SIMD_NONE）
+ *
+ * 优先用运行时 CPU 特征检测（GCC/Clang 的 __builtin_cpu_supports，内部读取
+ * CPUID 结果，首次调用会自动 __builtin_cpu_init）；拿不到运行时检测时退回
+ * 编译期宏。x86_64 的 ABI 基线本身就保证 SSE2，所以最低报 SSE2。
  * ======================================================================== */
 
-SimdExtension simd_detect_extension(void) {
+/* 纯硬件能力探测：不受任何开关影响 */
+static SimdExtension vexec_detect_hw(void) {
+#ifdef VEXEC_HAVE_CPU_PROBE
+    /* GCC/Clang x86：真正的运行时 CPUID 检测。
+       只上报本文件确有对应内核的级别（AVX2 / SSE4.2 / SSE2）。 */
+    if (__builtin_cpu_supports("avx2"))   return SIMD_AVX2;
+    if (__builtin_cpu_supports("sse4.2")) return SIMD_SSE4;
+    if (__builtin_cpu_supports("sse2"))   return SIMD_SSE2;
+#endif
+#if defined(VEXEC_HAVE_SSE2)
+    /* 无运行时检测手段（如 MSVC）：x86_64 硬件基线保证 SSE2 */
+    return SIMD_SSE2;
+#else
+    /* 非 x86 或未开 SSE2：只有可移植标量内核 */
     return SIMD_NONE;
+#endif
 }
 
-bool simd_has_extension(SimdExtension ext) {
-    return ext == SIMD_NONE;
+/**
+ * 解析 MMDB_SIMD 降级开关。
+ *
+ * 该开关**只能把分派降到更低的级别，永远不能抬高**——否则会在不支持的 CPU 上
+ * 执行非法指令（#UD）。取值：scalar / sse2 / sse4.2（或 sse42）/ avx2；
+ * 未设置、取值无效、或请求级别高于硬件实际能力时，一律沿用硬件检测结果。
+ *
+ * 用途：在同一台机器上回归验证标量 / SSE2 / AVX2 各层内核结果逐位一致。
+ */
+static SimdExtension vexec_apply_env_downgrade(SimdExtension hw) {
+    const char *env = getenv("MMDB_SIMD");
+    SimdExtension want;
+
+    if (!env || !*env) return hw;
+
+    if      (strcmp(env, "scalar") == 0) want = SIMD_NONE;
+    else if (strcmp(env, "sse2")   == 0) want = SIMD_SSE2;
+    else if (strcmp(env, "sse4.2") == 0 || strcmp(env, "sse42") == 0) want = SIMD_SSE4;
+    else if (strcmp(env, "avx2")   == 0) want = SIMD_AVX2;
+    else return hw;  /* 无法识别：忽略，保持如实报告 */
+
+    return (want < hw) ? want : hw;  /* 只降不升 */
+}
+
+SimdExtension simd_detect_extension(void) {
+    /* 缓存首次解析结果：分派函数每次调用都会问一遍，CPUID + getenv 不宜重复做。
+       多线程首次并发进入时会各算一遍再写同一个值，结果相同，属良性竞争。
+       -1 表示尚未初始化（SimdExtension 的合法值都 >= 0）。 */
+    static int cached = -1;
+    int c = cached;
+    if (c < 0) {
+        c = (int)vexec_apply_env_downgrade(vexec_detect_hw());
+        cached = c;
+    }
+    return (SimdExtension)c;
 }
 
 SimdExtension simd_get_best_extension(void) {
-    return SIMD_NONE;
+    /* 与 simd_detect_extension() 同义：本实现里「检测到的」就是「实际会用的」 */
+    return simd_detect_extension();
+}
+
+bool simd_has_extension(SimdExtension ext) {
+    /* 「无 SIMD」任何机器都满足 */
+    if (ext == SIMD_NONE) return true;
+
+    SimdExtension best = simd_get_best_extension();
+
+    /* NEON 与 x86 系列不在同一条能力链上，枚举值大小没有可比性，单独判断 */
+    if (ext == SIMD_NEON || best == SIMD_NEON) return ext == best;
+
+    return best >= ext;
 }
