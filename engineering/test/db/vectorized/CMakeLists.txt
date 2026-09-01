@@ -6,6 +6,8 @@ add_executable(vectorized_exec_test
     simd_test.cpp
     filter_test.cpp
     agg_test.cpp
+    hashagg_test.cpp
+    hashjoin_test.cpp
 )
 target_link_libraries(vectorized_exec_test
     db_vectorized

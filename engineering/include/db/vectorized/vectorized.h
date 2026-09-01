@@ -195,6 +195,128 @@ typedef enum {
 int vecx_agg_scalar(const VectorBlock *b, int col, vecx_agg_kind_t kind,
                     const int *sel, int nsel, double *out, int *has_result);
 
+/* ========================================================================
+ * 哈希分组聚合（GROUP BY，单列 int64 键 + 单列数值度量）
+ *
+ * 教学级实现：开放寻址（线性探测）哈希表，支持跨多个块累积同一分组，
+ * 最后一次性 emit 出结果块。不做溢出到磁盘、不做并行分区（Gap#4）。
+ * ======================================================================== */
+
+/** 分组聚合器（不透明句柄） */
+typedef struct vecx_hashagg_s vecx_hashagg_t;
+
+/**
+ * @brief 创建分组聚合器
+ *
+ * @param key_col     分组键列索引；该列在每个输入块里的类型标签须为
+ *                    COLUMN_INT32 或 COLUMN_INT64（内部统一提升为 int64 键）
+ * @param measure_col 度量列索引；类型标签须为
+ *                    COLUMN_INT32 / COLUMN_INT64 / COLUMN_FLOAT / COLUMN_DOUBLE
+ * @return 聚合器；OOM 或列索引为负返回 NULL
+ */
+vecx_hashagg_t *vecx_hashagg_create(int key_col, int measure_col);
+
+/**
+ * @brief 把一个块的数据累积进聚合器（可对多个块反复调用）
+ *
+ * 逐行处理：键列为 null 的行整行跳过；度量列为 null 的行**也整行跳过**
+ * （即该行既不建组也不计数——见下方"null 语义"一节，这是本实现的明确取舍）。
+ *
+ * @param h 聚合器
+ * @param b 输入块（不被修改，也不被持有——本函数只读取，返回后调用方可自由释放）
+ * @return 0 成功；-1 入参非法 / 列类型不支持 / OOM
+ */
+int vecx_hashagg_add_block(vecx_hashagg_t *h, const VectorBlock *b);
+
+/**
+ * @brief 输出聚合结果块
+ *
+ * 输出块共 6 列，行数 = distinct 分组数：
+ *   列0 key   : int64_t，类型标签 COLUMN_INT64
+ *   列1 count : int64_t，类型标签 COLUMN_INT64
+ *   列2 sum   : double， 类型标签 COLUMN_DOUBLE
+ *   列3 min   : double， 类型标签 COLUMN_DOUBLE
+ *   列4 max   : double， 类型标签 COLUMN_DOUBLE
+ *   列5 avg   : double， 类型标签 COLUMN_DOUBLE
+ * 行顺序**不做保证**（哈希槽顺序）——测试必须自己按 key 排序或用 map 比对，
+ * 不要依赖插入顺序。这一点要写进头注释。
+ *
+ * 没有任何分组时返回 0 且 *out=NULL（这是正常的空结果，不是错误）。
+ * emit 不清空内部状态；重复调用应产出等价结果。
+ *
+ * @param h   聚合器
+ * @param out 输出块指针；无分组时写 NULL，否则写新块（调用方用 vector_block_destroy 释放）
+ * @return >0 分组数；0 无分组（*out=NULL）；-1 入参非法 / OOM
+ */
+int vecx_hashagg_emit(vecx_hashagg_t *h, VectorBlock **out);
+
+/** @brief 销毁聚合器（NULL 安全） */
+void vecx_hashagg_destroy(vecx_hashagg_t *h);
+
+/* ========================================================================
+ * 向量化 Hash Join（inner join，单列 int 等值连接键）
+ *
+ * 经典两阶段：先把 build 侧全部块灌进哈希表，再逐块 probe。
+ * 教学级：不做 grace/溢出分区、不做 semi/anti/outer、不做多列复合键。
+ * ======================================================================== */
+
+/** Hash Join 句柄（不透明） */
+typedef struct vecx_hashjoin_s vecx_hashjoin_t;
+
+/**
+ * @brief 创建 Hash Join
+ * @param build_key_col build 侧连接键列索引
+ * @param probe_key_col probe 侧连接键列索引
+ *                      两侧键列类型标签须为 COLUMN_INT32 或 COLUMN_INT64
+ *                      （内部统一提升为 int64 键，故两侧类型可不同）
+ * @return 句柄；OOM 或列索引为负返回 NULL
+ */
+vecx_hashjoin_t *vecx_hashjoin_create(int build_key_col, int probe_key_col);
+
+/**
+ * @brief 灌入一个 build 侧块（可多次调用）
+ *
+ * 所有权：本函数对块做深拷贝并持有副本，因为 probe 阶段要回读 build 行的所有列，
+ * 而调用方可能在 probe 前就释放了原块。副本在 vecx_hashjoin_destroy 时释放。
+ * 调用方对传入的 `build` 保留所有权，返回后可自由释放。
+ *
+ * 键列为 null 的行不入表（SQL 语义：null 不与任何值相等，包括另一个 null）。
+ * 非键列为 null 不影响入表——null 标记会随行一起带到输出块。
+ *
+ * 多个块的 schema（列数、各列 column_sizes、各列类型标签）**必须一致**，
+ * 否则返回 -1（第一个块确立 schema）。
+ *
+ * @return 0 成功；-1 入参非法 / 键列类型不支持 / schema 不一致 / OOM
+ */
+int vecx_hashjoin_add_build(vecx_hashjoin_t *j, const VectorBlock *build);
+
+/**
+ * @brief 用一个 probe 侧块做 inner join，输出匹配结果块
+ *
+ * 输出块列布局：**build 侧全部列** 依次排在前，**probe 侧全部列** 依次排在后，
+ * 即 ncols_out = build_ncols + probe_ncols；各列 column_sizes 与类型标签
+ * 从对应侧原样继承。
+ *
+ * 语义：
+ * - inner join：probe 行无匹配则丢弃；
+ * - build 侧同键多行 → 该 probe 行与每个匹配的 build 行各产出一行（键内笛卡尔积），
+ *   **同键多行的输出顺序不做保证**，测试须按 (build_key, 其它列) 排序或用 multiset 比对；
+ * - probe 侧键 null 不参与探测；
+ * - 输出行的 null 标记 = build 行 null || probe 行 null（行级位图的必然结果，
+ *   即某行只要任一侧原本是 null，输出行整行被标 null）。
+ *   **这是行级 null 位图的固有限制，要在头注释里写明**。
+ * - 无匹配时返回 0 且 *out=NULL（正常空结果，不是错误）。
+ *
+ * @param j     句柄（须已 add_build 至少一次；未 build 过则所有行都无匹配，返回 0）
+ * @param probe probe 侧块（不被修改、不被持有）
+ * @param out   输出块指针；调用方用 vector_block_destroy 释放
+ * @return >0 输出行数；0 无匹配（*out=NULL）；-1 入参非法 / 类型不支持 / OOM
+ */
+int vecx_hashjoin_probe(vecx_hashjoin_t *j, const VectorBlock *probe, VectorBlock **out);
+
+/** @brief 销毁（释放哈希表与所有 build 侧块副本；NULL 安全） */
+void vecx_hashjoin_destroy(vecx_hashjoin_t *j);
+
 #ifdef __cplusplus
 }
 #endif

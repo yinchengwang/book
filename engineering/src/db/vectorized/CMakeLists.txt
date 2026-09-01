@@ -3,6 +3,8 @@ add_library(db_vectorized STATIC
     vecx_block.c
     vecx_filter.c
     vecx_agg.c
+    vecx_hashagg.c
+    vecx_hashjoin.c
 )
 target_include_directories(db_vectorized PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include
