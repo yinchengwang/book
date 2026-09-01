@@ -487,21 +487,26 @@ TEST(VecxHashJoin, KeyZeroAndNegative) {
 }
 
 /* ========================================================================
- * 8. 大规模 + 扩容：5000 distinct 键各 1 行，probe 全匹配
+ * 8. 大规模 + 扩容：5000 distinct 键各 3 行，触发多次 rehases
  * ======================================================================== */
 TEST(VecxHashJoin, LargeScaleWithResize) {
     const int N = 5000;
+    const int ROWS_PER_KEY = 3;
     std::vector<int64_t> bk, bd, pk, pd;
-    bk.reserve((size_t)N); bd.reserve((size_t)N);
-    pk.reserve((size_t)N); pd.reserve((size_t)N);
+    bk.reserve((size_t)N * ROWS_PER_KEY);
+    bd.reserve((size_t)N * ROWS_PER_KEY);
+    pk.reserve((size_t)N);
+    pd.reserve((size_t)N);
     for (int i = 0; i < N; i++) {
-        bk.push_back((int64_t)i);
-        bd.push_back((int64_t)(i * 2));
+        for (int r = 0; r < ROWS_PER_KEY; r++) {
+            bk.push_back((int64_t)i);
+            bd.push_back((int64_t)(i * 100 + r));
+        }
         pk.push_back((int64_t)i);
         pd.push_back((int64_t)(i * 3));
     }
 
-    VectorBlock *build = make_2col_i64_block(bk, bd, N);
+    VectorBlock *build = make_2col_i64_block(bk, bd, N * ROWS_PER_KEY);
     ASSERT_NE(build, nullptr);
     VectorBlock *probe = make_2col_i64_block(pk, pd, N);
     ASSERT_NE(probe, nullptr);
@@ -512,15 +517,18 @@ TEST(VecxHashJoin, LargeScaleWithResize) {
 
     VectorBlock *out = nullptr;
     int n = vecx_hashjoin_probe(j, probe, &out);
-    EXPECT_EQ(n, N);
+    EXPECT_EQ(n, N * ROWS_PER_KEY);
     ASSERT_NE(out, nullptr);
-    EXPECT_EQ(out->num_rows, N);
+    EXPECT_EQ(out->num_rows, N * ROWS_PER_KEY);
 
-    // 随机抽查几个
-    auto ms = read_output_as_multiset(out);
+    // 统计每个 key 出现的次数，验证链未丢失/混淆
+    std::map<int64_t, int> key_count;
+    const int64_t *c0 = (const int64_t *)out->columns[0];
+    for (int i = 0; i < out->num_rows; i++) {
+        key_count[c0[i]]++;
+    }
     for (int i = 0; i < N; i++) {
-        std::vector<int64_t> row = {(int64_t)i, (int64_t)(i * 2), (int64_t)i, (int64_t)(i * 3)};
-        EXPECT_TRUE(ms.find(row) != ms.end());
+        EXPECT_EQ(key_count[(int64_t)i], ROWS_PER_KEY) << "key " << i << " should appear " << ROWS_PER_KEY << " times";
     }
 
     vector_block_destroy(out);
@@ -789,6 +797,49 @@ TEST(VecxHashJoin, BuildBlockFreedBeforeProbe) {
 }
 
 /* ========================================================================
+ * 15b. deterministic 版：overwrite 原始 build 块数据，验证深拷贝正确性
+ * ======================================================================== */
+TEST(VecxHashJoin, BuildBlockOverwrittenBeforeProbe) {
+    std::vector<int64_t> bk_orig = {10, 20, 30};
+    std::vector<int64_t> bd_orig = {100, 200, 300};
+    VectorBlock *build = make_2col_i64_block(bk_orig, bd_orig, 3);
+    ASSERT_NE(build, nullptr);
+
+    std::vector<int64_t> pk = {10, 20};
+    std::vector<int64_t> pd = {1000, 2000};
+    VectorBlock *probe = make_2col_i64_block(pk, pd, 2);
+    ASSERT_NE(probe, nullptr);
+
+    vecx_hashjoin_t *j = vecx_hashjoin_create(0, 0);
+    ASSERT_NE(j, nullptr);
+    EXPECT_EQ(vecx_hashjoin_add_build(j, build), 0);
+
+    // 用垃圾数据覆盖原始块的列数据（浅拷贝实现会读到这些垃圾值）
+    int64_t *bk_col = (int64_t *)build->columns[0];
+    int64_t *bd_col = (int64_t *)build->columns[1];
+    bk_col[0] = -999999999; bk_col[1] = -999999999; bk_col[2] = -999999999;
+    bd_col[0] = -999999999; bd_col[1] = -999999999; bd_col[2] = -999999999;
+
+    // probe 仍须输出原始值，不是垃圾
+    VectorBlock *out = nullptr;
+    int n = vecx_hashjoin_probe(j, probe, &out);
+    EXPECT_EQ(n, 2);
+    ASSERT_NE(out, nullptr);
+
+    auto ms = read_output_as_multiset(out);
+    std::multiset<std::vector<int64_t>> expected = {
+        {10, 100, 10, 1000},
+        {20, 200, 20, 2000}
+    };
+    EXPECT_EQ(ms, expected);
+
+    vector_block_destroy(out);
+    vecx_hashjoin_destroy(j);
+    vector_block_destroy(build);
+    vector_block_destroy(probe);
+}
+
+/* ========================================================================
  * 16. 不修改输入块
  * ======================================================================== */
 TEST(VecxHashJoin, InputBlockUnmodified) {
@@ -814,7 +865,10 @@ TEST(VecxHashJoin, InputBlockUnmodified) {
     EXPECT_EQ(build->num_rows, bk_rows);
     EXPECT_EQ(build->num_columns, bk_cols);
 
-    EXPECT_EQ(vecx_hashjoin_probe(j, probe, nullptr), 1);
+    VectorBlock *out = nullptr;
+    EXPECT_EQ(vecx_hashjoin_probe(j, probe, &out), 1);
+    ASSERT_NE(out, nullptr);
+    vector_block_destroy(out);
 
     EXPECT_EQ(((int64_t *)build->columns[0])[0], bk0_backup);
     EXPECT_EQ(probe->num_rows, 1);
@@ -845,7 +899,21 @@ TEST(VecxHashJoin, InvalidArgs) {
     EXPECT_EQ(vecx_hashjoin_add_build(j, nullptr), -1);
     EXPECT_EQ(vecx_hashjoin_probe(j, nullptr, &out), -1);
 
+    // out=NULL with valid j and probe
+    std::vector<int64_t> bk = {10};
+    std::vector<int64_t> bd = {100};
+    VectorBlock *build = make_2col_i64_block(bk, bd, 1);
+    ASSERT_NE(build, nullptr);
+    std::vector<int64_t> pk = {10};
+    std::vector<int64_t> pd = {1000};
+    VectorBlock *probe = make_2col_i64_block(pk, pd, 1);
+    ASSERT_NE(probe, nullptr);
+    EXPECT_EQ(vecx_hashjoin_add_build(j, build), 0);
+    EXPECT_EQ(vecx_hashjoin_probe(j, probe, nullptr), -1);
+
     vecx_hashjoin_destroy(j);
+    vector_block_destroy(build);
+    vector_block_destroy(probe);
 }
 
 /* ========================================================================

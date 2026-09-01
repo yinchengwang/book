@@ -232,6 +232,9 @@ int vecx_hashjoin_add_build(vecx_hashjoin_t *j, const VectorBlock *build) {
     int key_type = vector_block_get_column_type(build, key_col);
     if (key_type != COLUMN_INT32 && key_type != COLUMN_INT64) return -1;
 
+    /* 防御性：部分初始化的块（column_type 已设但 columns[col]==NULL） */
+    if (!build->columns || !build->columns[key_col]) return -1;
+
     /* ======== schema 校验或确立（先校验，再修改状态） ======== */
     if (j->build_block_count == 0) {
         /* 第一个非空块：确立 schema */
@@ -260,12 +263,29 @@ int vecx_hashjoin_add_build(vecx_hashjoin_t *j, const VectorBlock *build) {
 
     /* ======== 深拷贝 build 块（复用 vecx_block_gather） ======== */
     int *sel = (int *)malloc(sizeof(int) * (size_t)nrows);
-    if (!sel) return -1;
+    if (!sel) {
+        /* M5: 第一个块建立的 schema 未提交到任何块，须释放 */
+        if (j->build_block_count == 0) {
+            free(j->build_column_sizes);
+            free(j->build_column_types);
+            j->build_column_sizes = NULL;
+            j->build_column_types = NULL;
+        }
+        return -1;
+    }
     for (int i = 0; i < nrows; i++) sel[i] = i;
 
     VectorBlock *copy = vecx_block_gather(build, sel, nrows);
     free(sel);
-    if (!copy) return -1;
+    if (!copy) {
+        if (j->build_block_count == 0) {
+            free(j->build_column_sizes);
+            free(j->build_column_types);
+            j->build_column_sizes = NULL;
+            j->build_column_types = NULL;
+        }
+        return -1;
+    }
 
     /* ======== 存入 build_blocks 数组 ======== */
     if (j->build_block_count >= j->build_block_capacity) {
@@ -274,6 +294,12 @@ int vecx_hashjoin_add_build(vecx_hashjoin_t *j, const VectorBlock *build) {
             j->build_blocks, sizeof(VectorBlock *) * (size_t)new_cap);
         if (!new_arr) {
             vector_block_destroy(copy);
+            if (j->build_block_count == 0) {
+                free(j->build_column_sizes);
+                free(j->build_column_types);
+                j->build_column_sizes = NULL;
+                j->build_column_types = NULL;
+            }
             return -1;
         }
         j->build_blocks = new_arr;
@@ -307,12 +333,11 @@ int vecx_hashjoin_add_build(vecx_hashjoin_t *j, const VectorBlock *build) {
 }
 
 int vecx_hashjoin_probe(vecx_hashjoin_t *j, const VectorBlock *probe, VectorBlock **out) {
-    if (!j || !probe) return -1;
-    /* out 允许为 NULL：调用方可能只关心匹配数，不关心输出块 */
+    if (!j || !probe || !out) return -1;
 
     int nrows = probe->num_rows;
     if (nrows <= 0 || j->build_block_count <= 0) {
-        if (out) *out = NULL;
+        *out = NULL;
         return 0;
     }
 
@@ -321,6 +346,9 @@ int vecx_hashjoin_probe(vecx_hashjoin_t *j, const VectorBlock *probe, VectorBloc
 
     int pk_type = vector_block_get_column_type(probe, pk_col);
     if (pk_type != COLUMN_INT32 && pk_type != COLUMN_INT64) return -1;
+
+    /* 防御性：部分初始化的块（column_type 已设但 columns[col]==NULL） */
+    if (!probe->columns || !probe->columns[pk_col]) return -1;
 
     int build_ncols = j->build_ncols;
     int probe_ncols = probe->num_columns;
@@ -355,14 +383,8 @@ int vecx_hashjoin_probe(vecx_hashjoin_t *j, const VectorBlock *probe, VectorBloc
 
     if (total_matches <= 0) {
         free(probe_match_counts);
-        if (out) *out = NULL;
+        *out = NULL;
         return 0;
-    }
-
-    /* out 为 NULL 时调用方只关心匹配数，不分配输出块 */
-    if (!out) {
-        free(probe_match_counts);
-        return total_matches;
     }
 
     /* ========== 分配输出块 ========== */
@@ -471,6 +493,8 @@ int vecx_hashjoin_probe(vecx_hashjoin_t *j, const VectorBlock *probe, VectorBloc
             /* null 标记：build 行 null || probe 行 null */
             bool bnull = vector_block_is_null((VectorBlock *)build_block, build_row);
             bool pnull = vector_block_is_null((VectorBlock *)probe, r);
+            // 行级位图下，两侧 null 行在入表/探测时均已被排除，bnull/pnull 恒为 0。
+            // 此表达式在将来列级位图时保留语义正确性。
             vector_block_set_null(result, out_row, bnull || pnull);
 
             out_row++;
