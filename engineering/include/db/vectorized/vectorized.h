@@ -317,6 +317,160 @@ int vecx_hashjoin_probe(vecx_hashjoin_t *j, const VectorBlock *probe, VectorBloc
 /** @brief 销毁（释放哈希表与所有 build 侧块副本；NULL 安全） */
 void vecx_hashjoin_destroy(vecx_hashjoin_t *j);
 
+/* ========================================================================
+ * 向量表达式与投影
+ *
+ * 表达式是二叉树：COL（取列） / CONST（常量） / ADD / SUB / MUL。
+ * 求值方式：紧循环逐行 scalar 求值（教学级；编译器负责自动向量化；
+ *   真实 JIT Codegen 留作未来优化点，已在头注释标注）。
+ * ======================================================================== */
+
+/** 表达式节点操作符 */
+typedef enum {
+    VEXPR_COL = 0,   /**< 取输入块某列的值（自动提升为 double） */
+    VEXPR_CONST,     /**< 常量 double */
+    VEXPR_ADD,       /**< 加法（双精度浮点） */
+    VEXPR_SUB,       /**< 减法 */
+    VEXPR_MUL        /**< 乘法 */
+} vecx_expr_op_t;
+
+/** 表达式节点（不透明） */
+typedef struct vecx_expr_s vecx_expr_t;
+
+/**
+ * @brief 列引用表达式：取输入块第 col 列的值，自动将 int32/int64/float/double 提升为 double
+ * @param col 列索引
+ * @return 表达式节点（所有权归调用方，须用 vecx_expr_free 释放）
+ */
+vecx_expr_t *vecx_expr_col(int col);
+
+/**
+ * @brief 常量表达式
+ * @param v 常量值
+ */
+vecx_expr_t *vecx_expr_const(double v);
+
+/**
+ * @brief 二元算术表达式（接管左右子节点所有权，调用方不需再 free 它们）
+ * @param op 操作符
+ * @param left  左操作数（可为 NULL 仅对 CONST 型有意义）
+ * @param right 右操作数
+ * @return 新节点
+ */
+vecx_expr_t *vecx_expr_bin(vecx_expr_op_t op, vecx_expr_t *left, vecx_expr_t *right);
+
+/**
+ * @brief 在输入块上求值表达式，结果追加为一列（输出块的列数 = 输入列数 + 1）
+ *
+ * 输出块前 b->num_columns 列与输入完全一致（deep copy，包括类型标签与 null）；
+ * 最后一列是表达式结果列，类型标签为 COLUMN_DOUBLE（8），column_size 为 sizeof(double)。
+ * 第 b->num_columns 列（结果列）的 null 标记 = 输入块该行任一输入列为 null → 结果 null。
+ *
+ * @param in  输入块（不被修改）
+ * @param e   表达式（树的所有权归调用方，求值过程不释放节点）
+ * @param out 输出块指针；调用方用 vector_block_destroy 释放
+ * @return 0 成功；-1 入参非法 / 列越界 / OOM
+ */
+int vecx_project(const VectorBlock *in, const vecx_expr_t *e, VectorBlock **out);
+
+/**
+ * @brief 释放表达式树（递归释放所有子节点；NULL 安全）
+ */
+void vecx_expr_free(vecx_expr_t *e);
+
+/* ========================================================================
+ * 内存列 Source：把一组列向量切成 VectorBlock 流
+ *
+ * 用于驱动算子流水线——给 filter / agg / join 提供块输入。
+ * ======================================================================== */
+
+/** Source 句柄（不透明） */
+typedef struct vecx_source_s vecx_source_t;
+
+/**
+ * @brief 从列数组创建 Source（内存数据驱动）
+ *
+ * col_data[i] 指向第 i 列的基地址，col_elem_size[i] 是每行该列的元素大小（字节）。
+ * 若 col_types[i] != -1（已设置类型标签），source 按类型化列处理；
+ * 若为 -1，则按 raw 字节数组处理（用于无法确定类型的场景）。
+ *
+ * source 持有 col_data 指针的**副本**（仅拷贝指针数组，底层的列缓冲不拷贝），
+ * 调用方在 destroy 前须保持 col_data 缓冲有效。
+ *
+ * @param ncols         列数
+ * @param col_types     每列类型标签（COLUMN_INT32/INT64/FLOAT/DOUBLE/-1）；可 NULL→全 -1
+ * @param col_data      每列数据指针数组
+ * @param col_elem_size 每列每行元素大小（字节）
+ * @param total_rows    总行数
+ * @param batch_size    每个 VectorBlock 的行数上限
+ * @return source 句柄；OOM / 参数非法返回 NULL
+ */
+vecx_source_t *vecx_source_from_columns(int ncols, const int *col_types,
+                                        const void **col_data, const int *col_elem_size,
+                                        int64_t total_rows, int batch_size);
+
+/**
+ * @brief 从行迭代器创建 Source（演示火山模型行→列适配器）
+ *
+ * row_next 每被调用一次填充 col_values[col_idx]（按 col_elem_size[col_idx] 字节的标量槽）、
+ * col_types[col_idx]（类型标签）、isnull[col_idx]（0/1）。
+ * 若 hint_rows > 0，source 用它估算所需批次以减少 realloc，但这是 hint 不是 guarantee。
+ *
+ * source 按 batch_size 切 VectorBlock，每次 next 返回一个块（调用方负责用 vector_block_destroy）。
+ * NULL 返回表示数据结束。
+ *
+ * @param ncols         列数
+ * @param col_types     每列类型标签
+ * @param col_elem_size 每列每行元素大小（字节）
+ * @param row_next      迭代回调；返回 1 继续，0 停止，<0 错误
+ * @param state         迭代器状态指针（透传给 row_next）
+ * @param batch_size    每个 VectorBlock 的行数上限
+ * @param hint_rows     行数提示（0 表示未知）
+ * @return source 句柄；OOM 返回 NULL
+ */
+vecx_source_t *vecx_source_from_rows(int ncols, const int *col_types,
+                                     const int *col_elem_size,
+                                     int (*row_next)(void *state, int ncols,
+                                                     void **col_values, int *col_types, char *isnull),
+                                     void *state, int batch_size, int64_t hint_rows);
+
+/**
+ * @brief 取下一块（返回 NULL 表示结束；调用方用 vector_block_destroy 释放返回的块）
+ */
+VectorBlock *vecx_source_next(vecx_source_t *s);
+
+/** @brief 销毁 source（不释放 col_data 底层缓冲；NULL 安全） */
+void vecx_source_destroy(vecx_source_t *s);
+
+/* ========================================================================
+ * 端到端流水线演示（不重写 nodeSeqscan 等火山节点）
+ *
+ * 以下是"薄驱动"接口，演示把 source → filter → agg 串成流水线。
+ * 不做通用计划解析器、不引入 SQL 层依赖。
+ * ======================================================================== */
+
+/**
+ * @brief 把 source 的块依次经过 filter 和聚合，产出标量结果
+ *
+ * source 每产出一个块就调 vecx_filter_block 过滤，然后调 vecx_agg_scalar 累加入 total。
+ * 最后返回 total（若有输出行）除以 block_count 得到 avg_rows_per_block。
+ * 实际上这只是**一个示范**，展示如何把 source 与既有算子组合；
+ * 调用方可以按自己的需要组合 source 与 filter/agg/hashjoin。
+ *
+ * @param s        source 句柄
+ * @param filter_col 过滤列索引（-1 表示不过滤）
+ * @param filter_op   过滤比较符
+ * @param filter_val  过滤值指针
+ * @param agg_col     聚合列索引
+ * @param agg_kind    聚合种类
+ * @param out         输出标量结果（sum/avg 等）
+ * @param has_result  是否有结果
+ * @return 0 成功；-1 入参非法 / 算子错误
+ */
+int vecx_pipeline_filter_agg(vecx_source_t *s, int filter_col, CompareOp filter_op,
+                             const void *filter_val, int agg_col, vecx_agg_kind_t agg_kind,
+                             double *out, int *has_result);
+
 #ifdef __cplusplus
 }
 #endif
