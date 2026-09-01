@@ -97,11 +97,31 @@ VectorBlock *make_i64_i64_block(
     return make_two_col_block(keys, measures, COLUMN_INT64, COLUMN_INT64);
 }
 
-/** 建一个 int32 键 + float 度量的 2 列块 */
+/**
+ * 建一个 int32 键 + float 度量的 2 列块。
+ * 度量直接收 float，好让测试能用 1.5f 这类非整数值——整数值在 float 和
+ * double 里都精确可表示，截断成整型的 bug 反而测不出来。
+ */
 VectorBlock *make_i32_f(
     const std::vector<int64_t> &keys,
-    const std::vector<int64_t> &measures) {
-    return make_two_col_block(keys, measures, COLUMN_INT32, COLUMN_FLOAT);
+    const std::vector<float> &measures) {
+    int n = (int)keys.size();
+    int cap = n > 0 ? n : 1;
+    VectorBlock *b = vector_block_create(cap, 2);
+    if (!b) return nullptr;
+
+    int32_t *kcol = (int32_t *)malloc(sizeof(int32_t) * (size_t)cap);
+    for (int i = 0; i < n; i++) kcol[i] = (int32_t)keys[(size_t)i];
+    vector_block_set_column(b, 0, kcol, (int)sizeof(int32_t));
+    vector_block_set_column_type(b, 0, COLUMN_INT32);
+
+    float *mcol = (float *)malloc(sizeof(float) * (size_t)cap);
+    for (int i = 0; i < n; i++) mcol[i] = measures[(size_t)i];
+    vector_block_set_column(b, 1, mcol, (int)sizeof(float));
+    vector_block_set_column_type(b, 1, COLUMN_FLOAT);
+
+    vector_block_set_num_rows(b, n);
+    return b;
 }
 
 /**
@@ -319,12 +339,12 @@ TEST(VecxHashAgg, NullRowsSkipped) {
 
     VectorBlock *out = nullptr;
     int n = vecx_hashagg_emit(h, &out);
-    // 只剩 key=1 的 1 行 (10)，key=2 和 key=3 不出现
+    // 只剩 key=1 的 1 行 (10)，key=999 和 key=3 因 null 行跳出不出现
     EXPECT_EQ(n, 1);
     ASSERT_NE(out, nullptr);
     auto m = read_output_block(out);
     expect_group(m, 1, 1, 10.0, 10.0, 10.0, 10.0);
-    EXPECT_EQ(m.find(2), m.end());
+    EXPECT_EQ(m.find(999), m.end());  // key=999 整行 null → 不出现
     EXPECT_EQ(m.find(3), m.end());
 
     vector_block_destroy(out);
@@ -405,11 +425,31 @@ TEST(VecxHashAgg, ResizeUnderLoad) {
 }
 
 /* ========================================================================
- * 8. 哈希冲突正确性：小容量场景，故意构造冲突
+ * 8. 哈希冲突正确性：故意构造撞进同一槽位的键
  * ======================================================================== */
+
+// 复刻 vecx_hashagg.c 内部的 splitmix64 finalizer，仅用于验证下面这组键
+// 确实撞进同一个初始槽位。若实现换了哈希函数，本测试会立刻报出
+// "不再覆盖冲突路径"，而不是悄悄退化成一个普通的四组聚合测试。
+static uint64_t test_splitmix64(int64_t k) {
+    uint64_t x = (uint64_t)k;
+    x ^= x >> 30; x *= 0xbf58476d1ce4e5b9ULL;
+    x ^= x >> 27; x *= 0x94d049bb133111ebULL;
+    x ^= x >> 31;
+    return x;
+}
+
 TEST(VecxHashAgg, HashCollisionCorrectness) {
-    // 插入 keys: 0, 2, 4, 6 (各 2 行)，同一组 2 行的 sum 分别是 v 和 v+1
-    const std::vector<int64_t> keys = {0, 0, 2, 2, 4, 4, 6, 6};
+    // 69/143/165/205 在 splitmix64 下 % 64 都等于 0（64 = HASHAGG_INITIAL_CAP）。
+    // 4 组 < 0.7*64=44.8 不触发扩容，所以这条长度 4 的线性探测链会被真实走一遍。
+    const int64_t kColliding[4] = {69, 143, 165, 205};
+    for (int64_t k : kColliding) {
+        ASSERT_EQ(test_splitmix64(k) % 64u, 0u)
+            << "key " << k << " 不再与其他键冲突，本测试已失去意义";
+    }
+
+    // 每组 2 行，两行的度量值分别是 v 和 v+1
+    const std::vector<int64_t> keys = {69, 69, 143, 143, 165, 165, 205, 205};
     const std::vector<int64_t> ms = {0, 1, 2, 3, 4, 5, 6, 7};
     VectorBlock *b = make_i64_i64_block(keys, ms);
 
@@ -423,10 +463,10 @@ TEST(VecxHashAgg, HashCollisionCorrectness) {
     ASSERT_NE(out, nullptr);
 
     auto m = read_output_block(out);
-    expect_group(m, 0, 2, 1.0, 0.0, 1.0, 0.5);
-    expect_group(m, 2, 2, 5.0, 2.0, 3.0, 2.5);
-    expect_group(m, 4, 2, 9.0, 4.0, 5.0, 4.5);
-    expect_group(m, 6, 2, 13.0, 6.0, 7.0, 6.5);
+    expect_group(m, 69,  2, 1.0,  0.0, 1.0, 0.5);
+    expect_group(m, 143, 2, 5.0,  2.0, 3.0, 2.5);
+    expect_group(m, 165, 2, 9.0,  4.0, 5.0, 4.5);
+    expect_group(m, 205, 2, 13.0, 6.0, 7.0, 6.5);
 
     vector_block_destroy(out);
     vecx_hashagg_destroy(h);
@@ -437,11 +477,13 @@ TEST(VecxHashAgg, HashCollisionCorrectness) {
  * 9. int32 键 + float 度量：类型提升路径正确
  * ======================================================================== */
 TEST(VecxHashAgg, Int32KeyFloatMeasure) {
-    // key=1 (int32): v=1.5f, 2.5f
-    // key=2 (int32): v=3.0f
+    // key=1 (int32): v=1.5f, 2.5f  → count=2 sum=4.0 min=1.5 max=2.5 avg=2.0
+    // key=2 (int32): v=3.5f        → count=1 sum=3.5 min=3.5 max=3.5 avg=3.5
+    // 用 .5 结尾的值：float/double 都能精确表示，但若实现把度量截断成整型，
+    // sum 会变成 3.0/3.0 而不是 4.0/3.5，测试立刻炸。
     const std::vector<int64_t> keys = {1, 1, 2};
-    const std::vector<int64_t> ms_raw = {1, 2, 3};  // 当 float 用
-    VectorBlock *b = make_i32_f(keys, ms_raw);
+    const std::vector<float> ms = {1.5f, 2.5f, 3.5f};
+    VectorBlock *b = make_i32_f(keys, ms);
     ASSERT_NE(b, nullptr);
 
     vecx_hashagg_t *h = vecx_hashagg_create(0, 1);
@@ -454,8 +496,8 @@ TEST(VecxHashAgg, Int32KeyFloatMeasure) {
     ASSERT_NE(out, nullptr);
 
     auto m = read_output_block(out);
-    expect_group(m, 1, 2, 3.0, 1.0, 2.0, 1.5);
-    expect_group(m, 2, 1, 3.0, 3.0, 3.0, 3.0);
+    expect_group(m, 1, 2, 4.0, 1.5, 2.5, 2.0);
+    expect_group(m, 2, 1, 3.5, 3.5, 3.5, 3.5);
 
     vector_block_destroy(out);
     vecx_hashagg_destroy(h);
@@ -535,7 +577,7 @@ TEST(VecxHashAgg, EmitIdempotent) {
     auto m2 = read_output_block(out2);
     EXPECT_EQ(m1.size(), m2.size());
     for (const auto &kv : m1) {
-        EXPECT_TRUE(m2.find(kv.first) != m2.end());
+        EXPECT_EQ(kv.second, m2.at(kv.first));
     }
 
     vector_block_destroy(out1);

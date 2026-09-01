@@ -34,7 +34,13 @@
 #define HASHAGG_LOAD_THRESHOLD_NUM 7   /* 分子 */
 #define HASHAGG_LOAD_THRESHOLD_DEN 10  /* 分母：7/10 = 0.7 */
 
-/** 哈希槽：键 + 聚合状态 */
+/**
+ * 哈希槽：键 + 聚合状态。
+ *
+ * 精度取舍：sum 用 double 累加，与 vecx_agg.c 的标量聚合不同——那里对整型列
+ * 用 int64 累加器以保住 2^53 以上的精度。这里统一用 double，因为槽结构和输出
+ * 块的 sum 列都是 double；代价是整型度量列超过 2^53 后会丢低位。
+ */
 typedef struct {
     int64_t key;
     int64_t count;
@@ -44,11 +50,7 @@ typedef struct {
     int     used;   /* 0=空槽。不要用 key==0 做空标记（key 完全可能是 0） */
 } hashagg_slot_t;
 
-/**
- * splitmix64 finalizer — 混淆器，防止连续键直接取模退化。
- * 与 T4 的取舍差异：T4 的标量聚合对整型列用 int64 累加器保精度；
- * 本任务因为槽里统一存 double、且输出块的 sum 列就是 double，采用 double 累加。
- */
+/** splitmix64 finalizer — 混淆器，防止连续键直接取模退化。 */
 static inline uint64_t hashagg_hash_i64(int64_t k) {
     uint64_t x = (uint64_t)k;
     x ^= x >> 30; x *= 0xbf58476d1ce4e5b9ULL;
@@ -71,7 +73,12 @@ struct vecx_hashagg_s {
  * 内部辅助
  * ======================================================================== */
 
-/** 判断某行是否为 null（防御性：null_bitmap==NULL 视为无 null 行） */
+/**
+ * 判断某行是否为 null（防御性：null_bitmap==NULL 视为无 null 行）。
+ * 与 vecx_agg.c 里的 agg_is_null 逐字等价——两处都是 static inline，各自
+ * 保留一份而不抽公共头文件，是为了让每个 .c 都能单独读懂。若要改语义
+ * （比如换 bitmap 位序），两处必须同步改。
+ */
 static inline int row_is_null(const VectorBlock *b, int row) {
     if (!b->null_bitmap) return 0;
     return (b->null_bitmap[row / 64] & (1ULL << (row % 64))) != 0;
@@ -162,7 +169,10 @@ static hashagg_slot_t *hashagg_find_or_insert(vecx_hashagg_t *h, int64_t key) {
  * 把一个块的数据累积进聚合器。
  *
  * 逐行处理：键列为 null 的行整行跳过；度量列为 null 的行也整行跳过。
- * 先校验类型，再进入行循环；循环内不做 OOM 操作，保证部分累积不会留脏状态。
+ * 先校验类型，再进入行循环。
+ * 注意：行循环内 hashagg_find_or_insert → hashagg_grow 可能 calloc 失败，
+ * 此时本块前 N 行已被计入，返回 -1 不代表"本块完全未计入"。
+ * 调用方遇到 -1 应视聚合器状态为不确定并丢弃。
  *
  * @param h 聚合器
  * @param b 输入块（不被修改）
