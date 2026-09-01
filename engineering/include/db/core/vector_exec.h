@@ -150,7 +150,8 @@ const char *vector_get_simd_type(void);
  * @param b 输入 B
  * @param num_elements 元素数
  * @param op 比较操作符
- * @param result 输出位图
+ * @param result 输出位图，容量须 >= ceil(num_elements/64) 个 uint64_t；
+ *               函数先清零这些字再写入
  */
 void vector_filter_int_simd(const int32_t *a, int32_t b,
                            int num_elements,
@@ -159,6 +160,12 @@ void vector_filter_int_simd(const int32_t *a, int32_t b,
 
 /**
  * @brief SIMD 浮点数比较
+ * @param a 输入 A
+ * @param b 输入 B
+ * @param num_elements 元素数
+ * @param op 比较操作符
+ * @param result 输出位图，容量须 >= ceil(num_elements/64) 个 uint64_t；
+ *               函数先清零这些字再写入
  */
 void vector_filter_float_simd(const float *a, float b,
                             int num_elements,
@@ -197,6 +204,9 @@ void vector_filter_double_simd(const double *a, double b,
 
 /**
  * @brief SIMD 字符串比较
+ *
+ * 注意：本函数保持标量实现且不先清零 result 缓冲（数值变体先清零再写入），
+ * 调用方须自行确保 result 已清零。
  */
 void vector_filter_string_simd(const char **a, const char *b,
                              int num_elements,
