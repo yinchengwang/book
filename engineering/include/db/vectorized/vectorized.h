@@ -471,6 +471,63 @@ int vecx_pipeline_filter_agg(vecx_source_t *s, int filter_col, CompareOp filter_
                              const void *filter_val, int agg_col, vecx_agg_kind_t agg_kind,
                              double *out, int *has_result);
 
+/* ========================================================================
+ * MinMax/Zone-map 块裁剪（函数级谓词下推）
+ *
+ * MinMaxIndex：对一个块的指定列扫描非 null 行，记录 [min, max]。
+ * ZoneMapSkip：根据比较谓词与区间 [lo, hi] 判断"该 granule 必然无匹配 → 可跳过"。
+ *
+ * 这两个函数供 Zone-map scan 驱动（如 `vecx_prune_source_next`）或手撸的查询引擎调用，
+ * 不绑定特定 source 接口。
+ * ======================================================================== */
+
+/**
+ * @brief 扫描块的非 null 行，返回列的 [min, max]
+ *
+ * 遍历 col 列的非 null 行，比较取最小/最大值（用 int64_t 做整型比较，
+ * double 做浮点比较）。若全列为 null（count=0），返回 -1 且 *lo / *hi 内容未定义。
+ *
+ * @param b    输入块
+ * @param col  列索引
+ * @param lo   最小值输出
+ * @param hi   最大值输出
+ * @return 0 成功；-1 入参非法 / 列类型不支持 / 列为 null
+ */
+int vecx_block_minmax_i64(const VectorBlock *b, int col, int64_t *lo, int64_t *hi);
+
+/**
+ * @brief 浮点版 MinMax
+ *
+ * 支持 COLUMN_FLOAT / COLUMN_DOUBLE。±inf / NaN 按 C 语义比较
+ *（NaN 既不大于也不小于任何值，故含 NaN 的块 lo/hi 会略偏离直观）。
+ */
+int vecx_block_minmax_f64(const VectorBlock *b, int col, double *lo, double *hi);
+
+/**
+ * @brief Zone-map 跳过判断
+ *
+ * 给定一个 granule 的 [lo, hi] 区间和一个标量谓词 (op, v)，
+ * 如果该 granule **必然没有任何行满足**谓词，返回 1（可跳过）；
+ * 如果**可能有行满足**，返回 0（必须扫描）。
+ *
+ * 区间逻辑（充分条件，非必要）：
+ * | op  | 跳过条件（可跳过）                         |
+ * | EQ  | v < lo || v > hi                          |
+ * | NE  | 永远不会跳过（v!=lo || v!=hi 可能等于其他值）|
+ * | LT  | lo >= v                                    |
+ * | LE  | lo > v                                     |
+ * | GT  | hi <= v                                    |
+ * | GE  | hi < v                                     |
+ *
+ * 注意：此函数**不考虑 null**。如果 granule 里含 null，
+ * null 值是否满足谓词取决于 SQL 语义（通常 null 不满足任何比较），
+ * 调用方应在调用前自行判断，或结合 null 位图做更精细的判断。
+ *
+ * @return 1 必无匹配可跳过；0 可能有匹配须扫描
+ */
+int vecx_zonemap_skip_i64(int64_t lo, int64_t hi, CompareOp op, int64_t v);
+int vecx_zonemap_skip_f64(double lo, double hi, CompareOp op, double v);
+
 #ifdef __cplusplus
 }
 #endif

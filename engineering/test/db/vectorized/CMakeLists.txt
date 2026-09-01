@@ -9,6 +9,7 @@ add_executable(vectorized_exec_test
     hashagg_test.cpp
     hashjoin_test.cpp
     project_test.cpp
+    prune_test.cpp
 )
 target_link_libraries(vectorized_exec_test
     db_vectorized
