@@ -147,6 +147,54 @@ int vecx_filter_block(const VectorBlock *in, int col, CompareOp op,
 int vecx_filter_multi(const VectorBlock *in, const vecx_pred_t *conds,
                       int nconds, int is_and, VectorBlock **out);
 
+/* ========================================================================
+ * 标量聚合算子（整块/选择子集 → 单个标量）
+ * ======================================================================== */
+
+/** 聚合种类 */
+typedef enum {
+    VECX_AGG_COUNT = 0,  /**< 非 null 行数 */
+    VECX_AGG_SUM,        /**< 求和 */
+    VECX_AGG_MIN,        /**< 最小值 */
+    VECX_AGG_MAX,        /**< 最大值 */
+    VECX_AGG_AVG         /**< 平均值 = sum / count */
+} vecx_agg_kind_t;
+
+/**
+ * @brief 在一个块的某数值列上做标量聚合，结果统一以 double 返回
+ *
+ * 语义（与 SQL 聚合一致）：
+ * - 遍历范围：sel==NULL 时为 [0, b->num_rows)（此时忽略 nsel）；
+ *   sel!=NULL 时为 sel[0..nsel-1] 指定的行号（可乱序、可不连续、可重复；
+ *   聚合**不做去重**，同一行在 sel 里出现两次就被计入两次）。
+ *   越界行号静默跳过，不算入参错误。
+ * - null 行一律跳过，不参与任何聚合（包括 COUNT）。
+ * - COUNT：结果 = 遍历范围内的非 null 行数。始终 *has_result=1，
+ *   空集时 *out=0.0（SQL 的 COUNT 对空集返回 0 而不是 NULL）。
+ * - SUM / MIN / MAX / AVG：无任何非 null 行时 has_result=0、*out=0.0
+ *   （SQL 对空集返回 NULL）。有值时 has_result=1。
+ * - MIN / MAX 用**首个有效值**做初值，不用 DBL_MAX/-DBL_MAX 哨兵，
+ *   这样极值数据（含 ±inf）也能被正确返回。
+ * - 整型列的 SUM / MIN / MAX 在 int64_t 上累加后再转 double，
+ *   避免超过 2^53 的整数和被 double 静默截断。
+ *
+ * 支持的列类型标签（vector_block_set_column_type 设置过的）：
+ * COLUMN_INT32 / COLUMN_INT64 / COLUMN_FLOAT / COLUMN_DOUBLE。
+ * 未知(-1)、字符串及其它类型返回 -1（这是**入参错误**，不是"空结果"，
+ * 不要与 has_result=0 混为一谈）。
+ *
+ * @param b          输入块（不被修改）
+ * @param col        列索引
+ * @param kind       聚合种类
+ * @param sel        选择向量；NULL 表示整块
+ * @param nsel       sel 的长度；sel==NULL 时忽略；sel 非 NULL 且 nsel<=0 是合法空集
+ * @param out        结果输出（非 NULL）；has_result=0 时写 0.0
+ * @param has_result 是否有结果（非 NULL）：1=有值，0=空集（SQL NULL）
+ * @return 0 成功；-1 入参非法 / 列类型不支持
+ */
+int vecx_agg_scalar(const VectorBlock *b, int col, vecx_agg_kind_t kind,
+                    const int *sel, int nsel, double *out, int *has_result);
+
 #ifdef __cplusplus
 }
 #endif
