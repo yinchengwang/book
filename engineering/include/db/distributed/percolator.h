@@ -10,6 +10,7 @@
 #ifndef DB_DISTRIBUTED_PERCOLATOR_H
 #define DB_DISTRIBUTED_PERCOLATOR_H
 
+#include "distributed/deadlock.h"
 #include "distributed/mvcc_ts.h"
 
 #include <stdbool.h>
@@ -29,7 +30,8 @@ typedef enum {
     PCOL_ERR_WRITE_CONFLICT  = -1,  /* 写写冲突：键的最新已提交版本 commit_ts > start_ts */
     PCOL_ERR_LOCK_CONFLICT   = -2,  /* 锁冲突：存在他人未提交的预写版本 */
     PCOL_ERR_NOT_FOUND       = -3,  /* 事务/对象缺失 */
-    PCOL_ERR_ALREADY_COMMITTED = -4 /* 重复提交（幂等拒绝） */
+    PCOL_ERR_ALREADY_COMMITTED = -4,/* 重复提交（幂等拒绝） */
+    PCOL_ERR_DEADLOCK        = -5   /* 跨分片死锁：wfg 中检测到含本事务的等待环 */
 } pcol_error_t;
 
 /* 单条写请求：key/value 由调用方持有，add_write 内部深拷贝 */
@@ -127,6 +129,67 @@ int pcol_recover_txn(ts_store_t *s, pcol_lock_table_t *lt,
  * 返回 0 成功；计数出参分别累计裁定为提交/回滚的事务个数（可为 NULL）。 */
 int pcol_gc_stale_locks(ts_store_t *s, pcol_lock_table_t *lt, int64_t now_ms,
                         int *n_committed, int *n_rollbacked);
+
+/* ---------- 跨分片协调（Task 9：链路打通） ----------
+ * 把一个事务的写集按分片路由函数分组到多个独立 ts_store（每分片 = 一个副本/节点），
+ * 以"prewrite-all → 共享同一 commit_ts 的 commit-all"实现跨分片原子提交：
+ * 任一分片 prewrite 冲突即全体回滚，绝不产生部分提交。 */
+
+/* 分片路由：键 → 分片下标（返回值须落在 [0, shard_count) 内） */
+typedef int (*pcol_shard_fn)(const void *key, size_t klen, int shard_count);
+
+/* 跨分片协调上下文：一组分片 store + 共享 TSO。
+ * stores 数组由调用方提供（可为栈上数组），内部只深拷贝指针数组本身。 */
+typedef struct pcol_context_s {
+    ts_store_t  **stores;      /* 每分片一个 ts_store（store 本体由调用方拥有） */
+    int           shard_count;
+    tso_oracle_t *oracle;      /* 共享时间源 */
+} pcol_context_t;
+
+pcol_context_t *pcol_context_new(ts_store_t **stores, int shard_count, tso_oracle_t *oracle);
+void            pcol_context_free(pcol_context_t *ctx);
+
+/* 默认分片路由：FNV-1a 32 位哈希后 mod shard_count（结果非负） */
+int pcol_shard_hash(const void *key, size_t klen, int shard_count);
+
+/* 跨分片原子提交：writes 按 shard_fn 分组，prewrite-all → 共享 commit_ts 的 commit-all；
+ * 任一 prewrite 冲突 → 全体 rollback 并返回冲突码（原子，无部分提交）。
+ * 参数 dl 可选：非 NULL 时，锁冲突会把 wait-edge(start_ts → 实际持有者) 记入该 wfg，
+ * 并在检测到含本事务的等待环时返回 PCOL_ERR_DEADLOCK（死锁防御）；NULL 则不启用。
+ * 返回 PCOL_OK / PCOL_ERR_WRITE_CONFLICT / PCOL_ERR_LOCK_CONFLICT / PCOL_ERR_DEADLOCK。 */
+int pcol_commit_cross(pcol_context_t *ctx, pcol_shard_fn shard_fn,
+                      const pcol_write_t *writes, int nwrites,
+                      int64_t start_ts, int64_t commit_ts,
+                      wfg_t *dl);
+
+/* 协调器意图日志条目（跨分片事务意图，供崩溃重放）。
+ * 键存放采用扁平约定：shard_keys[shard] 指向一块连续缓冲，缓冲内以
+ *   [uint32_t klen][key 字节] 顺序拼接该分片的全部键；
+ * shard_keys_len[shard] = 该缓冲的总字节数，shard_keys_n[shard] = 键个数。
+ * primary 键约定为 shard_keys[primary_shard] 缓冲中的第一个键。 */
+typedef struct pcol_intent_s {
+    int64_t   start_ts, commit_ts;
+    int       shard_count;
+    int      *shard_keys_n;      /* [shard_count] 每分片键数 */
+    uint8_t **shard_keys;        /* [shard_count] 每分片键缓冲（长度前缀拼接） */
+    size_t   *shard_keys_len;    /* [shard_count] 每分片键缓冲总字节数 */
+    int       primary_shard;
+} pcol_intent_t;
+
+/* 记录一条 intent（深拷贝全部键缓冲；同 start_ts 覆盖）。返回 0 成功，-1 失败。 */
+int pcol_intent_log_add(const pcol_intent_t *it);
+
+/* 查询某 start_ts 的 intent；*out 为日志内常驻引用（只读，勿 free）。无则返回 -1。 */
+int pcol_intent_log_get(int64_t start_ts, const pcol_intent_t **out);
+
+/* 清空意图日志（释放全部深拷贝；测试与进程收尾用） */
+void pcol_intent_log_clear(void);
+
+/* 崩溃重放：取 start_ts 的 intent，在 primary 分片对 primary 键判一次提交态——
+ *  已提交 → 用其 commit_ts 对每个分片每个键 ts_store_promote（补提交，幂等）；
+ *  未提交 → 对每个分片每个键 ts_store_discard_pending（回滚）。
+ * 无该 intent 时视为无事可做。返回 PCOL_OK(0)。 */
+int pcol_cross_recover(pcol_context_t *ctx, int64_t start_ts);
 
 #ifdef __cplusplus
 }

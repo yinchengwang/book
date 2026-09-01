@@ -53,6 +53,7 @@ const char *pcol_error_string(int err) {
         case PCOL_ERR_LOCK_CONFLICT:    return "lock conflict";
         case PCOL_ERR_NOT_FOUND:        return "not found";
         case PCOL_ERR_ALREADY_COMMITTED:return "already committed";
+        case PCOL_ERR_DEADLOCK:         return "deadlock";
         default:                        return "unknown";
     }
 }

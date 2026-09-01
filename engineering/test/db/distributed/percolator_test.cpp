@@ -3,12 +3,14 @@
 // read_ts 不可见；提交幂等（二次提交返回 ALREADY_COMMITTED）；冲突检测正确。
 #include <gtest/gtest.h>
 
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
 extern "C" {
 #include "distributed/tso.h"
 #include "distributed/mvcc_ts.h"
+#include "distributed/deadlock.h"
 #include "distributed/percolator.h"
 }
 
@@ -298,4 +300,202 @@ TEST(PercolatorGc, StaleLocksRecoveredOrRolledBack) {
     EXPECT_NE(0, ts_store_get(&s, w, 1, 800, nullptr, 0, &out));  /* A 无可见值 */
     EXPECT_EQ(0, ts_store_has_pending_write(&s, x, 1, -1));       /* A 锁已清 */
     pcol_lock_table_destroy(&lt); tso_oracle_destroy(o); ts_store_destroy(&s);
+}
+
+// ---------- 跨分片协调（Task 9：链路打通） ----------
+//
+// 分片路由用 pcol_shard_hash（FNV-1a mod 2）：键 'a'/'c' 落分片 0、'b'/'d' 落分片 1。
+// 断言一律以"路由到的分片"为准（用 shard_of 取出对应 store），不硬编码具体下标。
+
+namespace {
+
+// 取键实际路由到的分片 store
+ts_store_t *shard_of(ts_store_t **stores, const uint8_t *k, size_t klen, int n) {
+    return stores[pcol_shard_hash(k, klen, n)];
+}
+
+}  // namespace
+
+// 跨两分片原子提交：共享 commit_ts 下两分片均可见；小于该 ts 的快照两分片均不可见
+TEST(PercolatorCross, TwoShardsAtomicCommit) {
+    ts_store_t s1, s2; ts_store_init(&s1); ts_store_init(&s2);
+    ts_store_t *stores[2] = {&s1, &s2};
+    tso_oracle_t *o = nullptr; ASSERT_EQ(0, tso_oracle_init(&o));
+    pcol_context_t *ctx = pcol_context_new(stores, 2, o);
+    ASSERT_NE(nullptr, ctx);
+
+    const uint8_t k1[] = {'a'}, k2[] = {'b'}, v[] = {'x'};
+    // 前提：两个键确实落在不同分片，本用例才真正跨分片
+    ASSERT_NE(pcol_shard_hash(k1, 1, 2), pcol_shard_hash(k2, 1, 2));
+    ts_store_t *sa = shard_of(stores, k1, 1, 2);
+    ts_store_t *sb = shard_of(stores, k2, 1, 2);
+
+    pcol_write_t ws[2] = {{k1, 1, v, 1, false}, {k2, 1, v, 1, false}};
+    EXPECT_EQ(PCOL_OK, pcol_commit_cross(ctx, pcol_shard_hash, ws, 2, 100, 500, nullptr));
+
+    ts_version_t out;
+    memset(&out, 0, sizeof(out));
+    // commit_ts=500 之后：两分片都可见
+    EXPECT_EQ(0, ts_store_get(sa, k1, 1, 600, nullptr, 0, &out)); ts_version_free(&out);
+    EXPECT_EQ(0, ts_store_get(sb, k2, 1, 600, nullptr, 0, &out)); ts_version_free(&out);
+    // 原子性：commit_ts=500 之前，两分片都不可见（不存在"一半可见"的中间态）
+    EXPECT_NE(0, ts_store_get(sa, k1, 1, 400, nullptr, 0, &out));
+    EXPECT_NE(0, ts_store_get(sb, k2, 1, 400, nullptr, 0, &out));
+    // 预写锁在提交后收敛
+    EXPECT_EQ(0, ts_store_has_pending_write(sa, k1, 1, -1));
+    EXPECT_EQ(0, ts_store_has_pending_write(sb, k2, 1, -1));
+
+    pcol_context_free(ctx); tso_oracle_destroy(o);
+    ts_store_destroy(&s1); ts_store_destroy(&s2);
+}
+
+// 某分片 prewrite 冲突 → 全部分片回滚，无部分可见；释放持有者锁后可重试成功
+TEST(PercolatorCross, ConflictRollsBackAllShards) {
+    ts_store_t s1, s2; ts_store_init(&s1); ts_store_init(&s2);
+    ts_store_t *stores[2] = {&s1, &s2};
+    tso_oracle_t *o = nullptr; ASSERT_EQ(0, tso_oracle_init(&o));
+    pcol_context_t *ctx = pcol_context_new(stores, 2, o);
+    ASSERT_NE(nullptr, ctx);
+
+    const uint8_t k1[] = {'a'}, k2[] = {'b'}, v[] = {'x'};
+    ts_store_t *sa = shard_of(stores, k1, 1, 2);
+    ts_store_t *sb = shard_of(stores, k2, 1, 2);
+
+    // 造锁冲突基线：裸预写（commit_ts=0）令 start_ts=60 持有 b 所在分片的预写锁
+    ASSERT_EQ(0, ts_store_put(sb, k2, 1, 60, 0, v, 1));
+
+    pcol_write_t ws[2] = {{k1, 1, v, 1, false}, {k2, 1, v, 1, false}};
+    EXPECT_EQ(PCOL_ERR_LOCK_CONFLICT,
+              pcol_commit_cross(ctx, pcol_shard_hash, ws, 2, 100, 200, nullptr));
+
+    // 原子回滚：另一分片（a）上本事务的预写也被清干净，且无任何可见版本
+    EXPECT_EQ(0, ts_store_has_pending_write(sa, k1, 1, -1));
+    ts_version_t out;
+    memset(&out, 0, sizeof(out));
+    EXPECT_NE(0, ts_store_get(sa, k1, 1, 1000, nullptr, 0, &out));
+    EXPECT_NE(0, ts_store_get(sb, k2, 1, 1000, nullptr, 0, &out));
+
+    // 持有者释放锁后重试：跨分片提交成功，两分片同时可见
+    ts_store_discard_pending(sb, k2, 1, 60);
+    EXPECT_EQ(PCOL_OK, pcol_commit_cross(ctx, pcol_shard_hash, ws, 2, 100, 200, nullptr));
+    EXPECT_EQ(0, ts_store_get(sa, k1, 1, 300, nullptr, 0, &out)); ts_version_free(&out);
+    EXPECT_EQ(0, ts_store_get(sb, k2, 1, 300, nullptr, 0, &out)); ts_version_free(&out);
+
+    pcol_context_free(ctx); tso_oracle_destroy(o);
+    ts_store_destroy(&s1); ts_store_destroy(&s2);
+}
+
+// 协调器意图重放：撕裂状态（只提交了 primary 分片）→ recover 依据 primary 补提交其余分片；
+// primary 未提交的意图 → recover 对全部分片回滚。
+TEST(PercolatorCross, CoordinatorRecoverReplaysIntent) {
+    ts_store_t s1, s2; ts_store_init(&s1); ts_store_init(&s2);
+    ts_store_t *stores[2] = {&s1, &s2};
+    tso_oracle_t *o = nullptr; ASSERT_EQ(0, tso_oracle_init(&o));
+    pcol_context_t *ctx = pcol_context_new(stores, 2, o);
+    ASSERT_NE(nullptr, ctx);
+    pcol_intent_log_clear();
+
+    const uint8_t k1[] = {'a'}, k2[] = {'b'}, v[] = {'x'};
+    const int sh1 = pcol_shard_hash(k1, 1, 2), sh2 = pcol_shard_hash(k2, 1, 2);
+    ASSERT_NE(sh1, sh2);
+
+    // 撕裂状态（最稳构造）：裸预写两分片，只把 primary 分片的键提权为已提交
+    ASSERT_EQ(0, ts_store_put(stores[sh1], k1, 1, 700, 0, v, 1));
+    ASSERT_EQ(0, ts_store_put(stores[sh2], k2, 1, 700, 0, v, 1));
+    ASSERT_EQ(0, ts_store_promote(stores[sh1], k1, 1, 700, 800));  // primary 分片已提交
+
+    // 意图日志：键缓冲布局 = [uint32 klen][key bytes]
+    uint8_t bufa[5], bufb[5];
+    uint32_t one = 1;
+    memcpy(bufa, &one, 4); bufa[4] = 'a';
+    memcpy(bufb, &one, 4); bufb[4] = 'b';
+    uint8_t *keys[2]; size_t klens[2]; int kns[2];
+    keys[sh1] = bufa; klens[sh1] = 5; kns[sh1] = 1;
+    keys[sh2] = bufb; klens[sh2] = 5; kns[sh2] = 1;
+
+    pcol_intent_t it;
+    memset(&it, 0, sizeof(it));
+    it.start_ts = 700; it.commit_ts = 800; it.shard_count = 2;
+    it.primary_shard = sh1;
+    it.shard_keys = keys; it.shard_keys_len = klens; it.shard_keys_n = kns;
+    ASSERT_EQ(0, pcol_intent_log_add(&it));
+
+    const pcol_intent_t *got = nullptr;
+    EXPECT_EQ(0, pcol_intent_log_get(700, &got));
+    ASSERT_NE(nullptr, got);
+    EXPECT_EQ(800, got->commit_ts);
+
+    // 崩溃重放：primary 已提交 → 另一分片被补提交
+    EXPECT_EQ(PCOL_OK, pcol_cross_recover(ctx, 700));
+    ts_version_t out;
+    memset(&out, 0, sizeof(out));
+    ASSERT_EQ(0, ts_store_get(stores[sh2], k2, 1, 900, nullptr, 0, &out));
+    EXPECT_EQ(800, out.commit_ts);
+    ts_version_free(&out);
+    EXPECT_EQ(0, ts_store_has_pending_write(stores[sh2], k2, 1, -1));  // 锁已收敛
+
+    // 反向分支：primary 未提交的意图 → 全分片回滚
+    const uint8_t k3[] = {'c'}, k4[] = {'d'};
+    const int sh3 = pcol_shard_hash(k3, 1, 2), sh4 = pcol_shard_hash(k4, 1, 2);
+    ASSERT_NE(sh3, sh4);
+    ASSERT_EQ(0, ts_store_put(stores[sh3], k3, 1, 900, 0, v, 1));
+    ASSERT_EQ(0, ts_store_put(stores[sh4], k4, 1, 900, 0, v, 1));
+    uint8_t bufc[5], bufd[5];
+    memcpy(bufc, &one, 4); bufc[4] = 'c';
+    memcpy(bufd, &one, 4); bufd[4] = 'd';
+    keys[sh3] = bufc; klens[sh3] = 5; kns[sh3] = 1;
+    keys[sh4] = bufd; klens[sh4] = 5; kns[sh4] = 1;
+    it.start_ts = 900; it.commit_ts = 1000; it.primary_shard = sh3;
+    ASSERT_EQ(0, pcol_intent_log_add(&it));
+
+    EXPECT_EQ(PCOL_OK, pcol_cross_recover(ctx, 900));
+    EXPECT_EQ(0, ts_store_has_pending_write(stores[sh3], k3, 1, -1));  // 全分片锁清空
+    EXPECT_EQ(0, ts_store_has_pending_write(stores[sh4], k4, 1, -1));
+    EXPECT_NE(0, ts_store_get(stores[sh4], k4, 1, 2000, nullptr, 0, &out));
+
+    pcol_intent_log_clear();
+    pcol_context_free(ctx); tso_oracle_destroy(o);
+    ts_store_destroy(&s1); ts_store_destroy(&s2);
+}
+
+// 锁冲突可观测 + wfg 死锁防御：能定位持有者并登记 wait-edge；构成环时报 DEADLOCK
+TEST(PercolatorCross, LockConflictReportsHolderAndWfg) {
+    ts_store_t s1, s2; ts_store_init(&s1); ts_store_init(&s2);
+    ts_store_t *stores[2] = {&s1, &s2};
+    tso_oracle_t *o = nullptr; ASSERT_EQ(0, tso_oracle_init(&o));
+    pcol_context_t *ctx = pcol_context_new(stores, 2, o);
+    ASSERT_NE(nullptr, ctx);
+    wfg_t *g = wfg_new();
+    ASSERT_NE(nullptr, g);
+
+    const uint8_t k2[] = {'b'}, v[] = {'x'};
+    ts_store_t *sb = shard_of(stores, k2, 1, 2);
+    // 持有者 start_ts=60 在 b 所在分片持预写锁（裸预写构造，生命周期最简单）
+    ASSERT_EQ(0, ts_store_put(sb, k2, 1, 60, 0, v, 1));
+
+    // 主事务 start=100 想写 b → LOCK_CONFLICT，且 wait-edge(100→60) 被登记进 wfg
+    pcol_write_t ws[1] = {{k2, 1, v, 1, false}};
+    EXPECT_EQ(PCOL_ERR_LOCK_CONFLICT,
+              pcol_commit_cross(ctx, pcol_shard_hash, ws, 1, 100, 200, g));
+
+    // 持有者可观测：ts_store_pending_holder 能报出真实持有者 start_ts
+    int64_t holder = 0;
+    EXPECT_EQ(0, ts_store_pending_holder(sb, k2, 1, /*except*/100, &holder));
+    EXPECT_EQ(60LL, holder);
+
+    // 此时只有单向边 100→60，无环
+    int cyc_n = -1;
+    int64_t *cyc = wfg_detect_cycles(g, &cyc_n);
+    EXPECT_EQ(nullptr, cyc);
+    EXPECT_EQ(0, cyc_n);
+    free(cyc);
+
+    // 补上反向边 60→100 构成环：再冲突一次即应判为 DEADLOCK（防御生效）
+    ASSERT_EQ(0, wfg_add_edge(g, 60, 100, k2, 1, 1));
+    EXPECT_EQ(PCOL_ERR_DEADLOCK,
+              pcol_commit_cross(ctx, pcol_shard_hash, ws, 1, 100, 200, g));
+    EXPECT_STRNE("unknown", pcol_error_string(PCOL_ERR_DEADLOCK));
+
+    pcol_context_free(ctx); wfg_free(g); tso_oracle_destroy(o);
+    ts_store_destroy(&s1); ts_store_destroy(&s2);
 }

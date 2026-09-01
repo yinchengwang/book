@@ -2,6 +2,7 @@
 add_library(db_percolator STATIC
     percolator.c
     percolator_recover.c
+    percolator_cross_node.c
 )
 
 target_include_directories(db_percolator PUBLIC
@@ -12,6 +13,7 @@ target_include_directories(db_percolator PUBLIC
 target_link_libraries(db_percolator PUBLIC
     db_core
     db_mvcc_ts
+    db_deadlock
 )
 
 target_compile_options(db_percolator PRIVATE -Wno-unused-parameter)

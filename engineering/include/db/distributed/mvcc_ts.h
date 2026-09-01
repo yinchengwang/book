@@ -55,6 +55,15 @@ int ts_store_put_delete(ts_store_t *s, const void *key, uint32_t klen,
 int ts_store_has_pending_write(ts_store_t *s, const void *key, uint32_t klen,
                                int64_t except_start_ts);
 
+/* 锁持有者查询（跨分片死锁检测 / 锁冲突可观测）：
+ * 沿键的版本链查找"commit_ts==0 且 start_ts != except_start_ts"的预写节点，
+ * 把其 start_ts 填入 *holder（即当前谁对本键持有未提交的预写锁）。
+ * 返回 0 = 找到他人预写锁（已填 *holder）；
+ *     -1 = 无他人预写锁（键不存在 / 仅有已提交版本 / 预写者恰为 except 本人）。
+ * 与 ts_store_has_pending_write 同族，仅多回一个持有者 start_ts。 */
+int ts_store_pending_holder(ts_store_t *s, const void *key, uint32_t klen,
+                            int64_t except_start_ts, int64_t *holder);
+
 /* 释放预写锁（Percolator commit/rollback helper）：
  * 沿键的版本链物理移除所有"commit_ts==0 且 start_ts 匹配"的预写版本节点，
  * 使该事务的预写锁在提交/回滚后立即失效（否则残留的 commit_ts==0 节点会

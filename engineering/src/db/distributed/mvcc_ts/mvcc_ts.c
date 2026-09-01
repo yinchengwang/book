@@ -263,6 +263,24 @@ int ts_store_has_pending_write(ts_store_t *s, const void *key, uint32_t klen,
     return 0;
 }
 
+/* 锁持有者查询：与 has_pending_write 同一遍历，命中时回填持有者 start_ts */
+int ts_store_pending_holder(ts_store_t *s, const void *key, uint32_t klen,
+                            int64_t except_start_ts, int64_t *holder) {
+    if (!s || !key) return -1;
+
+    int found = 0;
+    size_t pos = lower_bound(s, key, klen, &found);
+    if (!found) return -1;   /* 键不存在：无任何预写锁 */
+
+    for (ts_version_t *v = ((ts_store_entry *)s->entries)[pos].versions; v; v = v->next) {
+        if (v->commit_ts == 0 && v->start_ts != except_start_ts) {
+            if (holder) *holder = v->start_ts;   /* 他人正持本键的预写锁 */
+            return 0;
+        }
+    }
+    return -1;   /* 仅有已提交版本，或预写者恰为 except 本人 */
+}
+
 /* 释放预写锁：物理移除键链上"commit_ts==0 且 start_ts 匹配"的预写节点 */
 void ts_store_discard_pending(ts_store_t *s, const void *key, uint32_t klen,
                               int64_t start_ts) {
