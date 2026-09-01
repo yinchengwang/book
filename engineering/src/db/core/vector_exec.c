@@ -682,6 +682,12 @@ VectorFilterResult *vector_filter_execute(VectorBlock *block,
      *
      * 列类型为 -1（未知）、字符串或其它类型时，一律落回下方的旧路径，
      * 保证 ANN 执行链（从不设置列类型）行为与改动前逐位一致。
+     *
+     * ⚠️ 安全警告：COLUMN_STRING（10）在此落回旧路径，但旧路径将列数据按
+     * 定长 64 字节布局解释（(char*)column + i*64 + strcmp），而 db_vectorized
+     * 的 vecx_filter_block 对 COLUMN_STRING 使用 char** 指针数组布局，
+     * 两者不兼容。当前无任何生产者给块标记 COLUMN_STRING（列类型 -1），
+     * 故该路径不会触发；若将来启用，须在此处新增对 COLUMN_STRING 的独立处理。
      * -------------------------------------------------------------------- */
     const int col_type = vector_block_get_column_type(block, column_idx);
     const int n = block->num_rows;

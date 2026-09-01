@@ -24,6 +24,17 @@ extern "C" {
 
 namespace {
 
+/*
+ * vector_exec.c 内部用硬编码常量（VEXEC_COL_TYPE_*）判断是否走 SIMD 类型化路径，
+ * 无法 include columnar_store.h（db_core 底层不依赖上层枚举）。
+ * 这里把两边钉在一起：一旦 ColumnType 枚举值被重排，编译期即失败，
+ * 而不是在运行时静默走错分支。
+ */
+static_assert(COLUMN_INT32 == 2, "VEXEC_COL_TYPE_INT32 in vector_exec.c must match");
+static_assert(COLUMN_INT64 == 3, "VEXEC_COL_TYPE_INT64 in vector_exec.c must match");
+static_assert(COLUMN_FLOAT == 8, "VEXEC_COL_TYPE_FLOAT in vector_exec.c must match");
+static_assert(COLUMN_DOUBLE == 9, "VEXEC_COL_TYPE_DOUBLE in vector_exec.c must match");
+
 /** 建一个单 int32 列的块，值为 vals，列类型标记为 COLUMN_INT32 */
 VectorBlock *make_int32_block(const std::vector<int32_t> &vals) {
     int n = (int)vals.size();
