@@ -83,6 +83,70 @@ VectorBlock *vecx_block_gather(const VectorBlock *src, const int *sel, int nsel)
  */
 const char *vecx_active_simd(void);
 
+/* ========================================================================
+ * 过滤算子（块进块出）
+ *
+ * 与 db_core 的 vector_filter_execute 的区别：
+ * - vector_filter_execute 返回 VectorFilterResult（**原始行号**数组），供既有
+ *   ANN 执行链（vector_query.c 的 exec_vector_filter）按行号自行 gather；
+ * - 本层的 vecx_filter_* 返回**压缩后的新块**，是算子流水线的标准形态。
+ * 两者语义不同，互不替代。
+ * ======================================================================== */
+
+/**
+ * @brief 谓词：作用在单列上的一个比较条件
+ *
+ * 比较值按目标列的类型标签从下列字段中取用（调用方负责填对字段）：
+ * - COLUMN_INT32  → i64（内部截断为 int32_t）
+ * - COLUMN_INT64  → i64
+ * - COLUMN_FLOAT  → f64（内部截断为 float）
+ * - COLUMN_DOUBLE → f64
+ * - COLUMN_STRING → str（以 NUL 结尾的 C 串，仅支持 CMP_EQ / CMP_NE）
+ */
+typedef struct vecx_pred_s {
+    int col;             /**< 列索引 */
+    CompareOp op;        /**< 比较操作符 */
+    int64_t i64;         /**< 整型比较值 */
+    double f64;          /**< 浮点比较值 */
+    const char *str;     /**< 字符串比较值 */
+} vecx_pred_t;
+
+/**
+ * @brief 单条件向量化过滤：位图内核 → 排除 null → 选择向量 → gather 出新块
+ *
+ * 内核按列类型标签分派到 db_core 的 vector_filter_*_simd（运行时 CPU 检测）。
+ * null 行一律不匹配（先算比较位图，再与 ~null_bitmap 逐字 AND）。
+ *
+ * @param in    输入块（不被修改）
+ * @param col   列索引
+ * @param op    比较操作符
+ * @param value 比较值指针，按列类型解释：
+ *              COLUMN_INT32→const int32_t*，COLUMN_INT64→const int64_t*，
+ *              COLUMN_FLOAT→const float*，COLUMN_DOUBLE→const double*，
+ *              COLUMN_STRING→const char* const*（指向 C 串指针的指针）
+ * @param out   输出块指针；无匹配时写入 NULL，有匹配时写入新块
+ *              （由调用方用 vector_block_destroy 释放）
+ * @return >0 匹配行数；0 无匹配（*out=NULL）；-1 入参非法 / 列类型未知或不支持
+ */
+int vecx_filter_block(const VectorBlock *in, int col, CompareOp op,
+                      const void *value, VectorBlock **out);
+
+/**
+ * @brief 多条件向量化过滤：逐条件产位图后按 AND / OR 合并，再压缩出新块
+ *
+ * 条件可跨列、跨类型；合并在位图层完成，只做一次 gather。
+ * nconds==1 时 is_and 取值不影响结果。null 行一律不匹配。
+ *
+ * @param in     输入块（不被修改）
+ * @param conds  条件数组
+ * @param nconds 条件数（须 > 0）
+ * @param is_and 1=AND（全部条件同时满足）；0=OR（任一条件满足）
+ * @param out    输出块指针；无匹配时写入 NULL
+ * @return >0 匹配行数；0 无匹配（*out=NULL）；-1 入参非法 / 某条件的列类型不支持
+ */
+int vecx_filter_multi(const VectorBlock *in, const vecx_pred_t *conds,
+                      int nconds, int is_and, VectorBlock **out);
+
 #ifdef __cplusplus
 }
 #endif

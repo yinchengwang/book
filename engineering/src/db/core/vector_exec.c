@@ -647,22 +647,100 @@ void vector_filter_string_simd(const char **a, const char *b,
     }
 }
 
+/* ------------------------------------------------------------------------
+ * 列类型常量
+ *
+ * 取值必须与 db/core/columnar_store.h 的 ColumnType 枚举一致。这里重复定义而不
+ * include，是因为 vector_filter_execute 所在的 db_core 不能反向依赖上层的
+ * db/vectorized/vectorized.h（会形成循环依赖），而 columnar_store.h 又会把
+ * 列存的一整套类型拉进本 TU。教学级代码优先保持依赖面干净。
+ * ------------------------------------------------------------------------ */
+#define VEXEC_COL_TYPE_INT32  2
+#define VEXEC_COL_TYPE_INT64  3
+#define VEXEC_COL_TYPE_FLOAT  8
+#define VEXEC_COL_TYPE_DOUBLE 9
+
 VectorFilterResult *vector_filter_execute(VectorBlock *block,
                                        int column_idx, void *value, CompareOp op) {
     if (!block || !value) return NULL;
 
+    void *column = vector_block_get_column(block, column_idx);
+    if (!column) return NULL;
+
     VectorFilterResult *result = (VectorFilterResult *)calloc(1, sizeof(VectorFilterResult));
     if (!result) return NULL;
-
-    result->matches = (int64_t *)malloc((size_t)block->num_rows * sizeof(int64_t));
     result->num_matches = 0;
 
-    void *column = vector_block_get_column(block, column_idx);
-    if (!column) {
-        free(result->matches);
-        free(result);
-        return NULL;
+    /* --------------------------------------------------------------------
+     * 类型化路径（加法式）：列带数值类型标签时走 SIMD 位图内核。
+     *
+     * 这里不复用 db_vectorized 的 vecx_filter_block，原因有二：
+     *   1) 既有调用方（vector_query.c 的 exec_vector_filter）要的是**原始行号**，
+     *      而 vecx_filter_block 产出的是 gather 后的压缩块，行号信息已丢失；
+     *   2) db_core 不能依赖上层的 db_vectorized（循环依赖）。
+     * 因此内联实现「位图 → 排除 null → 原始行号数组」，也顺带省掉一次 gather。
+     *
+     * 列类型为 -1（未知）、字符串或其它类型时，一律落回下方的旧路径，
+     * 保证 ANN 执行链（从不设置列类型）行为与改动前逐位一致。
+     * -------------------------------------------------------------------- */
+    const int col_type = vector_block_get_column_type(block, column_idx);
+    const int n = block->num_rows;
+    if (n > 0 && (col_type == VEXEC_COL_TYPE_INT32 || col_type == VEXEC_COL_TYPE_INT64 ||
+                  col_type == VEXEC_COL_TYPE_FLOAT || col_type == VEXEC_COL_TYPE_DOUBLE)) {
+        int nwords = (n + 63) / 64;
+        uint64_t *bitmap = (uint64_t *)calloc((size_t)nwords, sizeof(uint64_t));
+        if (!bitmap) {
+            free(result);
+            return NULL;
+        }
+
+        switch (col_type) {
+            case VEXEC_COL_TYPE_INT32:
+                vector_filter_int_simd((const int32_t *)column, *(const int32_t *)value,
+                                       n, op, bitmap);
+                break;
+            case VEXEC_COL_TYPE_INT64:
+                vector_filter_int64_simd((const int64_t *)column, *(const int64_t *)value,
+                                         n, op, bitmap);
+                break;
+            case VEXEC_COL_TYPE_FLOAT:
+                vector_filter_float_simd((const float *)column, *(const float *)value,
+                                         n, op, bitmap);
+                break;
+            default: /* VEXEC_COL_TYPE_DOUBLE */
+                vector_filter_double_simd((const double *)column, *(const double *)value,
+                                          n, op, bitmap);
+                break;
+        }
+
+        /* null 行永不匹配 */
+        if (block->null_bitmap) {
+            for (int w = 0; w < nwords; w++) bitmap[w] &= ~block->null_bitmap[w];
+        }
+
+        result->matches = (int64_t *)malloc((size_t)n * sizeof(int64_t));
+        if (!result->matches) {
+            free(bitmap);
+            free(result);
+            return NULL;
+        }
+
+        /* 位图 → 原始行号（升序） */
+        for (int i = 0; i < n; i++) {
+            if (bitmap[i / 64] & (1ULL << (i % 64))) {
+                result->matches[result->num_matches++] = (int64_t)i;
+            }
+        }
+
+        free(bitmap);
+        return result;
     }
+
+    /* --------------------------------------------------------------------
+     * 旧路径：列无类型标签（-1）时，按定长 64 字节字符串逐行 strcmp。
+     * 行为与本次改动前完全一致。
+     * -------------------------------------------------------------------- */
+    result->matches = (int64_t *)malloc((size_t)block->num_rows * sizeof(int64_t));
 
     for (int i = 0; i < block->num_rows; i++) {
         char *str_val = (char *)column + i * 64;

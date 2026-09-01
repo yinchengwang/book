@@ -4,6 +4,7 @@ enable_testing()
 add_executable(vectorized_exec_test
     block_test.cpp
     simd_test.cpp
+    filter_test.cpp
 )
 target_link_libraries(vectorized_exec_test
     db_vectorized

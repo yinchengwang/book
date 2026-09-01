@@ -1,6 +1,7 @@
 # Gap#2 向量化执行引擎（列存批处理算子层，链接 db_core）
 add_library(db_vectorized STATIC
     vecx_block.c
+    vecx_filter.c
 )
 target_include_directories(db_vectorized PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include
