@@ -6,6 +6,7 @@ add_executable(distributed_txn_test
     mvcc_ts_test.cpp
     percolator_test.cpp
     deadlock_test.cpp
+    chaos_test.cpp
 )
 target_link_libraries(distributed_txn_test
     db_tso

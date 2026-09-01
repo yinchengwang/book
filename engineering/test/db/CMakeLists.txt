@@ -51,6 +51,7 @@ add_custom_target(db_all_tests
         test_cli_test
         test_guc
         test_sla
+        distributed_txn_test
 )
 
 
