@@ -118,6 +118,16 @@ static int act_txn(ts_store_t *s, pcol_lock_table_t *lt, int64_t start_ts,
         if (e->is_primary) { primary_e = e; break; }
     }
     if (!primary_e) {
+        /* 防御闭环（正常 API 路径不可达：prewrite 必为首个写登记 is_primary）：
+         * 无 primary 条目也按未提交回滚处理——先对该 start_ts 的全部锁键摘预写节点
+         * （ts_store_discard_pending），再删锁记录，避免 commit==0 节点遗留在版本链上
+         * 成为后续事务永久的假锁冲突源。与下方回滚分支处理一致。 */
+        for (pcol_lock_entry_t *e = lt->head; e; ) {
+            pcol_lock_entry_t *nx = e->next;
+            if (e->start_ts == start_ts)
+                ts_store_discard_pending(s, e->key, e->klen, start_ts);
+            e = nx;
+        }
         pcol_lock_remove_start(lt, start_ts);
         if (rollbacked) *rollbacked = 1;
         return 0;

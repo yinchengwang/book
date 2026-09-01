@@ -212,6 +212,40 @@ TEST(Percolator, DeleteWriteAfterCommit) {
     tso_oracle_destroy(o);
 }
 
+// I-2 回归：tombstone 也是写——事务 A(start=100) 对 K 写删除并提交(commit=200) 后，
+// 并发事务 B(start=150 < 200) 对同一 K 的普通写必须在 prewrite 阶段报 WRITE_CONFLICT。
+// 修复前 ww_conflict 对可见 tombstone(rc=-2) 一律放行，删除被静默复活（SI 丢失更新）。
+TEST(Percolator, TombstoneWriteWriteConflict) {
+    ts_store_t s;
+    ts_store_init(&s);
+    tso_oracle_t *o = nullptr;
+    ASSERT_EQ(0, tso_oracle_init(&o));
+
+    const uint8_t k[] = "pk", v[] = "v";
+    // 事务 A：对 K 写 tombstone，prewrite + commit(200)
+    pcol_txn_t *tA = pcol_txn_begin(&s, o, 100);
+    pcol_write_t wdel = {k, 2, nullptr, 0, true};
+    pcol_txn_add_write(tA, &wdel);
+    ASSERT_EQ(PCOL_OK, pcol_prewrite(tA));
+    ASSERT_EQ(PCOL_OK, pcol_commit(tA, 200));
+    pcol_txn_free(tA);
+
+    // 事务 B(start=150 < 200)：对同一 K 写普通值 → 必须写写冲突（删除提交晚于 B 的开始）
+    pcol_txn_t *tB = mkTxn(&s, o, 150, k, 2, v, 1);
+    EXPECT_EQ(PCOL_ERR_WRITE_CONFLICT, pcol_prewrite(tB));
+    pcol_txn_free(tB);
+
+    // 删除语义未被破坏：K 在新快照下仍为 tombstone（未被 B 复活/覆盖）
+    ts_version_t out;
+    memset(&out, 0, sizeof(out));
+    EXPECT_EQ(-2, ts_store_get(&s, k, 2, 300, nullptr, 0, &out));
+    // B 冲突回滚后无残留预写锁
+    EXPECT_EQ(0, ts_store_has_pending_write(&s, k, 2, -1));
+
+    ts_store_destroy(&s);
+    tso_oracle_destroy(o);
+}
+
 // 错误串非空
 TEST(Percolator, ErrorStringNonNull) {
     EXPECT_NE(pcol_error_string(PCOL_OK), nullptr);
@@ -512,7 +546,8 @@ TEST(PercolatorCross, CommitCrossAutoRecordsIntent) {
 
     const uint8_t k1[] = {'a'}, k2[] = {'b'}, v[] = {'x'};
     const int sh1 = pcol_shard_hash(k1, 1, 2);
-    ASSERT_NE(sh1, pcol_shard_hash(k2, 1, 2));   // 前提：两键真落不同分片
+    const int sh2 = pcol_shard_hash(k2, 1, 2);
+    ASSERT_NE(sh1, sh2);   // 前提：两键真落不同分片
 
     pcol_write_t ws[2] = {{k1, 1, v, 1, false}, {k2, 1, v, 1, false}};
     ASSERT_EQ(PCOL_OK, pcol_commit_cross(ctx, pcol_shard_hash, ws, 2, 100, 500, nullptr));
@@ -530,8 +565,9 @@ TEST(PercolatorCross, CommitCrossAutoRecordsIntent) {
     // 自动记录的意图须能被 recover 正确解析：模拟"commit-all 中途崩溃"撕裂态——
     // 次分片已提交版本丢失、只剩预写锁（教学模型：重建空 store 后裸预写），
     // primary 分片保持已提交；recover 应据自动记录的意图把次分片补提交到 500。
-    ts_store_t *sec = stores[sh1 == 0 ? 1 : 0];
-    const uint8_t *skey = (sh1 == 0) ? k2 : k1;
+    // 次分片即 k2('b') 所在分片（primary 键恒为 writes[0]=k1），与其下标无关。
+    ts_store_t *sec = stores[sh2];
+    const uint8_t *skey = k2;
     ts_store_destroy(sec);
     ts_store_init(sec);
     ASSERT_EQ(0, ts_store_put(sec, skey, 1, 100, 0, v, 1));  // 次分片残留预写锁
@@ -541,6 +577,82 @@ TEST(PercolatorCross, CommitCrossAutoRecordsIntent) {
     EXPECT_EQ(0, ts_store_get(sec, skey, 1, 600, nullptr, 0, &out));
     EXPECT_EQ(500, out.commit_ts);               // recover 据意图补提交，键布局解析正确
     ts_version_free(&out);
+
+    pcol_intent_log_clear();
+    pcol_context_free(ctx); tso_oracle_destroy(o);
+    ts_store_destroy(&s1); ts_store_destroy(&s2);
+}
+
+// I-1 回归：primary 落非 0 分片（writes[0]='b'→shard1）时，commit-all 必须 primary 先提交；
+// 且"只提权 primary"的可达撕裂态在非 0 primary 下经 pcol_cross_recover 必须收敛为全体提交。
+// 修复前 commit-all 按下标顺序提交：primary 在 shard1 时会先提交 shard0 的 secondary，
+// 中途崩溃后 recover 据未提交的 primary 裁定回滚，已提交的 secondary 永久可见 → 部分提交。
+TEST(PercolatorCross, PrimaryOnNonZeroShardCommitsFirstAndRecovers) {
+    ts_store_t s1, s2; ts_store_init(&s1); ts_store_init(&s2);
+    ts_store_t *stores[2] = {&s1, &s2};
+    tso_oracle_t *o = nullptr; ASSERT_EQ(0, tso_oracle_init(&o));
+    pcol_context_t *ctx = pcol_context_new(stores, 2, o);
+    ASSERT_NE(nullptr, ctx);
+    pcol_intent_log_clear();   // 静态意图表跨用例隔离
+
+    const uint8_t ka[] = {'a'}, kb[] = {'b'}, v[] = {'x'};
+    const int sa = pcol_shard_hash(ka, 1, 2);   // 'a' → shard0
+    const int sb = pcol_shard_hash(kb, 1, 2);   // 'b' → shard1
+    ASSERT_EQ(0, sa);
+    ASSERT_EQ(1, sb);                           // 前提：primary(writes[0]='b') 落非 0 分片
+
+    // (a) 正常路径：writes[0]='b'（primary→shard1）、writes[1]='a'（secondary→shard0）
+    pcol_write_t ws[2] = {{kb, 1, v, 1, false}, {ka, 1, v, 1, false}};
+    EXPECT_EQ(PCOL_OK, pcol_commit_cross(ctx, pcol_shard_hash, ws, 2, 100, 500, nullptr));
+
+    ts_version_t out;
+    memset(&out, 0, sizeof(out));
+    // 两分片在 commit_ts=500 均可见
+    EXPECT_EQ(0, ts_store_get(stores[sa], ka, 1, 600, nullptr, 0, &out));
+    EXPECT_EQ(500, out.commit_ts); ts_version_free(&out);
+    EXPECT_EQ(0, ts_store_get(stores[sb], kb, 1, 600, nullptr, 0, &out));
+    EXPECT_EQ(500, out.commit_ts); ts_version_free(&out);
+    // 自动记录的意图中 primary_shard 应为非 0 的 1
+    const pcol_intent_t *got = nullptr;
+    EXPECT_EQ(0, pcol_intent_log_get(100, &got));
+    ASSERT_NE(nullptr, got);
+    EXPECT_EQ(1, got->primary_shard);
+
+    // (b) 可达撕裂态：两分片裸预写（commit=0，同一 start），只提权 primary（shard1 的 'b'），
+    //     记录 primary_shard=1 的意图后 pcol_cross_recover —— secondary 必须被补提交。
+    pcol_intent_log_clear();
+    const int64_t st = 700, ct = 800;
+    ASSERT_EQ(0, ts_store_put(stores[sa], ka, 1, st, 0, v, 1));   // secondary 预写
+    ASSERT_EQ(0, ts_store_put(stores[sb], kb, 1, st, 0, v, 1));   // primary 预写
+    ASSERT_EQ(0, ts_store_promote(stores[sb], kb, 1, st, ct));    // 崩溃点：只 primary 提交
+
+    // 意图：键缓冲布局 [uint32 klen][key]（与库内 intent_key_at 同源），shard_keys 按下标摆放
+    uint8_t bufa[5], bufb[5];
+    uint32_t one = 1;
+    memcpy(bufa, &one, 4); bufa[4] = 'a';
+    memcpy(bufb, &one, 4); bufb[4] = 'b';
+    uint8_t *keys[2]; size_t klens[2]; int kns[2];
+    memset(keys, 0, sizeof(keys)); memset(klens, 0, sizeof(klens)); memset(kns, 0, sizeof(kns));
+    keys[sa] = bufa; klens[sa] = 5; kns[sa] = 1;
+    keys[sb] = bufb; klens[sb] = 5; kns[sb] = 1;
+    pcol_intent_t it;
+    memset(&it, 0, sizeof(it));
+    it.start_ts = st; it.commit_ts = ct; it.shard_count = 2;
+    it.primary_shard = sb;                  // primary 落 shard1（非 0）
+    it.shard_keys = keys; it.shard_keys_len = klens; it.shard_keys_n = kns;
+    ASSERT_EQ(0, pcol_intent_log_add(&it));
+
+    EXPECT_EQ(PCOL_OK, pcol_cross_recover(ctx, st));
+    // secondary（shard0 的 'a'）被补提交可见，commit_ts 与 primary 一致
+    ASSERT_EQ(0, ts_store_get(stores[sa], ka, 1, 900, nullptr, 0, &out));
+    EXPECT_EQ(ct, out.commit_ts);
+    ts_version_free(&out);
+    // primary（shard1 的 'b'）保持可见
+    EXPECT_EQ(0, ts_store_get(stores[sb], kb, 1, 900, nullptr, 0, &out));
+    ts_version_free(&out);
+    // 两分片均无残留预写锁
+    EXPECT_EQ(0, ts_store_has_pending_write(stores[sa], ka, 1, -1));
+    EXPECT_EQ(0, ts_store_has_pending_write(stores[sb], kb, 1, -1));
 
     pcol_intent_log_clear();
     pcol_context_free(ctx); tso_oracle_destroy(o);

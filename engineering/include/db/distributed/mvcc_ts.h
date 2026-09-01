@@ -98,6 +98,13 @@ int ts_store_get(ts_store_t *s, const void *key, uint32_t klen,
                  int64_t read_ts, const int64_t *active, size_t active_n,
                  ts_version_t *out);
 
+/* 键的最新已提交版本 commit_ts（含 tombstone）：沿版本链取 commit_ts>0 中最大者。
+ * 返回 0 = 存在已提交版本（填 *out_commit_ts）；-1 = 无任何已提交版本。
+ * 用于 Percolator prewrite 写写冲突检测：删除也是写，tombstone 的 commit_ts 同样
+ * 参与"晚于本事务 start_ts 的提交 → 冲突"判定。 */
+int ts_store_latest_commit_ts(ts_store_t *s, const void *key, uint32_t klen,
+                              int64_t *out_commit_ts);
+
 /* 释放由 ts_store_get / ts_iter_next 得到的版本副本（释放其 key 与 value 深拷贝）。
  * 注意：只释放副本内容，不释放 out 对象本身（为其调用方栈/堆上的载体）。 */
 void ts_version_free(ts_version_t *v);

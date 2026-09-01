@@ -247,6 +247,30 @@ int ts_store_get(ts_store_t *s, const void *key, uint32_t klen,
     return copy_version(best, out) == 0 ? 0 : -1;
 }
 
+/* 键的最新已提交版本 commit_ts（含 tombstone）：沿版本链扫所有 commit_ts>0 节点取最大者。
+ * 与 ts_store_get 不同，tombstone 也算已提交版本（删除也是写，占提交序），
+ * 供 Percolator prewrite 的写写冲突检测统一 put/delete 两条路径。 */
+int ts_store_latest_commit_ts(ts_store_t *s, const void *key, uint32_t klen,
+                              int64_t *out_commit_ts) {
+    if (!s || !key || !out_commit_ts) return -1;
+
+    int found = 0;
+    size_t pos = lower_bound(s, key, klen, &found);
+    if (!found) return -1;   /* 键不存在：无任何已提交版本 */
+
+    int64_t latest = 0;
+    int have = 0;
+    for (ts_version_t *v = ((ts_store_entry *)s->entries)[pos].versions; v; v = v->next) {
+        if (v->commit_ts > 0 && (!have || v->commit_ts > latest)) {
+            latest = v->commit_ts;
+            have = 1;
+        }
+    }
+    if (!have) return -1;     /* 链上全是未提交(prewrite, commit_ts==0)节点 */
+    *out_commit_ts = latest;
+    return 0;
+}
+
 /* 待提交写检查（Percolator 判锁 helper）：见头文件声明语义 */
 int ts_store_has_pending_write(ts_store_t *s, const void *key, uint32_t klen,
                                int64_t except_start_ts) {

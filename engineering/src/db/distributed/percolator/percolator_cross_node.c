@@ -235,17 +235,22 @@ int pcol_commit_cross(pcol_context_t *ctx, pcol_shard_fn shard_fn,
      *      冲突回滚路径在上方直接 return，不到达此处，故失败事务不留意图。
      *      primary 分片 = 整体首个写键（writes[0]）所在分片；组内保序，该键也是
      *      其分片缓冲中的第一个键，与 intent 的 primary 约定（缓冲首键）自洽。 */
-    {
-        int primary_shard = shard_fn(writes[0].key, writes[0].klen, ctx->shard_count);
-        if (primary_shard < 0 || primary_shard >= ctx->shard_count) primary_shard = 0;
-        record_commit_intent(groups, ctx->shard_count, primary_shard, start_ts, commit_ts);
-    }
+    int primary_shard = shard_fn(writes[0].key, writes[0].klen, ctx->shard_count);
+    if (primary_shard < 0 || primary_shard >= ctx->shard_count) primary_shard = 0;
+    record_commit_intent(groups, ctx->shard_count, primary_shard, start_ts, commit_ts);
 
-    /* 3) commit-all：全部分片共享同一 commit_ts，跨分片可见性同时翻转。
+    /* 3) commit-all：**primary 分片先提交**（Percolator 协议的提交点），随后才提交
+     *    其余分片。secondary 不可能先于 primary 提交，于是 commit 窗口内的崩溃态只剩
+     *    「primary 已提交 → pcol_cross_recover promote 全体」与
+     *    「全体未提交   → pcol_cross_recover discard 全体」两支，
+     *    不会出现"secondary 已提交而 primary 未提交"的不可恢复撕裂态（按下标顺序
+     *    提交时，primary 落非 0 分片且中途崩溃即会产生该态）。
+     *    全部分片共享同一 commit_ts，跨分片可见性同时翻转。
      *    本地实现中 prewrite 全部成功后 commit 不可能失败（commit_ts>0 即可见、
      *    无冲突检测），故忽略 pcol_commit 返回值。 */
+    if (groups[primary_shard].txn) pcol_commit(groups[primary_shard].txn, commit_ts);
     for (s = 0; s < ctx->shard_count; ++s) {
-        if (groups[s].txn) pcol_commit(groups[s].txn, commit_ts);
+        if (s != primary_shard && groups[s].txn) pcol_commit(groups[s].txn, commit_ts);
     }
     for (s = 0; s < ctx->shard_count; ++s) {
         if (groups[s].txn) pcol_txn_free(groups[s].txn);

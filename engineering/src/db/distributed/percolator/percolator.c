@@ -4,7 +4,8 @@
  *  - 写槽（pcol_write_slot_t）持有 key/value 的深拷贝与元信息，
  *    primary = 首个写入键（Task 7 真正锁表使用，本任务仅记录）。
  *  - prewrite：对每个写键检测
- *      写写冲突：以 read_ts=INT64_MAX 取"最新已提交版本"，若其 commit_ts > start_ts
+ *      写写冲突：取键的最新已提交版本 commit_ts（含 tombstone——删除也是写，其提交
+ *                同样占据提交序），若其 commit_ts > start_ts
  *                → PCOL_ERR_WRITE_CONFLICT（有一个晚于本事务开始的提交）；
  *      锁冲突  ：mvcc_ts 暴露的 ts_store_has_pending_write 查到"他事务 commit_ts==0
  *                的预写版本" → PCOL_ERR_LOCK_CONFLICT。
@@ -110,20 +111,18 @@ void pcol_txn_set_lock_table(pcol_txn_t *t, pcol_lock_table_t *lt) {
 
 /* ---------- 冲突检测 ---------- */
 
-/* 写写冲突：键存在"最新已提交版本"且其 commit_ts > start_ts。
- * ts_store_get(read_ts=INT64_MAX, active=NULL) 返回 commit_ts 最大的可见已提交版本；
- *   rc==0  得到非删已提交版本（含 commit_ts），用于比较；
- *   rc==-1 无已提交版本（键不存在或全未提交）：本事务为首写，无 WW 冲突；
- *   rc==-2 可见但已删除(tombstone)：最新已提交为一条删除。本地版本链对"删除后新写"
- *           天然正确（后续提交的 commit_ts 更大即更可见），本实现不判定为 WW 冲突。 */
+/* 写写冲突：删除与写入统一按"键的最新已提交版本 commit_ts"判定——
+ * ts_store_latest_commit_ts 沿版本链取 commit_ts>0 的最大者（含 tombstone：
+ * 删除也是写，其 commit_ts 同样占据提交序）。
+ *   无任何已提交版本（键不存在，或链上全是 commit_ts==0 预写节点）：本事务为首写，
+ *   无 WW 冲突，返回 0；
+ *   否则最新提交 commit_ts > start_ts：有一个晚于本事务开始的提交（含删除提交），
+ *    SI 先提交者胜，返回冲突。 */
 static int ww_conflict(ts_store_t *store, const void *key, uint32_t klen,
                        int64_t start_ts) {
-    ts_version_t cur;
-    int rc = ts_store_get(store, key, klen, INT64_MAX, NULL, 0, &cur);
-    if (rc != 0) return 0;                       /* 无已提交版本 或 已是删除标记 */
-    int conflict = (cur.commit_ts > start_ts);
-    ts_version_free(&cur);
-    return conflict;
+    int64_t latest = 0;
+    if (ts_store_latest_commit_ts(store, key, klen, &latest) != 0) return 0; /* 首写 */
+    return latest > start_ts;   /* 晚于本事务开始的提交（含删除提交）→ 写写冲突 */
 }
 
 /* ---------- 两阶段 ---------- */

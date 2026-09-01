@@ -72,7 +72,6 @@ int tso_alloc(tso_oracle_t *o, int count, int64_t *out_start, int64_t *out_end) 
     uint32_t slots_left = (uint32_t)(TSO_LOGICAL_MASK + 1) - start_logical;
     int64_t end;
     uint32_t new_logical;
-    int64_t base_stays = base;
     if (count < (int)slots_left) {
         /* 不跨物理：批全部落于当前物理内，游标同物理续进 */
         end = ((int64_t)base << TSO_LOGICAL_BITS) | (start_logical + (uint32_t)count - 1);
