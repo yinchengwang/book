@@ -9,6 +9,12 @@ list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX ".*hybrid_search\\.c$")
 list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX ".*tiered_index\\.c$")
 # DiskANN 通过独立子目录构建（diskann/CMakeLists.txt），避免被主 glob 重复收集
 list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX ".*diskann/.*")
+# faiss_hnsw 同理：独立静态库 faiss_hnsw 由 faiss_hnsw/CMakeLists.txt 构建，
+# 主 glob 收集其源码会因头文件/声明不同步而编译失败
+list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX ".*faiss_hnsw/.*")
+# GPU 加速为 CUDA/OpenCL 存根，私有头（include/db/index/vector_index/gpu/）
+# 不在本目标包含路径上，且无外部符号引用；待其独立成库后再接入
+list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX ".*gpu/.*")
 
 add_library(vector_index STATIC ${VECTOR_INDEX_SOURCES})
 
@@ -101,3 +107,6 @@ add_subdirectory(faiss_hnsw)
 
 # GPU 向量加速模块（CUDA/OpenCL 加速）
 add_subdirectory(gpu)
+
+# 分布式 HNSW 索引（待 faiss_hnsw 问题修复后启用）
+# add_subdirectory(dist_hnsw)
