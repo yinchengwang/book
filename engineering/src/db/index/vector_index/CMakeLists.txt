@@ -24,6 +24,7 @@ target_include_directories(vector_index PUBLIC
 )
 
 target_link_libraries(vector_index PRIVATE project_includes algo-prod Threads::Threads)
+target_link_libraries(vector_index PUBLIC faiss_hnsw)
 
 # 持久化控制模块（被向量索引使用以管理 persist_enabled 开关）
 target_sources(vector_index PRIVATE
