@@ -330,12 +330,12 @@ TEST(VecxAggScalar, Int64SumKeepsPrecision) {
      * 并不能真正区分两种累加器。下面这组是判别性用例：
      * 2^62 的 ULP 是 1024，用 double 累加时 2^62 + 512 会"就近取偶"回到 2^62，
      * 再加 512 仍是 2^62；而 int64 精确和 2^62+1024 可被 double 精确表示。
-     * 实现若改用 double 累加，这一条必挂。
+     * 实现若改用 double 累加，这一条必挂（EXPECT_DOUBLE_EQ 不够严格，必须用 EXPECT_EQ）。
      */
     const int64_t big = 4611686018427387904LL;  /* 2^62 */
     VectorBlock *blk2 = make_int64_block({big, 512, 512});
     ASSERT_NE(blk2, nullptr);
-    EXPECT_DOUBLE_EQ(agg_ok(blk2, 0, VECX_AGG_SUM, nullptr, 0), 4611686018427388928.0);
+    EXPECT_EQ(agg_ok(blk2, 0, VECX_AGG_SUM, nullptr, 0), 4611686018427388928.0);
     vector_block_destroy(blk2);
 }
 
@@ -443,8 +443,8 @@ TEST(VecxAggScalar, InvalidArgs) {
     VectorBlock *strb = vector_block_create(2, 1);
     ASSERT_NE(strb, nullptr);
     const char **scol = (const char **)malloc(sizeof(const char *) * 2);
-    scol[0] = "a";
-    scol[1] = "b";
+    scol[0] = strdup("a");
+    scol[1] = strdup("b");
     vector_block_set_column(strb, 0, (void *)scol, (int)sizeof(const char *));
     vector_block_set_column_type(strb, 0, COLUMN_STRING);
     vector_block_set_num_rows(strb, 2);
