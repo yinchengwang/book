@@ -1,5 +1,6 @@
 # executor 模块：执行层
 # 依赖 parser, optimizer, storage, validator
+add_subdirectory(framework)
 file(GLOB_RECURSE EXECUTOR_SOURCE_FILES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.c")
 
 if(EXECUTOR_SOURCE_FILES)
