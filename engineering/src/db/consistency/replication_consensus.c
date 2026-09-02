@@ -442,4 +442,9 @@ int rc_sync_all(replication_consensus_t *rc)
         } else if (source->state == REPL_STATE_STREAMING ||
                    source->state == REPL_STATE_NORMAL) {
             /* 正常的源节点，状态已经是同步的 */
-       
+            ;
+        }
+    }
+
+    return 0;
+}
