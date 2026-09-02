@@ -30,6 +30,7 @@ option(MMDB_ENABLE_DISTRIBUTED_SHARD "Enable Sharding" OFF)
 # 配置头生成
 # ========================================================================
 
+set(MMDB_MODEL_COUNT 13)
 set(MULTIMODAL_CONFIG_HEADER "${ENGINEERING_SOURCE_DIR}/include/db/multimodal_config.h")
 configure_file(
     "${CMAKE_CURRENT_LIST_DIR}/multimodal_config.h.in"
