@@ -303,6 +303,20 @@ void catalog_invalidate_all(void);
  */
 void catalog_get_cache_stats(uint64_t *hits, uint64_t *misses);
 
+/**
+ * @brief 持久化 Catalog 到磁盘
+ * @param path 文件路径
+ * @return 0 成功，-1 失败
+ */
+int catalog_persist(const char *path);
+
+/**
+ * @brief 从磁盘恢复 Catalog
+ * @param path 文件路径
+ * @return 0 成功，-1 失败
+ */
+int catalog_recover(const char *path);
+
 #ifdef __cplusplus
 }
 #endif

@@ -89,7 +89,11 @@ typedef enum wal_log_type_e {
     WAL_LOG_TS_APPEND      = 23,  /**< Timeseries 点追加 */
     WAL_LOG_SPATIAL_UPSERT = 24,  /**< Spatial 几何 upsert */
     WAL_LOG_YANG_DS_WR     = 25,  /**< Yang datastore 写（C2-5 配套） */
-    WAL_LOG_VECTOR_APPEND  = 26   /**< Vector 向量追加 */
+    WAL_LOG_VECTOR_APPEND  = 26,  /**< Vector 向量追加 */
+    /* Task 37: Cross-Modal 2PC WAL records */
+    WAL_LOG_CROSS_PREPARE  = 100, /**< Cross-modal 2PC prepare */
+    WAL_LOG_CROSS_COMMIT   = 101, /**< Cross-modal 2PC commit */
+    WAL_LOG_CROSS_ABORT   = 102  /**< Cross-modal 2PC abort */
 } wal_log_type_t;
 
 /* ============================================================
@@ -342,6 +346,38 @@ uint64_t wal_write_yang_ds(wal_t *wal, uint32_t datastore_id,
 uint64_t wal_write_vector_append(wal_t *wal, uint32_t segment_id,
                                  int32_t vector_id, int32_t dims,
                                  const float *vector);
+
+/* ============================================================
+ * Task 37: Cross-Modal 2PC WAL 记录写入 API
+ * ============================================================ */
+
+/**
+ * @brief 写入 Cross-modal 2PC prepare 记录
+ * @param wal WAL 句柄
+ * @param txn_id 事务ID
+ * @param participant_count 参与者数量
+ * @param participants 参与者名称数组
+ * @return LSN，失败返回 0
+ */
+uint64_t wal_write_cross_prepare(wal_t *wal, uint32_t txn_id,
+                                 uint32_t participant_count,
+                                 const char **participants);
+
+/**
+ * @brief 写入 Cross-modal 2PC commit 记录
+ * @param wal WAL 句柄
+ * @param txn_id 事务ID
+ * @return LSN，失败返回 0
+ */
+uint64_t wal_write_cross_commit(wal_t *wal, uint32_t txn_id);
+
+/**
+ * @brief 写入 Cross-modal 2PC abort 记录
+ * @param wal WAL 句柄
+ * @param txn_id 事务ID
+ * @return LSN，失败返回 0
+ */
+uint64_t wal_write_cross_abort(wal_t *wal, uint32_t txn_id);
 
 /* ============================================================
  * C0-2：当前活跃 WAL（线程局部）

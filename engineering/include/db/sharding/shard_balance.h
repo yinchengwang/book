@@ -34,7 +34,16 @@ typedef struct shard_balance_config {
     int check_interval_ms;       /* 检查间隔（默认 60000ms） */
     migrate_strategy_t strategy; /* 默认迁移策略 */
     bool auto_rebalance;         /* 自动再平衡开关（默认 true） */
+    int vnode_count;             /* 虚拟节点数量（默认 150） */
 } shard_balance_config_t;
+
+/* 虚拟节点信息 */
+typedef struct vnode_info {
+    int vnode_id;                /* 虚拟节点 ID */
+    int physical_shard;          /* 所属物理分片 */
+    uint64_t hash_start;         /* 哈希环起始值 */
+    uint64_t hash_end;           /* 哈希环结束值 */
+} vnode_info_t;
 
 /* 迁移任务 */
 typedef struct migrate_task {
@@ -45,6 +54,7 @@ typedef struct migrate_task {
     void *key_range;
     double progress;              /* 0.0-1.0 */
     migrate_status_t status;
+    int vnode_id;                 /* 虚拟节点 ID（用于虚拟节点迁移） */
 } migrate_task_t;
 
 /* 配置默认值 */

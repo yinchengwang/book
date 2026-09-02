@@ -72,6 +72,8 @@ struct kv_s {
     void          *ttl_mgr;        /**< TTL 管理器 */
     /* C1-3 T2：common_rwlock 并发保护（put/get/delete 包裹） */
     common_rwlock_t *rwlock;
+    /* C3-5 T22：watch 通知链表 */
+    void *watch_list;              /**< 内部 watch 链表（kw_list_t） */
 };
 
 /** KV 数据库（公开类型） */
@@ -332,6 +334,78 @@ kv_result_t kv_cas(kv_t *db,
                    const void *key, size_t key_len,
                    const void *expected_old, size_t expected_old_len,
                    const void *new_value, size_t new_value_len);
+
+/* ============================================================
+ * Watch 通知（C3-5 T22）
+ * ============================================================ */
+
+/** 回调函数类型：键值变更通知 */
+typedef void (*kv_watch_callback_t)(void *user_data,
+                                    const char *key, size_t key_len,
+                                    const void *old_value, size_t old_len,
+                                    const void *new_value, size_t new_len);
+
+/** 句柄：watch 订阅 */
+typedef struct kv_watch_s kv_watch_t;
+
+/**
+ * @brief 订阅键变更通知
+ * @param db 数据库句柄
+ * @param key 要监听的键（NULL = 监听所有键）
+ * @param key_len 键长度
+ * @param callback 回调函数
+ * @param user_data 回调用户数据
+ * @return watch 句柄，失败返回 NULL
+ */
+kv_watch_t *kv_watch(kv_t *db, const void *key, size_t key_len,
+                     kv_watch_callback_t callback, void *user_data);
+
+/**
+ * @brief 取消订阅
+ * @param db 数据库句柄
+ * @param watch watch 句柄
+ */
+void kv_unwatch(kv_t *db, kv_watch_t *watch);
+
+/* ============================================================
+ * Multi 批量操作（C3-5 T22）
+ * ============================================================ */
+
+/** 批量操作条目 */
+typedef struct {
+    void *key;           /**< 键 */
+    size_t key_len;      /**< 键长度 */
+    void *value;         /**< 值（set 时使用） */
+    size_t value_len;    /**< 值长度 */
+    bool is_set;         /**< true=写入，false=读取 */
+} kv_multi_entry_t;
+
+/**
+ * @brief 批量读取
+ * @param db 数据库句柄
+ * @param entries 条目数组
+ * @param count 条目数量
+ * @return KV_OK 成功
+ */
+kv_result_t kv_multi_get(kv_t *db, kv_multi_entry_t *entries, size_t count);
+
+/**
+ * @brief 批量写入
+ * @param db 数据库句柄
+ * @param entries 条目数组
+ * @param count 条目数量
+ * @return KV_OK 成功
+ */
+kv_result_t kv_multi_set(kv_t *db, kv_multi_entry_t *entries, size_t count);
+
+/**
+ * @brief 批量删除
+ * @param db 数据库句柄
+ * @param entries 条目数组
+ * @param count 条目数量
+ * @return KV_OK 成功
+ */
+kv_result_t kv_multi_del(kv_t *db, kv_multi_entry_t *entries, size_t count);
 
 /**
  * @brief C1-3 T6：kv_get 释放契约

@@ -63,6 +63,19 @@ int migrate_execute_incremental(migrate_manager_t *mgr,
                                 void *user_data);
 
 /**
+ * @brief 执行虚拟节点迁移（核心逻辑）
+ * @param mgr 迁移管理器
+ * @param task 迁移任务
+ * @param progress_cb 进度回调（可为 NULL）
+ * @param user_data 用户数据
+ * @return 0 成功，非0 失败
+ */
+int migrate_execute_vnode(migrate_manager_t *mgr,
+                          migrate_task_t *task,
+                          migrate_progress_cb progress_cb,
+                          void *user_data);
+
+/**
  * @brief 执行迁移任务
  */
 int migrate_manager_execute(migrate_manager_t *mgr, migrate_task_t *task);

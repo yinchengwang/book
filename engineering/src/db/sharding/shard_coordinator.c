@@ -113,3 +113,8 @@ int shard_coordinator_select_least_load(shard_coordinator_t *coord,
 
     return best_shard;
 }
+
+shard_router_t *shard_coordinator_get_router(shard_coordinator_t *coord) {
+    if (!coord) return NULL;
+    return coord->router;
+}

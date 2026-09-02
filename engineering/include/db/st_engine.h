@@ -74,6 +74,9 @@ typedef struct st_trajectory_point_s {
     double heading;           /**< 航向角 */
 } st_trajectory_point_t;
 
+/* forward declare rtree_t to avoid pulling in rtree.h everywhere */
+typedef struct rtree_s rtree_t;
+
 /**
  * @brief 时空引擎数据库
  */
@@ -86,6 +89,8 @@ typedef struct st_engine_db_s {
     int64_t start_time;        /**< 开始时间 */
     int64_t end_time;          /**< 结束时间 */
     bbox_t spatial_bounds;     /**< 空间边界 */
+
+    rtree_t *spatial_index;    /**< 空间索引（R-Tree） */
 } st_engine_db_t;
 
 /* ========================================================================

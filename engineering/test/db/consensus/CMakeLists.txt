@@ -1,10 +1,18 @@
 # 工程层 Raft 模块 ctest smoke 测试
-file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "*.cpp")
+file(GLOB CPP_TEST_SOURCES CONFIGURE_DEPENDS "*.cpp")
+file(GLOB C_TEST_SOURCES CONFIGURE_DEPENDS "*.c")
 
-add_executable(raft_test ${TEST_SOURCES})
+# C 测试文件列表
+set(C_TEST_FILES
+    raft_transport_test.c
+)
+
+add_executable(raft_test ${CPP_TEST_SOURCES} ${C_TEST_FILES})
 
 target_include_directories(raft_test PRIVATE
     ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db/consensus
+    ${ENGINEERING_SOURCE_DIR}/include/db/distributed
     ${ENGINEERING_SOURCE_DIR}/src
 )
 

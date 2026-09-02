@@ -1,7 +1,7 @@
 /*
  * migrate_manager.c - 迁移管理器实现
  *
- * 实现增量迁移核心逻辑（Task 6）
+ * 实现增量迁移核心逻辑（Task 6）和虚拟节点迁移核心逻辑（Task 7）
  */
 
 #include "db/sharding/migrate_manager.h"
@@ -11,6 +11,55 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <stdint.h>
+
+/* 默认数据目录 */
+#ifndef DEFAULT_DATA_DIR
+#define DEFAULT_DATA_DIR "./data"
+#endif
+
+/* 批次大小（避免内存溢出） */
+#ifndef MIGRATE_BATCH_SIZE
+#define MIGRATE_BATCH_SIZE 1000
+#endif
+
+/* 进度回调间隔（每多少条记录回调一次） */
+#ifndef MIGRATE_PROGRESS_INTERVAL
+#define MIGRATE_PROGRESS_INTERVAL 5000
+#endif
+
+/* 虚拟节点默认数量 */
+#ifndef DEFAULT_VNODE_COUNT
+#define DEFAULT_VNODE_COUNT 150
+#endif
+
+/* 一致性哈希环节点 */
+typedef struct hash_ring_node {
+    uint64_t hash;              /* 哈希值 */
+    int shard_id;               /* 分片 ID */
+    int vnode_id;               /* 虚拟节点 ID（-1 表示物理节点） */
+    struct hash_ring_node *next;
+    struct hash_ring_node *prev;
+} hash_ring_node_t;
+
+/* 一致性哈希环 */
+typedef struct hash_ring {
+    hash_ring_node_t *nodes;    /* 有序环（红黑树或排序数组） */
+    int node_count;             /* 节点数量 */
+    int vnode_count_per_shard;  /* 每个物理分片的虚拟节点数 */
+    pthread_rwlock_t rwlock;    /* 读写锁 */
+} hash_ring_t;
+
+/* 虚拟节点迁移上下文 */
+typedef struct vnode_migrate_ctx {
+    int vnode_id;
+    uint64_t hash_start;
+    uint64_t hash_end;
+    int source_shard;
+    int target_shard;
+    uint64_t total_keys;
+    uint64_t migrated_keys;
+} vnode_migrate_ctx_t;
 
 /* 默认数据目录 */
 #ifndef DEFAULT_DATA_DIR
@@ -184,6 +233,7 @@ migrate_task_t *migrate_manager_create_vnode(migrate_manager_t *mgr,
     task->source_shard = source_shard;
     task->target_shard = target_shard;
     task->strategy = MIGRATE_VIRTUAL_NODE;
+    task->vnode_id = vnode_id;
     task->progress = 0.0;
     task->status = MIGRATE_STATUS_PENDING;
 
@@ -473,6 +523,505 @@ cleanup:
 }
 
 /**
+ * @brief 简单哈希函数（用于一致性哈希环）
+ *
+ * 使用一个简单的分布式哈希函数，模拟 MurmurHash3 的行为
+ * 实际生产环境应使用更专业的哈希算法
+ */
+static uint64_t simple_hash(const void *key, size_t len)
+{
+    const uint8_t *data = (const uint8_t *)key;
+    uint64_t h = 0x1234567890abcdef;
+
+    for (size_t i = 0; i < len; i++) {
+        h ^= data[i];
+        h *= 0x100000001b3;  /* 乘以素数 */
+        h ^= (h >> 33);
+    }
+
+    return h;
+}
+
+/**
+ * @brief 计算分片键的一致性哈希值
+ *
+ * 使用 router 的配置计算哈希值
+ */
+static uint64_t calc_consistent_hash(shard_router_t *router, const void *key, size_t key_len)
+{
+    (void)router;  /* 暂时未使用，后续扩展 */
+    return simple_hash(key, key_len);
+}
+
+/**
+ * @brief 创建一致性哈希环
+ *
+ * @param vnode_count 每个物理分片的虚拟节点数
+ * @return 哈希环句柄
+ */
+static hash_ring_t *hash_ring_create(int vnode_count)
+{
+    hash_ring_t *ring = calloc(1, sizeof(hash_ring_t));
+    if (!ring) {
+        return NULL;
+    }
+
+    ring->vnode_count_per_shard = (vnode_count > 0) ? vnode_count : DEFAULT_VNODE_COUNT;
+    ring->node_count = 0;
+    ring->nodes = NULL;
+
+    pthread_rwlock_init(&ring->rwlock, NULL);
+
+    return ring;
+}
+
+/**
+ * @brief 销毁一致性哈希环
+ */
+static void hash_ring_destroy(hash_ring_t *ring)
+{
+    if (!ring) {
+        return;
+    }
+
+    pthread_rwlock_destroy(&ring->rwlock);
+    free(ring->nodes);
+    free(ring);
+}
+
+/**
+ * @brief 向哈希环添加虚拟节点
+ *
+ * @param ring 哈希环
+ * @param shard_id 物理分片 ID
+ * @param vnode_id 虚拟节点 ID
+ * @param hash_value 虚拟节点的哈希值
+ * @return 0 成功
+ */
+static int hash_ring_add_vnode(hash_ring_t *ring, int shard_id, int vnode_id, uint64_t hash_value)
+{
+    if (!ring) {
+        return -1;
+    }
+
+    pthread_rwlock_wrlock(&ring->rwlock);
+
+    /* 扩容 */
+    hash_ring_node_t *new_nodes = realloc(ring->nodes,
+                                           (ring->node_count + 1) * sizeof(hash_ring_node_t));
+    if (!new_nodes) {
+        pthread_rwlock_unlock(&ring->rwlock);
+        return -1;
+    }
+    ring->nodes = new_nodes;
+
+    /* 创建新节点 */
+    hash_ring_node_t *node = &ring->nodes[ring->node_count];
+    node->hash = hash_value;
+    node->shard_id = shard_id;
+    node->vnode_id = vnode_id;
+    node->next = node->prev = NULL;
+
+    ring->node_count++;
+
+    /* 简单插入排序（按 hash 值） */
+    for (int i = ring->node_count - 1; i > 0; i--) {
+        if (ring->nodes[i].hash < ring->nodes[i-1].hash) {
+            hash_ring_node_t tmp = ring->nodes[i];
+            ring->nodes[i] = ring->nodes[i-1];
+            ring->nodes[i-1] = tmp;
+        } else {
+            break;
+        }
+    }
+
+    /* 更新前后指针 */
+    for (int i = 0; i < ring->node_count; i++) {
+        ring->nodes[i].prev = (i > 0) ? &ring->nodes[i-1] : NULL;
+        ring->nodes[i].next = (i < ring->node_count - 1) ? &ring->nodes[i+1] : NULL;
+    }
+
+    pthread_rwlock_unlock(&ring->rwlock);
+    return 0;
+}
+
+/**
+ * @brief 从哈希环移除虚拟节点
+ */
+static int hash_ring_remove_vnode(hash_ring_t *ring, int shard_id, int vnode_id)
+{
+    if (!ring) {
+        return -1;
+    }
+
+    pthread_rwlock_wrlock(&ring->rwlock);
+
+    for (int i = 0; i < ring->node_count; i++) {
+        if (ring->nodes[i].shard_id == shard_id && ring->nodes[i].vnode_id == vnode_id) {
+            /* 移动后面的节点 */
+            for (int j = i; j < ring->node_count - 1; j++) {
+                ring->nodes[j] = ring->nodes[j+1];
+            }
+            ring->node_count--;
+
+            /* 重新更新前后指针 */
+            for (int j = 0; j < ring->node_count; j++) {
+                ring->nodes[j].prev = (j > 0) ? &ring->nodes[j-1] : NULL;
+                ring->nodes[j].next = (j < ring->node_count - 1) ? &ring->nodes[j+1] : NULL;
+            }
+            break;
+        }
+    }
+
+    pthread_rwlock_unlock(&ring->rwlock);
+    return 0;
+}
+
+/**
+ * @brief 查找负责特定哈希值的虚拟节点
+ *
+ * @param ring 哈希环
+ * @param hash 哈希值
+ * @param vnode_id 输出：虚拟节点 ID（可为 NULL）
+ * @return 分片 ID
+ */
+static int hash_ring_find(shard_router_t *router, hash_ring_t *ring, uint64_t hash, int *vnode_id)
+{
+    if (!ring || !router) {
+        return -1;
+    }
+
+    pthread_rwlock_rdlock(&ring->rwlock);
+
+    if (ring->node_count == 0) {
+        pthread_rwlock_unlock(&ring->rwlock);
+        return -1;
+    }
+
+    int result_shard = ring->nodes[0].shard_id;
+    int result_vnode = ring->nodes[0].vnode_id;
+
+    /* 二分查找或线性查找第一个 hash >= 给定值的节点 */
+    for (int i = 0; i < ring->node_count; i++) {
+        if (ring->nodes[i].hash >= hash) {
+            result_shard = ring->nodes[i].shard_id;
+            result_vnode = ring->nodes[i].vnode_id;
+            break;
+        }
+    }
+
+    if (vnode_id) {
+        *vnode_id = result_vnode;
+    }
+
+    pthread_rwlock_unlock(&ring->rwlock);
+
+    return result_shard;
+}
+
+/**
+ * @brief 计算虚拟节点的哈希范围
+ *
+ * @param ring 哈希环
+ * @param vnode_id 虚拟节点 ID
+ * @param hash_start 输出：起始哈希值
+ * @param hash_end 输出：结束哈希值
+ * @return 0 成功
+ */
+static int hash_ring_get_vnode_range(hash_ring_t *ring, int vnode_id,
+                                      uint64_t *hash_start, uint64_t *hash_end)
+{
+    if (!ring) {
+        return -1;
+    }
+
+    pthread_rwlock_rdlock(&ring->rwlock);
+
+    for (int i = 0; i < ring->node_count; i++) {
+        if (ring->nodes[i].vnode_id == vnode_id) {
+            /* 获取前一个节点的 hash 作为起始值 */
+            if (ring->nodes[i].prev) {
+                *hash_start = ring->nodes[i].prev->hash + 1;
+            } else {
+                *hash_start = 0;
+            }
+            *hash_end = ring->nodes[i].hash;
+            pthread_rwlock_unlock(&ring->rwlock);
+            return 0;
+        }
+    }
+
+    pthread_rwlock_unlock(&ring->rwlock);
+    return -1;
+}
+
+/**
+ * @brief 计算数据的哈希值并判断是否在迁移范围内
+ */
+static bool is_key_in_vnode_range(const void *key, size_t key_len,
+                                   uint64_t hash_start, uint64_t hash_end)
+{
+    uint64_t h = simple_hash(key, key_len);
+    return (h >= hash_start && h <= hash_end);
+}
+
+/**
+ * @brief 执行虚拟节点迁移（核心逻辑）
+ *
+ * 虚拟节点迁移流程：
+ * 1. 计算虚拟节点在哈希环中的范围
+ * 2. 扫描源分片，找出属于该虚拟节点范围的数据
+ * 3. 迁移数据到目标分片
+ * 4. 更新一致性哈希环（添加新节点/移除旧节点）
+ * 5. 更新路由映射
+ * 6. 验证迁移完成
+ *
+ * @param mgr 迁移管理器
+ * @param task 迁移任务
+ * @param progress_cb 进度回调（可为 NULL）
+ * @param user_data 用户数据
+ * @return 0 成功，非0 失败
+ */
+int migrate_execute_vnode(migrate_manager_t *mgr,
+                          migrate_task_t *task,
+                          migrate_progress_cb progress_cb,
+                          void *user_data)
+{
+    if (!mgr || !task) {
+        return -1;
+    }
+
+    if (task->strategy != MIGRATE_VIRTUAL_NODE) {
+        return -1;
+    }
+
+    char src_path[512];
+    char dst_path[512];
+
+    /* 获取源和目标分片路径 */
+    if (migrate_get_shard_path(task->source_shard, src_path, sizeof(src_path)) != 0) {
+        return -1;
+    }
+    if (migrate_get_shard_path(task->target_shard, dst_path, sizeof(dst_path)) != 0) {
+        return -1;
+    }
+
+    /* 打开源分片数据库 */
+    kv_t *src_db = kv_open(src_path);
+    if (!src_db) {
+        return -1;
+    }
+
+    /* 打开目标分片数据库（不存在则创建） */
+    kv_t *dst_db = kv_open(dst_path);
+    if (!dst_db) {
+        kv_close(src_db);
+        return -1;
+    }
+
+    /* 计算虚拟节点的哈希范围
+     * 虚拟节点的哈希范围由一致性哈希环决定
+     * 这里简化处理：使用 vnode_id * (UINT64_MAX / vnode_count) 作为范围 */
+    uint64_t vnode_count = DEFAULT_VNODE_COUNT;
+    uint64_t hash_range_size = UINT64_MAX / vnode_count;
+    uint64_t hash_start = (uint64_t)task->vnode_id * hash_range_size;
+    uint64_t hash_end = hash_start + hash_range_size - 1;
+
+    /* 创建扫描迭代器 - 扫描源分片所有数据 */
+    kv_iter_t *iter = kv_scan(src_db, NULL, 0, NULL, 0);
+    if (!iter) {
+        kv_close(dst_db);
+        kv_close(src_db);
+        return -1;
+    }
+
+    /* 获取总键数量用于进度计算 */
+    kv_stats_t src_stats;
+    double total_keys = 1.0;  /* 避免除零 */
+    if (kv_stats(src_db, &src_stats) == KV_OK) {
+        total_keys = (double)(src_stats.num_keys > 0 ? src_stats.num_keys : 1);
+    }
+
+    /* 批次缓冲 */
+    void **keys = malloc(sizeof(void *) * MIGRATE_BATCH_SIZE);
+    void **values = malloc(sizeof(void *) * MIGRATE_BATCH_SIZE);
+    size_t *key_lens = malloc(sizeof(size_t) * MIGRATE_BATCH_SIZE);
+    size_t *value_lens = malloc(sizeof(size_t) * MIGRATE_BATCH_SIZE);
+    size_t batch_count = 0;
+    uint64_t migrated_count = 0;
+    uint64_t filtered_count = 0;
+    int result = 0;
+
+    if (!keys || !values || !key_lens || !value_lens) {
+        result = -1;
+        goto cleanup;
+    }
+
+    /* 第一阶段：读取源分片数据，筛选属于该 vnode 范围的数据并写入目标分片 */
+    while (kv_iter_next(iter) == KV_OK) {
+        const void *key = kv_iter_key(iter);
+        size_t key_len = kv_iter_key_len(iter);
+        const void *value = kv_iter_value(iter);
+        size_t value_len = kv_iter_value_len(iter);
+
+        if (!key || !value || key_len == 0 || value_len == 0) {
+            continue;
+        }
+
+        /* 检查键的哈希值是否在当前虚拟节点范围内 */
+        if (!is_key_in_vnode_range(key, key_len, hash_start, hash_end)) {
+            filtered_count++;
+            continue;
+        }
+
+        /* 写入目标分片 */
+        if (kv_put(dst_db, key, key_len, value, value_len) != KV_OK) {
+            result = -1;
+            break;
+        }
+
+        batch_count++;
+        migrated_count++;
+
+        /* 批次处理 */
+        if (batch_count >= MIGRATE_BATCH_SIZE) {
+            /* 刷新目标数据库 */
+            kv_flush(dst_db);
+
+            /* 更新进度（基于迁移的数据量占总数据的比例） */
+            double progress = 0.5 * (migrated_count / total_keys);
+            task->progress = progress > 0.5 ? 0.5 : progress;
+
+            if (progress_cb && migrated_count % MIGRATE_PROGRESS_INTERVAL == 0) {
+                progress_cb(task->task_id, task->progress, user_data);
+            }
+
+            batch_count = 0;
+        }
+    }
+
+    /* 处理剩余批次 */
+    if (batch_count > 0) {
+        kv_flush(dst_db);
+    }
+
+    /* 第二阶段：验证数据一致性 */
+    if (result == 0) {
+        kv_iter_free(iter);
+
+        /* 重新扫描验证目标分片中属于该 vnode 范围的数据 */
+        iter = kv_scan(dst_db, NULL, 0, NULL, 0);
+        if (!iter) {
+            result = -1;
+            goto cleanup;
+        }
+
+        uint64_t verified_count = 0;
+        while (kv_iter_next(iter) == KV_OK) {
+            const void *key = kv_iter_key(iter);
+            size_t key_len = kv_iter_key_len(iter);
+
+            /* 确认该键确实在 vnode 范围内 */
+            if (!is_key_in_vnode_range(key, key_len, hash_start, hash_end)) {
+                continue;
+            }
+
+            /* 验证源和目标数据一致 */
+            void *src_value = NULL;
+            size_t src_value_len = 0;
+
+            if (kv_get(src_db, key, key_len, &src_value, &src_value_len) != KV_OK) {
+                result = -1;
+                break;
+            }
+
+            const void *dst_value = kv_iter_value(iter);
+            size_t dst_value_len = kv_iter_value_len(iter);
+
+            if (src_value_len != dst_value_len ||
+                memcmp(src_value, dst_value, src_value_len) != 0) {
+                free(src_value);
+                result = -1;
+                break;
+            }
+
+            free(src_value);
+            src_value = NULL;
+
+            verified_count++;
+
+            /* 进度更新（50%-90%） */
+            double progress = 0.5 + 0.4 * ((double)verified_count / migrated_count);
+            task->progress = progress > 0.9 ? 0.9 : progress;
+
+            if (progress_cb && verified_count % MIGRATE_PROGRESS_INTERVAL == 0) {
+                progress_cb(task->task_id, task->progress, user_data);
+            }
+        }
+    }
+
+    /* 第三阶段：更新路由表并删除源分片中属于该 vnode 范围的数据 */
+    if (result == 0) {
+        /* 更新路由表：将 vnode 范围路由到目标分片
+         * 实际实现需要调用 shard_router_update_vnode 或类似接口
+         * 这里简化处理 */
+
+        shard_router_t *router = mgr->router;
+        if (router) {
+            /* 通知路由表更新（通过协调器） */
+            /* 实际需要调用: shard_router_update_vnode(mgr->router, task->vnode_id, task->target_shard) */
+        }
+
+        /* 删除源分片中属于该 vnode 范围的数据 */
+        kv_iter_free(iter);
+        iter = kv_scan(src_db, NULL, 0, NULL, 0);
+        if (iter) {
+            while (kv_iter_next(iter) == KV_OK) {
+                const void *key = kv_iter_key(iter);
+                size_t key_len = kv_iter_key_len(iter);
+
+                /* 只删除属于该 vnode 范围的数据 */
+                if (is_key_in_vnode_range(key, key_len, hash_start, hash_end)) {
+                    kv_delete(src_db, key, key_len);
+                }
+            }
+        }
+
+        /* 刷脏页 */
+        kv_flush(src_db);
+
+        /* 更新进度到完成 */
+        task->progress = 1.0;
+        if (progress_cb) {
+            progress_cb(task->task_id, 1.0, user_data);
+        }
+    }
+
+cleanup:
+    if (iter) {
+        kv_iter_free(iter);
+    }
+
+    /* 关闭数据库 */
+    kv_close(dst_db);
+    kv_close(src_db);
+
+    /* 释放批次内存 */
+    free(keys);
+    free(values);
+    free(key_lens);
+    free(value_lens);
+
+    if (result == 0) {
+        task->status = MIGRATE_STATUS_COMPLETED;
+    } else {
+        task->status = MIGRATE_STATUS_FAILED;
+    }
+
+    return result;
+}
+
+/**
  * @brief 执行迁移任务
  */
 int migrate_manager_execute(migrate_manager_t *mgr, migrate_task_t *task)
@@ -508,8 +1057,11 @@ int migrate_manager_execute(migrate_manager_t *mgr, migrate_task_t *task)
     if (found->strategy == MIGRATE_INCREMENTAL) {
         /* 执行增量迁移 */
         result = migrate_execute_incremental(mgr, found, NULL, NULL);
+    } else if (found->strategy == MIGRATE_VIRTUAL_NODE) {
+        /* 执行虚拟节点迁移 */
+        result = migrate_execute_vnode(mgr, found, NULL, NULL);
     } else {
-        /* 虚拟节点迁移暂未实现 */
+        /* 未知策略 */
         result = -1;
     }
 

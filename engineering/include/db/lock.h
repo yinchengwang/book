@@ -44,6 +44,9 @@
 extern "C" {
 #endif
 
+/* pthread include for condition variables */
+#include <pthread.h>
+
 /* ============================================================
  * 锁层级定义
  * ============================================================ */
@@ -144,6 +147,10 @@ struct lock_entry_s {
 
     /* 重入锁支持：记录每个事务的重入次数 */
     atomic_int_t      recursion_count;   /**< 当前持有者的重入计数（排他锁） */
+
+    /* 条件变量用于阻塞等待 */
+    pthread_cond_t    cond;
+    pthread_mutex_t   mutex;
 };
 
 /* ============================================================

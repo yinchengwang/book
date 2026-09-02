@@ -8,6 +8,16 @@ if(TARGET index)
     )
 endif()
 
+# 索引目录
+if(TARGET index)
+    target_sources(index PRIVATE
+        index_catalog.c
+        index_cost.c
+        index_manager.c
+        index_selector.c
+    )
+endif()
+
 # Hilbert 曲线索引
 add_subdirectory(hilbert)
 

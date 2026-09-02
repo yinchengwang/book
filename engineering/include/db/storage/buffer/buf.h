@@ -98,10 +98,10 @@ struct BufferDesc_s {
 
 /**
  * @brief 初始化 Buffer Pool
- * @param nbuffers buffer 数量（0 表示使用默认值）
+ * @param path 数据库文件路径（NULL 或 "" 表示仅初始化内存，不打开文件）
  * @return 0 成功，-1 失败
  */
-int buf_init(int nbuffers);
+int buf_init(const char *path);
 
 /**
  * @brief 关闭 Buffer Pool

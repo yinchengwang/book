@@ -211,6 +211,8 @@ add_test(NAME test_rdf_sparql COMMAND test_rdf_sparql)
 # RDF 引擎综合测试
 # ========================================================================
 add_executable(test_rdf_engine rdf_engine_test.cpp)
+
+target_compile_features(test_rdf_engine PRIVATE cxx_std_14)
 target_link_libraries(test_rdf_engine
     PRIVATE
     storage_rdf

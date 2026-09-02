@@ -626,6 +626,67 @@ uint64_t wal_write_vector_append(wal_t *wal, uint32_t segment_id,
 }
 
 /* ============================================================
+ * Task 37: Cross-Modal 2PC WAL 记录
+ * ============================================================ */
+
+uint64_t wal_write_cross_prepare(wal_t *wal, uint32_t txn_id,
+                                 uint32_t participant_count,
+                                 const char **participants) {
+    if (!wal || !participants || participant_count == 0) return 0;
+
+    /* 计算总数据大小：participant_count(4) + 每位参与者名字长度(4) + 名字 */
+    size_t data_size = sizeof(uint32_t);  /* participant_count */
+    size_t names_size = 0;
+    for (uint32_t i = 0; i < participant_count; i++) {
+        if (participants[i]) {
+            size_t name_len = strlen(participants[i]) + 1;  /* 含终止符 */
+            data_size += sizeof(uint32_t) + name_len;
+            names_size += name_len;
+        }
+    }
+
+    /* 打包：participant_count + [name_len(4) + name] * n */
+    uint8_t *payload = (uint8_t *)malloc(data_size);
+    if (!payload) return 0;
+
+    size_t off = 0;
+    memcpy(payload + off, &participant_count, sizeof(uint32_t));
+    off += sizeof(uint32_t);
+
+    for (uint32_t i = 0; i < participant_count; i++) {
+        if (participants[i]) {
+            size_t name_len = strlen(participants[i]) + 1;
+            memcpy(payload + off, &name_len, sizeof(uint32_t));
+            off += sizeof(uint32_t);
+            memcpy(payload + off, participants[i], name_len);
+            off += name_len;
+        } else {
+            size_t name_len = 1;
+            memcpy(payload + off, &name_len, sizeof(uint32_t));
+            off += sizeof(uint32_t);
+            payload[off] = '\0';
+            off += 1;
+        }
+    }
+
+    uint32_t prev_lsn = (uint32_t)(wal->current_lsn > 0 ? wal->current_lsn - 1 : 0);
+    uint64_t lsn = wal_write_record(wal, WAL_LOG_CROSS_PREPARE, txn_id, prev_lsn,
+                                    NULL, 0, payload, data_size);
+    free(payload);
+    return lsn;
+}
+
+uint64_t wal_write_cross_commit(wal_t *wal, uint32_t txn_id) {
+    uint32_t prev_lsn = (uint32_t)(wal->current_lsn > 0 ? wal->current_lsn - 1 : 0);
+    return wal_write_record(wal, WAL_LOG_CROSS_COMMIT, txn_id, prev_lsn, NULL, 0, NULL, 0);
+}
+
+uint64_t wal_write_cross_abort(wal_t *wal, uint32_t txn_id) {
+    uint32_t prev_lsn = (uint32_t)(wal->current_lsn > 0 ? wal->current_lsn - 1 : 0);
+    return wal_write_record(wal, WAL_LOG_CROSS_ABORT, txn_id, prev_lsn, NULL, 0, NULL, 0);
+}
+
+/* ============================================================
  * 刷盘与查询
  * ============================================================ */
 

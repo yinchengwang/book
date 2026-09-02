@@ -33,7 +33,7 @@ typedef struct ExecNode {
      * @brief 获取下一批数据
      * @return VectorBlock 指针，NULL 表示迭代结束
      */
-    struct VectorBlock *(*next)(struct ExecNode *node);
+    VectorBlock *(*next)(struct ExecNode *node);
 
     /**
      * @brief 重置算子状态（用于迭代重启）

@@ -98,7 +98,7 @@
       "Read(//c/code/book/**)",
       "Read(//code/book/learning/notes/**)",
       "Read(//c/code/book/learning/notes/**)",
-      "Bash(cp /c/code/book/project/reading-radar/data/learn-deep/ds-*.md /c/code/book/project/reading-radar/data/learn-deep/ds/)",
+      "Bash(find /c/code/book/project/reading-radar/data/learn-deep -name 'ds-*.md' -exec cp {} /c/code/book/project/reading-radar/data/learn-deep/ds/ \\;)",
       "Bash(node scripts/save-generated-content.js \"C:/Users/yinch/AppData/Local/Temp/claude/c--code-book/df3adcfd-e545-48e9-80b1-0a003ed39f07/tasks/wch140ciz.output\")",
       "Bash(node scripts/merge-and-check.js \"C:/Users/yinch/AppData/Local/Temp/claude/c--code-book/df3adcfd-e545-48e9-80b1-0a003ed39f07/tasks/we0qbbql9.output\")",
       "mcp__plugin_desktop-commander_desktop-commander__write_file",

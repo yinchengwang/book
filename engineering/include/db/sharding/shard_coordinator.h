@@ -87,6 +87,11 @@ int shard_coordinator_select_least_load(shard_coordinator_t *coord,
                                          const int *candidate_shards,
                                          int count);
 
+/**
+ * @brief 获取分片路由器
+ */
+shard_router_t *shard_coordinator_get_router(shard_coordinator_t *coord);
+
 #ifdef __cplusplus
 }
 #endif

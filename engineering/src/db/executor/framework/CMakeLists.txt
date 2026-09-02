@@ -5,4 +5,5 @@ add_library(executor_framework STATIC
 )
 target_link_libraries(executor_framework
     PUBLIC db_core db_vectorized
+    PRIVATE executor_operators
 )

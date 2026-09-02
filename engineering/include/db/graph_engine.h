@@ -10,6 +10,7 @@
 #include "storage_engine.h"
 #include "db/graph/graph.h"
 #include "db/mm_pool.h"
+#include "db/mmdb_lock.h"  /* C0-1：统一并发原语 */
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -42,7 +43,7 @@ typedef struct graph_engine_db_s {
 
     /* 并发控制 */
     lock_manager_t *lockmgr;     /**< 锁管理器 */
-    void *rwlock;                /**< 读写锁 */
+    mmdb_rwlock_t rwlock;        /**< 跨平台读写锁（C0-1：统一 mmdb_rwlock 原语） */
     bool use_lock;               /**< 是否启用锁 */
 } graph_engine_db_t;
 

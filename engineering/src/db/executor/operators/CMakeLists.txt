@@ -5,6 +5,8 @@ add_library(executor_operators STATIC
     project_exec.c
     hashjoin_exec.c
     hashagg_exec.c
+    shard_scan_exec.c
+    index_scan_exec.c
 )
 target_link_libraries(executor_operators
     PUBLIC executor_framework

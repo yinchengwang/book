@@ -100,9 +100,12 @@ if(MMDB_ENABLE_SPATIAL)
     endif()
 endif()
 
-# 树引擎（代码存在但有编译问题，暂不启用）
+# 树引擎
 if(MMDB_ENABLE_TREE)
-    message(STATUS "Tree engine: code exists but has build issues, not enabling")
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/yang")
+        add_subdirectory(yang)
+        message(STATUS "Tree engine: enabled")
+    endif()
 endif()
 
 # 流式引擎
@@ -154,6 +157,9 @@ set(DB_STORAGE_OBJECTS "")
 
 # 条件收集 OBJECT 库（仅收集可正常编译的引擎）
 set(DB_STORAGE_SUBMODULES buffer page lock catalog wal rel mm blob)
+if(MMDB_ENABLE_TREE AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/yang")
+    list(APPEND DB_STORAGE_SUBMODULES yang)
+endif()
 if(MMDB_ENABLE_KV AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/kv")
     list(APPEND DB_STORAGE_SUBMODULES kv)
 endif()

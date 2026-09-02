@@ -47,6 +47,7 @@ extern "C" {
  * @brief 边结构
  */
 typedef struct graph_csr_edge_s {
+    uint64_t src;           /**< 源顶点 ID (CSR outgoing edge) */
     uint64_t dst;           /**< 目标顶点 ID */
     uint32_t edge_type;     /**< 边类型 */
     uint64_t edge_id;       /**< 边 ID */
@@ -278,6 +279,27 @@ bool graph_csr_needs_compact(const graph_csr_t *csr);
  * @return 使用率 (0.0 - 1.0)
  */
 double graph_csr_coo_usage(const graph_csr_t *csr);
+
+/**
+ * @brief 构建反向边索引
+ *
+ * 根据当前的 CSR 出边构建入边索引（in_offsets 和 in_edges）。
+ *
+ * @param csr CSR 图句柄
+ */
+void graph_csr_build_reverse_index(graph_csr_t *csr);
+
+/**
+ * @brief 扫描所有顶点
+ *
+ * 返回所有顶点 ID 的数组。
+ *
+ * @param csr CSR 图句柄
+ * @param out_ids 输出顶点 ID 数组（调用者负责释放）
+ * @param out_count 输出顶点数
+ * @return 0 成功，-1 失败
+ */
+int graph_csr_scan(graph_csr_t *csr, uint64_t **out_ids, uint32_t *out_count);
 
 /* ========================================================================
  * 标签索引 API

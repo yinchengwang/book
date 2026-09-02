@@ -9,6 +9,7 @@ if(SHARD_SOURCE_FILES)
         ${ENGINEERING_SOURCE_DIR}/include
         ${ENGINEERING_SOURCE_DIR}/include/db
         ${ENGINEERING_SOURCE_DIR}/include/db/sharding
+        ${ENGINEERING_SOURCE_DIR}/include/db/storage
     )
     target_link_libraries(db_sharding PRIVATE project_includes)
 endif()
