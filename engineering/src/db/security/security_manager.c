@@ -13,21 +13,23 @@
  * ============================================================ */
 
 struct security_manager {
-    user_t      *users;       /* 用户数组 */
-    int          user_count;
-    int          user_capacity;
-    role_t      *roles;       /* 角色数组 */
-    int          role_count;
-    int          role_capacity;
-    acl_entry_t *acls;        /* ACL 条目数组 */
-    int          acl_count;
-    int          acl_capacity;
-    void        *audit_logs;  /* 审计日志预留扩展 */
-    int          log_count;
+    user_t       *users;       /* 用户数组 */
+    int           user_count;
+    int           user_capacity;
+    role_t       *roles;       /* 角色数组 */
+    int           role_count;
+    int           role_capacity;
+    acl_entry_t   *acls;        /* ACL 条目数组 */
+    int           acl_count;
+    int           acl_capacity;
+    audit_log_t  *audit_logs;  /* 审计日志数组 */
+    int           audit_count;
+    int           audit_capacity;
+    int64_t       next_audit_id;
     pthread_rwlock_t rwlock;
-    int          next_user_id;
-    int          next_role_id;
-    int          next_acl_id;
+    int           next_user_id;
+    int           next_role_id;
+    int           next_acl_id;
 };
 
 /* ============================================================
@@ -173,6 +175,7 @@ security_mgr_t *security_manager_create(void)
     mgr->next_user_id = 1;
     mgr->next_role_id = 1;
     mgr->next_acl_id = 1;
+    mgr->next_audit_id = 1;
 
     return mgr;
 }
@@ -197,6 +200,9 @@ void security_manager_destroy(security_mgr_t *mgr)
 
     /* 释放 ACL 资源 */
     free(mgr->acls);
+
+    /* 释放审计日志资源 */
+    free(mgr->audit_logs);
 
     pthread_rwlock_destroy(&mgr->rwlock);
     free(mgr);
@@ -811,4 +817,165 @@ int *security_get_allowed_columns(security_mgr_t *mgr, int user_id, int table_id
 
     *count = columns_count;
     return columns;
+}
+
+/* ============================================================
+ * Audit Log 管理
+ * ============================================================ */
+
+static int ensure_audit_capacity(security_mgr_t *mgr)
+{
+    if (mgr->audit_count < mgr->audit_capacity) {
+        return 0;
+    }
+
+    int new_capacity = mgr->audit_capacity == 0 ? 64 : mgr->audit_capacity * 2;
+    audit_log_t *new_logs = (audit_log_t *)realloc(mgr->audit_logs, new_capacity * sizeof(audit_log_t));
+    if (new_logs == NULL) {
+        return -1;
+    }
+
+    mgr->audit_logs = new_logs;
+    mgr->audit_capacity = new_capacity;
+    return 0;
+}
+
+int security_log_operation(security_mgr_t *mgr, const audit_log_t *log)
+{
+    if (mgr == NULL || log == NULL) {
+        return -1;
+    }
+
+    pthread_rwlock_wrlock(&mgr->rwlock);
+
+    /* 确保容量 */
+    if (ensure_audit_capacity(mgr) != 0) {
+        pthread_rwlock_unlock(&mgr->rwlock);
+        return -1;
+    }
+
+    audit_log_t *dst = &mgr->audit_logs[mgr->audit_count];
+    memset(dst, 0, sizeof(audit_log_t));
+
+    dst->log_id = mgr->next_audit_id++;
+    dst->user_id = log->user_id;
+    dst->op = log->op;
+    dst->table_id = log->table_id;
+    dst->affected_rows = log->affected_rows;
+    dst->timestamp = log->timestamp != 0 ? log->timestamp : time(NULL);
+    dst->status = log->status;
+
+    if (log->sql != NULL) {
+        strncpy(dst->sql, log->sql, sizeof(dst->sql) - 1);
+        dst->sql[sizeof(dst->sql) - 1] = '\0';
+    }
+
+    if (log->client_ip != NULL) {
+        strncpy(dst->client_ip, log->client_ip, sizeof(dst->client_ip) - 1);
+        dst->client_ip[sizeof(dst->client_ip) - 1] = '\0';
+    }
+
+    mgr->audit_count++;
+    pthread_rwlock_unlock(&mgr->rwlock);
+
+    return 0;
+}
+
+int security_query_audit(security_mgr_t *mgr, int user_id, time_t start, time_t end,
+                        audit_log_t **results, int *count)
+{
+    if (mgr == NULL || results == NULL || count == NULL) {
+        return -1;
+    }
+
+    *results = NULL;
+    *count = 0;
+
+    pthread_rwlock_rdlock(&mgr->rwlock);
+
+    /* 先统计匹配的日志数量 */
+    int matched = 0;
+    for (int i = 0; i < mgr->audit_count; i++) {
+        audit_log_t *log = &mgr->audit_logs[i];
+
+        if (user_id >= 0 && log->user_id != user_id) {
+            continue;
+        }
+
+        if (start > 0 && log->timestamp < start) {
+            continue;
+        }
+
+        if (end > 0 && log->timestamp > end) {
+            continue;
+        }
+
+        matched++;
+    }
+
+    if (matched == 0) {
+        pthread_rwlock_unlock(&mgr->rwlock);
+        return 0;
+    }
+
+    /* 分配结果数组 */
+    audit_log_t *res = (audit_log_t *)malloc(matched * sizeof(audit_log_t));
+    if (res == NULL) {
+        pthread_rwlock_unlock(&mgr->rwlock);
+        return -1;
+    }
+
+    /* 填充结果 */
+    int idx = 0;
+    for (int i = 0; i < mgr->audit_count; i++) {
+        audit_log_t *log = &mgr->audit_logs[i];
+
+        if (user_id >= 0 && log->user_id != user_id) {
+            continue;
+        }
+
+        if (start > 0 && log->timestamp < start) {
+            continue;
+        }
+
+        if (end > 0 && log->timestamp > end) {
+            continue;
+        }
+
+        memcpy(&res[idx++], log, sizeof(audit_log_t));
+    }
+
+    pthread_rwlock_unlock(&mgr->rwlock);
+
+    *results = res;
+    *count = matched;
+    return 0;
+}
+
+int security_purge_old_logs(security_mgr_t *mgr, time_t before)
+{
+    if (mgr == NULL || before <= 0) {
+        return -1;
+    }
+
+    pthread_rwlock_wrlock(&mgr->rwlock);
+
+    int removed = 0;
+    int i = 0;
+    while (i < mgr->audit_count) {
+        if (mgr->audit_logs[i].timestamp < before) {
+            /* 移动后面的日志 */
+            for (int j = i; j < mgr->audit_count - 1; j++) {
+                mgr->audit_logs[j] = mgr->audit_logs[j + 1];
+            }
+            mgr->audit_count--;
+            removed++;
+        } else {
+            i++;
+        }
+    }
+
+    pthread_rwlock_unlock(&mgr->rwlock);
+
+    return removed;
 }

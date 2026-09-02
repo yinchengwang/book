@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <time.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -230,6 +231,70 @@ const char *security_get_row_filter(security_mgr_t *mgr, int user_id, int table_
  * @return 成功返回列ID数组（需调用方释放），失败返回 NULL
  */
 int *security_get_allowed_columns(security_mgr_t *mgr, int user_id, int table_id, int *count);
+
+/* ============================================================
+ * Audit Log 类型定义
+ * ============================================================ */
+
+/** 操作类型 */
+typedef enum {
+    OP_SELECT = 0,
+    OP_INSERT,
+    OP_UPDATE,
+    OP_DELETE,
+    OP_CREATE,
+    OP_DROP,
+    OP_GRANT,
+    OP_REVOKE,
+    OP_LOGIN,
+    OP_LOGOUT
+} operation_type_t;
+
+/** 审计日志条目 */
+typedef struct {
+    int64_t         log_id;
+    int             user_id;
+    operation_type_t op;
+    int             table_id;
+    char            sql[1024];
+    int             affected_rows;
+    char            client_ip[64];
+    time_t          timestamp;
+    int             status;
+} audit_log_t;
+
+/* ============================================================
+ * Audit Log 管理
+ * ============================================================ */
+
+/**
+ * @brief 记录审计日志
+ * @param mgr 管理器指针
+ * @param log 审计日志条目
+ * @return 成功返回 0，失败返回 -1
+ */
+int security_log_operation(security_mgr_t *mgr, const audit_log_t *log);
+
+/**
+ * @brief 查询审计日志
+ * @param mgr 管理器指针
+ * @param user_id 用户ID，-1 表示所有用户
+ * @param start 开始时间
+ * @param end 结束时间
+ * @param results 输出参数，返回匹配的审计日志数组
+ * @param count 输出参数，返回日志数量
+ * @return 成功返回 0，失败返回 -1
+ */
+int security_query_audit(security_mgr_t *mgr, int user_id, time_t start, time_t end,
+                        audit_log_t **results, int *count);
+
+/**
+ * @brief 删除指定时间之前的审计日志
+ * @param mgr 管理器指针
+ * @param before 时间戳
+ * @return 成功返回删除的日志数量，失败返回 -1
+ */
+int security_purge_old_logs(security_mgr_t *mgr, time_t before);
 
 #ifdef __cplusplus
 }
