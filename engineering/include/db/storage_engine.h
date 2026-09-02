@@ -37,7 +37,7 @@ typedef enum {
     /* C3-5 T10/T11：扩展 RDF/SPATIO-TEMPORAL 注册 */
     MODEL_RDF = 11,           /**< RDF 三元组 */
     MODEL_SPATIOTEMPORAL = 12, /**< 时空对象 */
-    MODEL_COUNT = 10,        /**< 模型数量 */
+    MODEL_COUNT = 13,          /**< 模型数量 */
 } DataModel;
 
 /**

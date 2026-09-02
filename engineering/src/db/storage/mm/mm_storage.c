@@ -33,6 +33,8 @@ static const char *g_model_dir_names[MODEL_COUNT] = {
     "yang",        /* MODEL_TREE */
     "stream",      /* MODEL_STREAM */
     "columnar",    /* MODEL_COLUMNAR */
+    "rdf",         /* MODEL_RDF */
+    "spatiotemporal", /* MODEL_SPATIOTEMPORAL */
 };
 
 /** 全局上下文 */
@@ -216,7 +218,7 @@ const char *storage_model_name(DataModel model) {
     static const char *names[MODEL_COUNT] = {
         "relational", "kv", "graph", "vector",
         "timeseries", "document", "spatial", "tree",
-        "stream", "columnar"
+        "stream", "columnar", "rdf", "spatiotemporal"
     };
     if (model < 0 || model >= MODEL_COUNT) {
         return "unknown";
