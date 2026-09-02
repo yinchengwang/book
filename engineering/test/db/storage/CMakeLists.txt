@@ -188,3 +188,79 @@ set_target_properties(test_rdf_sparql PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 add_test(NAME test_rdf_sparql COMMAND test_rdf_sparql)
+
+# ========================================================================
+# Stream 引擎测试
+# ========================================================================
+add_executable(stream_engine_test
+    stream_engine_test.cpp
+)
+
+target_link_libraries(stream_engine_test
+    PRIVATE
+    db_storage
+    db_core
+    project_includes
+    gtest
+    gtest_main
+)
+
+target_include_directories(stream_engine_test PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googletest/include
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googlemock/include
+)
+
+if(MSVC)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "")
+        target_compile_options(stream_engine_test PRIVATE /W4 /MDd)
+    else()
+        target_compile_options(stream_engine_test PRIVATE /W4 /MD)
+    endif()
+else()
+    target_compile_options(stream_engine_test PRIVATE -Wall -Wextra)
+endif()
+
+set_target_properties(stream_engine_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+add_test(NAME stream_engine_test COMMAND stream_engine_test)
+
+# ========================================================================
+# Columnar 引擎测试
+# ========================================================================
+add_executable(columnar_engine_test
+    columnar_engine_test.cpp
+)
+
+target_link_libraries(columnar_engine_test
+    PRIVATE
+    db_storage
+    db_core
+    project_includes
+    gtest
+    gtest_main
+)
+
+target_include_directories(columnar_engine_test PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googletest/include
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googlemock/include
+)
+
+if(MSVC)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "")
+        target_compile_options(columnar_engine_test PRIVATE /W4 /MDd)
+    else()
+        target_compile_options(columnar_engine_test PRIVATE /W4 /MD)
+    endif()
+else()
+    target_compile_options(columnar_engine_test PRIVATE -Wall -Wextra)
+endif()
+
+set_target_properties(columnar_engine_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+add_test(NAME columnar_engine_test COMMAND columnar_engine_test)
