@@ -2,6 +2,7 @@
 #include "db/executor/executor_framework.h"
 #include "db/executor/exec_node.h"
 #include "db/executor/exec_states.h"
+#include "db/executor/exec_operators.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -22,7 +23,10 @@ static ExecNode *convert_scan_node(const plan_node_t *plan) {
 
     node->node_type = plan->type;
     node->state = state;
-    // 函数指针在算子实现文件中设置
+    node->open = seqscan_open;
+    node->next = seqscan_next;
+    node->reset = seqscan_reset;
+    node->close = seqscan_close;
     return node;
 }
 
