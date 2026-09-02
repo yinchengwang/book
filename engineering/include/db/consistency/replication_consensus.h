@@ -11,6 +11,7 @@
 
 #include "raft.h"
 #include "replication.h"
+#include "failover.h"
 
 #ifdef __cplusplus
 extern "C" {

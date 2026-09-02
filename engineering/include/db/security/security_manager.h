@@ -56,6 +56,28 @@ typedef struct {
 } role_t;
 
 /* ============================================================
+ * ACL 类型定义
+ * ============================================================ */
+
+/** ACL 级别 */
+typedef enum {
+    ACL_TABLE = 0,
+    ACL_COLUMN,
+    ACL_ROW
+} acl_level_t;
+
+/** ACL 条目 */
+typedef struct {
+    int          acl_id;
+    int          role_id;
+    int          table_id;
+    int          column_id;      /* -1 表示整表 */
+    char         row_filter[256];
+    permission_t perm;
+    acl_level_t  level;
+} acl_entry_t;
+
+/* ============================================================
  * 生命周期管理
  * ============================================================ */
 
@@ -169,6 +191,45 @@ int security_revoke_permission(security_mgr_t *mgr, int role_id, permission_t pe
  * @return 有权限返回 true，否则返回 false
  */
 bool security_check_permission(security_mgr_t *mgr, int user_id, permission_t perm);
+
+/* ============================================================
+ * ACL 管理
+ * ============================================================ */
+
+/**
+ * @brief 创建 ACL 条目
+ * @param mgr 管理器指针
+ * @param entry ACL 条目
+ * @return 成功返回 ACL ID，失败返回 -1
+ */
+int security_create_acl(security_mgr_t *mgr, const acl_entry_t *entry);
+
+/**
+ * @brief 删除 ACL 条目
+ * @param mgr 管理器指针
+ * @param acl_id ACL ID
+ * @return 成功返回 0，失败返回 -1
+ */
+int security_drop_acl(security_mgr_t *mgr, int acl_id);
+
+/**
+ * @brief 获取用户的行过滤器
+ * @param mgr 管理器指针
+ * @param user_id 用户ID
+ * @param table_id 表ID
+ * @return 成功返回行过滤器字符串，失败返回 NULL
+ */
+const char *security_get_row_filter(security_mgr_t *mgr, int user_id, int table_id);
+
+/**
+ * @brief 获取用户允许访问的列
+ * @param mgr 管理器指针
+ * @param user_id 用户ID
+ * @param table_id 表ID
+ * @param count 输出参数，返回列ID数组的长度
+ * @return 成功返回列ID数组（需调用方释放），失败返回 NULL
+ */
+int *security_get_allowed_columns(security_mgr_t *mgr, int user_id, int table_id, int *count);
 
 #ifdef __cplusplus
 }

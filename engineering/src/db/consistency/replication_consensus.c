@@ -20,6 +20,7 @@ struct replication_consensus {
     repl_manager_t     *repl;          /**< 复制管理器 */
     repl_config_t      *repl_cfg;      /**< 复制配置 */
     bool                started;       /**< 是否已启动 */
+    void               *failover_ctx;  /**< 故障切换上下文 */
 };
 
 /* ============================================================

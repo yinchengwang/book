@@ -13,19 +13,21 @@
  * ============================================================ */
 
 struct security_manager {
-    user_t  *users;       /* 用户数组 */
-    int      user_count;
-    int      user_capacity;
-    role_t  *roles;       /* 角色数组 */
-    int      role_count;
-    int      role_capacity;
-    void    *acls;        /* 访问控制列表预留扩展 */
-    int      acl_count;
-    void    *audit_logs;  /* 审计日志预留扩展 */
-    int      log_count;
+    user_t      *users;       /* 用户数组 */
+    int          user_count;
+    int          user_capacity;
+    role_t      *roles;       /* 角色数组 */
+    int          role_count;
+    int          role_capacity;
+    acl_entry_t *acls;        /* ACL 条目数组 */
+    int          acl_count;
+    int          acl_capacity;
+    void        *audit_logs;  /* 审计日志预留扩展 */
+    int          log_count;
     pthread_rwlock_t rwlock;
-    int       next_user_id;
-    int       next_role_id;
+    int          next_user_id;
+    int          next_role_id;
+    int          next_acl_id;
 };
 
 /* ============================================================
@@ -170,6 +172,7 @@ security_mgr_t *security_manager_create(void)
 
     mgr->next_user_id = 1;
     mgr->next_role_id = 1;
+    mgr->next_acl_id = 1;
 
     return mgr;
 }
@@ -191,6 +194,9 @@ void security_manager_destroy(security_mgr_t *mgr)
         free(mgr->roles[i].permissions);
     }
     free(mgr->roles);
+
+    /* 释放 ACL 资源 */
+    free(mgr->acls);
 
     pthread_rwlock_destroy(&mgr->rwlock);
     free(mgr);
@@ -537,4 +543,272 @@ bool security_check_permission(security_mgr_t *mgr, int user_id, permission_t pe
 
     pthread_rwlock_unlock(&mgr->rwlock);
     return false;
+}
+
+/* ============================================================
+ * ACL 管理
+ * ============================================================ */
+
+static int ensure_acl_capacity(security_mgr_t *mgr)
+{
+    if (mgr->acl_count < mgr->acl_capacity) {
+        return 0;
+    }
+
+    int new_capacity = mgr->acl_capacity == 0 ? 16 : mgr->acl_capacity * 2;
+    acl_entry_t *new_acls = (acl_entry_t *)realloc(mgr->acls, new_capacity * sizeof(acl_entry_t));
+    if (new_acls == NULL) {
+        return -1;
+    }
+
+    mgr->acls = new_acls;
+    mgr->acl_capacity = new_capacity;
+    return 0;
+}
+
+static acl_entry_t *find_acl_by_id(security_mgr_t *mgr, int acl_id)
+{
+    for (int i = 0; i < mgr->acl_count; i++) {
+        if (mgr->acls[i].acl_id == acl_id) {
+            return &mgr->acls[i];
+        }
+    }
+    return NULL;
+}
+
+static int get_user_roles_internal(security_mgr_t *mgr, int user_id, int **roles_out, int *count_out)
+{
+    user_t *user = find_user_by_id(mgr, user_id);
+    if (user == NULL || !user->enabled) {
+        return -1;
+    }
+
+    if (user->role_count == 0) {
+        *roles_out = NULL;
+        *count_out = 0;
+        return 0;
+    }
+
+    int *roles = (int *)malloc(user->role_count * sizeof(int));
+    if (roles == NULL) {
+        return -1;
+    }
+
+    memcpy(roles, user->roles, user->role_count * sizeof(int));
+    *roles_out = roles;
+    *count_out = user->role_count;
+    return 0;
+}
+
+int security_create_acl(security_mgr_t *mgr, const acl_entry_t *entry)
+{
+    if (mgr == NULL || entry == NULL) {
+        return -1;
+    }
+
+    pthread_rwlock_wrlock(&mgr->rwlock);
+
+    /* 检查角色是否存在 */
+    if (find_role_by_id(mgr, entry->role_id) == NULL) {
+        pthread_rwlock_unlock(&mgr->rwlock);
+        return -1;
+    }
+
+    /* 确保容量 */
+    if (ensure_acl_capacity(mgr) != 0) {
+        pthread_rwlock_unlock(&mgr->rwlock);
+        return -1;
+    }
+
+    acl_entry_t *acl = &mgr->acls[mgr->acl_count];
+    memset(acl, 0, sizeof(acl_entry_t));
+
+    acl->acl_id = mgr->next_acl_id++;
+    acl->role_id = entry->role_id;
+    acl->table_id = entry->table_id;
+    acl->column_id = entry->column_id;
+    acl->perm = entry->perm;
+    acl->level = entry->level;
+    if (entry->row_filter != NULL) {
+        strncpy(acl->row_filter, entry->row_filter, sizeof(acl->row_filter) - 1);
+        acl->row_filter[sizeof(acl->row_filter) - 1] = '\0';
+    }
+
+    mgr->acl_count++;
+    pthread_rwlock_unlock(&mgr->rwlock);
+
+    return acl->acl_id;
+}
+
+int security_drop_acl(security_mgr_t *mgr, int acl_id)
+{
+    if (mgr == NULL || acl_id < 0) {
+        return -1;
+    }
+
+    pthread_rwlock_wrlock(&mgr->rwlock);
+
+    int found_index = -1;
+    for (int i = 0; i < mgr->acl_count; i++) {
+        if (mgr->acls[i].acl_id == acl_id) {
+            found_index = i;
+            break;
+        }
+    }
+
+    if (found_index < 0) {
+        pthread_rwlock_unlock(&mgr->rwlock);
+        return -1;
+    }
+
+    /* 移动后面的 ACL 条目 */
+    for (int i = found_index; i < mgr->acl_count - 1; i++) {
+        mgr->acls[i] = mgr->acls[i + 1];
+    }
+
+    mgr->acl_count--;
+    pthread_rwlock_unlock(&mgr->rwlock);
+
+    return 0;
+}
+
+const char *security_get_row_filter(security_mgr_t *mgr, int user_id, int table_id)
+{
+    if (mgr == NULL || user_id < 0 || table_id < 0) {
+        return NULL;
+    }
+
+    pthread_rwlock_rdlock(&mgr->rwlock);
+
+    /* 获取用户的所有角色 */
+    int *roles = NULL;
+    int role_count = 0;
+    if (get_user_roles_internal(mgr, user_id, &roles, &role_count) != 0) {
+        pthread_rwlock_unlock(&mgr->rwlock);
+        return NULL;
+    }
+
+    /* 查找匹配的行级 ACL */
+    static char result[256];
+    result[0] = '\0';
+
+    for (int i = 0; i < mgr->acl_count; i++) {
+        acl_entry_t *acl = &mgr->acls[i];
+        if (acl->level != ACL_ROW) {
+            continue;
+        }
+        if (acl->table_id != table_id) {
+            continue;
+        }
+
+        /* 检查用户是否有此 ACL 对应的角色 */
+        bool has_role = false;
+        for (int j = 0; j < role_count; j++) {
+            if (roles[j] == acl->role_id) {
+                has_role = true;
+                break;
+            }
+        }
+
+        if (has_role && acl->row_filter[0] != '\0') {
+            strncpy(result, acl->row_filter, sizeof(result) - 1);
+            result[sizeof(result) - 1] = '\0';
+            break;
+        }
+    }
+
+    free(roles);
+    pthread_rwlock_unlock(&mgr->rwlock);
+
+    return result[0] != '\0' ? result : NULL;
+}
+
+int *security_get_allowed_columns(security_mgr_t *mgr, int user_id, int table_id, int *count)
+{
+    if (mgr == NULL || user_id < 0 || table_id < 0 || count == NULL) {
+        return NULL;
+    }
+
+    *count = 0;
+    pthread_rwlock_rdlock(&mgr->rwlock);
+
+    /* 获取用户的所有角色 */
+    int *roles = NULL;
+    int role_count = 0;
+    if (get_user_roles_internal(mgr, user_id, &roles, &role_count) != 0) {
+        pthread_rwlock_unlock(&mgr->rwlock);
+        return NULL;
+    }
+
+    /* 先收集所有允许的列 ID（去重） */
+    int *columns = NULL;
+    int columns_capacity = 0;
+    int columns_count = 0;
+
+    for (int i = 0; i < mgr->acl_count; i++) {
+        acl_entry_t *acl = &mgr->acls[i];
+        if (acl->level != ACL_COLUMN && acl->level != ACL_TABLE) {
+            continue;
+        }
+        if (acl->table_id != table_id) {
+            continue;
+        }
+
+        /* 检查用户是否有此 ACL 对应的角色 */
+        bool has_role = false;
+        for (int j = 0; j < role_count; j++) {
+            if (roles[j] == acl->role_id) {
+                has_role = true;
+                break;
+            }
+        }
+
+        if (!has_role) {
+            continue;
+        }
+
+        if (acl->level == ACL_TABLE) {
+            /* 表级权限意味着可以访问所有列（用 column_id = -1 表示） */
+            free(columns);
+            free(roles);
+            *count = 0;
+            pthread_rwlock_unlock(&mgr->rwlock);
+            return NULL;  /* 返回 NULL 表示有表级权限，所有列都允许 */
+        }
+
+        if (acl->column_id < 0) {
+            continue;
+        }
+
+        /* 检查是否已存在 */
+        bool found = false;
+        for (int k = 0; k < columns_count; k++) {
+            if (columns[k] == acl->column_id) {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            if (columns_count >= columns_capacity) {
+                int new_capacity = columns_capacity == 0 ? 16 : columns_capacity * 2;
+                int *new_cols = (int *)realloc(columns, new_capacity * sizeof(int));
+                if (new_cols == NULL) {
+                    free(columns);
+                    free(roles);
+                    pthread_rwlock_unlock(&mgr->rwlock);
+                    return NULL;
+                }
+                columns = new_cols;
+                columns_capacity = new_capacity;
+            }
+            columns[columns_count++] = acl->column_id;
+        }
+    }
+
+    free(roles);
+    pthread_rwlock_unlock(&mgr->rwlock);
+
+    *count = columns_count;
+    return columns;
 }
