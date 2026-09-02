@@ -150,6 +150,24 @@ target_include_directories(test_storage_kv PRIVATE
 add_test(NAME test_storage_kv COMMAND test_storage_kv)
 
 # ========================================================================
+# KV 并发和高级功能测试（C3-5 T22）
+# ========================================================================
+add_executable(test_kv_concurrency kv_concurrency_test.cpp)
+target_link_libraries(test_kv_concurrency
+    PRIVATE
+    db_storage
+    db_core
+    project_includes
+    gtest
+    gtest_main
+)
+target_include_directories(test_kv_concurrency PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+)
+add_test(NAME test_kv_concurrency COMMAND test_kv_concurrency)
+
+# ========================================================================
 # TID 管道测试
 # ========================================================================
 add_executable(tid_pipe_test tid_pipe_test.c)
@@ -188,6 +206,31 @@ set_target_properties(test_rdf_sparql PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 add_test(NAME test_rdf_sparql COMMAND test_rdf_sparql)
+
+# ========================================================================
+# RDF 引擎综合测试
+# ========================================================================
+add_executable(test_rdf_engine rdf_engine_test.cpp)
+target_link_libraries(test_rdf_engine
+    PRIVATE
+    storage_rdf
+    db_storage
+    db_core
+    project_includes
+    gtest
+    gtest_main
+)
+target_include_directories(test_rdf_engine PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+    ${ENGINEERING_SOURCE_DIR}/src/db/storage/rdf
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googletest/include
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googlemock/include
+)
+set_target_properties(test_rdf_engine PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+add_test(NAME test_rdf_engine COMMAND test_rdf_engine)
 
 # ========================================================================
 # Stream 引擎测试
@@ -264,3 +307,86 @@ set_target_properties(columnar_engine_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 add_test(NAME columnar_engine_test COMMAND columnar_engine_test)
+
+# ========================================================================
+# Graph Storage Engine Tests (C2-3 T9)
+# ========================================================================
+add_executable(test_graph
+    graph_test.cpp
+)
+
+target_link_libraries(test_graph
+    PRIVATE
+    storage_graph
+    db_storage
+    db_core
+    project_includes
+    gtest
+    gtest_main
+)
+
+target_include_directories(test_graph PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+    ${ENGINEERING_SOURCE_DIR}/include/db/storage
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googletest/include
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googlemock/include
+)
+
+if(MSVC)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "")
+        target_compile_options(test_graph PRIVATE /W4 /MDd)
+    else()
+        target_compile_options(test_graph PRIVATE /W4 /MD)
+    endif()
+else()
+    target_compile_options(test_graph PRIVATE -Wall -Wextra)
+endif()
+
+set_target_properties(test_graph PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+add_test(NAME test_graph COMMAND test_graph)
+
+# ========================================================================
+# Vector Index Tests (HNSW-PQ, IVF-PQ, Sparse, BM25, Hybrid)
+# ========================================================================
+add_executable(test_vector_index
+    vector_index_test.cpp
+)
+
+target_link_libraries(test_vector_index
+    PRIVATE
+    index_hnsw_pq
+    index_ivf_pq
+    storage_sparse
+    db_core
+    db_storage
+    project_includes
+    gtest
+    gtest_main
+)
+
+target_include_directories(test_vector_index PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+    ${ENGINEERING_SOURCE_DIR}/include/db/index
+    ${ENGINEERING_SOURCE_DIR}/include/db/storage
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googletest/include
+    ${CMAKE_SOURCE_DIR}/third_part/googletest/googlemock/include
+)
+
+if(MSVC)
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "")
+        target_compile_options(test_vector_index PRIVATE /W4 /MDd)
+    else()
+        target_compile_options(test_vector_index PRIVATE /W4 /MD)
+    endif()
+else()
+    target_compile_options(test_vector_index PRIVATE -Wall -Wextra)
+endif()
+
+set_target_properties(test_vector_index PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+add_test(NAME test_vector_index COMMAND test_vector_index)
