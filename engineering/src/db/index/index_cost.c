@@ -201,7 +201,6 @@ const index_cost_t *index_cost_estimate(const index_entry_t *idx,
     double total_cost = 0.0;
 
     switch (idx->type) {
-        case INDEX_TYPE_BTREE:
         case INDEX_TYPE_BTREE: {
             /* B-tree index cost model */
             int height = _btree_height(stats->row_count);

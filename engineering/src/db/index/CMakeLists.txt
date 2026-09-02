@@ -1,6 +1,21 @@
 # 索引子系统
 add_subdirectory(shared)
 
+# 索引框架核心库 (IndexCatalog, IndexManager, IndexCost, IndexSelector)
+add_library(index_framework OBJECT
+    index_catalog.c
+    index_config.c
+    index_cost.c
+    index_manager.c
+    index_selector.c
+)
+target_include_directories(index_framework PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${ENGINEERING_SOURCE_DIR}/include/db/index
+    ${ENGINEERING_SOURCE_DIR}/include/db
+    ${ENGINEERING_SOURCE_DIR}/include
+)
+
 # 索引 MVCC 可见性判断（索引与 MVCC 集成）
 if(TARGET index)
     target_sources(index PRIVATE
@@ -11,10 +26,7 @@ endif()
 # 索引目录
 if(TARGET index)
     target_sources(index PRIVATE
-        index_catalog.c
-        index_cost.c
-        index_manager.c
-        index_selector.c
+        index_mvcc.c
     )
 endif()
 
