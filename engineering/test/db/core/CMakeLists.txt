@@ -1,6 +1,10 @@
 # core 模块测试（guc, initdb, pg_ctl, db_server, vector_query）
 add_project_test(guc test.cpp)
 
+# 引擎注册表测试
+add_executable(engine_registry_test engine_registry_test.cpp)
+target_link_libraries(engine_registry_test PRIVATE db_core db_storage project_includes gtest gtest_main)
+
 # 向量查询执行器测试
 add_executable(test_vector_query vector_query_test.cpp)
 target_link_libraries(test_vector_query
