@@ -1,4 +1,5 @@
 # 分片支持模块
+# 添加 shard_balance.c 和 shard_coordinator.c（Task 2-3 实现）
 file(GLOB_RECURSE SHARD_SOURCE_FILES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.c")
 
 if(SHARD_SOURCE_FILES)
