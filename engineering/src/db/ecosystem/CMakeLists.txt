@@ -16,3 +16,11 @@ target_include_directories(ecosystem_rest_server PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include/db
     ${ENGINEERING_SOURCE_DIR}/include/db/ecosystem
 )
+
+# gRPC 服务器
+add_library(ecosystem_grpc_server STATIC grpc_server.c)
+target_include_directories(ecosystem_grpc_server PUBLIC
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+    ${ENGINEERING_SOURCE_DIR}/include/db/ecosystem
+)
