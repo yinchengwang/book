@@ -327,4 +327,5 @@ bool rc_can_read(const replication_consensus_t *rc)
     }
 
     /* Candidate 状态不能读取 */
-  
+    return false;
+}
