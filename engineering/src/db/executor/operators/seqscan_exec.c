@@ -39,6 +39,22 @@ VectorBlock *seqscan_next(ExecNode *node) {
 void seqscan_reset(ExecNode *node) {
     SeqScanState *state = (SeqScanState *)node->state;
     if (!state) return;
+
+    // Destroy and recreate the source to reset it
+    if (state->source) {
+        vecx_source_destroy(state->source);
+        state->source = NULL;
+    }
+
+    state->source = vecx_source_from_columns(
+        state->ncols,
+        state->col_types,
+        (const void **)state->col_data,
+        state->col_elem_size,
+        state->total_rows,
+        state->batch_size
+    );
+
     state->exhausted = 0;
 }
 

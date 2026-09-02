@@ -43,6 +43,8 @@ VectorBlock *hashagg_next(ExecNode *node) {
             return NULL;
         }
         state->emitted = 1;
+        // n==0 with output==NULL means empty result set (exhausted)
+        // n==0 with output!=NULL means valid empty result (0 groups, return empty block)
         if (!output) {
             state->exhausted = 1;
         }

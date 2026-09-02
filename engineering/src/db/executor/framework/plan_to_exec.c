@@ -79,13 +79,44 @@ static ExecNode *convert_project_node(const plan_node_t *plan) {
     return node;
 }
 
+/**
+ * @brief 从 join_plan 中提取 build 和 probe 侧的键列索引
+ *
+ * 解析连接条件表达式，假设是形如 "build_col = probe_col" 的等值连接条件。
+ * 如果无法解析（条件为空或不是二元比较），返回默认值 0。
+ */
+static void extract_hashjoin_keys(const join_plan_t *join, int *build_key_col, int *probe_key_col) {
+    *build_key_col = 0;
+    *probe_key_col = 0;
+
+    if (!join || !join->condition) return;
+
+    // 检查是否是二元比较操作
+    if (join->condition->type == EXPR_BINARY_OP) {
+        const expr_t *left = join->condition->u.binary.left;
+        const expr_t *right = join->condition->u.binary.right;
+
+        // 判断左右两侧哪个是 build 侧（通常 build 在 left，但这里简单处理）
+        // 这里简化处理：直接取左右两侧的 column_id
+        if (left && left->type == EXPR_COLUMN) {
+            *build_key_col = left->u.column.column_id;
+        }
+        if (right && right->type == EXPR_COLUMN) {
+            *probe_key_col = right->u.column.column_id;
+        }
+    }
+}
+
 static ExecNode *convert_hashjoin_node(const plan_node_t *plan) {
     HashJoinState *state = (HashJoinState *)calloc(1, sizeof(HashJoinState));
     if (!state) return NULL;
 
-    // 简单取 build_key_col=0, probe_key_col=0
-    // 实际应用中应从 plan->data.join.condition 解析
-    state->hj = vecx_hashjoin_create(0, 0);
+    // 从 plan->data.join 提取键列
+    int build_key_col = 0;
+    int probe_key_col = 0;
+    extract_hashjoin_keys(&plan->data.join, &build_key_col, &probe_key_col);
+
+    state->hj = vecx_hashjoin_create(build_key_col, probe_key_col);
     if (!state->hj) {
         free(state);
         return NULL;
@@ -115,13 +146,42 @@ static ExecNode *convert_hashjoin_node(const plan_node_t *plan) {
     return node;
 }
 
+/**
+ * @brief 从 aggregate_plan 中提取 key 列和 measure 列索引
+ *
+ * key 列从 group_by_cols[0] 获取（如果存在），
+ * measure 列从第一个聚合函数的参数表达式中提取列 ID。
+ */
+static void extract_hashagg_keys(const aggregate_plan_t *agg, int *key_col, int *measure_col) {
+    *key_col = 0;
+    *measure_col = 1;
+
+    if (!agg) return;
+
+    // 提取 group by key 列
+    if (agg->group_by_count > 0 && agg->group_by_cols) {
+        *key_col = agg->group_by_cols[0];
+    }
+
+    // 提取第一个聚合函数的参数列作为 measure
+    if (agg->agg_func_count > 0 && agg->agg_funcs) {
+        expr_t *arg = agg->agg_funcs[0].arg;
+        if (arg && arg->type == EXPR_COLUMN) {
+            *measure_col = arg->u.column.column_id;
+        }
+    }
+}
+
 static ExecNode *convert_hashagg_node(const plan_node_t *plan) {
     HashAggState *state = (HashAggState *)calloc(1, sizeof(HashAggState));
     if (!state) return NULL;
 
-    // 简单取 key_col=0, measure_col=1
-    // 实际应用中应从 plan->data.aggregate 解析
-    state->agg = vecx_hashagg_create(0, 1);
+    // 从 plan->data.aggregate 提取键列和度量列
+    int key_col = 0;
+    int measure_col = 1;
+    extract_hashagg_keys(&plan->data.aggregate, &key_col, &measure_col);
+
+    state->agg = vecx_hashagg_create(key_col, measure_col);
     if (!state->agg) {
         free(state);
         return NULL;
