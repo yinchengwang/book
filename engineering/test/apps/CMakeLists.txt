@@ -42,6 +42,24 @@ target_link_libraries(test_common_menu_test
 #         GTest::gtest_main
 # )
 
+# 2048 游戏核心测试
+add_executable(games_g2048_core_test
+    g2048_core_test.cpp
+)
+
+target_include_directories(games_g2048_core_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/apps/games/core
+)
+
+target_link_libraries(games_g2048_core_test
+    PRIVATE
+        project_includes
+        games_core
+        GTest::gtest_main
+)
+
+gtest_discover_tests(games_g2048_core_test)
+
 # 添加测试
 include(GoogleTest)
 gtest_discover_tests(test_common_terminal_test)
@@ -54,5 +72,6 @@ add_custom_target(apps_all_tests
     DEPENDS
         test_common_terminal_test
         test_common_menu_test
+        games_g2048_core_test
         # test_todo_model_test
 )
