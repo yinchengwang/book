@@ -6,9 +6,9 @@
  * 生产环境建议使用 httplib 或其他成熟的 HTTP 库
  */
 
+#include "rag/llm_service.h"
 #include "rag/server.h"
 #include "rag/logger.h"
-#include "rag/llm_service.h"
 #include <algorithm>
 #include <chrono>
 #include <fstream>
@@ -17,6 +17,7 @@
 #include <thread>
 #include <atomic>
 #include <regex>
+#include <cstdio>
 
 #ifdef _WIN32
     #include <winsock2.h>
@@ -34,6 +35,94 @@
 namespace rag {
 
 // ========== HTTP 工具 ==========
+
+// ========== JSON 工具（最小实现，仅满足本服务器需求） ==========
+
+// JSON 字符串转义
+static std::string json_escape(const std::string& str) {
+    std::string result;
+    result.reserve(str.size() + 16);
+    for (char c : str) {
+        switch (c) {
+            case '"':  result += "\\\""; break;
+            case '\\': result += "\\\\"; break;
+            case '\n': result += "\\n"; break;
+            case '\r': result += "\\r"; break;
+            case '\t': result += "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char buf[8];
+                    snprintf(buf, sizeof(buf), "\\u%04x", c);
+                    result += buf;
+                } else {
+                    result += c;
+                }
+        }
+    }
+    return result;
+}
+
+// 从 JSON body 中提取字符串字段（处理转义字符）
+// 找到 "key" 后提取其字符串值；未找到返回 default_value
+static std::string extract_json_string(const std::string& body, const std::string& key,
+                                       const std::string& default_value = "") {
+    std::string pattern = "\"" + key + "\"";
+    auto pos = body.find(pattern);
+    if (pos == std::string::npos) return default_value;
+
+    // 跳过 key、冒号和空白
+    pos = body.find(':', pos + pattern.size());
+    if (pos == std::string::npos) return default_value;
+    ++pos;
+    while (pos < body.size() && (body[pos] == ' ' || body[pos] == '\t')) ++pos;
+
+    // 值必须是字符串
+    if (pos >= body.size() || body[pos] != '"') return default_value;
+    ++pos;
+
+    // 提取到未转义的结束引号
+    std::string result;
+    while (pos < body.size()) {
+        char c = body[pos];
+        if (c == '\\' && pos + 1 < body.size()) {
+            char next = body[pos + 1];
+            switch (next) {
+                case 'n': result += '\n'; break;
+                case 't': result += '\t'; break;
+                case 'r': result += '\r'; break;
+                case '"': result += '"'; break;
+                case '\\': result += '\\'; break;
+                case '/': result += '/'; break;
+                default: result += next; break;
+            }
+            pos += 2;
+        } else if (c == '"') {
+            return result;  // 结束引号
+        } else {
+            result += c;
+            ++pos;
+        }
+    }
+    return result;  // 未闭合，返回已提取部分
+}
+
+// 从 JSON body 中提取整数字段
+static int extract_json_int(const std::string& body, const std::string& key, int default_value) {
+    std::string pattern = "\"" + key + "\"";
+    auto pos = body.find(pattern);
+    if (pos == std::string::npos) return default_value;
+
+    pos = body.find(':', pos + pattern.size());
+    if (pos == std::string::npos) return default_value;
+    ++pos;
+    while (pos < body.size() && (body[pos] == ' ' || body[pos] == '\t')) ++pos;
+
+    try {
+        return std::stoi(body.substr(pos));
+    } catch (...) {
+        return default_value;
+    }
+}
 
 static std::string url_decode(const std::string& str) {
     std::string result;
@@ -272,9 +361,8 @@ void Server::handle_connection(int client_socket) {
             }
         }
 
-        // 路由处理
+        // 路由处理（处理器返回完整 HTTP 响应）
         std::string response;
-        int status = 200;
 
         if (route == "/api/v1/query" && method == "POST") {
             response = handle_query(body);
@@ -282,33 +370,37 @@ void Server::handle_connection(int client_socket) {
             response = handle_retrieve(body);
         } else if (route == "/api/v1/documents" && method == "GET") {
             response = handle_documents();
+        } else if (route.rfind("/api/v1/documents/", 0) == 0 && method == "GET") {
+            // /api/v1/documents/{id}/content
+            std::string rest = route.substr(std::string("/api/v1/documents/").size());
+            if (rest.size() > 8 && rest.compare(rest.size() - 8, 8, "/content") == 0) {
+                std::string doc_id = url_decode(rest.substr(0, rest.size() - 8));
+                response = handle_document_content(doc_id);
+            } else {
+                response = handle_document(url_decode(rest));
+            }
         } else if (route == "/api/v1/index/status" && method == "GET") {
             response = handle_index_status();
         } else if (route == "/health" && method == "GET") {
             response = handle_health();
         } else if (route == "/metrics" && method == "GET") {
             response = handle_metrics();
-        } else if (route == "/" || route.empty()) {
-            response = handle_root();
+        } else if (method == "OPTIONS") {
+            // CORS 预检
+            response = "HTTP/1.1 204 No Content\r\n"
+                       "Access-Control-Allow-Origin: *\r\n"
+                       "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+                       "Access-Control-Allow-Headers: Content-Type\r\n"
+                       "Content-Length: 0\r\n\r\n";
+        } else if (method == "GET") {
+            // 静态文件服务（Task 3 实现 serve_static；未命中时返回 404）
+            response = serve_static(route);
         } else {
             response = create_error_response("Not Found", 404);
-            status = 404;
-        }
-
-        // 添加 CORS 头
-        if (config_.cors_enabled) {
-            response = add_cors_headers(response);
         }
 
         // 发送响应
-        std::string http_response = "HTTP/1.1 " + std::to_string(status) + " OK\r\n";
-        http_response += "Content-Type: application/json\r\n";
-        http_response += "Content-Length: " + std::to_string(response.size()) + "\r\n";
-        http_response += "Connection: close\r\n";
-        http_response += "\r\n";
-        http_response += response;
-
-        send(client_socket, http_response.c_str(), http_response.size(), 0);
+        send(client_socket, response.c_str(), response.size(), 0);
 
     } catch (const std::exception& e) {
         RAG_ERROR("Request handling error: " + std::string(e.what()));
@@ -352,45 +444,31 @@ std::string Server::handle_query(const std::string& body) {
         return create_error_response("Engine not initialized", 500);
     }
 
-    // 简单解析 JSON（实际应使用 JSON 库）
-    std::string query = "unknown";
-    int top_k = 5;
+    std::string query = extract_json_string(body, "query");
+    int top_k = extract_json_int(body, "top_k", 5);
 
-    auto query_pos = body.find("\"query\"");
-    if (query_pos != std::string::npos) {
-        auto start = body.find(':', query_pos);
-        auto end = body.find('"', start + 1);
-        if (start != std::string::npos && end != std::string::npos) {
-            query = body.substr(start + 2, end - start - 3);
-        }
-    }
-
-    auto topk_pos = body.find("\"top_k\"");
-    if (topk_pos != std::string::npos) {
-        auto start = body.find(':', topk_pos);
-        auto end = body.find_first_of(",}", start);
-        if (start != std::string::npos && end != std::string::npos) {
-            top_k = std::stoi(body.substr(start + 1, end - start - 1));
-        }
+    if (query.empty()) {
+        return create_error_response("Missing query parameter", 400);
     }
 
     auto result = engine_->query(query, top_k);
 
     std::ostringstream oss;
     oss << "{";
-    oss << "\"answer\": \"" << result.answer << "\",";
+    oss << "\"answer\": \"" << json_escape(result.answer) << "\",";
     oss << "\"confidence\": " << result.confidence << ",";
     oss << "\"query_time_ms\": " << result.query_time_ms << ",";
-    oss << "\"request_id\": \"" << result.request_id << "\",";
+    oss << "\"request_id\": \"" << json_escape(result.request_id) << "\",";
     oss << "\"chunks\": [";
 
     for (size_t i = 0; i < result.chunks.size(); ++i) {
         if (i > 0) oss << ",";
         const auto& chunk = result.chunks[i];
         oss << "{";
-        oss << "\"id\": \"" << chunk.chunk.id << "\",";
-        oss << "\"content\": \"" << chunk.chunk.content << "\",";
-        oss << "\"file_path\": \"" << chunk.chunk.metadata.file_path << "\",";
+        oss << "\"id\": \"" << json_escape(chunk.chunk.id) << "\",";
+        oss << "\"document_id\": \"" << json_escape(chunk.chunk.document_id) << "\",";
+        oss << "\"content\": \"" << json_escape(chunk.chunk.content) << "\",";
+        oss << "\"file_path\": \"" << json_escape(chunk.chunk.metadata.file_path) << "\",";
         oss << "\"score\": " << chunk.score;
         oss << "}";
     }
@@ -404,17 +482,14 @@ std::string Server::handle_retrieve(const std::string& body) {
         return create_error_response("Engine not initialized", 500);
     }
 
-    std::string query;
-    auto query_pos = body.find("\"query\"");
-    if (query_pos != std::string::npos) {
-        auto start = body.find(':', query_pos);
-        auto end = body.find('"', start + 1);
-        if (start != std::string::npos && end != std::string::npos) {
-            query = body.substr(start + 2, end - start - 3);
-        }
+    std::string query = extract_json_string(body, "query");
+    int top_k = extract_json_int(body, "top_k", 5);
+
+    if (query.empty()) {
+        return create_error_response("Missing query parameter", 400);
     }
 
-    auto results = engine_->retrieve(query, 5);
+    auto results = engine_->retrieve(query, top_k);
 
     std::ostringstream oss;
     oss << "{\"results\": [";
@@ -423,8 +498,10 @@ std::string Server::handle_retrieve(const std::string& body) {
         if (i > 0) oss << ",";
         const auto& result = results[i];
         oss << "{";
-        oss << "\"id\": \"" << result.chunk.id << "\",";
-        oss << "\"content\": \"" << result.chunk.content << "\",";
+        oss << "\"id\": \"" << json_escape(result.chunk.id) << "\",";
+        oss << "\"document_id\": \"" << json_escape(result.chunk.document_id) << "\",";
+        oss << "\"content\": \"" << json_escape(result.chunk.content) << "\",";
+        oss << "\"file_path\": \"" << json_escape(result.chunk.metadata.file_path) << "\",";
         oss << "\"score\": " << result.score;
         oss << "}";
     }
@@ -447,9 +524,9 @@ std::string Server::handle_documents() {
         if (i > 0) oss << ",";
         const auto& doc = docs[i];
         oss << "{";
-        oss << "\"id\": \"" << doc.id << "\",";
-        oss << "\"file_name\": \"" << doc.metadata.file_name << "\",";
-        oss << "\"file_path\": \"" << doc.metadata.file_path << "\",";
+        oss << "\"id\": \"" << json_escape(doc.id) << "\",";
+        oss << "\"file_name\": \"" << json_escape(doc.metadata.file_name) << "\",";
+        oss << "\"file_path\": \"" << json_escape(doc.metadata.file_path) << "\",";
         oss << "\"status\": " << static_cast<int>(doc.status);
         oss << "}";
     }
@@ -509,6 +586,38 @@ std::string Server::handle_root() {
     oss << "]";
     oss << "}";
     return create_json_response(oss.str());
+}
+
+std::string Server::handle_document(const std::string& id) {
+    if (!engine_) {
+        return create_error_response("Engine not initialized", 500);
+    }
+    auto docs = engine_->list_documents();
+    for (const auto& doc : docs) {
+        if (doc.id == id) {
+            std::ostringstream oss;
+            oss << "{";
+            oss << "\"id\": \"" << json_escape(doc.id) << "\",";
+            oss << "\"file_name\": \"" << json_escape(doc.metadata.file_name) << "\",";
+            oss << "\"file_path\": \"" << json_escape(doc.metadata.file_path) << "\",";
+            oss << "\"status\": " << static_cast<int>(doc.status);
+            oss << "}";
+            return create_json_response(oss.str());
+        }
+    }
+    return create_error_response("Document not found", 404);
+}
+
+// 桩：Task 2 填充
+std::string Server::handle_document_content(const std::string& id) {
+    (void)id;
+    return create_error_response("Not implemented", 501);
+}
+
+// 桩：Task 3 填充
+std::string Server::serve_static(const std::string& route) {
+    (void)route;
+    return create_error_response("Not Found", 404);
 }
 
 // ========== 工厂函数 ==========

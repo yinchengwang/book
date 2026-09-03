@@ -99,6 +99,8 @@ private:
     std::string handle_retrieve(const std::string& body);
     std::string handle_documents();
     std::string handle_document(const std::string& id);
+    std::string handle_document_content(const std::string& id);   // 新增：文档内容
+    std::string serve_static(const std::string& route);            // 新增：静态文件
     std::string handle_index_status();
     std::string handle_health();
     std::string handle_metrics();
