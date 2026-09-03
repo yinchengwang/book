@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>贪吃蛇</title>
+    <link rel="stylesheet" href="css/snake.css">
+</head>
+<body>
+    <h1>贪吃蛇</h1>
+    <div id="info">分数: <span id="score-val">0</span> | 速度: <span id="speed-val">180</span>ms</div>
+    <canvas id="board" width="400" height="400"></canvas>
+    <div id="overlay" class="hidden">
+        <div>游戏结束！得分: <span id="final-score">0</span></div>
+        <button id="restart">再来一局</button>
+    </div>
+    <p>WASD 或方向键移动</p>
+    <script src="js/engine.js"></script>
+    <script src="js/snake.js"></script>
+    <script src="games.js"></script>
+    <script>
+        const engine = new LocalEngine();
+        engine.init().then(() => {
+            const game = new SnakeGame('board', engine);
+            game.start();
+            document.getElementById('restart').onclick = () => game.restart();
+        });
+    </script>
+</body>
+</html>

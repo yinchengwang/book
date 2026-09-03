@@ -98,4 +98,101 @@ class LocalEngine {
         if (!this.ready) return false;
         return this.wasm._g2048_can_move();
     }
+
+    // ==================== 贪吃蛇核心接口 ====================
+
+    /**
+     * 创建新游戏
+     * @param {number} seed 随机种子
+     * @param {number} diff 难度: 0=简单(180ms), 1=中等(120ms), 2=困难(80ms)
+     */
+    snake_create(seed, diff) {
+        if (!this.ready) {
+            console.warn('[LocalEngine] WASM 未就绪，调用被忽略');
+            return;
+        }
+        this.wasm._snake_create(seed, diff);
+    }
+
+    /**
+     * 每帧tick（驱动蛇移动）
+     */
+    snake_tick() {
+        if (!this.ready) return;
+        this.wasm._snake_tick();
+    }
+
+    /**
+     * 设置蛇的移动方向
+     * @param {number} dir 方向: 0=上, 1=下, 2=左, 3=右
+     */
+    snake_input_dir(dir) {
+        if (!this.ready) return;
+        this.wasm._snake_input_dir(dir);
+    }
+
+    /**
+     * 获取蛇身长度
+     * @returns {number} 蛇身节数
+     */
+    snake_body_count() {
+        if (!this.ready) return 0;
+        return this.wasm._snake_body_count();
+    }
+
+    /**
+     * 获取蛇身第 i 节 x 坐标
+     * @param {number} i 节索引
+     * @returns {number} x 坐标 (0-19)
+     */
+    snake_body_x(i) {
+        if (!this.ready) return 0;
+        return this.wasm._snake_body_x(i);
+    }
+
+    /**
+     * 获取蛇身第 i 节 y 坐标
+     * @param {number} i 节索引
+     * @returns {number} y 坐标 (0-19)
+     */
+    snake_body_y(i) {
+        if (!this.ready) return 0;
+        return this.wasm._snake_body_y(i);
+    }
+
+    /**
+     * 获取食物 x 坐标
+     * @returns {number} x 坐标 (0-19)
+     */
+    snake_food_x() {
+        if (!this.ready) return 0;
+        return this.wasm._snake_food_x();
+    }
+
+    /**
+     * 获取食物 y 坐标
+     * @returns {number} y 坐标 (0-19)
+     */
+    snake_food_y() {
+        if (!this.ready) return 0;
+        return this.wasm._snake_food_y();
+    }
+
+    /**
+     * 获取当前分数
+     * @returns {number} 分数
+     */
+    snake_score_val() {
+        if (!this.ready) return 0;
+        return this.wasm._snake_score_val();
+    }
+
+    /**
+     * 检查游戏是否结束
+     * @returns {boolean} true 表示撞墙或撞到自己
+     */
+    snake_over() {
+        if (!this.ready) return false;
+        return this.wasm._snake_over();
+    }
 }
