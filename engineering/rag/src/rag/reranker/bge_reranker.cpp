@@ -288,9 +288,9 @@ std::vector<RerankResult> BGEReranker::rerank(
     // 构建结果
     for (size_t i = 0; i < candidates.size() && i < all_scores.size(); ++i) {
         RerankResult result;
-        result.chunk = candidates[i];
+        result.chunk_id = candidates[i].id;
+        result.content = candidates[i].content;
         result.score = all_scores[i];
-        result.original_rank = static_cast<int>(i);
         results.push_back(result);
     }
 
@@ -433,7 +433,7 @@ std::unordered_map<int, std::string> BGEReranker::load_vocab(const std::string& 
 
 // ========== Factory ==========
 
-std::shared_ptr<Reranker> create_bge_reranker(const BGERerankerConfig& config) {
+std::shared_ptr<BGEReranker> create_bge_reranker(const BGERerankerConfig& config) {
     auto reranker = std::make_shared<BGEReranker>(config);
     if (!reranker->init(config.model_path)) {
         RAG_ERROR("Failed to create BGE Reranker");
@@ -442,10 +442,109 @@ std::shared_ptr<Reranker> create_bge_reranker(const BGERerankerConfig& config) {
     return reranker;
 }
 
-std::shared_ptr<Reranker> create_bge_reranker(const std::string& model_path) {
+std::shared_ptr<BGEReranker> create_bge_reranker(const std::string& model_path) {
     BGERerankerConfig config;
     config.model_path = model_path;
     return create_bge_reranker(config);
+}
+
+// ========== 新增: 批量重排 (基于 RetrievalResult) ==========
+
+std::vector<RetrievalResult> BGEReranker::rerank_batch(
+    const std::string& query,
+    const std::vector<RetrievalResult>& results,
+    int batch_size) {
+
+    if (results.empty()) return {};
+
+    std::vector<RetrievalResult> reranked;
+    reranked.reserve(results.size());
+
+    // 分批处理
+    for (size_t i = 0; i < results.size(); i += batch_size) {
+        size_t end = std::min(i + batch_size, results.size());
+
+        std::vector<Chunk> chunks;
+        std::vector<float> original_scores;
+        for (size_t j = i; j < end; j++) {
+            chunks.push_back(results[j].chunk);
+            original_scores.push_back(results[j].score);
+        }
+
+        // 批量重排
+        auto batch_results = rerank(query, chunks, static_cast<int>(chunks.size()));
+
+        // 按分数排序并添加回结果
+        std::sort(batch_results.begin(), batch_results.end(),
+            [](const RerankResult& a, const RerankResult& b) {
+                return a.score > b.score;
+            });
+
+        for (const auto& r : batch_results) {
+            RetrievalResult result;
+            result.chunk.id = r.chunk_id;
+            result.chunk.content = r.content;
+            result.score = r.score;
+            reranked.push_back(result);
+        }
+    }
+
+    stats_.total_calls++;
+    return reranked;
+}
+
+void BGEReranker::set_gpu_config(const GPUConfig& config) {
+    gpu_config_ = config;
+    if (config.use_fp16 && GPUManager::instance().is_available()) {
+        use_fp16_ = true;
+        RAG_INFO("BGE Reranker: FP16 enabled for GPU");
+    }
+}
+
+void BGEReranker::set_fp16(bool enable) {
+    if (enable && GPUManager::instance().is_available()) {
+        use_fp16_ = true;
+        RAG_INFO("BGE Reranker: FP16 enabled");
+    } else {
+        use_fp16_ = false;
+        RAG_INFO("BGE Reranker: FP16 disabled");
+    }
+}
+
+BGEReranker::ModelInfo BGEReranker::get_model_info() const {
+    ModelInfo info;
+    info.model_name = model_name_or_path_.empty() ? "bge-reranker-v2-m3" : model_name_or_path_;
+    info.max_length = config_.max_length;
+    info.supports_fp16 = GPUManager::instance().info().supports_fp16;
+    info.memory_usage_mb = config_.batch_size * config_.max_length * sizeof(float) / (1024 * 1024);
+    return info;
+}
+
+void BGEReranker::warmup(int num_samples) {
+    RAG_INFO("Warming up BGE Reranker...");
+
+    std::vector<std::string> warmup_queries = {
+        "What is machine learning?",
+        "How does neural network work?",
+        "Explain deep learning concepts."
+    };
+
+    std::vector<std::string> warmup_docs = {
+        "Machine learning is a subset of artificial intelligence.",
+        "Neural networks are computing systems inspired by biological neural networks.",
+        "Deep learning uses multiple layers to progressively extract higher-level features."
+    };
+
+    int samples = std::min(num_samples, static_cast<int>(warmup_queries.size()));
+    for (int i = 0; i < samples; i++) {
+        Chunk chunk;
+        chunk.id = "warmup_" + std::to_string(i);
+        chunk.content = warmup_docs[i];
+        std::vector<Chunk> chunks = {chunk};
+        rerank(warmup_queries[i], chunks, 1);
+    }
+
+    RAG_INFO("BGE Reranker warmup complete");
 }
 
 }  // namespace rag
