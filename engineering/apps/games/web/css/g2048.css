@@ -1,0 +1,80 @@
+/**
+ * g2048.css - 2048 游戏样式表
+ */
+
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    text-align: center;
+    background: #faf8ef;
+    margin: 0;
+    padding: 20px;
+}
+
+h1 {
+    font-size: 64px;
+    font-weight: bold;
+    color: #776e65;
+    margin: 20px 0 10px;
+}
+
+#score-container {
+    font-size: 24px;
+    color: #776e65;
+    margin: 10px 0;
+}
+
+#score-val {
+    font-weight: bold;
+    color: #ffffff;
+    background: #bbada0;
+    padding: 4px 12px;
+    border-radius: 4px;
+}
+
+#board {
+    display: block;
+    margin: 20px auto;
+    border-radius: 8px;
+    /* 棋盘 400x400，由 JS 绘制 */
+}
+
+#msg {
+    font-size: 28px;
+    font-weight: bold;
+    color: #f65e3b;
+    height: 40px;
+    margin: 10px 0;
+}
+
+#instructions {
+    font-size: 18px;
+    color: #776e65;
+    margin-top: 10px;
+}
+
+#instructions kbd {
+    background: #eee4da;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    color: #776e65;
+}
+
+#notice {
+    font-size: 14px;
+    color: #f67c5f;
+    margin-top: 20px;
+    padding: 10px;
+    background: #fff4e6;
+    border-radius: 4px;
+    max-width: 400px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+#notice code {
+    background: #f5ebe0;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: monospace;
+}

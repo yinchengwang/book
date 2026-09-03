@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2048 - H5 游戏</title>
+    <link rel="stylesheet" href="css/g2048.css">
+</head>
+<body>
+    <h1>2048</h1>
+
+    <div id="score-container">
+        分数: <span id="score-val">0</span>
+    </div>
+
+    <canvas id="board" width="400" height="400"></canvas>
+
+    <div id="msg"></div>
+
+    <p id="instructions">
+        <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 或
+        <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> 移动方块
+        | <kbd>R</kbd> 重新开始
+    </p>
+
+    <!-- WASM 引擎接口 -->
+    <script src="js/engine.js"></script>
+    <!-- 2048 游戏逻辑 -->
+    <script src="js/g2048.js"></script>
+    <!-- 由 emcc 生成的 WASM 模块（需先执行 build-games-wasm.sh） -->
+    <script src="games.js"></script>
+
+    <div id="notice">
+        <strong>提示：</strong>若页面无法游戏，请先执行
+        <code>bash engineering/scripts/build-games-wasm.sh</code>
+        编译生成 <code>games.js</code> 和 <code>games.wasm</code>
+    </div>
+
+    <script>
+        // 初始化游戏
+        const engine = new LocalEngine();
+        engine.init().then(() => {
+            if (engine.wasmReady) {
+                const game = new G2048Game('board', engine);
+                game.start();
+                console.log('[2048] 游戏初始化完成');
+            } else {
+                console.error('[2048] WASM 引擎初始化失败，请检查 games.js 是否已生成');
+                document.getElementById('msg').textContent = 'WASM 未就绪，请先编译 games.js';
+                document.getElementById('msg').style.color = '#f65e3b';
+            }
+        }).catch(err => {
+            console.error('[2048] 游戏初始化异常:', err);
+        });
+    </script>
+</body>
+</html>
