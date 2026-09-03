@@ -47,6 +47,7 @@ endif()
 
 add_subdirectory(src/rag/error)
 add_subdirectory(src/rag/gpu)
+add_subdirectory(src/rag/batch)
 add_subdirectory(src/rag/logger)
 add_subdirectory(src/rag/config)
 add_subdirectory(src/rag/data)
@@ -80,6 +81,7 @@ target_link_libraries(rag_cli PRIVATE
     rag_data
     rag_parser
     rag_chunker
+    rag_batch
     rag_index
     rag_retrieval
     rag_embedding

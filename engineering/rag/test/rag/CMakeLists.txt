@@ -16,6 +16,7 @@ add_executable(rag_test
     test_hnsw_persist.cpp
     test_integration.cpp
     test_gpu.cpp
+    test_batch.cpp
 )
 target_include_directories(rag_test PRIVATE
     ${ENGINEERING_SOURCE_DIR}/include/rag
@@ -38,5 +39,6 @@ target_link_libraries(rag_test PRIVATE
     rag_entity_extraction
     rag_graph_retrieval
     rag_gpu
+    rag_batch
     GTest::gtest_main
 )
