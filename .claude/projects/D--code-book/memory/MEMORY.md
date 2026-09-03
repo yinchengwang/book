@@ -1,0 +1,19 @@
+- [学习路线图 2026](learning-roadmap-2026.md) — 扎实版+项目驱动：并发/内存/性能/网络/DB链路/算法，4 阶段推进
+- [生成 clang 编码风格](project_clang_format.md) — 用户希望基于 clang 为该项目生成 C/C++ 编码风格配置（.clang-format）
+- [代码库整体结构](project_codebase_structure.md) — book 项目的目录布局、CMake 构建架构、库间依赖关系
+- [algo/ 通用算法库](project_algo_library.md) — ds/ 子系统、SIMD 距离计算、PQ/LVQ 量化、K-Means、分词词典、排序、二分查找
+- [index/ 索引模块](project_index_structures.md) — 向量索引(BM25/HNSW/DiskANN/IVF)、哈希索引(CCEH/PG Linear Hash)、树索引(B+tree/B-tree)、跨模块数据结构
+- [self_made / redis / 通用库](project_self_made_redis.md) — C/C++ 手写数据结构、Redis 核心移植(SDS/链表/跳表)、uthash 库
+- [LeetCode 解题 & 面试知识库](project_leetcode_interview.md) — ~90+ 道解题代码、华为面试题、C/C++/数据库/VDB 面试知识文档
+- [独立项目 & 测试体系](project_apps_and_tests.md) — 贪吃蛇/2048/数独、40 个测试文件的测试体系全貌
+- [reading-radar 上下文排查守则](reading-radar-context-optimization.md) — 排查纪律：先 grep 后 Read offset，禁止完整读大文件
+- [PG 风格存储架构](project_pg_storage_arch.md) — PostgreSQL 风格存储架构实现：Catalog(catalog.c/h)、Buffer Pool(bufmgr.c/h)、Access Method(rel.c/h)、Heap AM(heapam.c/h)、BTree AM(btreeam.c/h)，所有测试通过
+- [Phase 9 分布式演进](phase9-distributed-evolution.md) — 分片与路由(shard.h/c)、分布式事务(dist_txn.h/c)、Raft 高可用(raft.h/c)、多节点协调(coordinator.h/c)，260/260 任务 100% 完成
+- [MiniVecDB 端到端计划](minivecdb-end-to-end-plan.md) — Phase A (A1持久化→A2执行器→A3 API→A4集成测试) → Phase B (深挖) → Phase C (亮剑)，大变更套小变更结构
+- [双轨架构与测试责任](dual-track-architecture.md) — learning/engineering 双轨独立可构建、双轨隔离铁律、dual-track-guard.cmake、S6 测试责任划分
+- [双轨纪律与 R5 学习闭环](dual-track-discipline.md) — 工程+学习双轨运行纪律（5工作日交付/3 OPSX 冻结/F1 严格勾卡 8 卡下限）
+- [reading-radar 看板状态机](learning-kanban-storage.md) — items-registry.js 主源 + localStorage 存储 + 固定 4 状态 + R5 v1/v2 截断点
+- [存储引擎栈溢出](storage-engine-stack-overflow.md) — `kv_put` 路径在 Windows 上 STATUS_STACK_OVERFLOW，`github-issue-todo` 因此改用 JSON 文件持久化作为临时方案
+- [mystl 24 组件手写实现](mystl-handwritten-impl.md) — learning/scaffold/cpp/stl 完整重写 0/24 占位符，对标 libstdc++ 模式，纯手写零 std:: 依赖
+- [todo-app Phase 1 完成](todo-app-phase1-complete.md) — SQLite 迁移+字段系统端到端验证通过，提交 c3b3bdc8，路由修复完成，扩展字段创建/设值/回显全部正常
+- [多模态索引重构计划](multimodal-index-redesign-2026.md) — 分层架构/持久化开关/统一向量存储/文档体系，20+索引系统性研究
