@@ -46,6 +46,7 @@ endif()
 # ========== 子目录 ==========
 
 add_subdirectory(src/rag/error)
+add_subdirectory(src/rag/gpu)
 add_subdirectory(src/rag/logger)
 add_subdirectory(src/rag/config)
 add_subdirectory(src/rag/data)
