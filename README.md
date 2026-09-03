@@ -2,8 +2,8 @@
 
 [![CI](https://img.shields.io/badge/CI-passing-brightgreen)](.github/workflows/ci.yml)
 [![Dual-Track](https://img.shields.io/badge/dual--track-active-blue)](engineering/CMakeLists.txt)
-[![OpenSpec](https://img.shields.io/badge/OpenSpec-19-success)](openspec/changes/archive/)
-[![Engineering Tests](https://img.shields.io/badge/eng--tests-88-brightgreen)](engineering/build/CTestTestfile.cmake)
+[![OpenSpec](https://img.shields.io/badge/OpenSpec-198归档-active-brightgreen)](openspec/changes/archive/)
+[![Engineering Tests](https://img.shields.io/badge/eng--tests-104-brightgreen)](engineering/build/)
 [![Learning Tests](https://img.shields.io/badge/learn--tests-158-brightgreen)](learning/code-solutions/c/test/c/)
 [![Coverage](https://img.shields.io/badge/coverage-TBD-lightgrey)](engineering/docs/coverage-policy.md)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -53,6 +53,7 @@ book/
 ├── learning/                 # 学习轨道（默认不构建）
 │   ├── notes/                # obsidian vault，132 个学习笔记
 │   ├── code-solutions/       # LeetCode/面试题解 + 分布式实验代码
+│   │   ├── c/                # C 语言题解 + 单元测试
 │   ├── ds-c/orig/            # 手撕数据结构教学版（原 src/ds/）
 │   ├── ds-cpp/               # C++ 数据结构教学版
 │   ├── algo-c/               # 教学算法
@@ -66,12 +67,12 @@ book/
 │   └── misc/                 # kanban-snapshot / lines_of_code / learn-vdb-deepdive-check
 │
 ├── engineering/              # 工程轨道（默认构建）
-│   ├── src/                  # 库代码：db/, algo/, cpp/, redis/
-│   ├── include/              # 公共头文件
-│   ├── test/                 # gtest 测试
-│   ├── apps/                 # 独立应用（db_driver, games, tools, web）
-│   ├── cmake/                # 工程工具（ProjectUtils.cmake 等）
-│   ├── rag/                  # RAG 系统
+│   ├── src/                  # 库代码：db/, algo-prod/, ds/, graph/, kbase/, redis/, cpp/, sdk/
+│   ├── include/              # 公共头文件：algo/, db/, ds/, redis/, rag/, kbase/ 等
+│   ├── test/                 # gtest 测试（605 个源文件）
+│   ├── apps/                 # 独立应用（api-server, db_driver, games, kbase, todo-app, tools, vdb_cli, web, workbench_server）
+│   ├── cmake/                # 工程工具（ProjectUtils.cmake, MultimodalConfig.cmake 等）
+│   ├── rag/                  # RAG 系统（BM25、向量检索、混合召回）
 │   ├── sdk/                  # 多语言 SDK
 │   ├── tools/                # 工程专用工具
 │   ├── test_data/            # 工程测试夹具
@@ -150,22 +151,28 @@ cmake --build build/root --parallel 4
 4. 归档时移到 `openspec/changes/archive/<date>-<name>/`
 
 当前 active change：
-- `repo-root-slimming-phase1` —— 根目录瘦身 Phase 1（迁移 + 兼容）
-- `repo-root-slimming-phase2` —— 根目录瘦身 Phase 2（删除兼容入口）
+- `c9-1-housekeeping` —— 日常维护
+- `c9-2-known-limitations` —— 已知限制
+- `c9-3-subsystems` —— 子系统改进
 
 ## SQL 执行引擎
 
-实现了生产级 SQL 执行引擎，对标 PostgreSQL 16/17 架构。
+实现了 PostgreSQL 风格的 SQL 执行引擎，对标 PostgreSQL 16/17 架构。
 
 ### 功能特性
 
-- **Volcano 迭代器模型**：统一算子接口
-- **内存管理**：MemoryContext 层级管理
-- **表达式求值**：字节码解释器 + JIT 预研
-- **核心算子**：SeqScan, IndexScan, HashJoin, NestLoop, Agg, Sort, Limit
-- **并行执行**：Worker 线程池 + TupleQueue
-- **触发器**：BEFORE/AFTER 触发器链
-- **分区路由**：范围/列表/哈希分区
+- **解析层**：`sql_parser.c`（SELECT/INSERT/UPDATE/DELETE/CREATE 等）
+- **规划层**：`planner.c` + `optimizer.c`（基于代价的优化）
+- **执行层**：`executor.c` + `memctx.c`（Volcano 迭代器模型 + 内存上下文）
+- **表达式**：`expr.c` + `expr_interp.c`（字节码解释器）
+- **算子**：SeqScan, IndexScan, HashJoin, NestLoop, HashAgg, Sort, Limit, Window 等
+- **JIT**：`jit.c`（表达式 JIT 编译预研）
+- **并行**：`parallel.c` + `worker_pool.c` + `tuple_queue.c`（Worker 线程池）
+- **触发器**：`trigger.c`（BEFORE/AFTER 触发器链）
+- **分区**：`partition.c`（范围/列表/哈希分区路由）
+- **物化视图**：`materialized_view.c`（物化视图 + REFRESH）
+- **PGWire 协议**：`pgwire.c`（PostgreSQL Wire 协议服务端）
+- **REST API**：`rest_api.c`（HTTP JSON API）
 
 ### 性能指标
 
@@ -215,12 +222,35 @@ int main() {
 | 模块 | 引擎 | 核心能力 |
 |------|------|----------|
 | KV | kv_engine | 键值存储，BTree 索引，Buffer Pool，WAL |
-| 向量 | vector_engine | HNSW、IVF-PQ、NSW、DiskANN，GPU 加速 |
+| 向量 | vector_index/ | **20+ 索引实现**：HNSW、IVF-PQ、IVF-Flat、NSW、SSG、PQ/SQ、DiskANN、Annoy、KD-Tree、LSH/Ball-Tree、ScaNN、RQ/LVQ、BM25、混合检索 |
 | 图 | graph_engine | 邻接表/CSR 存储，BFS/DFS/Dijkstra/PageRank |
 | 文档 | doc_engine | JSON 存储，倒排索引，BM25 全文检索 |
 | 空间 | spatial_engine | Point/Line/Polygon，R-Tree 索引，ST_* 谓词 |
 | 时序 | ts_engine | TSM 文件，降采样，聚合查询 |
 | 列族 | cf_engine | 列族存储，TTL 支持 |
+
+### 向量索引清单
+
+| 索引类型 | 路径 | 说明 |
+|----------|------|------|
+| HNSW | `dist_hnsw/` | 分层可导航小世界图 |
+| HNSW-PQ/SQ | `hnsw_pq/`, `hnsw_sq/` | PQ/SQ 量化的 HNSW |
+| IVF-PQ/Flat | `ivf_pq/`, `ivf_flat/` | 倒排文件索引 |
+| Faiss IVF 兼容 | `faiss_ivf_compat/` | Faiss 接口兼容 |
+| NSW | `nsw/` | 可导航小世界图 |
+| SSG | `ssg/` | 跳图 |
+| ScaNN | `scann/` | Google ScaNN |
+| Annoy | `annoy/` | Spotify Annoy |
+| KD-Tree | `kd_tree/` | K 维树 |
+| Ball-Tree | `ball_tree/` | 球树 |
+| LSH | `lsh/`, `lsh_multiprobe/` | 局部敏感哈希 |
+| PQ/SQ/OPQ | `pq/`, `sq/`, `opq/` | 产品/标量量化 |
+| RQ/LVQ | `rq/`, `lvq/` | 残差/学习矢量量化 |
+| DiskANN | `diskann/` | 微软 DiskANN |
+| BM25 | `BM25/` | 全文检索 |
+| ITQ/Spectral | `itq/`, `spectral_hash/` | 其他哈希方法 |
+| GPU 加速 | `gpu/` | CUDA 加速支持 |
+| 持久化 | `persist/` | 索引持久化存储 |
 
 ### 数据流
 
@@ -236,27 +266,33 @@ int main() {
 
 ### 架构文档
 
-- [整体架构](docs/rag/RAG-ARCHITECTURE.md) —— 多态 RAG 架构、子模块设计、流程图
+- [整体架构](engineering/rag/docs/) —— 多态 RAG 架构、子模块设计、流程图
 
 ### 子模块
 
 | 模块 | 功能 | 说明 |
 |------|------|------|
-| BM25 | 文本检索 | 倒排索引，分词，BM25 评分 |
-| 向量检索 | 语义检索 | HNSW/IVF-PQ，Embedding 模型 |
-| 知识图谱 | 关系推理 | 三元组存储，TransE/TransH 推理 |
-| 混合检索 | 多路召回 | RRF 融合，加权融合，Coef 优化 |
-| 查询处理 | 意图理解 | 查询改写/扩展/分解 |
-| 重排序 | 结果优化 | 交叉编码，晚融合，多样性 |
+| Index | 索引层 | BM25、向量、图索引管理 |
+| Retrieval | 检索引擎 | 多路召回、RRF 融合 |
+| Reranker | 重排序 | 交叉编码、Late Fusion |
+| Embedding | 向量化 | 嵌入模型、批量编码 |
+| Chunker | 文档分块 | 多种分块策略 |
+| LLM | 大模型集成 | 模型抽象、批量推理 |
+| Knowledge Graph | 知识图谱 | 三元组存储、TransE/TransH |
+| Query Processing | 查询处理 | 分类、分解、扩展、改写 |
+| Pipeline | 编排管道 | Naive/Advanced/Modular 三种范式 |
+| Evaluator | 评估器 | RAGAs 等评估指标 |
+| Server | 服务端 | gRPC/HTTP 接口 |
+| Persist | 持久化 | 索引与数据的序列化存储 |
 
 ### RAG 流程
 
 ```
-用户查询 → 查询改写 → 多路召回(向量+BM25+KG)
+用户查询 → 查询分类 → 查询改写/扩展/分解
     ↓
-RRF 融合 → 交叉编码重排 → 上下文构建
+多路召回(向量+BM25+知识图谱) → RRF 融合
     ↓
-LLM 生成 → 回答输出
+重排序 → 上下文构建 → LLM 生成 → 回答输出
 ```
 
 ### 部署模式
