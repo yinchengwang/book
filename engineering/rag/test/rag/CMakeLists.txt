@@ -17,6 +17,7 @@ add_executable(rag_test
     test_integration.cpp
     test_gpu.cpp
     test_batch.cpp
+    test_cache.cpp
 )
 target_include_directories(rag_test PRIVATE
     ${ENGINEERING_SOURCE_DIR}/include/rag
@@ -40,5 +41,6 @@ target_link_libraries(rag_test PRIVATE
     rag_graph_retrieval
     rag_gpu
     rag_batch
+    rag_cache
     GTest::gtest_main
 )

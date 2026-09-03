@@ -20,6 +20,7 @@
 #include <functional>
 #include <unordered_map>
 #include <variant>
+#include <future>
 
 namespace rag {
 
