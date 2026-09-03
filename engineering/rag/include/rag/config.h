@@ -134,6 +134,7 @@ struct ServerConfig {
     int num_threads = 4;                        // 工作线程数
     bool cors_enabled = true;                   // 启用 CORS
     std::string cors_origin = "*";              // CORS 允许的源
+    std::string static_dir;                     // 静态文件目录（web/dist），空则不启用
 };
 
 // ========== Graph 配置 ==========

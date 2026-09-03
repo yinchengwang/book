@@ -11,6 +11,7 @@
 #include "rag/logger.h"
 #include <algorithm>
 #include <chrono>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -633,10 +634,65 @@ std::string Server::handle_document_content(const std::string& id) {
     return create_error_response("Document not found", 404);
 }
 
-// 桩：Task 3 填充
 std::string Server::serve_static(const std::string& route) {
-    (void)route;
-    return create_error_response("Not Found", 404);
+    if (config_.static_dir.empty()) {
+        return create_error_response("Not Found", 404);
+    }
+
+    // 路径穿越防护：拒绝包含 .. 的路径
+    std::string clean = route;
+    if (clean.empty() || clean == "/") {
+        clean = "/index.html";
+    }
+    if (clean.find("..") != std::string::npos) {
+        return create_error_response("Forbidden", 403);
+    }
+
+    namespace fs = std::filesystem;
+    fs::path file_path = fs::path(config_.static_dir) / clean.substr(1);
+
+    // SPA 回退：文件不存在且非资源文件时返回 index.html
+    std::error_code ec;
+    if (!fs::exists(file_path, ec) || fs::is_directory(file_path, ec)) {
+        if (clean.rfind("/assets/", 0) == 0) {
+            return create_error_response("Not Found", 404);
+        }
+        file_path = fs::path(config_.static_dir) / "index.html";
+        if (!fs::exists(file_path, ec)) {
+            return create_error_response("Not Found", 404);
+        }
+    }
+
+    // 读取文件（二进制模式，支持图片/字体）
+    std::ifstream file(file_path, std::ios::binary);
+    if (!file) {
+        return create_error_response("Not Found", 404);
+    }
+    std::ostringstream content;
+    content << file.rdbuf();
+    std::string body = content.str();
+
+    // MIME 类型映射
+    std::string ext = file_path.extension().string();
+    std::string mime = "application/octet-stream";
+    if (ext == ".html") mime = "text/html; charset=utf-8";
+    else if (ext == ".js")   mime = "application/javascript";
+    else if (ext == ".css")  mime = "text/css";
+    else if (ext == ".json") mime = "application/json";
+    else if (ext == ".svg")  mime = "image/svg+xml";
+    else if (ext == ".png")  mime = "image/png";
+    else if (ext == ".jpg" || ext == ".jpeg") mime = "image/jpeg";
+    else if (ext == ".ico")  mime = "image/x-icon";
+    else if (ext == ".woff" || ext == ".woff2") mime = "font/woff2";
+
+    std::ostringstream oss;
+    oss << "HTTP/1.1 200 OK\r\n";
+    oss << "Content-Type: " << mime << "\r\n";
+    oss << "Content-Length: " << body.size() << "\r\n";
+    oss << "Cache-Control: no-cache\r\n";
+    oss << "\r\n";
+    oss << body;
+    return oss.str();
 }
 
 // ========== 工厂函数 ==========
