@@ -1,2 +1,0 @@
-# Mermaid to Excalidraw Converter
-click>=8.0.0
