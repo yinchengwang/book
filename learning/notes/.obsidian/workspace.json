@@ -1,0 +1,274 @@
+{
+  "main": {
+    "id": "bf92c279869e3a82",
+    "type": "split",
+    "children": [
+      {
+        "id": "662bd092c60cc802",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "7138e12349f60a03",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "project/reading-radar/data/interview-questions/mysql/01_分库分表.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "01_分库分表"
+            }
+          },
+          {
+            "id": "18f0fc7553c5800c",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "project/reading-radar/data/interview-questions/cpp-language/01_atomic.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "01_atomic"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "997898dae2065574",
+    "type": "split",
+    "children": [
+      {
+        "id": "c950d4badac9353c",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "902a78b11f952610",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "文件列表"
+            }
+          },
+          {
+            "id": "b17d6ad6e4009b96",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "搜索"
+            }
+          },
+          {
+            "id": "df7d8d7104e89f51",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "书签"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 395.5
+  },
+  "right": {
+    "id": "cd5d61ae7a5dd07a",
+    "type": "split",
+    "children": [
+      {
+        "id": "2d0449a8df0d53e9",
+        "type": "tabs",
+        "dimension": 60,
+        "children": [
+          {
+            "id": "acb2b2725da175dd",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "blog/毛坯房装修全攻略.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "毛坯房装修全攻略 的反向链接列表"
+            }
+          },
+          {
+            "id": "c8a724bbdf414e58",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "blog/毛坯房装修全攻略.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "毛坯房装修全攻略 的出链列表"
+            }
+          },
+          {
+            "id": "94c0d4662fb0c5e8",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "标签"
+            }
+          },
+          {
+            "id": "e1e72ac9313e08c0",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "添加笔记属性"
+            }
+          },
+          {
+            "id": "9b11d65765ceac51",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "project/reading-radar/data/interview-questions/mysql/01_分库分表.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "01_分库分表 的大纲"
+            }
+          },
+          {
+            "id": "82b656081b308f4c",
+            "type": "leaf",
+            "state": {
+              "type": "calendar",
+              "state": {},
+              "icon": "calendar-with-checkmark",
+              "title": "Calendar"
+            }
+          }
+        ],
+        "currentTab": 4
+      },
+      {
+        "id": "c758921426749d10",
+        "type": "tabs",
+        "dimension": 40,
+        "children": [
+          {
+            "id": "3f7d60242032dd49",
+            "type": "leaf",
+            "state": {
+              "type": "calendar",
+              "state": {},
+              "icon": "calendar-with-checkmark",
+              "title": "Calendar"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 328.5
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:打开快速切换": false,
+      "graph:查看关系图谱": false,
+      "canvas:新建白板": false,
+      "daily-notes:打开/创建今天的日记": false,
+      "templates:插入模板": false,
+      "command-palette:打开命令面板": false,
+      "bases:新建数据库": false,
+      "obsidian-excalidraw-plugin:新建绘图文件": false
+    }
+  },
+  "active": "7138e12349f60a03",
+  "lastOpenFiles": [
+    "project/reading-radar/response.json",
+    "project/reading-radar/excerpt.html.tmp.54516.8c2f53b64fe2",
+    "project/reading-radar/data/app/excerpt-view.js.tmp.54516.e016488d74cb",
+    "project/reading-radar/data/app/excerpt-view.js.tmp.54516.019996ff963f",
+    "build/Testing/Temporary/LastTest_20260617-0542.log",
+    "build/AlgorithmPracticeConfigVersion.cmake.tmp",
+    "build/third_part/googletest/googletest/generated/GTestConfigVersion.cmake.tmp",
+    "build/DartConfiguration.tcl.tmp",
+    "build/Testing/20260617-0542/Test.xml",
+    "build/Testing/20260617-0542",
+    "project/reading-radar/index.html.tmp.35048.528ea7eca944",
+    "project/reading-radar/data/excerpt/reading_record/clean_code/代码整洁之道_程序员的职业素养.md",
+    "project/reading-radar/data/excerpt/reading_record/10x程序员工作法/程序员工作法.md",
+    "project/reading-radar/data/excerpt/reading_record/10x程序员工作法/00.md",
+    "project/reading-radar/data/excerpt/2025/编写高质量代码_改善C程序代码的125个建议.md",
+    "project/reading-radar/data/excerpt/2025/种子.md",
+    "project/reading-radar/data/excerpt/2025/数据库系统内幕.md",
+    "project/reading-radar/data/excerpt/2025/我胆小如鼠_余华.md",
+    "project/reading-radar/data/excerpt/2025/我的第一本算法书.md",
+    "project/reading-radar/data/excerpt/2025/在细雨中呐喊_余华.md",
+    "project/reading-radar/data/excerpt/2025/一地鸡毛_刘震云.md",
+    "project/reading-radar/data/excerpt/2025/代码整洁之道_程序员的职业素养.md",
+    "project/reading-radar/data/excerpt/2025/c++新经典.md",
+    "project/reading-radar/data/excerpt/2024/一句顶一万句_刘震云.md",
+    "project/reading-radar/notes/excerpt/reading_record/clean_code/代码整洁之道_程序员的职业素养.md",
+    "project/reading-radar/notes/excerpt/reading_record/10x程序员工作法/程序员工作法.md",
+    "project/reading-radar/notes/excerpt/reading_record/10x程序员工作法/00.md",
+    "project/reading-radar/notes/excerpt/2025/编写高质量代码_改善C程序代码的125个建议.md",
+    "project/reading-radar/notes/excerpt/2025/种子.md",
+    "project/reading-radar/notes/excerpt/2025/数据库系统内幕.md",
+    "project/reading-radar/notes/excerpt/2025/我胆小如鼠_余华.md",
+    "project/reading-radar/notes/excerpt/2025/我的第一本算法书.md",
+    "project/reading-radar/notes/excerpt/2025/在细雨中呐喊_余华.md",
+    "project/reading-radar/notes/excerpt/2025/代码整洁之道_程序员的职业素养.md",
+    "project/reading-radar/notes/excerpt/2025/一地鸡毛_刘震云.md",
+    "project/reading-radar/notes/excerpt/2025/c++新经典.md",
+    "project/reading-radar/data/interview-questions/mysql/image/分库分表.png",
+    "project/reading-radar/data/interview-questions/mysql/image/内外连接.png",
+    "kanban-c-mode.png",
+    "cpp_radar_screenshot.png",
+    "radar-systems-filtered.png",
+    "未命名.canvas"
+  ]
+}

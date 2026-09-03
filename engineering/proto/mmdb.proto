@@ -1,0 +1,31 @@
+syntax = "proto3";
+package mmdb;
+
+service MMDBService {
+    rpc Query(QueryRequest) returns (QueryResponse);
+    rpc Execute(ExecuteRequest) returns (ExecuteResponse);
+}
+
+message QueryRequest {
+    string sql = 1;
+    map<string, string> params = 2;
+}
+
+message QueryResponse {
+    int32 status = 1;
+    string message = 2;
+    bytes data = 3;
+    int64 rows_affected = 4;
+}
+
+message ExecuteRequest {
+    string sql = 1;
+    map<string, string> params = 2;
+}
+
+message ExecuteResponse {
+    int32 status = 1;
+    string message = 2;
+    int64 rows_affected = 3;
+    int64 last_insert_id = 4;
+}

@@ -1,0 +1,78 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e100]:
+      - link "🎯 Reading Radar" [ref=e101] [cursor=pointer]:
+        - /url: index.html
+        - generic [ref=e102]: 🎯
+        - generic [ref=e103]: Reading Radar
+      - list [ref=e104]:
+        - listitem [ref=e105]:
+          - link "📡 雷达图" [ref=e106] [cursor=pointer]:
+            - /url: index.html
+            - generic [ref=e107]: 📡
+            - generic [ref=e108]: 雷达图
+        - listitem [ref=e109]:
+          - link "📝 摘抄" [ref=e110] [cursor=pointer]:
+            - /url: excerpt.html
+            - generic [ref=e111]: 📝
+            - generic [ref=e112]: 摘抄
+        - listitem [ref=e113]:
+          - link "📋 看板" [ref=e114] [cursor=pointer]:
+            - /url: learning-kanban.html
+            - generic [ref=e115]: 📋
+            - generic [ref=e116]: 看板
+        - listitem [ref=e117]:
+          - link "📝 测验" [ref=e118] [cursor=pointer]:
+            - /url: quiz-system.html
+            - generic [ref=e119]: 📝
+            - generic [ref=e120]: 测验
+        - listitem [ref=e121]:
+          - link "📚 学习" [ref=e122] [cursor=pointer]:
+            - /url: learn.html
+            - generic [ref=e123]: 📚
+            - generic [ref=e124]: 学习
+        - listitem [ref=e125]:
+          - link "📖 图解" [ref=e126] [cursor=pointer]:
+            - /url: grok.html
+            - generic [ref=e127]: 📖
+            - generic [ref=e128]: 图解
+        - listitem [ref=e129]:
+          - link "📊 仪表盘" [ref=e130] [cursor=pointer]:
+            - /url: dashboard.html
+            - generic [ref=e131]: 📊
+            - generic [ref=e132]: 仪表盘
+        - listitem [ref=e133]:
+          - link "🗓️ 五年计划" [ref=e134] [cursor=pointer]:
+            - /url: five-year-plan.html
+            - generic [ref=e135]: 🗓️
+            - generic [ref=e136]: 五年计划
+        - listitem [ref=e137]:
+          - link "🎤 面试题库" [ref=e138] [cursor=pointer]:
+            - /url: interview.html
+            - generic [ref=e139]: 🎤
+            - generic [ref=e140]: 面试题库
+        - listitem [ref=e141]:
+          - link "📊 面试追踪" [ref=e142] [cursor=pointer]:
+            - /url: interview-tracker.html
+            - generic [ref=e143]: 📊
+            - generic [ref=e144]: 面试追踪
+        - listitem [ref=e145]:
+          - link "📝 刷题计划" [ref=e146] [cursor=pointer]:
+            - /url: practice.html
+            - generic [ref=e147]: 📝
+            - generic [ref=e148]: 刷题计划
+  - generic [ref=e149]:
+    - generic [ref=e150]:
+      - combobox [ref=e151] [cursor=pointer]:
+        - option "📚 全部书籍" [selected]
+      - combobox [ref=e152] [cursor=pointer]:
+        - option "🏷️ 全部标签" [selected]
+      - combobox [ref=e153] [cursor=pointer]:
+        - option "📅 全部年份" [selected]
+      - textbox "🔍 搜索摘抄内容..." [ref=e154]
+      - generic [ref=e155]: "0"
+    - generic [ref=e156]:
+      - complementary [ref=e157]:
+        - generic [ref=e158]: 📚 书籍列表
+        - generic [ref=e159]: 🏷️ 标签云
+      - main [ref=e160]

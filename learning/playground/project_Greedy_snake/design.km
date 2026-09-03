@@ -1,0 +1,105 @@
+{
+    "root": {
+        "data": {
+            "id": "d5f8uw78bq00",
+            "created": 1730911331398,
+            "text": "设计思路"
+        },
+        "children": [
+            {
+                "data": {
+                    "id": "d5f8vslm7og0",
+                    "created": 1730911401925,
+                    "text": "game_start"
+                },
+                "children": [
+                    {
+                        "data": {
+                            "id": "d5f8womrbaw0",
+                            "created": 1730911471651,
+                            "text": "1、初始化一个游戏窗口并设置合适的大小"
+                        },
+                        "children": []
+                    },
+                    {
+                        "data": {
+                            "id": "d5f8x5aje1s0",
+                            "created": 1730911507917,
+                            "text": "2、隐藏输出窗口的光标避免一直闪烁"
+                        },
+                        "children": []
+                    },
+                    {
+                        "data": {
+                            "id": "d5f8xkp15z40",
+                            "created": 1730911541445,
+                            "text": "3、初始化一个小蛇"
+                        },
+                        "children": []
+                    },
+                    {
+                        "data": {
+                            "id": "d5f8xwzlc9c0",
+                            "created": 1730911568205,
+                            "text": "4、生成食物"
+                        },
+                        "children": []
+                    }
+                ]
+            },
+            {
+                "data": {
+                    "id": "d5f8w235ov40",
+                    "created": 1730911422576,
+                    "text": "game_run"
+                },
+                "children": [
+                    {
+                        "data": {
+                            "id": "d5f8y2nvehs0",
+                            "created": 1730911580557,
+                            "text": "1、获取按键输入，判断移动方向、调整游戏难度等等"
+                        },
+                        "children": []
+                    },
+                    {
+                        "data": {
+                            "id": "d5f8yk18y2g0",
+                            "created": 1730911618371,
+                            "text": "2、循环第一步，循环条件为是否ALIVE"
+                        },
+                        "children": []
+                    },
+                    {
+                        "data": {
+                            "id": "d5f8yvrmz7k0",
+                            "created": 1730911643912,
+                            "text": "3、优化显示，操作提示，分数，速度等等"
+                        },
+                        "children": []
+                    }
+                ]
+            },
+            {
+                "data": {
+                    "id": "d5f8wbfetkg0",
+                    "created": 1730911442908,
+                    "text": "game_end"
+                },
+                "children": [
+                    {
+                        "data": {
+                            "id": "d5f8z6nhar40",
+                            "created": 1730911667605,
+                            "text": "释放资源"
+                        },
+                        "children": []
+                    }
+                ]
+            }
+        ]
+    },
+    "template": "right",
+    "theme": "fresh-blue",
+    "version": "1.4.43"
+}

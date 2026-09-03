@@ -1,0 +1,30 @@
+{
+  "name": "@book/taro-template",
+  "version": "1.0.0",
+  "description": "Taro 3.6 + React 18 + TypeScript + TailwindCSS 共享模板（用于 knowledge_hub + games-mini-program 等）",
+  "private": true,
+  "scripts": {
+    "lint": "echo '继承此模板的项目应各自定义 lint 脚本'"
+  },
+  "peerDependencies": {
+    "@tarojs/components": "3.6.40",
+    "@tarojs/mini-runner": "^3.6.37",
+    "@tarojs/plugin-framework-react": "3.6.40",
+    "@tarojs/plugin-platform-h5": "3.6.40",
+    "@tarojs/plugin-platform-weapp": "3.6.40",
+    "@tarojs/react": "3.6.40",
+    "@tarojs/runtime": "3.6.40",
+    "@tarojs/taro": "3.6.40",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "@tarojs/cli": "3.6.40",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "babel-preset-taro": "3.6.40",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.0"
+  }
+}

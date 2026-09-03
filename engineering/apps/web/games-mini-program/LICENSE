@@ -1,0 +1,7 @@
+{
+  "name": "games-mini-program",
+  "version": "1.0.0",
+  "description": "C/C++ 游戏小程序 - 贪吃蛇、数独、2048",
+  "author": "yinchengwang",
+  "license": "MIT"
+}

@@ -1,0 +1,476 @@
+/*!
+ * 浅色主题全局覆盖样式
+ *
+ * dark 主题下不加载（默认 dark），通过 :root[data-theme="light"] 限定
+ * 修复所有页面硬编码的深色样式（白字/暗背景）
+ */
+
+/* === 通用修复：硬编码 rgba(255,255,255,*) 卡片/背景在浅色下变白字看不清 === */
+:root[data-theme="light"] {
+  /* 卡片通用背景（修复 .question-card 等硬编码 rgba(255,255,255,0.05)） */
+  .question-card,
+  .review-card,
+  .record-card,
+  .excerpt-card,
+  .wrong-card,
+  .empty-state,
+  .empty-cta,
+  .modal-content,
+  .add-form,
+  .path-card,
+  .step-card,
+  .gap-item,
+  .option,
+  .wrong-header,
+  .quiz-stat-item,
+  .settings-section,
+  .settings-card,
+  .filter-bar,
+  .filter-chips,
+  .filter-group,
+  .review-stats,
+  .review-tabs,
+  .stat-card,
+  .list-stat,
+  .quick-entries,
+  .plan-card,
+  .stack-card,
+  .welcome-card,
+  .entry-card,
+  .stats-card,
+  .stack-detail,
+  .overall-progress,
+  .progress-circle,
+  .progress-target,
+  .progress-bar,
+  .mini-progress-track,
+  .progress-track,
+  .progress-info,
+  .review-loading,
+  .review-empty,
+  .review-complete,
+  .empty-state,
+  .more-hint,
+  .header-info,
+  .header-stats,
+  .stat-mini,
+  .search-bar,
+  .category-chips,
+  .stats-row,
+  .stat-item,
+  .article-card,
+  .article-list,
+  .breadcrumb,
+  .detail-header,
+  .detail-meta,
+  .detail-body,
+  .detail-footer,
+  .knowledge-page,
+  .knowledge-canvas,
+  .knowledge-sidebar,
+  .radar-page,
+  .radar-container,
+  .radar-sidebar,
+  .radar-legend,
+  .radar-detail,
+  .interview-page,
+  .tracker-page,
+  .mock-page,
+  .bank-page,
+  .settings-page,
+  .dashboard-page,
+  .excerpt-page,
+  .review-page,
+  .quiz-page,
+  .learn-deep-page,
+  .learning-path-page,
+  .path-page,
+  .gap-page {
+    background-color: var(--bg-1) !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+  }
+
+  /* 透明态背景：硬编码 rgba(99,102,241,*) / rgba(255,255,255,*) 浅色下看不清 */
+  .option.selected,
+  .chip.active,
+  .tab.active,
+  .nav-item.active,
+  .stat-card.active {
+    background-color: rgba(99, 102, 241, 0.15) !important;
+    color: var(--primary) !important;
+    border-color: var(--primary) !important;
+  }
+
+  /* 文本色：硬编码 #fff / #cbd5e1 / #94a3b8 */
+  .question-title,
+  .item-title,
+  .item-desc,
+  .card-question,
+  .card-answer,
+  .card-domain,
+  .record-question,
+  .record-domain,
+  .wrong-question,
+  .excerpt-content,
+  .book-name,
+  .book-year,
+  .welcome-title,
+  .welcome-sub,
+  .plan-card-title,
+  .plan-card-sub,
+  .plan-progress,
+  .entry-title,
+  .entry-desc,
+  .stat-num,
+  .stat-label,
+  .page-title,
+  .page-sub,
+  .section-title,
+  .stack-card-total,
+  .stack-card-stat,
+  .stack-name-large,
+  .stack-stat-item,
+  .stack-last,
+  .stack-num,
+  .stack-name,
+  .stack-meta,
+  .stack-percent,
+  .path-name,
+  .path-title,
+  .path-subtitle,
+  .path-desc,
+  .path-meta,
+  .step-name,
+  .step-desc,
+  .tag,
+  .badge,
+  .answer-label,
+  .answer-text,
+  .rating-prompt,
+  .rating-btn,
+  .result-text,
+  .result-icon,
+  .correct-answer,
+  .exp-label,
+  .exp-text,
+  .empty-title,
+  .empty-text,
+  .empty-sub,
+  .empty-stat-num,
+  .empty-stat-label,
+  .empty-desc,
+  .meta-item,
+  .meta-length,
+  .article-title,
+  .article-excerpt,
+  .article-slug,
+  .article-length,
+  .chip-count,
+  .back-link,
+  .breadcrumb-cat,
+  .knowledge-title,
+  .knowledge-desc,
+  .knowledge-stat-num,
+  .knowledge-stat-label,
+  .radar-title,
+  .radar-subtitle,
+  .legend-name,
+  .legend-value,
+  .domain-name,
+  .gap-value,
+  .suggestion-text,
+  .suggestion-icon,
+  .label-current,
+  .label-target,
+  .overview-title,
+  .overview-meta,
+  .overview-name,
+  .overview-desc,
+  .progress-text,
+  .progress-percent,
+  .progress-label,
+  .target-value,
+  .target-label,
+  .overall-text,
+  .overall-percent,
+  .control-btn,
+  .action-btn,
+  .btn-primary,
+  .btn-secondary,
+  .icon-btn,
+  .submit-btn,
+  .add-btn,
+  .back-btn,
+  .favorite-icon,
+  .expand-icon,
+  .progress-hint,
+  .modal-title,
+  .form-label,
+  .form-input,
+  .form-textarea,
+  .search-input,
+  .filter-label,
+  .tab-name,
+  .tab-info,
+  .tab-meta,
+  .tab-icon,
+  .nav-name,
+  .nav-icon,
+  .nav-count,
+  .topbar-title,
+  .topbar-action,
+  .badge-value,
+  .badge-label,
+  .header-actions,
+  .status-badge {
+    color: var(--text) !important;
+  }
+
+  /* 二级文字（副标题/注释）用浅色 */
+  .page-sub,
+  .welcome-sub,
+  .plan-card-sub,
+  .path-subtitle,
+  .empty-sub,
+  .progress-hint,
+  .meta-item,
+  .meta-length,
+  .article-excerpt,
+  .desc-text,
+  .exp-text,
+  .suggestion-text,
+  .entry-desc,
+  .stack-card-stat,
+  .tab-meta,
+  .stack-stat-item,
+  .empty-stat-label,
+  .answer-label,
+  .overview-meta {
+    color: var(--text-3) !important;
+  }
+
+  /* 三级文字（更浅） */
+  .empty-stat-label,
+  .stack-last,
+  .target-label,
+  .progress-label,
+  .label-target,
+  .item-meta,
+  .meta-length,
+  .more-hint,
+  .empty-sub {
+    color: var(--text-4) !important;
+  }
+
+  /* 按钮：浅色下用 primary 实色 */
+  .btn-primary,
+  .start-btn,
+  .control-btn,
+  .action-btn,
+  .submit-btn {
+    background: linear-gradient(135deg, var(--primary), var(--primary-2)) !important;
+    color: #fff !important;
+    border: none !important;
+  }
+
+  .btn-secondary,
+  .back-btn,
+  .add-btn {
+    background: var(--card-bg) !important;
+    color: var(--primary) !important;
+    border: 1px solid var(--primary) !important;
+  }
+
+  .btn-primary:disabled,
+  .control-btn:disabled,
+  .action-btn:disabled {
+    background: var(--text-4) !important;
+    color: #fff !important;
+    opacity: 0.5;
+  }
+
+  /* 输入框 */
+  .form-input,
+  .form-textarea,
+  .search-input,
+  .answer-input {
+    background: var(--bg-1) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+  }
+
+  .form-input::placeholder,
+  .form-textarea::placeholder,
+  .search-input::placeholder,
+  .answer-input::placeholder {
+    color: var(--text-4) !important;
+  }
+
+  /* 难度徽章：浅色下深色文字 */
+  .badge.difficulty {
+    background: rgba(245, 158, 11, 0.15) !important;
+    color: #b45309 !important;
+  }
+  .badge.category {
+    background: rgba(99, 102, 241, 0.15) !important;
+    color: var(--primary) !important;
+  }
+  .badge.domain {
+    background: rgba(16, 185, 129, 0.15) !important;
+    color: #047857 !important;
+  }
+
+  /* 状态徽章（摘抄）*/
+  .status-badge {
+    background: rgba(99, 102, 241, 0.1) !important;
+    color: var(--text) !important;
+  }
+
+  /* 进度条：浅色下用 primary 实色 */
+  .progress-fill,
+  .stack-fill,
+  .mini-progress-fill,
+  .overall-progress .progress-fill {
+    background: linear-gradient(90deg, var(--primary), var(--primary-2)) !important;
+  }
+
+  .progress-track,
+  .progress-bar,
+  .mini-progress-track {
+    background: rgba(0, 0, 0, 0.08) !important;
+  }
+
+  /* 难度 chip：浅色下深色文字 */
+  .chip {
+    background: var(--bg-1) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+  }
+
+  .chip:hover {
+    background: var(--card-bg-hover) !important;
+    border-color: var(--primary) !important;
+  }
+
+  .chip.active {
+    background: rgba(99, 102, 241, 0.15) !important;
+    color: var(--primary) !important;
+    border-color: var(--primary) !important;
+  }
+
+  /* TopBar 头像/通知/搜索 */
+  .topbar {
+    background: var(--bg-1) !important;
+    border-bottom: 1px solid var(--border) !important;
+  }
+
+  .topbar-icon-btn,
+  .topbar-search input {
+    color: var(--text) !important;
+  }
+
+  .topbar-search input {
+    background: var(--bg-0) !important;
+    border: 1px solid var(--border) !important;
+  }
+
+  .topbar-search input::placeholder {
+    color: var(--text-4) !important;
+  }
+
+  .topbar-avatar {
+    background: linear-gradient(135deg, var(--primary), var(--primary-2)) !important;
+    color: #fff !important;
+  }
+
+  .topbar-dropdown {
+    background: var(--bg-1) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text) !important;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1) !important;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    background: var(--bg-1) !important;
+    border-right: 1px solid var(--border) !important;
+  }
+
+  .nav-item {
+    color: var(--text) !important;
+  }
+
+  .nav-item:hover {
+    background: var(--card-bg-hover) !important;
+  }
+
+  .nav-item.active {
+    background: rgba(99, 102, 241, 0.15) !important;
+    color: var(--primary) !important;
+  }
+
+  /* Modal 覆盖 */
+  .modal-overlay {
+    background: rgba(15, 23, 42, 0.5) !important;
+  }
+
+  .modal-content {
+    background: var(--bg-1) !important;
+    color: var(--text) !important;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2) !important;
+  }
+
+  /* 评分按钮（复习） */
+  .rating-btn {
+    background: var(--bg-1) !important;
+    color: var(--text) !important;
+    border: 1px solid var(--border) !important;
+  }
+
+  .rating-btn:hover {
+    background: var(--card-bg-hover) !important;
+    border-color: var(--primary) !important;
+  }
+
+  /* 复习 Tab 切换 */
+  .tab {
+    color: var(--text-2) !important;
+    background: var(--bg-0) !important;
+  }
+
+  .tab.active {
+    color: var(--primary) !important;
+    border-bottom-color: var(--primary) !important;
+  }
+
+  /* 学习路径步骤卡 */
+  .step-card {
+    background: var(--card-bg) !important;
+    color: var(--text) !important;
+  }
+
+  .step-card.completed {
+    border-color: #10b981 !important;
+  }
+
+  .step-card.current {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2) !important;
+  }
+
+  /* 雷达 SVG 文字 */
+  .radar-svg text,
+  .knowledge-svg text {
+    fill: var(--text) !important;
+  }
+
+  /* 链接 / 锚点 */
+  a {
+    color: var(--text) !important;
+  }
+
+  a:hover {
+    color: var(--primary) !important;
+  }
+}

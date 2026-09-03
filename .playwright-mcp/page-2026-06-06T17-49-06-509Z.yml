@@ -1,0 +1,35 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - heading "📝 测试中..." [level=1] [ref=e54] [cursor=pointer]
+    - generic [ref=e5]:
+      - button "🏠 首页" [ref=e6] [cursor=pointer]
+      - button "📊 仪表盘" [ref=e7] [cursor=pointer]
+      - button "🏆 项目验收" [ref=e8] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]: 💡
+    - generic [ref=e12]: 💡 设计模式：单例模式的懒汉式(Double-Checked Locking)在C++11之前因为内存重排序问题是不安全的。
+    - generic "关闭" [ref=e13] [cursor=pointer]: ✕
+  - generic [ref=e14]:
+    - generic [ref=e55]:
+      - button "← 退出测试" [ref=e56] [cursor=pointer]
+      - generic [ref=e57]: 第 3/5 题
+      - generic [ref=e58]: ⏱ 02:05
+    - generic [ref=e95]:
+      - generic [ref=e96]:
+        - generic [ref=e97]: 单选题
+        - generic [ref=e98]: 基础
+      - generic [ref=e99]: 📖 你在设计一个不可变的配置类，所有getter不应该修改对象状态。
+      - generic [ref=e100]: const成员函数的作用是：
+      - generic [ref=e101]:
+        - generic:
+          - generic: A. 在编译时不产生任何代码
+        - generic:
+          - generic: B. 只能被const对象调用
+        - generic:
+          - generic: C. 返回const类型的值
+        - generic:
+          - generic: D. 承诺不修改对象的成员变量
+      - generic [ref=e116]:
+        - text: ✅ 回答正确！
+        - text: 📝 const成员函数承诺不修改对象状态（this指针变为const T* const）。const对象只能调用const成员函数。mutable成员可以在const函数中被修改。
+      - button "下一题 →" [ref=e117] [cursor=pointer]

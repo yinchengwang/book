@@ -1,0 +1,432 @@
+/* TopBar - PC 端顶部栏 */
+.topbar {
+  height: 64px;
+  padding: 0 32px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+/* 搜索框 */
+.search {
+  flex: 1;
+  max-width: 480px;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 14px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-3);
+  font-size: 13px;
+  transition: all 0.15s;
+}
+
+.search:focus-within {
+  border-color: var(--primary);
+  background: var(--card-bg-hover);
+}
+
+.search-ic {
+  flex-shrink: 0;
+}
+
+.search input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 13px;
+  height: 100%;
+}
+
+.search input::placeholder {
+  color: var(--text-4);
+}
+
+.search-kbd {
+  font-size: 11px;
+  color: var(--text-4);
+  padding: 2px 6px;
+  background: var(--glass-strong);
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+/* 右侧操作 */
+.topbar-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon-btn {
+  width: 38px;
+  height: 38px;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-2);
+  font-size: 16px;
+  position: relative;
+  transition: all 0.15s;
+  user-select: none;
+}
+
+.icon-btn:hover {
+  background: var(--card-bg-hover);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.icon-btn.theme-btn {
+  font-size: 18px;
+}
+
+.icon-btn.has-badge .dot {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  background: linear-gradient(135deg, #ef4444, #f97316);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 9px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  border: 2px solid var(--bg-0);
+}
+
+/* 用户 */
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 4px;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-left: 4px;
+  position: relative;
+}
+
+.user-chip:hover {
+  background: var(--card-bg-hover);
+  border-color: var(--primary);
+}
+
+.user-chip .avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.user-chip .name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.user-chip .caret {
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+/* === 用户下拉菜单 === */
+.user-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 260px;
+  background: var(--glass-strong);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px;
+  box-shadow: 0 16px 48px var(--shadow);
+  z-index: 200;
+  animation: dropdownIn 0.2s ease-out;
+}
+
+.user-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px;
+
+  .avatar-lg {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #818cf8, #c084fc);
+    color: #fff;
+    font-weight: 800;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .user-info {
+    flex: 1;
+    min-width: 0;
+
+    .user-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .user-meta {
+      font-size: 11px;
+      color: var(--text-3);
+      margin-top: 2px;
+    }
+  }
+
+  .name-edit {
+    flex: 1;
+    min-width: 0;
+
+    input {
+      width: 100%;
+      background: var(--card-bg);
+      border: 1px solid var(--primary);
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .edit-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+
+      button {
+        flex: 1;
+        padding: 5px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .btn-save {
+        background: linear-gradient(135deg, var(--primary), var(--primary-2));
+        color: #fff;
+      }
+
+      .btn-cancel {
+        background: var(--card-bg);
+        color: var(--text-2);
+      }
+    }
+  }
+}
+
+.user-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 6px 0;
+}
+
+.user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-2);
+  transition: all 0.12s;
+
+  &:hover {
+    background: var(--card-bg-hover);
+    color: var(--text);
+  }
+
+  &.danger {
+    color: #fca5a5;
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.15);
+      color: #fecaca;
+    }
+  }
+
+  .mi {
+    font-size: 14px;
+    width: 18px;
+    text-align: center;
+  }
+}
+
+/* 通知下拉 */
+.notification-dropdown {
+  position: absolute;
+  top: 72px;
+  right: 130px;
+  width: 360px;
+  max-height: 500px;
+  overflow-y: auto;
+  background: var(--glass-strong);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px var(--shadow);
+  z-index: 200;
+  animation: dropdownIn 0.2s ease-out;
+}
+
+@keyframes dropdownIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.notif-header {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  background: var(--glass-strong);
+  z-index: 1;
+
+  .notif-mark-all {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--primary);
+    cursor: pointer;
+    padding: 2px 8px;
+    border-radius: 4px;
+    transition: background 0.12s;
+
+    &:hover {
+      background: var(--card-bg-hover);
+    }
+  }
+}
+
+.notif-empty {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--text-3);
+
+  .emoji {
+    font-size: 32px;
+    margin-bottom: 8px;
+    opacity: 0.6;
+  }
+
+  .sub {
+    font-size: 11px;
+    margin-top: 4px;
+    opacity: 0.7;
+  }
+}
+
+.notif-list {
+  padding: 4px;
+}
+
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.12s;
+  position: relative;
+
+  &:hover {
+    background: var(--card-bg-hover);
+  }
+
+  &.unread .notif-title {
+    font-weight: 700;
+  }
+
+  &.read {
+    opacity: 0.7;
+  }
+}
+
+.notif-ic {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.notif-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.notif-title {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.notif-desc {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+.notif-time {
+  font-size: 10px;
+  color: var(--text-4);
+  margin-top: 4px;
+}
+
+.notif-unread-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--primary);
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 8px;
+}

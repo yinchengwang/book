@@ -1,0 +1,10 @@
+1、cmake makefile
+2、熟悉网络编程
+3、多线程
+4、数据结构
+5、redis
+6、Oracle
+7、Faiss
+8、mysql
+9、Postgresql
+10、分布式系统架构及原理

@@ -1,0 +1,3 @@
+count=10000
+dims=128
+dtype=float32

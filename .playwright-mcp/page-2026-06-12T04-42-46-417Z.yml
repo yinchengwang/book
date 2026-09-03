@@ -1,0 +1,334 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e3]:
+      - link "🎯 Reading Radar" [ref=e4] [cursor=pointer]:
+        - /url: index.html
+        - generic [ref=e5]: 🎯
+        - generic [ref=e6]: Reading Radar
+      - list [ref=e7]:
+        - listitem [ref=e8]:
+          - link "📡 雷达图" [ref=e9] [cursor=pointer]:
+            - /url: index.html
+            - generic [ref=e10]: 📡
+            - generic [ref=e11]: 雷达图
+        - listitem [ref=e12]:
+          - link "📋 看板" [ref=e13] [cursor=pointer]:
+            - /url: learning-kanban.html
+            - generic [ref=e14]: 📋
+            - generic [ref=e15]: 看板
+        - listitem [ref=e16]:
+          - link "📝 测验" [ref=e17] [cursor=pointer]:
+            - /url: quiz-system.html
+            - generic [ref=e18]: 📝
+            - generic [ref=e19]: 测验
+        - listitem [ref=e20]:
+          - link "📖 学习" [ref=e21] [cursor=pointer]:
+            - /url: learn.html
+            - generic [ref=e22]: 📖
+            - generic [ref=e23]: 学习
+        - listitem [ref=e24]:
+          - link "📊 仪表盘" [ref=e25] [cursor=pointer]:
+            - /url: dashboard.html
+            - generic [ref=e26]: 📊
+            - generic [ref=e27]: 仪表盘
+        - listitem [ref=e28]:
+          - link "🗓️ 五年计划" [ref=e29] [cursor=pointer]:
+            - /url: five-year-plan.html
+            - generic [ref=e30]: 🗓️
+            - generic [ref=e31]: 五年计划
+  - banner [ref=e32]:
+    - generic [ref=e33]:
+      - generic [ref=e34]:
+        - generic [ref=e35]: Learning Route
+        - heading "🔮 向量数据库技术栈 · 学习内容页" [level=1] [ref=e495]
+        - generic [ref=e37]: 当前知识点：向量索引基础。页面路由格式固定为 learn.html#<catId>/<itemId>。
+      - navigation [ref=e38]:
+        - link "← 返回看板" [ref=e39] [cursor=pointer]:
+          - /url: learning-kanban.html
+        - link "📊 仪表盘" [ref=e40] [cursor=pointer]:
+          - /url: dashboard.html
+        - link "🎯 去测验" [ref=e41] [cursor=pointer]:
+          - /url: quiz-system.html#vdb/db-vector-basic
+    - generic [ref=e42]:
+      - button "🔧 C 技术栈" [ref=e496] [cursor=pointer]
+      - button "⚙️ C++ 技术栈" [ref=e497] [cursor=pointer]
+      - button "🌳 数据结构技术栈" [ref=e498] [cursor=pointer]
+      - button "🗄️ 数据库内核技术栈" [ref=e499] [cursor=pointer]
+      - button "🐍 Python 技术栈" [ref=e500] [cursor=pointer]
+      - button "🐧 Linux 技术栈" [ref=e501] [cursor=pointer]
+      - button "🔮 向量数据库技术栈" [ref=e502] [cursor=pointer]
+  - main [ref=e50]:
+    - complementary [ref=e51]:
+      - generic [ref=e52]:
+        - generic [ref=e53]: 🔮 向量数据库技术栈 · 知识点目录
+        - generic [ref=e54]: 共 15 个知识点，当前已筛出 15 个。
+        - textbox "搜索知识点..." [ref=e56]
+        - combobox [ref=e58]:
+          - option "全部象限" [selected]
+          - option "语言/线性结构"
+          - option "系统/树形结构"
+          - option "算法/图结构"
+          - option "工程/算法设计"
+      - generic [ref=e59]:
+        - generic [ref=e503]:
+          - generic [ref=e504]:
+            - generic [ref=e505]: 向量基础
+            - generic [ref=e506]: "1"
+          - link "向量索引基础 基础 待学习 未测" [ref=e507] [cursor=pointer]:
+            - /url: "#vdb/db-vector-basic"
+            - generic [ref=e508]: 向量索引基础
+            - generic [ref=e509]:
+              - generic [ref=e510]: 基础
+              - generic [ref=e511]: 待学习
+              - generic [ref=e512]: 未测
+        - generic [ref=e513]:
+          - generic [ref=e514]:
+            - generic [ref=e515]: 索引算法
+            - generic [ref=e516]: "5"
+          - link "IVF家族索引(IVFFlat/IVFPQ/IVFSQ) 进阶 待学习 未测" [ref=e517] [cursor=pointer]:
+            - /url: "#vdb/db-ivf-variants"
+            - generic [ref=e518]: IVF家族索引(IVFFlat/IVFPQ/IVFSQ)
+            - generic [ref=e519]:
+              - generic [ref=e520]: 进阶
+              - generic [ref=e521]: 待学习
+              - generic [ref=e522]: 未测
+          - link "HNSW索引原理与实现 进阶 待学习 未测" [ref=e523] [cursor=pointer]:
+            - /url: "#vdb/db-hnsw"
+            - generic [ref=e524]: HNSW索引原理与实现
+            - generic [ref=e525]:
+              - generic [ref=e526]: 进阶
+              - generic [ref=e527]: 待学习
+              - generic [ref=e528]: 未测
+          - link "图索引详解(NSW/HNSW/NSG/Vamana) 高级 待学习 未测" [ref=e529] [cursor=pointer]:
+            - /url: "#vdb/db-graph-index"
+            - generic [ref=e530]: 图索引详解(NSW/HNSW/NSG/Vamana)
+            - generic [ref=e531]:
+              - generic [ref=e532]: 高级
+              - generic [ref=e533]: 待学习
+              - generic [ref=e534]: 未测
+          - link "磁盘向量索引(DiskANN) 高级 待学习 未测" [ref=e535] [cursor=pointer]:
+            - /url: "#vdb/db-diskann"
+            - generic [ref=e536]: 磁盘向量索引(DiskANN)
+            - generic [ref=e537]:
+              - generic [ref=e538]: 高级
+              - generic [ref=e539]: 待学习
+              - generic [ref=e540]: 未测
+          - link "Pinecone 存储与索引 进阶 待学习 未测" [ref=e541] [cursor=pointer]:
+            - /url: "#vdb/vdb-pinecone-storage"
+            - generic [ref=e542]: Pinecone 存储与索引
+            - generic [ref=e543]:
+              - generic [ref=e544]: 进阶
+              - generic [ref=e545]: 待学习
+              - generic [ref=e546]: 未测
+        - generic [ref=e547]:
+          - generic [ref=e548]:
+            - generic [ref=e549]: 量化与压缩
+            - generic [ref=e550]: "3"
+          - link "乘积量化(PQ)与向量压缩 进阶 待学习 未测" [ref=e551] [cursor=pointer]:
+            - /url: "#vdb/db-pq-quant"
+            - generic [ref=e552]: 乘积量化(PQ)与向量压缩
+            - generic [ref=e553]:
+              - generic [ref=e554]: 进阶
+              - generic [ref=e555]: 待学习
+              - generic [ref=e556]: 未测
+          - link "量化技术全景(PQ/OPQ/SQ/AQ/RVQ) 高级 待学习 未测" [ref=e557] [cursor=pointer]:
+            - /url: "#vdb/db-quantization"
+            - generic [ref=e558]: 量化技术全景(PQ/OPQ/SQ/AQ/RVQ)
+            - generic [ref=e559]:
+              - generic [ref=e560]: 高级
+              - generic [ref=e561]: 待学习
+              - generic [ref=e562]: 未测
+          - link "标量量化与SIMD距离计算 进阶 待学习 未测" [ref=e563] [cursor=pointer]:
+            - /url: "#vdb/db-scalar-quant"
+            - generic [ref=e564]: 标量量化与SIMD距离计算
+            - generic [ref=e565]:
+              - generic [ref=e566]: 进阶
+              - generic [ref=e567]: 待学习
+              - generic [ref=e568]: 未测
+        - generic [ref=e569]:
+          - generic [ref=e570]:
+            - generic [ref=e571]: 系统与工程
+            - generic [ref=e572]: "6"
+          - link "Milvus系统架构 进阶 待学习 未测" [ref=e573] [cursor=pointer]:
+            - /url: "#vdb/db-milvus-arch"
+            - generic [ref=e574]: Milvus系统架构
+            - generic [ref=e575]:
+              - generic [ref=e576]: 进阶
+              - generic [ref=e577]: 待学习
+              - generic [ref=e578]: 未测
+          - link "Milvus段(Segment)管理 进阶 待学习 未测" [ref=e579] [cursor=pointer]:
+            - /url: "#vdb/db-milvus-segment"
+            - generic [ref=e580]: Milvus段(Segment)管理
+            - generic [ref=e581]:
+              - generic [ref=e582]: 进阶
+              - generic [ref=e583]: 待学习
+              - generic [ref=e584]: 未测
+          - link "Milvus索引构建与调度 高级 待学习 未测" [ref=e585] [cursor=pointer]:
+            - /url: "#vdb/db-milvus-index"
+            - generic [ref=e586]: Milvus索引构建与调度
+            - generic [ref=e587]:
+              - generic [ref=e588]: 高级
+              - generic [ref=e589]: 待学习
+              - generic [ref=e590]: 未测
+          - link "Milvus混合查询(标量+向量) 高级 待学习 未测" [ref=e591] [cursor=pointer]:
+            - /url: "#vdb/db-milvus-search"
+            - generic [ref=e592]: Milvus混合查询(标量+向量)
+            - generic [ref=e593]:
+              - generic [ref=e594]: 高级
+              - generic [ref=e595]: 待学习
+              - generic [ref=e596]: 未测
+          - link "混合查询(标量+向量/SPANN) 高级 待学习 未测" [ref=e597] [cursor=pointer]:
+            - /url: "#vdb/db-hybrid-search"
+            - generic [ref=e598]: 混合查询(标量+向量/SPANN)
+            - generic [ref=e599]:
+              - generic [ref=e600]: 高级
+              - generic [ref=e601]: 待学习
+              - generic [ref=e602]: 未测
+          - link "Pinecone Serverless 架构 基础 待学习 未测" [ref=e603] [cursor=pointer]:
+            - /url: "#vdb/vdb-pinecone-serverless"
+            - generic [ref=e604]: Pinecone Serverless 架构
+            - generic [ref=e605]:
+              - generic [ref=e606]: 基础
+              - generic [ref=e607]: 待学习
+              - generic [ref=e608]: 未测
+    - generic [ref=e340]:
+      - generic [ref=e341]:
+        - generic [ref=e342]:
+          - generic [ref=e609]: 🔮 向量数据库技术栈
+          - generic [ref=e610]: 向量基础
+          - generic [ref=e611]: 基础
+          - generic [ref=e612]: 待学习
+          - generic [ref=e613]: 未测验
+        - heading "向量索引基础" [level=2] [ref=e614]
+        - generic [ref=e349]: Flat(Brute Force)精确搜索、IVF(Inverted File)倒排划分、聚类中心(centroid)的K-Means训练、nprobe参数控制搜索精度。Faiss的IVFFlat是入门级向量索引。 学习时重点围绕 Flat 暴力搜索、IVF 倒排划分、K-Means 聚类中心训练、nprobe 参数调优，从原理到工程实现逐层深入。
+        - generic [ref=e350]:
+          - link "🎯 去做 10 题测验" [ref=e351] [cursor=pointer]:
+            - /url: quiz-system.html#vdb/db-vector-basic
+          - link "📋 返回学习看板" [ref=e352] [cursor=pointer]:
+            - /url: learning-kanban.html
+        - generic [ref=e353]:
+          - generic [ref=e354]:
+            - button "← 上一个" [disabled] [ref=e355]
+            - button "下一个 →" [ref=e356] [cursor=pointer]
+          - generic [ref=e357]: 路由：learn.html#vdb/db-vector-basic
+      - generic [ref=e358]:
+        - generic [ref=e615]:
+          - generic [ref=e616]: 当前状态
+          - generic [ref=e617]: 待学习
+          - generic [ref=e618]: 来自学习看板的本地状态
+        - generic [ref=e619]:
+          - generic [ref=e620]: 最近均分
+          - generic [ref=e621]: "--"
+          - generic [ref=e622]: 还没有测验记录
+        - generic [ref=e623]:
+          - generic [ref=e624]: 测验次数
+          - generic [ref=e625]: "0"
+          - generic [ref=e626]: 先学内容再去测验
+        - generic [ref=e627]:
+          - generic [ref=e628]: 同象限知识点
+          - generic [ref=e629]: "1"
+          - generic [ref=e630]: 向量基础 方向的连续学习范围
+      - generic [ref=e375]:
+        - generic [ref=e376]:
+          - generic [ref=e631]:
+            - generic [ref=e632]:
+              - generic [ref=e633]: 入门路径
+              - generic [ref=e634]: "01"
+            - generic [ref=e635]: 先理解问题和基础方法，再看优化和变体。
+            - generic [ref=e636]:
+              - generic [ref=e637]:
+                - generic [ref=e638]: "1"
+                - paragraph [ref=e639]: 围绕 Flat 暴力搜索、IVF 倒排划分、K-Means 聚类中心训练、nprobe 参数调优 先回答三个问题：它解决什么问题、比上一代好在哪里、引入什么新代价。
+              - generic [ref=e640]:
+                - generic [ref=e641]: "2"
+                - paragraph [ref=e642]: 入门时先画一张搜索或构建流程图，把数据流和参数串起来。
+              - generic [ref=e643]:
+                - generic [ref=e644]: "3"
+                - paragraph [ref=e645]: 不要一开始就调参，先把索引类型的选择逻辑理解清楚。
+          - generic [ref=e646]:
+            - generic [ref=e647]:
+              - generic [ref=e648]: 核心原理
+              - generic [ref=e649]: "02"
+            - generic [ref=e650]: 把索引拆成数据结构、搜索策略和代价模型。
+            - generic [ref=e651]:
+              - generic [ref=e652]:
+                - generic [ref=e653]: "1"
+                - paragraph [ref=e654]: Flat(Brute Force)精确搜索、IVF(Inverted File)倒排划分、聚类中心(centroid)的K-Means训练、nprobe参数控制搜索精度。Faiss的IVFFlat是入门级向量索引。
+              - generic [ref=e655]:
+                - generic [ref=e656]: "2"
+                - paragraph [ref=e657]: 原理层要重点解释 Flat 暴力搜索、IVF 倒排划分、K-Means 聚类中心训练、nprobe 参数调优 为什么有效，它换来了什么收益，又引入了什么代价。
+              - generic [ref=e658]:
+                - generic [ref=e659]: "3"
+                - paragraph [ref=e660]: 理解 ANN 索引时必须把召回率、延迟和内存放在一起看，单独优化任何一边都容易失真。
+          - generic [ref=e661]:
+            - generic [ref=e662]:
+              - generic [ref=e663]: 实战与工作
+              - generic [ref=e664]: "03"
+            - generic [ref=e665]: 把索引选型和参数带回真实系统。
+            - generic [ref=e666]:
+              - generic [ref=e667]:
+                - generic [ref=e668]: "1"
+                - paragraph [ref=e669]: 向量基础方向先理解距离度量和召回率的定义，再对比不同索引的输出差异。
+              - generic [ref=e670]:
+                - generic [ref=e671]: "2"
+                - paragraph [ref=e672]: 工作里真正要落地的是 Flat 暴力搜索、IVF 倒排划分、K-Means 聚类中心训练、nprobe 参数调优，通常体现在召回达标、延迟可控、成本可接受上。
+              - generic [ref=e673]:
+                - generic [ref=e674]: "3"
+                - paragraph [ref=e675]: 建议用 recall-vs-QPS 曲线做索引选型，而不是只看单点指标。
+          - generic [ref=e676]:
+            - generic [ref=e677]:
+              - generic [ref=e678]: 调优与面试
+              - generic [ref=e679]: "04"
+            - generic [ref=e680]: 整理关键参数、取舍逻辑和常见坑。
+            - generic [ref=e681]:
+              - generic [ref=e682]:
+                - generic [ref=e683]: "1"
+                - paragraph [ref=e684]: 面试会追问召回率为什么不到 100%、参数如何调优、不同索引的选型依据。
+              - generic [ref=e685]:
+                - generic [ref=e686]: "2"
+                - paragraph [ref=e687]: 调优时先看指标再动手，确认瓶颈是 recall 不够还是 QPS 不够，再决定调参数还是换索引。
+              - generic [ref=e688]:
+                - generic [ref=e689]: "3"
+                - paragraph [ref=e690]: 面试回答尽量把原理、参数、 trade-off 和线上案例连成闭环。
+          - generic [ref=e691]:
+            - generic [ref=e692]:
+              - generic [ref=e693]: 📖 深度阅读
+              - generic [ref=e694]: "05"
+            - generic [ref=e695]: 内容待补充。
+            - generic [ref=e697]: ⏳ 正在加载深度文章...
+        - complementary [ref=e444]:
+          - generic [ref=e445]:
+            - generic [ref=e447]: 学习锚点
+            - generic [ref=e448]:
+              - generic [ref=e698]:
+                - generic [ref=e699]: 学习焦点
+                - generic [ref=e700]: Flat 暴力搜索、IVF 倒排划分、K-Means 聚类中心训练、nprobe 参数调优
+              - generic [ref=e701]:
+                - generic [ref=e702]: 所属方向
+                - generic [ref=e703]: 向量基础 / 基础
+              - generic [ref=e704]:
+                - generic [ref=e705]: 建议动作
+                - generic [ref=e706]: 画搜索链路、对比参数效果、读论文源码，再结合实际场景
+              - link "入门路径 跳转" [ref=e707] [cursor=pointer]:
+                - /url: "#sec-starter"
+                - generic [ref=e708]: 入门路径
+                - generic [ref=e709]: 跳转
+              - link "核心原理 跳转" [ref=e710] [cursor=pointer]:
+                - /url: "#sec-principle"
+                - generic [ref=e711]: 核心原理
+                - generic [ref=e712]: 跳转
+              - link "实战与工作 跳转" [ref=e713] [cursor=pointer]:
+                - /url: "#sec-practice"
+                - generic [ref=e714]: 实战与工作
+                - generic [ref=e715]: 跳转
+              - link "调优与面试 跳转" [ref=e716] [cursor=pointer]:
+                - /url: "#sec-tuning"
+                - generic [ref=e717]: 调优与面试
+                - generic [ref=e718]: 跳转
+              - link "📖 深度阅读 跳转" [ref=e719] [cursor=pointer]:
+                - /url: "#sec-deepdive"
+                - generic [ref=e720]: 📖 深度阅读
+                - generic [ref=e721]: 跳转
+          - generic [ref=e473]:
+            - generic [ref=e475]: 相关知识点
+            - generic [ref=e722]: 当前象限没有更多相邻知识点。

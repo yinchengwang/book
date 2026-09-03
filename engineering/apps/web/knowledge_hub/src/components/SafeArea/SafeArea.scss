@@ -1,0 +1,33 @@
+/* SafeArea 样式 */
+.safe-area {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.safe-area-top {
+  /* 顶部安全区域 */
+}
+
+.safe-area-bottom {
+  /* 底部安全区域 */
+}
+
+.safe-area-left {
+  /* 左侧安全区域 */
+}
+
+.safe-area-right {
+  /* 右侧安全区域 */
+}
+
+.safe-area-all {
+  /* 全方向安全区域 */
+}
+
+/* H5 端使用 CSS env() */
+.safe-area-h5 {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}

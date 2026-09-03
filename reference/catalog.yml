@@ -1,0 +1,659 @@
+projects:
+  - name: postgres
+    model: relational
+    tier: core
+    repository: https://github.com/postgres/postgres.git
+    mirror: https://github.com/postgres/postgres.git
+    license: PostgreSQL
+    status: active
+    notes:
+      - 关系型数据库典型实现
+  - name: mysql
+    model: relational
+    tier: core
+    repository: https://github.com/mysql/mysql-server.git
+    mirror: https://gitee.com/yinchengwang_admin/mysql-server.git
+    license: GPL-2.0
+    status: active
+    notes:
+      - 主流关系型数据库
+  - name: sqlite3
+    model: relational
+    tier: core
+    repository: https://github.com/sqlite/sqlite.git
+    mirror: https://github.com/sqlite/sqlite.git
+    license: Public Domain
+    status: active
+    notes:
+      - 嵌入式关系型数据库
+  - name: openGauss
+    model: relational
+    tier: representative
+    repository: https://gitee.com/opengauss/openGauss-server.git
+    mirror: https://gitee.com/opengauss/openGauss-server.git
+    license: MulanPSL-2.0
+    status: active
+    notes:
+      - 企业级关系型数据库
+  - name: redis
+    model: key-value
+    tier: core
+    repository: https://github.com/redis/redis.git
+    mirror: https://gitee.com/yinchengwang_admin/redis.git
+    license: BSD-3-Clause
+    status: active
+    notes:
+      - 键值数据库代表
+  - name: elasticsearch
+    model: search
+    tier: core
+    repository: https://github.com/elastic/elasticsearch.git
+    mirror: https://gitee.com/yinchengwang_admin/elasticsearch.git
+    license: SSPL
+    status: active
+    notes:
+      - 搜索与文档检索引擎
+  - name: chroma
+    model: vector
+    tier: representative
+    repository: https://github.com/chroma-core/chroma.git
+    mirror: https://github.com/chroma-core/chroma.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 向量数据库
+  - name: milvus
+    model: vector
+    tier: core
+    repository: https://github.com/milvus-io/milvus.git
+    mirror: https://github.com/milvus-io/milvus.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 向量数据库
+  - name: faiss
+    model: vector
+    tier: core
+    repository: https://github.com/facebookresearch/faiss.git
+    mirror: https://gitee.com/yinchengwang_admin/faiss.git
+    license: MIT
+    status: active
+    notes:
+      - 向量检索库
+  - name: neo4j
+    model: graph
+    tier: core
+    repository: https://github.com/neo4j/neo4j.git
+    mirror: https://github.com/neo4j/neo4j.git
+    license: GPL-3.0
+    status: active
+    notes:
+      - 图数据库
+  - name: pgvector
+    model: extension
+    tier: representative
+    repository: https://github.com/pgvector/pgvector.git
+    mirror: https://gitee.com/yinchengwang_admin/pgvector.git
+    license: PostgreSQL
+    status: active
+    notes:
+      - PostgreSQL 向量扩展
+  - name: ann-benchmarks
+    model: benchmark
+    tier: representative
+    repository: https://github.com/erikbern/ann-benchmarks.git
+    mirror: https://gitee.com/yinchengwang_admin/ann-benchmarks.git
+    license: MIT
+    status: maintained
+    notes:
+      - 向量检索基准
+  - name: mariadb
+    model: relational
+    tier: representative
+    repository: https://github.com/MariaDB/server.git
+    mirror: https://github.com/MariaDB/server.git
+    license: GPL-2.0
+    status: active
+    notes:
+      - MySQL 兼容分支
+  - name: firebird
+    model: relational
+    tier: representative
+    repository: https://github.com/FirebirdSQL/firebird.git
+    mirror: https://github.com/FirebirdSQL/firebird.git
+    license: IPL
+    status: active
+    notes:
+      - 经典关系型数据库
+  - name: h2
+    model: relational
+    tier: representative
+    repository: https://github.com/h2database/h2database.git
+    mirror: https://github.com/h2database/h2database.git
+    license: MPL-2.0
+    status: active
+    notes:
+      - 嵌入式关系型数据库
+  - name: cockroachdb
+    model: distributed-sql
+    tier: core
+    repository: https://github.com/cockroachdb/cockroach.git
+    mirror: https://github.com/cockroachdb/cockroach.git
+    license: BSL-1.1
+    status: active
+    notes:
+      - 分布式 NewSQL
+  - name: tidb
+    model: distributed-sql
+    tier: core
+    repository: https://github.com/pingcap/tidb.git
+    mirror: https://github.com/pingcap/tidb.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 分布式 HTAP
+  - name: yugabytedb
+    model: distributed-sql
+    tier: core
+    repository: https://github.com/yugabyte/yugabyte-db.git
+    mirror: https://github.com/yugabyte/yugabyte-db.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 分布式 SQL
+  - name: oceanbase
+    model: distributed-sql
+    tier: representative
+    repository: https://github.com/oceanbase/oceanbase.git
+    mirror: https://github.com/oceanbase/oceanbase.git
+    license: MulanPSL-2.0
+    status: active
+    notes:
+      - 分布式数据库
+  - name: rocksdb
+    model: key-value
+    tier: core
+    repository: https://github.com/facebook/rocksdb.git
+    mirror: https://github.com/facebook/rocksdb.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - LSM 引擎
+  - name: leveldb
+    model: key-value
+    tier: representative
+    repository: https://github.com/google/leveldb.git
+    mirror: https://github.com/google/leveldb.git
+    license: BSD-3-Clause
+    status: maintained
+    notes:
+      - 键值存储
+  - name: foundationdb
+    model: key-value
+    tier: representative
+    repository: https://github.com/apple/foundationdb.git
+    mirror: https://github.com/apple/foundationdb.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 分布式事务键值存储
+  - name: badger
+    model: key-value
+    tier: representative
+    repository: https://github.com/dgraph-io/badger.git
+    mirror: https://github.com/dgraph-io/badger.git
+    license: Apache-2.0
+    status: maintained
+    notes:
+      - Go 键值存储
+  - name: pebble
+    model: key-value
+    tier: representative
+    repository: https://github.com/cockroachdb/pebble.git
+    mirror: https://github.com/cockroachdb/pebble.git
+    license: BSD-3-Clause
+    status: active
+    notes:
+      - Go 键值存储
+  - name: dragonfly
+    model: key-value
+    tier: representative
+    repository: https://github.com/dragonflydb/dragonfly.git
+    mirror: https://github.com/dragonflydb/dragonfly.git
+    license: BSL-1.1
+    status: active
+    notes:
+      - Redis 兼容内存数据库
+  - name: mongodb
+    model: document
+    tier: core
+    repository: https://github.com/mongodb/mongo.git
+    mirror: https://github.com/mongodb/mongo.git
+    license: SSPL
+    status: active
+    notes:
+      - 文档数据库
+  - name: couchdb
+    model: document
+    tier: representative
+    repository: https://github.com/apache/couchdb.git
+    mirror: https://github.com/apache/couchdb.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 文档数据库
+  - name: couchbase
+    model: document
+    tier: representative
+    repository: https://github.com/couchbase/couchbase-lite-core.git
+    mirror: https://github.com/couchbase/couchbase-lite-core.git
+    license: BSL-1.1
+    status: active
+    notes:
+      - 注：官方 server 仓库已闭源（BSL 许可），此处使用 Couchbase Lite Core（C++ 嵌入式引擎，公开可读）
+      - 文档与键值混合数据库
+  - name: ravendb
+    model: document
+    tier: representative
+    repository: https://github.com/ravendb/ravendb.git
+    mirror: https://github.com/ravendb/ravendb.git
+    license: AGPL-3.0
+    status: active
+    notes:
+      - .NET 文档数据库
+  - name: ferretdb
+    model: document
+    tier: innovative
+    repository: https://github.com/FerretDB/FerretDB.git
+    mirror: https://github.com/FerretDB/FerretDB.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - PostgreSQL 兼容文档数据库
+  - name: clickhouse
+    model: columnar
+    tier: core
+    repository: https://github.com/ClickHouse/ClickHouse.git
+    mirror: https://github.com/ClickHouse/ClickHouse.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 列式 OLAP
+  - name: doris
+    model: columnar
+    tier: representative
+    repository: https://github.com/apache/doris.git
+    mirror: https://github.com/apache/doris.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 列式分析数据库
+  - name: starrocks
+    model: columnar
+    tier: representative
+    repository: https://github.com/StarRocks/starrocks.git
+    mirror: https://github.com/StarRocks/starrocks.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 列式分析数据库
+  - name: pinot
+    model: columnar
+    tier: representative
+    repository: https://github.com/apache/pinot.git
+    mirror: https://github.com/apache/pinot.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 实时分析
+  - name: druid
+    model: columnar
+    tier: representative
+    repository: https://github.com/apache/druid.git
+    mirror: https://github.com/apache/druid.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 实时分析数据库
+  - name: influxdb
+    model: time-series
+    tier: core
+    repository: https://github.com/influxdata/influxdb.git
+    mirror: https://github.com/influxdata/influxdb.git
+    license: MIT
+    status: active
+    notes:
+      - 时序数据库
+  - name: victoriametrics
+    model: time-series
+    tier: representative
+    repository: https://github.com/VictoriaMetrics/VictoriaMetrics.git
+    mirror: https://github.com/VictoriaMetrics/VictoriaMetrics.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 时序数据库
+  - name: questdb
+    model: time-series
+    tier: representative
+    repository: https://github.com/questdb/questdb.git
+    mirror: https://github.com/questdb/questdb.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 时序数据库
+  - name: tdengine
+    model: time-series
+    tier: representative
+    repository: https://github.com/taosdata/TDengine.git
+    mirror: https://github.com/taosdata/TDengine.git
+    license: AGPL-3.0
+    status: active
+    notes:
+      - 时序数据库
+  - name: iotdb
+    model: time-series
+    tier: representative
+    repository: https://github.com/apache/iotdb.git
+    mirror: https://github.com/apache/iotdb.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 时序数据库
+  - name: opensearch
+    model: search
+    tier: representative
+    repository: https://github.com/opensearch-project/OpenSearch.git
+    mirror: https://github.com/opensearch-project/OpenSearch.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 搜索引擎
+  - name: meilisearch
+    model: search
+    tier: representative
+    repository: https://github.com/meilisearch/meilisearch.git
+    mirror: https://github.com/meilisearch/meilisearch.git
+    license: MIT
+    status: active
+    notes:
+      - 搜索引擎
+  - name: typesense
+    model: search
+    tier: representative
+    repository: https://github.com/typesense/typesense.git
+    mirror: https://github.com/typesense/typesense.git
+    license: GPL-3.0
+    status: active
+    notes:
+      - 搜索引擎
+  - name: tantivy
+    model: search
+    tier: representative
+    repository: https://github.com/quickwit-oss/tantivy.git
+    mirror: https://github.com/quickwit-oss/tantivy.git
+    license: MIT
+    status: active
+    notes:
+      - Rust 全文检索库
+  - name: quickwit
+    model: search
+    tier: innovative
+    repository: https://github.com/quickwit-oss/quickwit.git
+    mirror: https://github.com/quickwit-oss/quickwit.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 搜索引擎
+  - name: qdrant
+    model: vector
+    tier: representative
+    repository: https://github.com/qdrant/qdrant.git
+    mirror: https://github.com/qdrant/qdrant.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 向量数据库
+  - name: weaviate
+    model: vector
+    tier: representative
+    repository: https://github.com/weaviate/weaviate.git
+    mirror: https://github.com/weaviate/weaviate.git
+    license: BSD-3-Clause
+    status: active
+    notes:
+      - 向量数据库
+  - name: vespa
+    model: vector
+    tier: representative
+    repository: https://github.com/vespa-engine/vespa.git
+    mirror: https://github.com/vespa-engine/vespa.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 向量与搜索平台
+  - name: lancedb
+    model: vector
+    tier: innovative
+    repository: https://github.com/lancedb/lancedb.git
+    mirror: https://github.com/lancedb/lancedb.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 向量数据库
+  - name: vald
+    model: vector
+    tier: innovative
+    repository: https://github.com/vdaas/vald.git
+    mirror: https://github.com/vdaas/vald.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 分布式向量检索
+  - name: usearch
+    model: vector
+    tier: innovative
+    repository: https://github.com/unum-cloud/usearch.git
+    mirror: https://github.com/unum-cloud/usearch.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 向量检索库
+  - name: arangodb
+    model: graph
+    tier: representative
+    repository: https://github.com/arangodb/arangodb.git
+    mirror: https://github.com/arangodb/arangodb.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 多模型数据库
+  - name: janusgraph
+    model: graph
+    tier: representative
+    repository: https://github.com/JanusGraph/janusgraph.git
+    mirror: https://github.com/JanusGraph/janusgraph.git
+    license: Apache-2.0
+    status: maintained
+    notes:
+      - 图数据库
+  - name: nebula
+    model: graph
+    tier: representative
+    repository: https://github.com/vesoft-inc/nebula.git
+    mirror: https://github.com/vesoft-inc/nebula.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 图数据库
+  - name: memgraph
+    model: graph
+    tier: representative
+    repository: https://github.com/memgraph/memgraph.git
+    mirror: https://github.com/memgraph/memgraph.git
+    license: BSL-1.1
+    status: active
+    notes:
+      - 图数据库
+  - name: kuzu
+    model: graph
+    tier: innovative
+    repository: https://github.com/kuzudb/kuzu.git
+    mirror: https://github.com/kuzudb/kuzu.git
+    license: MIT
+    status: active
+    notes:
+      - 嵌入式图数据库
+  - name: kafka
+    model: stream
+    tier: core
+    repository: https://github.com/apache/kafka.git
+    mirror: https://github.com/apache/kafka.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 事件流平台
+  - name: redpanda
+    model: stream
+    tier: representative
+    repository: https://github.com/redpanda-data/redpanda.git
+    mirror: https://github.com/redpanda-data/redpanda.git
+    license: BSL-1.1
+    status: active
+    notes:
+      - 流平台
+  - name: pulsar
+    model: stream
+    tier: representative
+    repository: https://github.com/apache/pulsar.git
+    mirror: https://github.com/apache/pulsar.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 消息流平台
+  - name: nats
+    model: stream
+    tier: representative
+    repository: https://github.com/nats-io/nats-server.git
+    mirror: https://github.com/nats-io/nats-server.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 消息系统
+  - name: duckdb
+    model: embedded
+    tier: core
+    repository: https://github.com/duckdb/duckdb.git
+    mirror: https://github.com/duckdb/duckdb.git
+    license: MIT
+    status: active
+    notes:
+      - 嵌入式分析数据库
+  - name: lmdb
+    model: embedded
+    tier: representative
+    repository: https://github.com/LMDB/lmdb.git
+    mirror: https://github.com/LMDB/lmdb.git
+    license: OpenLDAP
+    status: maintained
+    notes:
+      - 嵌入式键值存储
+  - name: boltdb
+    model: embedded
+    tier: representative
+    repository: https://github.com/boltdb/bolt.git
+    mirror: https://github.com/boltdb/bolt.git
+    license: MIT
+    status: maintained
+    notes:
+      - 嵌入式键值存储
+  - name: pklite
+    model: embedded
+    tier: innovative
+    repository: https://github.com/nicholasgasior/pklite.git
+    mirror: https://github.com/nicholasgasior/pklite.git
+    license: MIT
+    status: maintained
+    notes:
+      - 轻量嵌入式数据库
+  - name: arrow
+    model: extension
+    tier: core
+    repository: https://github.com/apache/arrow.git
+    mirror: https://github.com/apache/arrow.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 列式内存格式
+  - name: datafusion
+    model: extension
+    tier: representative
+    repository: https://github.com/apache/datafusion.git
+    mirror: https://github.com/apache/datafusion.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - SQL 执行引擎
+  - name: velox
+    model: extension
+    tier: representative
+    repository: https://github.com/facebookincubator/velox.git
+    mirror: https://github.com/facebookincubator/velox.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 向量化执行引擎
+  - name: lance
+    model: extension
+    tier: innovative
+    repository: https://github.com/lancedb/lance.git
+    mirror: https://github.com/lancedb/lance.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 列式向量数据格式
+  - name: hnswlib
+    model: extension
+    tier: innovative
+    repository: https://github.com/nmslib/hnswlib.git
+    mirror: https://github.com/nmslib/hnswlib.git
+    license: Apache-2.0
+    status: maintained
+    notes:
+      - HNSW 索引库
+  - name: tpch
+    model: benchmark
+    tier: representative
+    repository: https://github.com/gregrahn/tpch-kit.git
+    mirror: https://github.com/gregrahn/tpch-kit.git
+    license: None
+    status: maintained
+    notes:
+      - 决策支持基准
+  - name: tpcds
+    model: benchmark
+    tier: representative
+    repository: https://github.com/gregrahn/tpcds-kit.git
+    mirror: https://github.com/gregrahn/tpcds-kit.git
+    license: None
+    status: maintained
+    notes:
+      - 决策支持基准
+  - name: db-bench
+    model: benchmark
+    tier: representative
+    repository: https://github.com/wagjamin/db-bench.git
+    mirror: https://github.com/wagjamin/db-bench.git
+    license: MIT
+    status: maintained
+    notes:
+      - 通用数据库基准
+  - name: vectordbbench
+    model: benchmark
+    tier: innovative
+    repository: https://github.com/zilliztech/VectorDBBench.git
+    mirror: https://github.com/zilliztech/VectorDBBench.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 向量数据库基准

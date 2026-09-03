@@ -1,0 +1,16 @@
+# VectorBench 评估指标配置
+
+metrics:
+  recall:
+    enabled: true
+    k_values: [1, 10, 100]
+
+  qps:
+    enabled: true
+    batch_size: 100
+
+  build_time:
+    enabled: true
+
+  memory:
+    enabled: true

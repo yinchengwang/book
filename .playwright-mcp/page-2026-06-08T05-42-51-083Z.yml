@@ -1,0 +1,54 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - heading "📝 C/C++/数据结构 技术栈智能评测系统" [level=1] [ref=e4] [cursor=pointer]
+    - generic [ref=e5]:
+      - button "🏠 首页" [ref=e6] [cursor=pointer]
+      - button "📊 仪表盘" [ref=e7] [cursor=pointer]
+      - button "🏆 项目验收" [ref=e8] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]: 💡
+    - generic [ref=e12]: 💡 零成本抽象：C++的设计哲学 —— "你不用的，就不需要付出代价"。虚函数引入的开销仅在使用时才存在。
+    - generic "关闭" [ref=e13] [cursor=pointer]: ✕
+  - generic [ref=e14]:
+    - generic [ref=e15]:
+      - generic [ref=e16]:
+        - generic [ref=e17]: 0/197
+        - generic [ref=e18]: 📚 已测试知识点
+      - generic [ref=e19]:
+        - generic [ref=e20]: "0"
+        - generic [ref=e21]: 📊 综合平均分
+      - generic [ref=e22]:
+        - generic [ref=e23]: "0"
+        - generic [ref=e24]: 📝 累计测试次数
+      - generic [ref=e25]:
+        - generic [ref=e26]: 0h
+        - generic [ref=e27]: ⏱ 累计学习时长
+    - heading "选择学习类别" [level=2] [ref=e28]
+    - generic [ref=e29]:
+      - generic [ref=e30] [cursor=pointer]:
+        - generic [ref=e31]: 🔧
+        - generic [ref=e32]: C 技术栈
+        - generic [ref=e33]: 0/44 项已测试 · 平均 0 分
+      - generic [ref=e36] [cursor=pointer]:
+        - generic [ref=e37]: ⚙️
+        - generic [ref=e38]: C++ 技术栈
+        - generic [ref=e39]: 0/42 项已测试 · 平均 0 分
+      - generic [ref=e42] [cursor=pointer]:
+        - generic [ref=e43]: 🌳
+        - generic [ref=e44]: 数据结构技术栈
+        - generic [ref=e45]: 0/52 项已测试 · 平均 0 分
+      - generic [ref=e48] [cursor=pointer]:
+        - generic [ref=e49]: 🗄️
+        - generic [ref=e50]: 数据库内核技术栈
+        - generic [ref=e51]: 0/59 项已测试 · 平均 0 分
+      - generic [ref=e54]:
+        - generic [ref=e55]: 🐍
+        - generic [ref=e56]: Python 技术栈
+        - generic [ref=e57]: 即将推出...
+      - generic [ref=e58]:
+        - generic [ref=e59]: ☕
+        - generic [ref=e60]: Java 技术栈
+        - generic [ref=e61]: 即将推出...
+    - generic [ref=e62]:
+      - button "📊 查看学习仪表盘" [ref=e63] [cursor=pointer]
+      - button "🏆 实战项目验收" [ref=e64] [cursor=pointer]

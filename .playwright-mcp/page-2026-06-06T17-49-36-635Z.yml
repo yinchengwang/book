@@ -1,0 +1,30 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - heading "📝 测试中..." [level=1] [ref=e54] [cursor=pointer]
+    - generic [ref=e5]:
+      - button "🏠 首页" [ref=e6] [cursor=pointer]
+      - button "📊 仪表盘" [ref=e7] [cursor=pointer]
+      - button "🏆 项目验收" [ref=e8] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]: 💡
+    - generic [ref=e12]: 💡 设计模式：单例模式的懒汉式(Double-Checked Locking)在C++11之前因为内存重排序问题是不安全的。
+    - generic "关闭" [ref=e13] [cursor=pointer]: ✕
+  - generic [ref=e14]:
+    - generic [ref=e55]:
+      - button "← 退出测试" [ref=e56] [cursor=pointer]
+      - generic [ref=e57]: 第 4/5 题
+      - generic [ref=e58]: ⏱ 02:35
+    - generic [ref=e118]:
+      - generic [ref=e119]:
+        - generic [ref=e120]: 多选题
+        - generic [ref=e121]: 进阶
+      - generic [ref=e122]: 📖 需要将一个工具类的所有函数设计为无需实例即可调用。
+      - generic [ref=e123]: 以下哪些是C++静态成员函数的特点？（多选）
+      - generic [ref=e124]:
+        - generic [ref=e125] [cursor=pointer]:
+          - generic [ref=e126]: ✓
+          - generic [ref=e127]: A. 不能访问非静态成员变量
+        - generic [ref=e130] [cursor=pointer]: B. 可以通过类名::函数名()调用
+        - generic [ref=e133] [cursor=pointer]: C. 有隐式的this指针
+        - generic [ref=e136] [cursor=pointer]: D. 可以是虚函数
+      - button "提交答案" [ref=e138] [cursor=pointer]

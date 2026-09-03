@@ -1,0 +1,34 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - heading "📊 测试结果" [level=1] [ref=e450] [cursor=pointer]
+    - generic [ref=e5]:
+      - button "🏠 首页" [ref=e6] [cursor=pointer]
+      - button "📊 仪表盘" [ref=e7] [cursor=pointer]
+      - button "🏆 项目验收" [ref=e8] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]: 💡
+    - generic [ref=e12]: 💡 设计模式：单例模式的懒汉式(Double-Checked Locking)在C++11之前因为内存重排序问题是不安全的。
+    - generic "关闭" [ref=e13] [cursor=pointer]: ✕
+  - generic [ref=e14]:
+    - generic [ref=e451]:
+      - generic [ref=e452]: "0"
+      - generic [ref=e453]: 💪 需要重点复习
+      - generic [ref=e454]:
+        - generic [ref=e455]:
+          - generic [ref=e456]: 0/0
+          - generic [ref=e457]: 正确题数
+        - generic [ref=e458]:
+          - generic [ref=e459]: 0分0秒
+          - generic [ref=e460]: 总用时
+        - generic [ref=e461]:
+          - generic [ref=e462]: ⭐100
+          - generic [ref=e463]: 综合掌握度
+    - heading "📋 题目回顾" [level=3] [ref=e464]
+    - generic [ref=e465]:
+      - text: 💡
+      - strong [ref=e466]: 学习建议：
+      - text: 完全掌握！可以考虑进入下一个知识点的学习。
+    - generic [ref=e467]:
+      - button "🔄 再来一次" [ref=e468] [cursor=pointer]
+      - button "📋 返回列表" [ref=e469] [cursor=pointer]
+      - button "📊 查看仪表盘" [ref=e470] [cursor=pointer]

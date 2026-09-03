@@ -1,0 +1,33 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "https://github.com/yinchengwang/c--code-book",
+  "elements": [
+    {"id": "title", "type": "text", "x": 280, "y": 30, "text": "SQL 执行流程图", "fontSize": 32, "fontFamily": 1, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#1a1a1a", "backgroundColor": "transparent"},
+    {"id": "box_sql", "type": "rectangle", "x": 280, "y": 90, "width": 200, "height": 50, "fillStyle": "solid", "fillColor": "#e7f5ff", "strokeColor": "#1a1a1a", "strokeWidth": 2},
+    {"id": "text_sql", "type": "text", "x": 380, "y": 115, "text": "SELECT * FROM users\nWHERE id > 10", "fontSize": 12, "fontFamily": 1, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#1971c7", "backgroundColor": "transparent"},
+    {"id": "arrow_p", "type": "arrow", "x": 380, "y": 140, "points": [[0, 0], [0, 50]], "strokeColor": "#1a1a1a", "strokeWidth": 2},
+    {"id": "box_parser", "type": "rectangle", "x": 280, "y": 190, "width": 200, "height": 50, "fillStyle": "solid", "fillColor": "#fff9db", "strokeColor": "#1a1a1a", "strokeWidth": 2},
+    {"id": "text_parser", "type": "text", "x": 380, "y": 215, "text": "Parser (词法/语法分析)", "fontSize": 14, "fontFamily": 1, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#f08c00", "backgroundColor": "transparent"},
+    {"id": "text_parser_desc", "type": "text", "x": 290, "y": 225, "text": "SQL 文本 → AST", "fontSize": 10, "fontFamily": 1, "textAlign": "center", "strokeColor": "#666666", "backgroundColor": "transparent"},
+    {"id": "arrow_a", "type": "arrow", "x": 380, "y": 240, "points": [[0, 0], [0, 50]], "strokeColor": "#1a1a1a", "strokeWidth": 2},
+    {"id": "box_analyzer", "type": "rectangle", "x": 280, "y": 290, "width": 200, "height": 50, "fillStyle": "solid", "fillColor": "#e7ffe7", "strokeColor": "#1a1a1a", "strokeWidth": 2},
+    {"id": "text_analyzer", "type": "text", "x": 380, "y": 315, "text": "Analyzer (语义分析)", "fontSize": 14, "fontFamily": 1, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#2f9e44", "backgroundColor": "transparent"},
+    {"id": "text_analyzer_desc", "type": "text", "x": 290, "y": 325, "text": "AST → 查询树", "fontSize": 10, "fontFamily": 1, "textAlign": "center", "strokeColor": "#666666", "backgroundColor": "transparent"},
+    {"id": "arrow_o", "type": "arrow", "x": 380, "y": 340, "points": [[0, 0], [0, 50]], "strokeColor": "#1a1a1a", "strokeWidth": 2},
+    {"id": "box_optimizer", "type": "rectangle", "x": 280, "y": 390, "width": 200, "height": 50, "fillStyle": "solid", "fillColor": "#fff0f0", "strokeColor": "#1a1a1a", "strokeWidth": 2},
+    {"id": "text_optimizer", "type": "text", "x": 380, "y": 415, "text": "Optimizer (查询优化)", "fontSize": 14, "fontFamily": 1, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#e03131", "backgroundColor": "transparent"},
+    {"id": "text_optimizer_desc", "type": "text", "x": 290, "y": 425, "text": "查询树 → 执行计划", "fontSize": 10, "fontFamily": 1, "textAlign": "center", "strokeColor": "#666666", "backgroundColor": "transparent"},
+    {"id": "arrow_e", "type": "arrow", "x": 380, "y": 440, "points": [[0, 0], [0, 50]], "strokeColor": "#1a1a1a", "strokeWidth": 2},
+    {"id": "box_executor", "type": "rectangle", "x": 280, "y": 490, "width": 200, "height": 50, "fillStyle": "solid", "fillColor": "#74c0fc", "strokeColor": "#1a1a1a", "strokeWidth": 2},
+    {"id": "text_executor", "type": "text", "x": 380, "y": 515, "text": "Executor (执行器)", "fontSize": 14, "fontFamily": 1, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#1a1a1a", "backgroundColor": "transparent"},
+    {"id": "text_executor_desc", "type": "text", "x": 290, "y": 525, "text": "执行计划 → 结果集", "fontSize": 10, "fontFamily": 1, "textAlign": "center", "strokeColor": "#666666", "backgroundColor": "transparent"},
+    {"id": "box_plan", "type": "rectangle", "x": 520, "y": 390, "width": 180, "height": 120, "fillStyle": "hachure", "fillColor": "#fff9db", "strokeColor": "#f08c00", "strokeWidth": 2},
+    {"id": "text_plan_title", "type": "text", "x": 530, "y": 405, "text": "执行计划示例", "fontSize": 14, "fontFamily": 1, "textAlign": "left", "strokeColor": "#f08c00", "backgroundColor": "transparent"},
+    {"id": "text_plan", "type": "text", "x": 530, "y": 435, "text": "→ Index Scan on users\n   Index Cond: (id > 10)\n   ->  Seq Scan on users\n   Filter: (id > 10)", "fontSize": 10, "fontFamily": 1, "textAlign": "left", "strokeColor": "#1a1a1a", "backgroundColor": "transparent"},
+    {"id": "box_exec_detail", "type": "rectangle", "x": 520, "y": 190, "width": 180, "height": 150, "fillStyle": "solid", "fillColor": "#e7f5ff", "strokeColor": "#1a1a1a", "strokeWidth": 2},
+    {"id": "text_exec_detail_title", "type": "text", "x": 530, "y": 205, "text": "执行器算子", "fontSize": 14, "fontFamily": 1, "textAlign": "left", "strokeColor": "#1971c7", "backgroundColor": "transparent"},
+    {"id": "text_exec_detail", "type": "text", "x": 530, "y": 235, "text": "• Seq Scan: 全表扫描\n• Index Scan: 索引扫描\n• Index Only Scan: 索引覆盖\n• Nested Loop: 嵌套循环\n• Hash Join: 哈希连接\n• Sort: 排序", "fontSize": 10, "fontFamily": 1, "textAlign": "left", "strokeColor": "#1a1a1a", "backgroundColor": "transparent"}
+  ],
+  "appState": {"gridSize": null, "viewBackgroundColor": "#ffffff"}
+}

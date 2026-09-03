@@ -1,0 +1,39 @@
+# 依赖
+node_modules/
+
+# 构建输出
+dist/
+.h5/
+.weapp/
+
+# 构建缓存
+.cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 日志
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 测试输出
+test-results/
+playwright-report/
+playwright/.cache/
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# SWC 编译器缓存 + Vite preview 临时文件
+.swc/
+preview.html

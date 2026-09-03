@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68", "wheel", "pybind11>=2.11"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pymultimodal"
+version = "0.1.0"
+description = "P1 多模态嵌入式 SDK 的 Python 绑定"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "yinch" }]
+
+[tool.setuptools]
+packages = ["pymultimodal"]
+
+[tool.setuptools.package-data]
+pymultimodal = ["*.pyi"]

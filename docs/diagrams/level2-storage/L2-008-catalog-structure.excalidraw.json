@@ -1,0 +1,30 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "https://github.com/yinchengwang/c--code-book",
+  "elements": [
+    {"id": "title", "type": "text", "x": 280, "y": 30, "text": "Catalog 系统结构图", "fontSize": 32, "fontFamily": 1, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#1a1a1a", "backgroundColor": "transparent"},
+    {"id": "box_pg_class", "type": "rectangle", "x": 50, "y": 100, "width": 200, "height": 140, "fillStyle": "solid", "fillColor": "#e7f5ff", "strokeColor": "#1a1a1a", "strokeWidth": 2},
+    {"id": "text_pg_class_title", "type": "text", "x": 150, "y": 115, "text": "pg_class", "fontSize": 16, "fontFamily": 1, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#1971c7", "backgroundColor": "transparent"},
+    {"id": "text_pg_class", "type": "text", "x": 60, "y": 150, "text": "• oid: 表/索引 OID\n• relname: 名称\n• relnamespace: 命名空间\n• reltype: 行类型 OID\n• relkind: r=表,i=索引等\n• relfilenode: 物理文件节点", "fontSize": 10, "fontFamily": 1, "textAlign": "left", "strokeColor": "#1a1a1a", "backgroundColor": "transparent"},
+    {"id": "box_pg_attribute", "type": "rectangle", "x": 280, "y": 100, "width": 200, "height": 140, "fillStyle": "solid", "fillColor": "#fff9db", "strokeColor": "#1a1a1a", "strokeWidth": 2},
+    {"id": "text_pg_attribute_title", "type": "text", "x": 380, "y": 115, "text": "pg_attribute", "fontSize": 16, "fontFamily": 1, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#f08c00", "backgroundColor": "transparent"},
+    {"id": "text_pg_attribute", "type": "text", "x": 290, "y": 150, "text": "• attrelid: 所属表 OID\n• attname: 列名\n• atttypid: 数据类型 OID\n• attnum: 列序号\n• attnotnull: 非空约束\n• atthasdef: 有默认值", "fontSize": 10, "fontFamily": 1, "textAlign": "left", "strokeColor": "#1a1a1a", "backgroundColor": "transparent"},
+    {"id": "box_pg_index", "type": "rectangle", "x": 510, "y": 100, "width": 200, "height": 140, "fillStyle": "solid", "fillColor": "#e7ffe7", "strokeColor": "#1a1a1a", "strokeWidth": 2},
+    {"id": "text_pg_index_title", "type": "text", "x": 610, "y": 115, "text": "pg_index", "fontSize": 16, "fontFamily": 1, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#2f9e44", "backgroundColor": "transparent"},
+    {"id": "text_pg_index", "type": "text", "x": 520, "y": 150, "text": "• indexrelid: 索引 OID\n• indrelid: 表 OID\n• indkey: 索引列（attnum[]）\n• indisunique: 唯一索引\n• indisprimary: 主键索引\n• indoption: 索引选项", "fontSize": 10, "fontFamily": 1, "textAlign": "left", "strokeColor": "#1a1a1a", "backgroundColor": "transparent"},
+    {"id": "arrow_class_to_attr", "type": "arrow", "x": 250, "y": 170, "points": [[0, 0], [30, 0]], "strokeColor": "#1a1a1a", "strokeWidth": 2},
+    {"id": "text_1n", "type": "text", "x": 255, "y": 155, "text": "1:N", "fontSize": 11, "fontFamily": 1, "textAlign": "center", "strokeColor": "#666666", "backgroundColor": "transparent"},
+    {"id": "arrow_class_to_index", "type": "arrow", "x": 250, "y": 170, "points": [[0, 0], [260, 0]], "strokeColor": "#1a1a1a", "strokeWidth": 2},
+    {"id": "text_1n2", "type": "text", "x": 400, "y": 155, "text": "1:N", "fontSize": 11, "fontFamily": 1, "textAlign": "center", "strokeColor": "#666666", "backgroundColor": "transparent"},
+    {"id": "box_cache", "type": "rectangle", "x": 50, "y": 280, "width": 660, "height": 100, "fillStyle": "hachure", "fillColor": "#fff0f0", "strokeColor": "#e03131", "strokeWidth": 2},
+    {"id": "text_cache_title", "type": "text", "x": 60, "y": 295, "text": "系统表缓存机制", "fontSize": 14, "fontFamily": 1, "textAlign": "left", "strokeColor": "#e03131", "backgroundColor": "transparent"},
+    {"id": "text_cache", "type": "text", "x": 60, "y": 325, "text": "• CacheHash: OID → CatCacheEntry 快速查找\n• CatCache: 按 (class, hashkey) 组织，支持属性查找\n• SysCache: 常用查询的缓存结果，避免重复解析系统表\n• 失效策略：DDL 操作时 invalidate 对应缓存条目", "fontSize": 11, "fontFamily": 1, "textAlign": "left", "strokeColor": "#1a1a1a", "backgroundColor": "transparent"},
+    {"id": "box_example", "type": "text", "x": 50, "y": 410, "text": "查询示例：SELECT * FROM users WHERE id = 1", "fontSize": 14, "fontFamily": 1, "textAlign": "left", "strokeColor": "#1a1a1a", "backgroundColor": "transparent"},
+    {"id": "text_step1", "type": "text", "x": 50, "y": 445, "text": "1. 查 pg_class 获取 'users' 表的 relfilenode", "fontSize": 12, "fontFamily": 1, "textAlign": "left", "strokeColor": "#1971c7", "backgroundColor": "transparent"},
+    {"id": "text_step2", "type": "text", "x": 50, "y": 475, "text": "2. 查 pg_attribute 获取各列的类型和位置", "fontSize": 12, "fontFamily": 1, "textAlign": "left", "strokeColor": "#f08c00", "backgroundColor": "transparent"},
+    {"id": "text_step3", "type": "text", "x": 50, "y": 505, "text": "3. 查 pg_index 检查是否有可用索引", "fontSize": 12, "fontFamily": 1, "textAlign": "left", "strokeColor": "#2f9e44", "backgroundColor": "transparent"},
+    {"id": "text_step4", "type": "text", "x": 50, "y": 535, "text": "4. 根据元数据访问实际数据文件", "fontSize": 12, "fontFamily": 1, "textAlign": "left", "strokeColor": "#1a1a1a", "backgroundColor": "transparent"}
+  ],
+  "appState": {"gridSize": null, "viewBackgroundColor": "#ffffff"}
+}

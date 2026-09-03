@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>C/C++ 技术栈学习看板</title>
+<style>
+:root {
+  --bg: #f0f2f5;
+  --card: #fff;
+  --text: #2c3e50;
+  --text2: #7f8c8d;
+  --border: #e1e4e8;
+  --shadow: 0 1px 4px rgba(0,0,0,0.06);
+  --radius: 8px;
+
+  --lang: #27ae60;
+  --sys: #2980b9;
+  --algo: #e67e22;
+  --eng: #e74c3c;
+
+  --todo: #909399;
+  --doing: #409eff;
+  --done: #67c23a;
+  --review: #e6a23c;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+/* 顶部 */
+.header { background:linear-gradient(135deg, #1a1a2e, #16213e); color:#fff; padding:14px 20px; position:sticky; top:0; z-index:100; box-shadow:0 2px 12px rgba(0,0,0,0.15); }
+.header h1 { font-size:18px; text-align:center; margin-bottom:10px; letter-spacing:1px; }
+
+.mode-switch { display:flex; gap:6px; justify-content:center; }
+.mode-btn { padding:8px 20px; border:2px solid rgba(255,255,255,0.2); border-radius:20px; background:transparent; color:rgba(255,255,255,0.7); font-size:14px; font-weight:600; cursor:pointer; transition:all 0.2s; }
+.mode-btn.active { background:rgba(255,255,255,0.2); color:#fff; border-color:rgba(255,255,255,0.4); }
+
+/* 统计栏 */
+.stats { display:flex; gap:12px; padding:12px 16px; flex-wrap:wrap; justify-content:center; }
+.stat-item { background:var(--card); border-radius:var(--radius); padding:10px 16px; box-shadow:var(--shadow); display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; }
+.stat-dot { width:10px; height:10px; border-radius:50%; }
+.stat-count { font-size:18px; }
+
+/* 搜索 */
+.search-bar { padding:0 16px 8px; display:flex; gap:8px; }
+.search-input { flex:1; padding:10px 14px; border:2px solid var(--border); border-radius:20px; font-size:14px; outline:none; transition:border 0.2s; }
+.search-input:focus { border-color:#409eff; }
+.filter-select { padding:10px 14px; border:2px solid var(--border); border-radius:20px; font-size:14px; outline:none; background:#fff; cursor:pointer; }
+
+/* 看板 */
+.kanban { display:flex; gap:12px; padding:0 16px 20px; overflow-x:auto; min-height:400px; }
+.kanban-col { flex:1; min-width:240px; max-width:320px; background:#f5f6f8; border-radius:var(--radius); padding:10px; display:flex; flex-direction:column; }
+.col-header { padding:10px 12px; border-radius:6px; font-weight:700; font-size:14px; text-align:center; margin-bottom:8px; color:#fff; display:flex; justify-content:space-between; align-items:center; }
+.col-header .count { background:rgba(255,255,255,0.3); border-radius:10px; padding:2px 8px; font-size:12px; }
+.col-todo .col-header { background:var(--todo); }
+.col-doing .col-header { background:var(--doing); }
+.col-done .col-header { background:var(--done); }
+.col-review .col-header { background:var(--review); }
+
+.col-cards { flex:1; min-height:60px; display:flex; flex-direction:column; gap:6px; }
+.col-cards.drag-over { background:rgba(64,158,255,0.08); border-radius:6px; }
+
+/* 卡片 */
+.card { background:var(--card); border-radius:6px; padding:10px 12px; box-shadow:var(--shadow); cursor:grab; transition:transform 0.15s, box-shadow 0.15s; border-left:4px solid #ddd; position:relative; user-select:none; }
+.card:active { cursor:grabbing; }
+.card:hover { transform:translateY(-1px); box-shadow:0 3px 10px rgba(0,0,0,0.1); }
+.card.dragging { opacity:0.5; transform:scale(0.95); }
+.card.lang  { border-left-color:var(--lang); }
+.card.sys   { border-left-color:var(--sys); }
+.card.algo  { border-left-color:var(--algo); }
+.card.eng   { border-left-color:var(--eng); }
+
+.card-title { font-size:13px; font-weight:600; margin-bottom:4px; }
+.card-meta { font-size:11px; color:var(--text2); display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.card-tag { padding:1px 6px; border-radius:3px; font-size:10px; font-weight:600; }
+.tag-basic { background:#e8f5e9; color:#27ae60; }
+.tag-intermediate { background:#e3f2fd; color:#2980b9; }
+.tag-advanced { background:#fce4ec; color:#e74c3c; }
+
+.card-quad { padding:1px 6px; border-radius:3px; font-size:10px; font-weight:600; }
+.quad-lang { background:#e8f5e9; color:#2e7d32; }
+.quad-sys  { background:#e3f2fd; color:#1565c0; }
+.quad-algo { background:#fff3e0; color:#e65100; }
+.quad-eng  { background:#fce4ec; color:#c62828; }
+
+/* 分组模式切换按钮 */
+.group-toggle { padding:8px 16px; border:2px solid var(--border); border-radius:20px; background:var(--card); color:var(--text2); font-size:13px; font-weight:600; cursor:pointer; transition:all 0.2s; white-space:nowrap; }
+.group-toggle.active { background:#409eff; color:#fff; border-color:#409eff; }
+
+/* 产品分组渲染 */
+.product-board { padding:0 16px 20px; }
+.product-group { background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:16px; overflow:hidden; }
+.product-group__header { background:linear-gradient(135deg, #1a1a2e, #16213e); color:#fff; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; }
+.product-group__title { font-size:15px; font-weight:700; }
+.product-group__count { font-size:12px; opacity:0.8; }
+.product-subgroups { padding:8px; display:flex; flex-wrap:wrap; gap:8px; }
+.product-subgroup { flex:1; min-width:240px; max-width:320px; background:#f5f6f8; border-radius:6px; padding:8px; }
+.product-subgroup__header { padding:6px 8px; font-weight:700; font-size:13px; display:flex; justify-content:space-between; color:var(--text); border-bottom:2px solid var(--border); margin-bottom:6px; }
+.product-subgroup__count { font-size:11px; color:var(--text2); }
+
+/* 提示 */
+.hint { text-align:center; color:var(--text2); font-size:12px; padding:16px; }
+.hint kbd { background:#eee; border-radius:3px; padding:1px 5px; font-family:monospace; font-size:11px; }
+
+/* 响应式 */
+@media (max-width:800px) {
+  .kanban { flex-direction:column; }
+  .kanban-col { max-width:none; min-width:auto; }
+}
+
+/* ===== 第一层联动：评测分 badge ===== */
+.quiz-badge {
+  font-size:10px; font-weight:700; padding:1px 6px; border-radius:8px;
+  display:inline-block; margin-left:4px; vertical-align:middle;
+  border:1px solid transparent;
+}
+.badge-high { background:#e8f5e9; color:#27ae60; border-color:#a5d6a7; }
+.badge-mid  { background:#fff3e0; color:#e67e22; border-color:#ffcc80; }
+.badge-low  { background:#fce4ec; color:#e74c3c; border-color:#ef9a9a; }
+.badge-none { background:#f5f5f5; color:#aaa;    border-color:#e0e0e0; }
+.card-footer { margin-top:6px; display:flex; justify-content:flex-end; gap:6px; flex-wrap:wrap; }
+.learn-link,
+.quiz-link {
+  font-size:11px; color:var(--doing); text-decoration:none;
+  padding:2px 8px; border:1px solid var(--doing); border-radius:10px;
+  opacity:0.75; transition:opacity 0.15s, background 0.15s;
+}
+.learn-link {
+  color:#5f6b7a;
+  border-color:#aeb9c5;
+}
+.learn-link:hover,
+.quiz-link:hover { opacity:1; background:rgba(64,158,255,0.08); }
+.learn-link:hover { background:rgba(95,107,122,0.08); }
+</style>
+</head>
+<body>
+
+<!-- 统一导航栏 -->
+<nav id="global-nav"></nav>
+
+<div class="header">
+  <h1 id="pageTitle">📋 C/C++ 技术栈学习看板</h1>
+  <div class="mode-switch">
+    <button class="mode-btn active" data-mode="c">🔧 C 技术栈</button>
+    <button class="mode-btn" data-mode="cpp">⚙️ C++ 技术栈</button>
+    <button class="mode-btn" data-mode="ds">🌳 数据结构</button>
+    <button class="mode-btn" data-mode="db">🗄️ 数据库内核</button>
+    <button class="mode-btn" data-mode="py">🐍 Python</button>
+    <button class="mode-btn" data-mode="linux">🐧 Linux 技术栈</button>
+    <button class="mode-btn" data-mode="vdb">🔮 向量数据库</button>
+  </div>
+</div>
+
+<div class="stats" id="stats"></div>
+<div class="search-bar">
+  <input type="text" class="search-input" id="searchInput" placeholder="搜索技能点...">
+  <select class="filter-select" id="quadFilter">
+    <option value="all">所有分类</option>
+    <option value="language" id="quadOpt1">语言核心</option>
+    <option value="systems" id="quadOpt2">系统编程</option>
+    <option value="algorithms" id="quadOpt3">数据结构算法</option>
+    <option value="engineering" id="quadOpt4">工程实践</option>
+  </select>
+  <select class="filter-select" id="ringFilter">
+    <option value="all">所有难度</option>
+    <option value="basic">基础</option>
+    <option value="intermediate">进阶</option>
+    <option value="advanced">高级</option>
+  </select>
+  <button class="group-toggle" id="groupToggle">📦 产品分组</button>
+</div>
+
+<div class="kanban" id="kanban">
+  <div class="kanban-col col-todo">
+    <div class="col-header">📥 待学习 <span class="count" id="todoCount">0</span></div>
+    <div class="col-cards" data-status="todo" id="colTodo"></div>
+  </div>
+  <div class="kanban-col col-doing">
+    <div class="col-header">📖 学习中 <span class="count" id="doingCount">0</span></div>
+    <div class="col-cards" data-status="doing" id="colDoing"></div>
+  </div>
+  <div class="kanban-col col-done">
+    <div class="col-header">✅ 已掌握 <span class="count" id="doneCount">0</span></div>
+    <div class="col-cards" data-status="done" id="colDone"></div>
+  </div>
+  <div class="kanban-col col-review">
+    <div class="col-header">🔄 需复习 <span class="count" id="reviewCount">0</span></div>
+    <div class="col-cards" data-status="review" id="colReview"></div>
+  </div>
+</div>
+
+<!-- 产品分组模式容器（仅在 toggle 后显示） -->
+<div class="product-board" id="productBoard" style="display:none;"></div>
+
+<div class="hint">
+  💡 拖拽卡片切换状态 &nbsp;|&nbsp; 点击卡片切换「已掌握 ↔ 需复习」&nbsp;|&nbsp; <kbd>Ctrl+Click</kbd> 重置为待学习
+</div>
+
+
+<script src="data/app/items-registry.js"></script>
+<script src="data/app/nav-component.js"></script>
+<script src="data/app/kanban-render.js"></script>
+<script src="data/app/kanban-data.js"></script>
+<script>
+"use strict";
+
+// 初始化统一导航栏
+initGlobalNav("kanban");
+
+// ============================================================
+// 存储适配器
+// ============================================================
+const API_BASE = (window.location.protocol === 'http:' || window.location.protocol === 'https:')
+  ? window.location.origin + '/api' : null;
+
+// ============================================================
+// 数据与配置
+// ============================================================
+const DATASETS = { c: C_DATA, cpp: CPP_DATA, ds: DS_DATA, db: DB_DATA, py: PY_DATA, linux: LINUX_DATA, vdb: VDB_DATA };
+
+const MODE_TITLES = {
+  c: 'C 技术栈',
+  cpp: 'C++ 技术栈',
+  ds: '数据结构',
+  db: '数据库内核',
+  py: 'Python',
+  linux: 'Linux',
+  vdb: '向量数据库'
+};
+
+const QUAD_LABELS = {
+  c:   { language:'语言核心', systems:'系统编程', algorithms:'数据结构与算法', engineering:'工程实践' },
+  cpp: { language:'语言核心', systems:'内存与并发', algorithms:'设计模式与架构', engineering:'工程与工具' },
+  ds:  { language:'线性结构', systems:'树形结构', algorithms:'图与高级结构', engineering:'算法与设计' },
+  db:  { language:'存储引擎', systems:'索引与查询', algorithms:'事务与并发', engineering:'分布式与系统' },
+  py:  { language:'语言核心', systems:'标准库与生态', algorithms:'数据科学与ML',  engineering:'工程与工具' },
+  linux: { language:'资源观测与诊断', systems:'内核行为理解', algorithms:'存储与文件系统', engineering:'网络与系统编程' },
+  vdb:  { language:'向量基础', systems:'索引算法', algorithms:'量化与压缩', engineering:'系统与工程' }
+};
+
+const STATUS_LABELS = { todo:'待学习', doing:'学习中', done:'已掌握', review:'需复习' };
+const STATUS_CYCLE = ['todo', 'doing', 'done', 'review'];
+
+let currentMode = 'c';
+
+// ============================================================
+// 状态管理
+// ============================================================
+function getStorageKey() {
+  return 'learning-kanban-' + currentMode;
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(getStorageKey());
+    if (raw) {
+      const state = JSON.parse(raw);
+      // 兼容旧格式：如果 state 是数组，转换成对象
+      if (Array.isArray(state)) {
+        const obj = {};
+        state.forEach(id => { obj[id] = 'todo'; });
+        return obj;
+      }
+      return state;
+    }
+  } catch(e) {}
+  // 默认：全部为 待学习
+  const def = {};
+  getCurrentData().forEach(item => { def[item.id] = 'todo'; });
+  return def;
+}
+
+function saveState(state) {
+  try { localStorage.setItem(getStorageKey(), JSON.stringify(state)); }
+  catch(e) { console.warn('保存失败:', e); }
+  if (API_BASE) _apiSave(state);
+}
+
+// API 同步
+let _apiTimer = null;
+function _apiSave(state) {
+  clearTimeout(_apiTimer);
+  _apiTimer = setTimeout(async () => {
+    try {
+      await fetch(API_BASE + '/state/kanban', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kanban: { [currentMode]: state } })
+      });
+    } catch(e) {}
+  }, 500);
+}
+
+async function syncFromServer() {
+  if (!API_BASE) return false;
+  try {
+    const res = await fetch(API_BASE + '/state/kanban');
+    if (!res.ok) return false;
+    const data = await res.json();
+    if (data.kanban && data.kanban[currentMode]) {
+      kanbanState = data.kanban[currentMode];
+      localStorage.setItem(getStorageKey(), JSON.stringify(kanbanState));
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+
+// ============================================================
+// 全局状态
+// ============================================================
+let kanbanState = loadState();
+
+function getCurrentData() {
+  return DATASETS[currentMode] || C_DATA;
+}
+
+// ============================================================
+// 渲染
+// ============================================================
+function renderKanban() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const quadFilter = document.getElementById('quadFilter').value;
+  const ringFilter = document.getElementById('ringFilter').value;
+
+  const data = getCurrentData().filter(item => {
+    if (search && !item.title.toLowerCase().includes(search) && !item.tags.some(t => t.toLowerCase().includes(search))) return false;
+    if (quadFilter !== 'all' && item.quadrant !== quadFilter) return false;
+    if (ringFilter !== 'all' && item.ring !== ringFilter) return false;
+    return true;
+  });
+
+  // 按状态分组
+  const groups = { todo:[], doing:[], done:[], review:[] };
+  data.forEach(item => {
+    const status = kanbanState[item.id] || 'todo';
+    groups[status].push(item);
+  });
+
+  // 渲染各列
+  ['todo','doing','done','review'].forEach(status => {
+    const col = document.getElementById('col' + status.charAt(0).toUpperCase() + status.slice(1));
+    if (!col) return;
+    col.innerHTML = groups[status].map(item => renderCard(item, status)).join('');
+  });
+
+  // 更新计数
+  ['todo','doing','done','review'].forEach(status => {
+    const countEl = document.getElementById(status + 'Count');
+    if (countEl) countEl.textContent = groups[status].length;
+  });
+
+  updateStats(data);
+  bindCardEvents();
+}
+
+// ===== 第一层联动：读取评测分 =====
+function getQuizMastery(itemId) {
+  try {
+    const raw = localStorage.getItem('quiz_' + currentMode + '_hist_' + itemId);
+    if (!raw) return null;
+    const history = JSON.parse(raw);
+    if (!history.length) return null;
+    const recent3 = history.slice(-3);
+    return Math.round(recent3.reduce((s, h) => s + h.score, 0) / recent3.length);
+  } catch(e) { return null; }
+}
+
+function renderCard(item, status) {
+  const quadClass = { language:'lang', systems:'sys', algorithms:'algo', engineering:'eng' }[item.quadrant] || '';
+  const ringTag = { basic:'基础', intermediate:'进阶', advanced:'高级' }[item.ring] || item.ring;
+  const ringClass = 'tag-' + item.ring;
+  const quadName = (QUAD_LABELS[currentMode] && QUAD_LABELS[currentMode][item.quadrant]) || item.quadrant;
+  const quadCls = 'quad-' + item.quadrant;
+
+  const mastery = getQuizMastery(item.id);
+  const badgeCls = mastery === null ? 'badge-none' : mastery >= 85 ? 'badge-high' : mastery >= 60 ? 'badge-mid' : 'badge-low';
+  const badgeTxt = mastery !== null ? mastery + '分' : '未测';
+
+  return `
+    <div class="card ${quadClass}" draggable="true" data-id="${item.id}" data-status="${status}">
+      <div class="card-title">${item.title} <span class="quiz-badge ${badgeCls}">${badgeTxt}</span></div>
+      <div class="card-meta">
+        <span class="card-quad ${quadCls}">${quadName}</span>
+        <span class="card-tag ${ringClass}">${ringTag}</span>
+        ${item.tags ? item.tags.slice(0,2).map(t => '<span style="font-size:10px;color:#999;">#' + t + '</span>').join('') : ''}
+      </div>
+      <div class="card-footer">
+        <a class="learn-link" href="learn.html#${currentMode}/${item.id}" onclick="event.stopPropagation()">📚 学习内容</a>
+        <a class="quiz-link" href="quiz-system.html#${currentMode}/${item.id}" target="_blank" onclick="event.stopPropagation()">🎯 去测试</a>
+      </div>
+    </div>`;
+}
+
+function updateStats(data) {
+  const total = data.length;
+  const done = data.filter(item => (kanbanState[item.id] || 'todo') === 'done').length;
+  const doing = data.filter(item => (kanbanState[item.id] || 'todo') === 'doing').length;
+  const review = data.filter(item => (kanbanState[item.id] || 'todo') === 'review').length;
+  const todo = total - done - doing - review;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  document.getElementById('stats').innerHTML = `
+    <div class="stat-item"><span class="stat-dot" style="background:var(--todo)"></span> 待学 <span class="stat-count">${todo}</span></div>
+    <div class="stat-item"><span class="stat-dot" style="background:var(--doing)"></span> 学习中 <span class="stat-count">${doing}</span></div>
+    <div class="stat-item"><span class="stat-dot" style="background:var(--done)"></span> 已掌握 <span class="stat-count">${done}</span></div>
+    <div class="stat-item"><span class="stat-dot" style="background:var(--review)"></span> 需复习 <span class="stat-count">${review}</span></div>
+    <div class="stat-item">📊 掌握率 <span class="stat-count">${pct}%</span></div>
+  `;
+}
+
+// ============================================================
+// 卡片交互
+// ============================================================
+function bindCardEvents() {
+  document.querySelectorAll('.card').forEach(card => {
+    card.addEventListener('click', function(e) {
+      const id = this.dataset.id;
+      if (e.ctrlKey || e.metaKey) {
+        // Ctrl+Click: 重置为待学习
+        kanbanState[id] = 'todo';
+        saveState(kanbanState);
+        renderKanban();
+        return;
+      }
+      // 点击切换: todo→doing→done→review→todo
+      const cur = STATUS_CYCLE.indexOf(kanbanState[id] || 'todo');
+      kanbanState[id] = STATUS_CYCLE[(cur + 1) % 4];
+      saveState(kanbanState);
+      renderKanban();
+    });
+
+    // 拖拽
+    card.addEventListener('dragstart', function(e) {
+      e.dataTransfer.setData('text/plain', this.dataset.id);
+      e.dataTransfer.effectAllowed = 'move';
+      this.classList.add('dragging');
+    });
+
+    card.addEventListener('dragend', function(e) {
+      this.classList.remove('dragging');
+      document.querySelectorAll('.col-cards').forEach(col => col.classList.remove('drag-over'));
+    });
+  });
+}
+
+// ============================================================
+// 分组模式切换（看板模式 / 产品分组）
+// ============================================================
+let groupMode = 'kanban'; // 'kanban' | 'product'
+
+function renderProductKanban() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const quadFilter = document.getElementById('quadFilter').value;
+  const ringFilter = document.getElementById('ringFilter').value;
+
+  const data = getCurrentData().filter(item => {
+    if (search && !item.title.toLowerCase().includes(search) && !item.tags.some(t => t.toLowerCase().includes(search))) return false;
+    if (quadFilter !== 'all' && item.quadrant !== quadFilter) return false;
+    if (ringFilter !== 'all' && item.ring !== ringFilter) return false;
+    return true;
+  });
+
+  // 按产品分组
+  const productGroups = {};
+  data.forEach(item => {
+    const prod = item.product || 'other';
+    if (!productGroups[prod]) productGroups[prod] = [];
+    productGroups[prod].push(item);
+  });
+
+  const PROD_LABELS = {
+    mysql: "MySQL/InnoDB", postgres: "PostgreSQL", redis: "Redis",
+    rocksdb: "RocksDB", elasticsearch: "Elasticsearch", sqlite: "SQLite",
+    faiss: "Faiss", milvus: "Milvus", diskann: "DiskANN",
+    general: "通用概念", other: "其他"
+  };
+  const quadLabels = QUAD_LABELS[currentMode] || QUAD_LABELS['c'];
+
+  let html = '';
+  const sorted = Object.keys(productGroups).sort();
+  sorted.forEach(product => {
+    const items = productGroups[product];
+    const label = PROD_LABELS[product] || product;
+    const done = items.filter(i => (kanbanState[i.id] || 'todo') === 'done').length;
+
+    // 按象限子分组
+    const quadGroups = {};
+    items.forEach(item => {
+      const q = item.quadrant || 'other';
+      if (!quadGroups[q]) quadGroups[q] = [];
+      quadGroups[q].push(item);
+    });
+
+    html += '<div class="product-group" data-product="' + product + '">';
+    html += '<div class="product-group__header">';
+    html += '<span class="product-group__title">' + label + '</span>';
+    html += '<span class="product-group__count">' + done + '/' + items.length + ' 已掌握</span>';
+    html += '</div>';
+    html += '<div class="product-subgroups">';
+    Object.keys(quadGroups).sort().forEach(quad => {
+      const qlabel = quadLabels[quad] || quad;
+      const qdone = quadGroups[quad].filter(i => (kanbanState[i.id] || 'todo') === 'done').length;
+      html += '<div class="product-subgroup" data-quad="' + quad + '">';
+      html += '<div class="product-subgroup__header">';
+      html += '<span>' + qlabel + '</span>';
+      html += '<span class="product-subgroup__count">' + qdone + '/' + quadGroups[quad].length + '</span>';
+      html += '</div>';
+      quadGroups[quad].forEach(item => {
+        html += renderCard(item, kanbanState[item.id] || 'todo');
+      });
+      html += '</div>';
+    });
+    html += '</div></div>';
+  });
+
+  document.getElementById('productBoard').innerHTML = html || '<p style="text-align:center;color:#909399;padding:40px;">没有匹配的知识点</p>';
+
+  // 绑定卡片点击事件（与看板模式相同逻辑）
+  document.querySelectorAll('#productBoard .card').forEach(card => {
+    card.addEventListener('click', function(e) {
+      const id = this.dataset.id;
+      if (e.ctrlKey || e.metaKey) {
+        kanbanState[id] = 'todo';
+        saveState(kanbanState);
+        renderProductKanban();
+        return;
+      }
+      const cur = STATUS_CYCLE.indexOf(kanbanState[id] || 'todo');
+      kanbanState[id] = STATUS_CYCLE[(cur + 1) % 4];
+      saveState(kanbanState);
+      renderProductKanban();
+    });
+  });
+}
+
+// ============================================================
+// 分组模式 toggle
+// ============================================================
+document.getElementById('groupToggle').addEventListener('click', function() {
+  groupMode = (groupMode === 'kanban') ? 'product' : 'kanban';
+  this.classList.toggle('active');
+  this.textContent = (groupMode === 'product') ? '📋 看板模式' : '📦 产品分组';
+
+  const kanbanEl = document.getElementById('kanban');
+  const boardEl = document.getElementById('productBoard');
+
+  if (groupMode === 'product') {
+    kanbanEl.style.display = 'none';
+    boardEl.style.display = 'block';
+    renderProductKanban();
+  } else {
+    kanbanEl.style.display = 'flex';
+    boardEl.style.display = 'none';
+    renderKanban();
+  }
+});
+
+// ============================================================
+// 拖拽放置
+// ============================================================
+document.querySelectorAll('.col-cards').forEach(col => {
+  col.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    this.classList.add('drag-over');
+  });
+
+  col.addEventListener('dragleave', function(e) {
+    this.classList.remove('drag-over');
+  });
+
+  col.addEventListener('drop', function(e) {
+    e.preventDefault();
+    this.classList.remove('drag-over');
+    const id = e.dataTransfer.getData('text/plain');
+    const newStatus = this.dataset.status;
+    if (id && newStatus) {
+      kanbanState[id] = newStatus;
+      saveState(kanbanState);
+      renderKanban();
+    }
+  });
+});
+
+// ============================================================
+// 搜索与筛选
+// ============================================================
+// 搜索与筛选 — 根据当前分组模式重绘
+function reRender() {
+  if (groupMode === 'product') renderProductKanban();
+  else renderKanban();
+}
+
+document.getElementById('searchInput').addEventListener('input', reRender);
+document.getElementById('quadFilter').addEventListener('change', reRender);
+document.getElementById('ringFilter').addEventListener('change', reRender);
+
+// ============================================================
+// 更新象限筛选下拉框标签
+// ============================================================
+function updateQuadUI() {
+  const labels = QUAD_LABELS[currentMode] || QUAD_LABELS['c'];
+  document.getElementById('quadOpt1').textContent = labels.language || '语言核心';
+  document.getElementById('quadOpt2').textContent = labels.systems || '系统编程';
+  document.getElementById('quadOpt3').textContent = labels.algorithms || '数据结构算法';
+  document.getElementById('quadOpt4').textContent = labels.engineering || '工程实践';
+}
+
+// ============================================================
+// 模式切换
+// ============================================================
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', async function() {
+    const mode = this.dataset.mode;
+    if (mode === currentMode) return;
+
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+
+    currentMode = mode;
+    document.getElementById('pageTitle').textContent = '📋 ' + (MODE_TITLES[mode] || MODE_TITLES.c) + ' 学习看板';
+    updateQuadUI();
+    document.getElementById('quadFilter').value = 'all';
+    document.getElementById('ringFilter').value = 'all';
+    document.getElementById('searchInput').value = '';
+
+    // 先加载本地数据渲染
+    kanbanState = loadState();
+    if (groupMode === 'product') renderProductKanban();
+    else renderKanban();
+
+    // 再从服务器同步
+    const changed = await syncFromServer();
+    if (changed) renderKanban();
+  });
+});
+
+// ============================================================
+// 初始化
+// ============================================================
+updateQuadUI();
+kanbanState = loadState();
+renderKanban();
+syncFromServer().then(function(changed) { if (changed) renderKanban(); });
+</script>

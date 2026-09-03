@@ -1,0 +1,2 @@
+接口调用GPT 模型示例
+https://xiaosheng.blog/2023/05/04/how-to-use-chatgpt

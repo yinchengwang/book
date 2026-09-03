@@ -1,0 +1,38 @@
+{
+  "generated_at": "2026-07-10T15:00:00+08:00",
+  "track": "dual",
+  "engineering": {
+    "ctest_total": 88,
+    "ctest_passing": 88,
+    "lines_c": 78500,
+    "lines_cpp": 1200,
+    "lines_h": 6200,
+    "modules": {
+      "db-storage-engine": {"ctest": 30, "coverage_pct": 0.0},
+      "vector_index": {"ctest": 42, "coverage_pct": 0.0},
+      "algorithm": {"ctest": 8, "coverage_pct": 0.0},
+      "rag": {"ctest": 0, "coverage_pct": 0.0},
+      "cpp": {"ctest": 6, "coverage_pct": 0.0}
+    }
+  },
+  "learning": {
+    "ctest_total": 158,
+    "ctest_passing": 158,
+    "lines_c": 4200,
+    "notes_markdown": 132,
+    "libraries": {
+      "ds-c": "libds.a",
+      "algo-c": "libalgo-c.a",
+      "code-solutions": "libleetcode-solutions.a",
+      "interview-solutions": "libinterview-solutions.a",
+      "distributed-solutions": "libdistributed-solutions.a"
+    }
+  },
+  "tooling": {
+    "coverage_scripts": ["run.sh", "aggregate.py", "compare.py", "badge.py", "check-threshold.py"],
+    "ci_jobs": ["build-engineering-ubuntu", "test-engineering-ubuntu", "build-engineering-windows", "build-learning-ubuntu", "test-learning-ubuntu", "coverage-ubuntu"],
+    "taro_template": true,
+    "dual_track_guards": true
+  },
+  "_how_to_refresh": "python3 engineering/scripts/metrics/collect-metrics.py > docs/project-metrics.json"
+}

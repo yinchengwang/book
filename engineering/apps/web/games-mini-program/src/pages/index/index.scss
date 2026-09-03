@@ -1,0 +1,88 @@
+/* 首页样式 */
+.index-page {
+  min-height: 100vh;
+  padding: 40rpx;
+  box-sizing: border-box;
+}
+
+.header {
+  text-align: center;
+  padding: 60rpx 0;
+}
+
+.title {
+  font-size: 48rpx;
+  font-weight: bold;
+  color: #00d9ff;
+  margin-bottom: 16rpx;
+}
+
+.subtitle {
+  font-size: 28rpx;
+  color: #8b8b8b;
+}
+
+.games-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 32rpx;
+  margin-top: 60rpx;
+}
+
+.game-card {
+  background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+  border-radius: 24rpx;
+  padding: 40rpx;
+  display: flex;
+  align-items: center;
+  transition: all 0.3s ease;
+}
+
+.game-card:active {
+  transform: scale(0.98);
+  opacity: 0.9;
+}
+
+.game-icon {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 60rpx;
+  margin-right: 32rpx;
+}
+
+.game-icon.snake {
+  background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+}
+
+.game-icon.sudoku {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.game-icon.game2048 {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+.game-info {
+  flex: 1;
+}
+
+.game-name {
+  font-size: 36rpx;
+  font-weight: bold;
+  color: #ffffff;
+  margin-bottom: 8rpx;
+}
+
+.game-desc {
+  font-size: 26rpx;
+  color: #8b8b8b;
+}
+
+.arrow {
+  font-size: 40rpx;
+  color: #8b8b8b;
+}

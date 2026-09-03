@@ -1,0 +1,103 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e3]:
+      - link "🎯 Reading Radar" [ref=e4] [cursor=pointer]:
+        - /url: index.html
+        - generic [ref=e5]: 🎯
+        - generic [ref=e6]: Reading Radar
+      - list [ref=e7]:
+        - listitem [ref=e8]:
+          - link "📡 雷达图" [ref=e9] [cursor=pointer]:
+            - /url: index.html
+            - generic [ref=e10]: 📡
+            - generic [ref=e11]: 雷达图
+        - listitem [ref=e12]:
+          - link "📝 摘抄" [ref=e13] [cursor=pointer]:
+            - /url: excerpt.html
+            - generic [ref=e14]: 📝
+            - generic [ref=e15]: 摘抄
+        - listitem [ref=e16]:
+          - link "📋 看板" [ref=e17] [cursor=pointer]:
+            - /url: learning-kanban.html
+            - generic [ref=e18]: 📋
+            - generic [ref=e19]: 看板
+        - listitem [ref=e20]:
+          - link "📝 测验" [ref=e21] [cursor=pointer]:
+            - /url: quiz-system.html
+            - generic [ref=e22]: 📝
+            - generic [ref=e23]: 测验
+        - listitem [ref=e24]:
+          - link "📚 学习" [ref=e25] [cursor=pointer]:
+            - /url: learn.html
+            - generic [ref=e26]: 📚
+            - generic [ref=e27]: 学习
+        - listitem [ref=e28]:
+          - link "📖 图解" [ref=e29] [cursor=pointer]:
+            - /url: grok.html
+            - generic [ref=e30]: 📖
+            - generic [ref=e31]: 图解
+        - listitem [ref=e32]:
+          - link "📊 仪表盘" [ref=e33] [cursor=pointer]:
+            - /url: dashboard.html
+            - generic [ref=e34]: 📊
+            - generic [ref=e35]: 仪表盘
+        - listitem [ref=e36]:
+          - link "🗓️ 五年计划" [ref=e37] [cursor=pointer]:
+            - /url: five-year-plan.html
+            - generic [ref=e38]: 🗓️
+            - generic [ref=e39]: 五年计划
+        - listitem [ref=e40]:
+          - link "🎤 面试题库" [ref=e41] [cursor=pointer]:
+            - /url: interview.html
+            - generic [ref=e42]: 🎤
+            - generic [ref=e43]: 面试题库
+        - listitem [ref=e44]:
+          - link "📊 面试追踪" [ref=e45] [cursor=pointer]:
+            - /url: interview-tracker.html
+            - generic [ref=e46]: 📊
+            - generic [ref=e47]: 面试追踪
+        - listitem [ref=e48]:
+          - link "📝 刷题计划" [ref=e49] [cursor=pointer]:
+            - /url: practice.html
+            - generic [ref=e50]: 📝
+            - generic [ref=e51]: 刷题计划
+  - banner [ref=e52]:
+    - generic [ref=e53]: C/C++ 程序员读书雷达
+    - generic [ref=e54]:
+      - button "📚 读书雷达" [ref=e55] [cursor=pointer]
+      - button "🔧 C 技术栈" [ref=e56] [cursor=pointer]
+      - button "⚙️ C++ 技术栈" [ref=e57] [cursor=pointer]
+      - button "🌳 数据结构" [ref=e58] [cursor=pointer]
+      - button "🗄️ 数据库内核" [ref=e59] [cursor=pointer]
+      - button "🐍 Python" [ref=e60] [cursor=pointer]
+      - button "🐧 Linux" [ref=e61] [cursor=pointer]
+      - button "🔮 向量数据库" [ref=e62] [cursor=pointer]
+    - button "📡 雷达视图" [ref=e64] [cursor=pointer]
+  - generic [ref=e65]:
+    - generic [ref=e66]:
+      - generic [ref=e67]:
+        - generic [ref=e68]: "39"
+        - generic [ref=e69]: 📚 待阅读
+      - generic [ref=e70]:
+        - generic [ref=e71]: "0"
+        - generic [ref=e72]: 📖 阅读中
+      - generic [ref=e73]:
+        - generic [ref=e74]: "0"
+        - generic [ref=e75]: ✅ 已读完
+      - generic [ref=e76]:
+        - generic [ref=e77]: "0"
+        - generic [ref=e78]: ⭐ 已掌握
+    - textbox "🔍 搜索书名、标签、作者..." [ref=e80]
+    - generic [ref=e81]:
+      - button "📚 全部 (39)" [ref=e82] [cursor=pointer]
+      - button "📗 语言与编译 (10)" [ref=e83] [cursor=pointer]
+      - button "📘 系统与网络 (9)" [ref=e84] [cursor=pointer]
+      - button "📙 数据结构与算法 (9)" [ref=e85] [cursor=pointer]
+      - button "📕 工程与架构 (11)" [ref=e86] [cursor=pointer]
+    - generic [ref=e87]:
+      - generic [ref=e90]:
+        - generic [ref=e91]: 待阅读
+        - generic [ref=e93]: 阅读中
+        - generic [ref=e95]: 已读完
+        - generic [ref=e97]: 已掌握
+      - generic [ref=e99]: 💡 点击圆点查看详情 | 技术栈模式下内圈颜色=评测掌握度

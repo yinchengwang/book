@@ -1,0 +1,356 @@
+/**
+ * 复习计划页面样式 - 项目主风格
+ */
+.review-page {
+  min-height: 100vh;
+  background: transparent;
+  padding: 24px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.review-header {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.review-title {
+  font-size: 28px;
+  font-weight: 800;
+  display: block;
+  background: linear-gradient(135deg, #818cf8, #c084fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.review-subtitle {
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 4px;
+  display: block;
+}
+
+/* === 顶部统计 === */
+.review-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 8px;
+  text-align: center;
+  border-left: 3px solid var(--accent, var(--primary));
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+}
+
+.stat-card.active {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
+.stat-due { border-left-color: #f59e0b; }
+.stat-upcoming { border-left-color: var(--primary); }
+.stat-overdue { border-left-color: #ef4444; }
+.stat-done { border-left-color: #10b981; }
+
+.stat-num {
+  display: block;
+  font-size: 22px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #818cf8, #c084fc);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.stat-label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+/* === Tabs === */
+.review-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px;
+}
+
+.tab {
+  flex: 1;
+  padding: 10px 12px;
+  text-align: center;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.tab:hover {
+  background: var(--card-bg-hover);
+}
+
+.tab.active {
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  color: #fff;
+  font-weight: 700;
+}
+
+/* === 复习卡片 === */
+.review-loading,
+.review-empty,
+.review-complete {
+  text-align: center;
+  padding: 60px 24px;
+}
+
+.review-loading {
+  color: var(--text-3);
+  font-size: 14px;
+}
+
+.review-empty,
+.review-complete {
+  background: var(--card-bg);
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+}
+
+.empty-icon,
+.complete-icon {
+  font-size: 56px;
+  margin-bottom: 12px;
+  display: block;
+}
+
+.empty-text,
+.complete-text {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.empty-sub {
+  font-size: 13px;
+  color: var(--text-3);
+  display: block;
+}
+
+.review-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+}
+
+.card-domain {
+  display: inline-block;
+  font-size: 11px;
+  color: #a5b4fc;
+  background: rgba(99, 102, 241, 0.2);
+  padding: 4px 12px;
+  border-radius: 12px;
+  margin-bottom: 14px;
+  font-weight: 700;
+}
+
+.card-question {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.6;
+  margin-bottom: 16px;
+  display: block;
+}
+
+.card-answer {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 20px;
+}
+
+.answer-label {
+  font-size: 11px;
+  color: #6ee7b7;
+  margin-bottom: 6px;
+  display: block;
+  font-weight: 700;
+}
+
+.answer-text {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.6;
+  display: block;
+}
+
+.rating-section {
+  text-align: center;
+}
+
+.rating-prompt {
+  font-size: 13px;
+  color: var(--text-3);
+  margin-bottom: 14px;
+  display: block;
+}
+
+.rating-buttons {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.rating-btn {
+  padding: 8px 14px;
+  font-size: 12px;
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.rating-btn:hover {
+  transform: translateY(-1px);
+}
+
+.rating-0 { background: rgba(239, 68, 68, 0.25); border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; }
+.rating-1 { background: rgba(245, 158, 11, 0.25); border-color: rgba(245, 158, 11, 0.4); color: #fbbf24; }
+.rating-2 { background: rgba(245, 158, 11, 0.18); border-color: rgba(245, 158, 11, 0.3); color: #fcd34d; }
+.rating-3 { background: rgba(99, 102, 241, 0.18); border-color: rgba(99, 102, 241, 0.3); color: #a5b4fc; }
+.rating-4 { background: rgba(16, 185, 129, 0.18); border-color: rgba(16, 185, 129, 0.3); color: #6ee7b7; }
+.rating-5 { background: rgba(16, 185, 129, 0.28); border-color: rgba(16, 185, 129, 0.4); color: #34d399; }
+
+.next-btn {
+  margin-top: 20px;
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  color: #fff;
+  border: none;
+  padding: 12px 32px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* === 记录列表 === */
+.record-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.record-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  transition: all 0.15s;
+}
+
+.record-card:hover {
+  background: var(--card-bg-hover);
+}
+
+.record-overdue {
+  border-left: 3px solid #ef4444;
+}
+
+.record-done {
+  border-left: 3px solid #10b981;
+}
+
+.record-upcoming {
+  border-left: 3px solid var(--primary);
+}
+
+.record-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.record-domain {
+  font-size: 11px;
+  color: #a5b4fc;
+  background: rgba(99, 102, 241, 0.15);
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.record-status {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+.status-overdue {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+.status-done {
+  background: rgba(16, 185, 129, 0.2);
+  color: #6ee7b7;
+}
+
+.status-upcoming {
+  background: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+}
+
+.record-question {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.record-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.meta-item {
+  display: block;
+}
+
+@media (max-width: 640px) {
+  .review-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

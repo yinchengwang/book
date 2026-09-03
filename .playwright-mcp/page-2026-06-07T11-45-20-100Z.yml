@@ -1,0 +1,456 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - heading "🗄️ 数据库内核技术栈" [level=1] [ref=e66] [cursor=pointer]
+    - generic [ref=e5]:
+      - button "🏠 首页" [ref=e6] [cursor=pointer]
+      - button "📊 仪表盘" [ref=e7] [cursor=pointer]
+      - button "🏆 项目验收" [ref=e8] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]: 💡
+    - generic [ref=e12]: 💡 设计模式：单例模式的懒汉式(Double-Checked Locking)在C++11之前因为内存重排序问题是不安全的。
+    - generic "关闭" [ref=e13] [cursor=pointer]: ✕
+  - generic [ref=e14]:
+    - button "← 返回首页" [ref=e67] [cursor=pointer]
+    - generic [ref=e68]:
+      - textbox "搜索知识点..." [ref=e69]
+      - combobox [ref=e70] [cursor=pointer]:
+        - option "全部难度" [selected]
+        - option "基础"
+        - option "进阶"
+        - option "高级"
+      - combobox [ref=e71] [cursor=pointer]:
+        - option "全部分类" [selected]
+        - option "📗 存储引擎"
+        - option "📘 索引与查询"
+        - option "📙 事务与并发"
+        - option "📕 分布式与系统"
+    - generic [ref=e72]:
+      - generic [ref=e73]:
+        - text: 📗 存储引擎
+        - generic [ref=e74]: (13项)
+      - generic [ref=e75]:
+        - generic [ref=e76] [cursor=pointer]:
+          - generic [ref=e77]:
+            - generic [ref=e78]: 存储引擎架构概览
+            - generic [ref=e79]: MySQL可插拔存储引擎架构、InnoDB/MyISAM/Memory对比、Faiss的向量存储抽象、Redis的多种数据结构存储。理解不同存储引擎的设计取舍。
+          - generic [ref=e80]:
+            - generic [ref=e81]: "--"
+            - generic [ref=e82]: 未测试
+        - generic [ref=e83] [cursor=pointer]:
+          - generic [ref=e84]:
+            - generic [ref=e85]: 数据页与块结构
+            - generic [ref=e86]: InnoDB页结构(16KB)：File Header/Page Header/Infimum+Supremum/User Records/Free Space/Page Directory/Fil Trailer。页是IO最小单位，理解页内组织是内核基石。
+          - generic [ref=e87]:
+            - generic [ref=e88]: "--"
+            - generic [ref=e89]: 未测试
+        - generic [ref=e90] [cursor=pointer]:
+          - generic [ref=e91]:
+            - generic [ref=e92]: 行存储记录格式
+            - generic [ref=e93]: InnoDB行格式(Compact/Dynamic/Compressed/Redundant)：变长字段长度列表/NULL位图/记录头信息/列数据。行溢出与BLOB页外存储机制。
+          - generic [ref=e94]:
+            - generic [ref=e95]: "--"
+            - generic [ref=e96]: 未测试
+        - generic [ref=e97] [cursor=pointer]:
+          - generic [ref=e98]:
+            - generic [ref=e99]: 数据文件组织
+            - generic [ref=e100]: InnoDB系统表空间(ibdata1)+独立表空间(.ibd)的结构、段(segment)/区(extent)/页(page)三级管理、文件头与空间管理。
+          - generic [ref=e101]:
+            - generic [ref=e102]: "--"
+            - generic [ref=e103]: 未测试
+        - generic [ref=e104] [cursor=pointer]:
+          - generic [ref=e105]:
+            - generic [ref=e106]: SQL DDL与约束
+            - generic [ref=e107]: CREATE/ALTER/DROP TABLE、PRIMARY KEY/FOREIGN KEY/UNIQUE/CHECK/NOT NULL约束、索引创建(CREATE INDEX)、视图(VIEW)的定义与物化、DDL的在线变更(Online DDL)原理。
+          - generic [ref=e108]:
+            - generic [ref=e109]: "--"
+            - generic [ref=e110]: 未测试
+        - generic [ref=e111] [cursor=pointer]:
+          - generic [ref=e112]:
+            - generic [ref=e113]: 列存储与混合存储
+            - generic [ref=e114]: 列存储的压缩优势与扫描效率、Apache Parquet/ORC格式、ClickHouse的MergeTree、TiFlash的列存副本。行存vs列存的取舍：OLTP用行存，OLAP用列存。
+          - generic [ref=e115]:
+            - generic [ref=e116]: "--"
+            - generic [ref=e117]: 未测试
+        - generic [ref=e118] [cursor=pointer]:
+          - generic [ref=e119]:
+            - generic [ref=e120]: Buffer Pool缓存管理
+            - generic [ref=e121]: InnoDB Buffer Pool的LRU链表(young/old分区)、Free List/Flush List、预读(线性预读/随机预读)、Buffer Pool实例化减少锁竞争。
+          - generic [ref=e122]:
+            - generic [ref=e123]: "--"
+            - generic [ref=e124]: 未测试
+        - generic [ref=e125] [cursor=pointer]:
+          - generic [ref=e126]:
+            - generic [ref=e127]: Change Buffer写缓冲
+            - generic [ref=e128]: InnoDB Change Buffer原理：非唯一二级索引的DML操作先写入Change Buffer，后续通过merge操作合并到索引页，减少随机IO。Insert Buffer→Change Buffer的演进。
+          - generic [ref=e129]:
+            - generic [ref=e130]: "--"
+            - generic [ref=e131]: 未测试
+        - generic [ref=e132] [cursor=pointer]:
+          - generic [ref=e133]:
+            - generic [ref=e134]: WAL预写日志原理
+            - generic [ref=e135]: Write-Ahead Logging的核心：日志先行、先写日志再写数据。Redo Log的物理逻辑日志设计、LSN(Log Sequence Number)递增、日志块(512B)对齐。
+          - generic [ref=e136]:
+            - generic [ref=e137]: "--"
+            - generic [ref=e138]: 未测试
+        - generic [ref=e139] [cursor=pointer]:
+          - generic [ref=e140]:
+            - generic [ref=e141]: Checkpoint机制
+            - generic [ref=e142]: Sharp Checkpoint vs Fuzzy Checkpoint、InnoDB的Master Thread定期刷脏、Checkpoint Age水位差控制、LSN与恢复起点的关系。checkpoint直接影响crash恢复时间。
+          - generic [ref=e143]:
+            - generic [ref=e144]: "--"
+            - generic [ref=e145]: 未测试
+        - generic [ref=e146] [cursor=pointer]:
+          - generic [ref=e147]:
+            - generic [ref=e148]: Compaction与空间回收
+            - generic [ref=e149]: LSM-Tree的Compaction策略(Leveled/Tiered/Universal)、写放大与空间放大权衡、RocksDB的Leveled Compaction触发条件与回放过程。
+          - generic [ref=e150]:
+            - generic [ref=e151]: "--"
+            - generic [ref=e152]: 未测试
+        - generic [ref=e153] [cursor=pointer]:
+          - generic [ref=e154]:
+            - generic [ref=e155]: LSM-Tree原理与实现
+            - generic [ref=e156]: MemTable(SkipList)+SSTable的有序数据组织、写入路径(MemTable→WAL→flush→Compaction)、读取路径(MemTable→Immutable→SSTable×N层)、Bloom Filter优化点查。
+          - generic [ref=e157]:
+            - generic [ref=e158]: "--"
+            - generic [ref=e159]: 未测试
+        - generic [ref=e160] [cursor=pointer]:
+          - generic [ref=e161]:
+            - generic [ref=e162]: SSTable与分层存储
+            - generic [ref=e163]: SSTable文件格式(Data Block/Index Block/Filter Block/Footer)、LevelDB的层级组织、每层容量是上层的10倍。理解LSM的文件组织是分布式KV存储(RocksDB/HBase/BigTable)的基石。
+          - generic [ref=e164]:
+            - generic [ref=e165]: "--"
+            - generic [ref=e166]: 未测试
+      - generic [ref=e167]:
+        - text: 📘 索引与查询
+        - generic [ref=e168]: (19项)
+      - generic [ref=e169]:
+        - generic [ref=e170] [cursor=pointer]:
+          - generic [ref=e171]:
+            - generic [ref=e172]: B+树索引原理
+            - generic [ref=e173]: B+树vs B树的区别(数据全在叶子/叶子链表)、高度与IO次数、聚簇索引vs辅助索引、回表查询、覆盖索引避免回表。数据库最核心的索引结构。
+          - generic [ref=e174]:
+            - generic [ref=e175]: "--"
+            - generic [ref=e176]: 未测试
+        - generic [ref=e177] [cursor=pointer]:
+          - generic [ref=e178]:
+            - generic [ref=e179]: SQL DML与高级查询
+            - generic [ref=e180]: SELECT/FROM/WHERE/GROUP BY/HAVING/ORDER BY/LIMIT子句的执行逻辑顺序、JOIN类型(INNER/LEFT/RIGHT/CROSS/FULL OUTER)、子查询(标量/IN/EXISTS/相关)、窗口函数(ROW_NUMBER/RANK/LAG)、CTE(WITH递归)。
+          - generic [ref=e181]:
+            - generic [ref=e182]: "--"
+            - generic [ref=e183]: 未测试
+        - generic [ref=e184] [cursor=pointer]:
+          - generic [ref=e185]:
+            - generic [ref=e186]: 哈希索引与自适应哈希
+            - generic [ref=e187]: 哈希索引O(1)点查、Memory引擎的哈希索引、InnoDB自适应哈希索引(AHI)原理(自动在热点页面建立哈希)、线性哈希与可扩展哈希。哈希索引不支持范围查询。
+          - generic [ref=e188]:
+            - generic [ref=e189]: "--"
+            - generic [ref=e190]: 未测试
+        - generic [ref=e191] [cursor=pointer]:
+          - generic [ref=e192]:
+            - generic [ref=e193]: 向量索引基础
+            - generic [ref=e194]: Flat(Brute Force)精确搜索、IVF(Inverted File)倒排划分、聚类中心(centroid)的K-Means训练、nprobe参数控制搜索精度。Faiss的IVFFlat是入门级向量索引。
+          - generic [ref=e195]:
+            - generic [ref=e196]: "--"
+            - generic [ref=e197]: 未测试
+        - generic [ref=e198] [cursor=pointer]:
+          - generic [ref=e199]:
+            - generic [ref=e200]: B+树实现与优化
+            - generic [ref=e201]: InnoDB B+树的页内二分查找(Page Directory槽定位)、页分裂与合并、索引下推(ICP)、MRR(Multi-Range Read)批量回表。索引实现的工程细节。
+          - generic [ref=e202]:
+            - generic [ref=e203]: "--"
+            - generic [ref=e204]: 未测试
+        - generic [ref=e205] [cursor=pointer]:
+          - generic [ref=e206]:
+            - generic [ref=e207]: 全文索引与倒排索引
+            - generic [ref=e208]: InnoDB全文索引(FTS)的倒排结构(FTS Index Tables)、ngram分词器、Boolean/Proximity搜索、BM25相关度评分。Elasticsearch的倒排索引与Lucene段合并。
+          - generic [ref=e209]:
+            - generic [ref=e210]: "--"
+            - generic [ref=e211]: 未测试
+        - generic [ref=e212] [cursor=pointer]:
+          - generic [ref=e213]:
+            - generic [ref=e214]: 空间索引(R-Tree)
+            - generic [ref=e215]: R-Tree的最小包围矩形(MBR)、插入与分裂(选择最小面积增长)、叶节点组织、MySQL空间索引(GIS)的距离查询、PostGIS GiST索引。地理信息系统的核心索引。
+          - generic [ref=e216]:
+            - generic [ref=e217]: "--"
+            - generic [ref=e218]: 未测试
+        - generic [ref=e219] [cursor=pointer]:
+          - generic [ref=e220]:
+            - generic [ref=e221]: IVF家族索引(IVFFlat/IVFPQ/IVFSQ)
+            - generic [ref=e222]: IVFFlat(聚类+精确搜索)、IVFPQ(IVF+乘积量化两级压缩)、IVFSQ(IVF+标量量化)、IVFOPQ(IVF+优化乘积量化旋转预处理)。nlist(聚类数)与nprobe(探测数)的精度-速度权衡，倒排链表的存储布局。
+          - generic [ref=e223]:
+            - generic [ref=e224]: "--"
+            - generic [ref=e225]: 未测试
+        - generic [ref=e226] [cursor=pointer]:
+          - generic [ref=e227]:
+            - generic [ref=e228]: HNSW索引原理与实现
+            - generic [ref=e229]: 跳表+NSW的图索引、分层结构(底层密集/上层稀疏)、启发式邻居选择(扩展候选集)、efConstruction/efSearch参数调优。HNSW是当前最主流的向量索引之一。
+          - generic [ref=e230]:
+            - generic [ref=e231]: "--"
+            - generic [ref=e232]: 未测试
+        - generic [ref=e233] [cursor=pointer]:
+          - generic [ref=e234]:
+            - generic [ref=e235]: 乘积量化(PQ)与向量压缩
+            - generic [ref=e236]: PQ的子空间划分与码本训练、对称/非对称距离计算(SDC/ADC)、SIMD加速查表(lookup table+pshufb)、IVFPQ组合索引。PQ是Faiss中压缩向量的核心技术。
+          - generic [ref=e237]:
+            - generic [ref=e238]: "--"
+            - generic [ref=e239]: 未测试
+        - generic [ref=e240] [cursor=pointer]:
+          - generic [ref=e241]:
+            - generic [ref=e242]: 标量量化与SIMD距离计算
+            - generic [ref=e243]: SQ8(Scalar Quantization 8bit)统一缩放、SQ4/SQ6/bf16量化变体、距离查表法的SIMD实现(_mm_shuffle_epi8/pshufb)、PQ与SQ的精度-速度-内存三维权衡。
+          - generic [ref=e244]:
+            - generic [ref=e245]: "--"
+            - generic [ref=e246]: 未测试
+        - generic [ref=e247] [cursor=pointer]:
+          - generic [ref=e248]:
+            - generic [ref=e249]: SQL解析器(Lex/Yacc/AST)
+            - generic [ref=e250]: SQL的词法分析(Lex/Flex识别关键字/标识符/字面量)、语法分析(Yacc/Bison的LALR(1)文法)、AST抽象语法树的节点类型(SelectStmt/Expr/JoinExpr)、MySQL的sql_yacc.yy语法文件。理解解析是SQL引擎的第一步。
+          - generic [ref=e251]:
+            - generic [ref=e252]: "--"
+            - generic [ref=e253]: 未测试
+        - generic [ref=e254] [cursor=pointer]:
+          - generic [ref=e255]:
+            - generic [ref=e256]: 查询优化器原理
+            - generic [ref=e257]: RBO(规则)vs CBO(代价)、统计信息(基数估计/直方图)、访问路径选择(全表扫描vs索引)、连接顺序优化(动态规划/遗传算法)、EXPLAIN输出解读。
+          - generic [ref=e258]:
+            - generic [ref=e259]: "--"
+            - generic [ref=e260]: 未测试
+        - generic [ref=e261] [cursor=pointer]:
+          - generic [ref=e262]:
+            - generic [ref=e263]: 查询执行引擎(火山模型)
+            - generic [ref=e264]: 火山模型(Iterator Model)的open/next/close接口、向量化执行(batch processing)减少虚函数调用、JIT编译执行表达式、并行执行(Parallel Query)的工作分配。
+          - generic [ref=e265]:
+            - generic [ref=e266]: "--"
+            - generic [ref=e267]: 未测试
+        - generic [ref=e268] [cursor=pointer]:
+          - generic [ref=e269]:
+            - generic [ref=e270]: 图索引详解(NSW/HNSW/NSG/Vamana)
+            - generic [ref=e271]: NSW(可导航小世界图)的贪心搜索+长边捷径、HNSW的分层NSW(上层长边/底层细粒度)、NSG(导航展开图)的MRNG剪枝、Vamana(DiskANN)的beam search+反向边+GreedyReorder。图索引=邻接表+搜索策略+构建剪枝。
+          - generic [ref=e272]:
+            - generic [ref=e273]: "--"
+            - generic [ref=e274]: 未测试
+        - generic [ref=e275] [cursor=pointer]:
+          - generic [ref=e276]:
+            - generic [ref=e277]: 量化技术全景(PQ/OPQ/SQ/AQ/RVQ)
+            - generic [ref=e278]: PQ(子空间划分+K-Means码本)、OPQ(旋转优化子空间正交性)、SQ(Scalar Quantization统一/分通道缩放)、AQ(Additive Quantization叠加量化码字求和)、RVQ(残差向量量化逐级逼近)。量化=压缩比vs召回率的Pareto优化，SIMD查表是工业级实现的关键。
+          - generic [ref=e279]:
+            - generic [ref=e280]: "--"
+            - generic [ref=e281]: 未测试
+        - generic [ref=e282] [cursor=pointer]:
+          - generic [ref=e283]:
+            - generic [ref=e284]: 磁盘向量索引(DiskANN)
+            - generic [ref=e285]: Vamana图的构建(贪心搜索+剪枝+反向边)、PQ压缩向量+beam search、SSD友好的只读索引布局、磁盘IO vs内存访问的权衡。百亿级向量检索的工业方案。
+          - generic [ref=e286]:
+            - generic [ref=e287]: "--"
+            - generic [ref=e288]: 未测试
+        - generic [ref=e289] [cursor=pointer]:
+          - generic [ref=e290]:
+            - generic [ref=e291]: 查询优化器详解(代价/统计)
+            - generic [ref=e292]: 基数估计(Cardinality Estimation)的直方图(等高/等宽)/采样/NDV、代价模型(CPU+IO加权)、选择性(Selectivity)计算、连接顺序搜索(DPccp/贪心/遗传算法)、子查询优化(materialization/semijoin/derived_merge)。优化器是SQL性能的灵魂。
+          - generic [ref=e293]:
+            - generic [ref=e294]: "--"
+            - generic [ref=e295]: 未测试
+        - generic [ref=e296] [cursor=pointer]:
+          - generic [ref=e297]:
+            - generic [ref=e298]: 查询执行引擎详解(向量化/JIT)
+            - generic [ref=e299]: 火山模型→向量化(一次next返回一批行/SIMD友好)→JIT编译(LLVM生成机器码消除解释开销)的演进路径、列存引擎的Late Materialization延迟物化、Morsel-Driven并行执行(任务窃取)、Adaptive Execution运行时切换策略。
+          - generic [ref=e300]:
+            - generic [ref=e301]: "--"
+            - generic [ref=e302]: 未测试
+      - generic [ref=e303]:
+        - text: 📙 事务与并发
+        - generic [ref=e304]: (12项)
+      - generic [ref=e305]:
+        - generic [ref=e306] [cursor=pointer]:
+          - generic [ref=e307]:
+            - generic [ref=e308]: ACID与事务隔离级别
+            - generic [ref=e309]: 原子性(Atomicity)/一致性(Consistency)/隔离性(Isolation)/持久性(Durability)、四种隔离级别(RU/RC/RR/SERIALIZABLE)、脏读/不可重复读/幻读的SQL示例。
+          - generic [ref=e310]:
+            - generic [ref=e311]: "--"
+            - generic [ref=e312]: 未测试
+        - generic [ref=e313] [cursor=pointer]:
+          - generic [ref=e314]:
+            - generic [ref=e315]: SQL DCL与事务控制
+            - generic [ref=e316]: GRANT/REVOKE权限管理(MySQL的user/db/table/column四级权限)、BEGIN/COMMIT/ROLLBACK事务控制、SAVEPOINT部分回滚、SET TRANSACTION设置隔离级别、LOCK TABLE显式锁表。
+          - generic [ref=e317]:
+            - generic [ref=e318]: "--"
+            - generic [ref=e319]: 未测试
+        - generic [ref=e320] [cursor=pointer]:
+          - generic [ref=e321]:
+            - generic [ref=e322]: MVCC多版本并发控制原理
+            - generic [ref=e323]: 版本链(DB_TRX_ID+DB_ROLL_PTR)、快照读vs当前读、可见性判断算法、MVCC与锁的协作关系。MVCC是InnoDB实现高并发的核心机制。
+          - generic [ref=e324]:
+            - generic [ref=e325]: "--"
+            - generic [ref=e326]: 未测试
+        - generic [ref=e327] [cursor=pointer]:
+          - generic [ref=e328]:
+            - generic [ref=e329]: InnoDB锁机制详解
+            - generic [ref=e330]: S锁/X锁/IS锁/IX锁的兼容矩阵、行锁(Record Lock)/间隙锁(Gap Lock)/临键锁(Next-Key Lock)、插入意向锁、AUTO-INC锁。理解幻读的锁解决方案。
+          - generic [ref=e331]:
+            - generic [ref=e332]: "--"
+            - generic [ref=e333]: 未测试
+        - generic [ref=e334] [cursor=pointer]:
+          - generic [ref=e335]:
+            - generic [ref=e336]: 死锁检测与处理
+            - generic [ref=e337]: InnoDB的等待图(Wait-For Graph)死锁检测算法、innodb_deadlock_detect参数、死锁回滚受害者选择(undo log最小的)、分布式死锁的超时机制对比。
+          - generic [ref=e338]:
+            - generic [ref=e339]: "--"
+            - generic [ref=e340]: 未测试
+        - generic [ref=e341] [cursor=pointer]:
+          - generic [ref=e342]:
+            - generic [ref=e343]: 乐观并发控制(OCC)
+            - generic [ref=e344]: OCC的三阶段(读→验证→写)、时间戳排序(T/O)、基于时间戳的多版本并发控制(MVTO)、Faiss/Milvus中向量索引的并发控制（大部分是只读+后台重建索引）。
+          - generic [ref=e345]:
+            - generic [ref=e346]: "--"
+            - generic [ref=e347]: 未测试
+        - generic [ref=e348] [cursor=pointer]:
+          - generic [ref=e349]:
+            - generic [ref=e350]: Redo Log详解与组提交
+            - generic [ref=e351]: Redo Log的物理逻辑日志格式(MLOG_REC_INSERT等)、mini-transaction(mtr)保证页内原子性、组提交(Group Commit)三阶段(flush→sync→commit)优化fsync次数。
+          - generic [ref=e352]:
+            - generic [ref=e353]: "--"
+            - generic [ref=e354]: 未测试
+        - generic [ref=e355] [cursor=pointer]:
+          - generic [ref=e356]:
+            - generic [ref=e357]: InnoDB ReadView与快照读
+            - generic [ref=e358]: ReadView的m_ids/m_low_limit_id/m_up_limit_id/creator_trx_id字段、可见性判断规则(RR级别事务开始时创建/RC级别每次语句创建)、MVCC在不同隔离级别下的行为差异。
+          - generic [ref=e359]:
+            - generic [ref=e360]: "--"
+            - generic [ref=e361]: 未测试
+        - generic [ref=e362] [cursor=pointer]:
+          - generic [ref=e363]:
+            - generic [ref=e364]: Undo Log与回滚段
+            - generic [ref=e365]: Undo Log的insert undo/update undo格式、回滚段的组织(rollback segment→undo slot→undo log page)、purge线程清理过期undo、undo表空间的truncate。
+          - generic [ref=e366]:
+            - generic [ref=e367]: "--"
+            - generic [ref=e368]: 未测试
+        - generic [ref=e369] [cursor=pointer]:
+          - generic [ref=e370]:
+            - generic [ref=e371]: ARIES恢复算法
+            - generic [ref=e372]: ARIES三阶段(Analysis→Redo→Undo)、Dirty Page Table(DPT)和Transaction Table的维护、CLR(Compensation Log Record)保证恢复幂等、检查点日志记录。
+          - generic [ref=e373]:
+            - generic [ref=e374]: "--"
+            - generic [ref=e375]: 未测试
+        - generic [ref=e376] [cursor=pointer]:
+          - generic [ref=e377]:
+            - generic [ref=e378]: 快照隔离与Write Skew
+            - generic [ref=e379]: 快照隔离(SI)的Write Skew异常、Serializable Snapshot Isolation(SSI)检测冲突、PostgreSQL的SSI实现(基于SIREAD锁)。理解SI不等于Serializable的关键差异。
+          - generic [ref=e380]:
+            - generic [ref=e381]: "--"
+            - generic [ref=e382]: 未测试
+        - generic [ref=e383] [cursor=pointer]:
+          - generic [ref=e384]:
+            - generic [ref=e385]: 两阶段提交(2PC)
+            - generic [ref=e386]: XA分布式事务协议、Prepare→Commit两阶段、Coordinator与Participant的角色、InnoDB的XA事务实现(binlog+redo log)、3PC解决2PC的阻塞问题。
+          - generic [ref=e387]:
+            - generic [ref=e388]: "--"
+            - generic [ref=e389]: 未测试
+      - generic [ref=e390]:
+        - text: 📕 分布式与系统
+        - generic [ref=e391]: (15项)
+      - generic [ref=e392]:
+        - generic [ref=e393] [cursor=pointer]:
+          - generic [ref=e394]:
+            - generic [ref=e395]: Redis事件驱动模型
+            - generic [ref=e396]: Redis的aeEventLoop单线程事件循环、File Event(IO多路复用epoll/kqueue)+Time Event(serverCron周期任务)、aeProcessEvents的事件处理流程、单线程高性能的核心设计。
+          - generic [ref=e397]:
+            - generic [ref=e398]: "--"
+            - generic [ref=e399]: 未测试
+        - generic [ref=e400] [cursor=pointer]:
+          - generic [ref=e401]:
+            - generic [ref=e402]: RESP协议与网络层
+            - generic [ref=e403]: RESP2/RESP3协议的5种数据类型(Simple String/Error/Integer/Bulk String/Array)、协议解析的状态机、Pipeline批量命令、Redis 6.0+多线程IO的Pro-Threads模型。
+          - generic [ref=e404]:
+            - generic [ref=e405]: "--"
+            - generic [ref=e406]: 未测试
+        - generic [ref=e407] [cursor=pointer]:
+          - generic [ref=e408]:
+            - generic [ref=e409]: Redis对象系统(redisObject)
+            - generic [ref=e410]: redisObject的type/encoding/refcount/lru/ptr字段、编码转换规则(ziplist→skiplist/listpack等)、共享对象池(0-9999整数)、内存回收的引用计数机制。
+          - generic [ref=e411]:
+            - generic [ref=e412]: "--"
+            - generic [ref=e413]: 未测试
+        - generic [ref=e414] [cursor=pointer]:
+          - generic [ref=e415]:
+            - generic [ref=e416]: Redis持久化(RDB/AOF)
+            - generic [ref=e417]: RDB快照的SAVE/BGSAVE与Copy-On-Write fork、AOF的命令追加与重写(rewrite)瘦身、RDB-AOF混合持久化、fsync策略(always/everysec/no)与数据安全性权衡。
+          - generic [ref=e418]:
+            - generic [ref=e419]: "--"
+            - generic [ref=e420]: 未测试
+        - generic [ref=e421] [cursor=pointer]:
+          - generic [ref=e422]:
+            - generic [ref=e423]: Redis主从复制
+            - generic [ref=e424]: 全量同步(RDB+缓冲命令)与部分重同步(psync+replication backlog)、replication buffer与repl_backlog的协作、复制积压缓冲区的环形设计。
+          - generic [ref=e425]:
+            - generic [ref=e426]: "--"
+            - generic [ref=e427]: 未测试
+        - generic [ref=e428] [cursor=pointer]:
+          - generic [ref=e429]:
+            - generic [ref=e430]: Milvus系统架构
+            - generic [ref=e431]: Milvus的存算分离架构：Proxy(请求路由+限流)+Data Node(数据持久化)+Index Node(索引构建)+Query Node(查询执行)+Root Coord(元数据管理)。理解各组件交互。
+          - generic [ref=e432]:
+            - generic [ref=e433]: "--"
+            - generic [ref=e434]: 未测试
+        - generic [ref=e435] [cursor=pointer]:
+          - generic [ref=e436]:
+            - generic [ref=e437]: Milvus段(Segment)管理
+            - generic [ref=e438]: Growing Segment(可写入/内存)+Sealed Segment(只读/持久化)、L0增量段合并(compaction)、Binlog(列式变更日志)与DML的多路复用写入。
+          - generic [ref=e439]:
+            - generic [ref=e440]: "--"
+            - generic [ref=e441]: 未测试
+        - generic [ref=e442] [cursor=pointer]:
+          - generic [ref=e443]:
+            - generic [ref=e444]: 数据分片与分区策略
+            - generic [ref=e445]: Range分区(范围连续/可能热点)、Hash分区(均匀分布/不便范围查询)、一致性哈希(虚拟节点)、分库分表中间件(ShardingSphere/Vitess)的分片路由与跨分片查询。
+          - generic [ref=e446]:
+            - generic [ref=e447]: "--"
+            - generic [ref=e448]: 未测试
+        - generic [ref=e449] [cursor=pointer]:
+          - generic [ref=e450]:
+            - generic [ref=e451]: Redis集群与哨兵
+            - generic [ref=e452]: Redis Cluster的16384槽位哈希分配(Hash Slot)、MOVED/ASK重定向、Gossip协议维护集群状态、Sentinel的SDOWN/ODOWN主观/客观下线判断与故障转移。
+          - generic [ref=e453]:
+            - generic [ref=e454]: "--"
+            - generic [ref=e455]: 未测试
+        - generic [ref=e456] [cursor=pointer]:
+          - generic [ref=e457]:
+            - generic [ref=e458]: Milvus索引构建与调度
+            - generic [ref=e459]: 向量索引的异步构建流程(CreateIndex→BuildIndex)、MMap内存映射大索引文件、IndexNode的多租户调度与资源隔离、GPU加速的索引构建(RAFT算法)。
+          - generic [ref=e460]:
+            - generic [ref=e461]: "--"
+            - generic [ref=e462]: 未测试
+        - generic [ref=e463] [cursor=pointer]:
+          - generic [ref=e464]:
+            - generic [ref=e465]: Milvus混合查询(标量+向量)
+            - generic [ref=e466]: 标量过滤+向量搜索的混合查询执行、迭代式TopK搜索(ANNS→标量过滤→补位→repeat)、Cost-Based剪枝优化、QueryNode的多段并行搜索。
+          - generic [ref=e467]:
+            - generic [ref=e468]: "--"
+            - generic [ref=e469]: 未测试
+        - generic [ref=e470] [cursor=pointer]:
+          - generic [ref=e471]:
+            - generic [ref=e472]: 混合查询(标量+向量/SPANN)
+            - generic [ref=e473]: 标量过滤+向量相似度的混合查询三策略(Pre-filtering先过滤/Post-filtering后过滤/Single-stage融合)、SPANN(SSD向量+内存质心+快速粗排)的百万QPS设计、多模态检索(文本+图像+向量)的融合排序(Reciprocal Rank Fusion/加权分数)。混合查询是向量数据库实用化的关键。
+          - generic [ref=e474]:
+            - generic [ref=e475]: "--"
+            - generic [ref=e476]: 未测试
+        - generic [ref=e477] [cursor=pointer]:
+          - generic [ref=e478]:
+            - generic [ref=e479]: 分布式共识(Raft/Paxos)
+            - generic [ref=e480]: Raft的Leader Election/Follower Commit二阶段、Term递增与心跳机制、Paxos的Prepare-Promise/Accept-Accepted、Multi-Paxos的Leader优化。分布式数据库一致性的基石。
+          - generic [ref=e481]:
+            - generic [ref=e482]: "--"
+            - generic [ref=e483]: 未测试
+        - generic [ref=e484] [cursor=pointer]:
+          - generic [ref=e485]:
+            - generic [ref=e486]: 高可用与故障转移
+            - generic [ref=e487]: MySQL MHA/MGR(Group Replication)、主从切换的GTID、脑裂(split-brain)的Fencing Token防护、Quorum-based选举、自动故障检测与恢复策略。
+          - generic [ref=e488]:
+            - generic [ref=e489]: "--"
+            - generic [ref=e490]: 未测试
+        - generic [ref=e491] [cursor=pointer]:
+          - generic [ref=e492]:
+            - generic [ref=e493]: 数据库性能调优
+            - generic [ref=e494]: 慢查询分析与EXPLAIN解读、Profiling(perf/pmp火焰图)、内核参数调优(innodb_buffer_pool_size/innodb_flush_method)、操作系统层面(IO调度器/swappiness/THP)。
+          - generic [ref=e495]:
+            - generic [ref=e496]: "--"
+            - generic [ref=e497]: 未测试

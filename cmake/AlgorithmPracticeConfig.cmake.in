@@ -1,0 +1,15 @@
+@PACKAGE_INIT@
+
+set(AlgorithmPractice_VERSION "@PROJECT_VERSION@")
+
+# 提供兼容性检查
+check_required_components(AlgorithmPractice)
+
+# 设置包含目录
+set_and_check(AlgorithmPractice_INCLUDE_DIRS "${PACKAGE_PREFIX_DIR}/include")
+
+# 设置库目录
+set_and_check(AlgorithmPractice_LIBRARY_DIRS "${PACKAGE_PREFIX_DIR}/lib")
+
+# 提供导入目标（如果有的话）
+# include("${CMAKE_CURRENT_LIST_DIR}/AlgorithmPracticeTargets.cmake")

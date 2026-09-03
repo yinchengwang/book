@@ -1,0 +1,377 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - heading "🏆 实战项目验收" [level=1] [ref=e240] [cursor=pointer]
+    - generic [ref=e5]:
+      - button "🏠 首页" [ref=e6] [cursor=pointer]
+      - button "📊 仪表盘" [ref=e7] [cursor=pointer]
+      - button "🏆 项目验收" [active] [ref=e8] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]: 💡
+    - generic [ref=e12]: 💡 设计模式：单例模式的懒汉式(Double-Checked Locking)在C++11之前因为内存重排序问题是不安全的。
+    - generic "关闭" [ref=e13] [cursor=pointer]: ✕
+  - generic [ref=e14]:
+    - button "← 返回首页" [ref=e241] [cursor=pointer]
+    - heading "🔧 C 技术栈 — 实战项目" [level=2] [ref=e242]
+    - generic [ref=e243]:
+      - generic [ref=e244]:
+        - generic [ref=e245]: 简易Shell (msh)
+        - generic [ref=e246]: 管道/重定向/后台运行/命令历史
+        - generic [ref=e247]:
+          - generic [ref=e248]:
+            - generic [ref=e249]: 基础命令执行
+            - generic [ref=e250]:
+              - generic "1星" [ref=e251] [cursor=pointer]: ★
+              - generic "2星" [ref=e252] [cursor=pointer]: ★
+              - generic "3星" [ref=e253] [cursor=pointer]: ★
+              - generic "4星" [ref=e254] [cursor=pointer]: ★
+              - generic "5星" [ref=e255] [cursor=pointer]: ★
+          - generic [ref=e256]:
+            - generic [ref=e257]: 管道(|)与重定向(>/<)
+            - generic [ref=e258]:
+              - generic "1星" [ref=e259] [cursor=pointer]: ★
+              - generic "2星" [ref=e260] [cursor=pointer]: ★
+              - generic "3星" [ref=e261] [cursor=pointer]: ★
+              - generic "4星" [ref=e262] [cursor=pointer]: ★
+              - generic "5星" [ref=e263] [cursor=pointer]: ★
+          - generic [ref=e264]:
+            - generic [ref=e265]: 后台运行(&)
+            - generic [ref=e266]:
+              - generic "1星" [ref=e267] [cursor=pointer]: ★
+              - generic "2星" [ref=e268] [cursor=pointer]: ★
+              - generic "3星" [ref=e269] [cursor=pointer]: ★
+              - generic "4星" [ref=e270] [cursor=pointer]: ★
+              - generic "5星" [ref=e271] [cursor=pointer]: ★
+          - generic [ref=e272]:
+            - generic [ref=e273]: 内置命令(cd/exit/history)
+            - generic [ref=e274]:
+              - generic "1星" [ref=e275] [cursor=pointer]: ★
+              - generic "2星" [ref=e276] [cursor=pointer]: ★
+              - generic "3星" [ref=e277] [cursor=pointer]: ★
+              - generic "4星" [ref=e278] [cursor=pointer]: ★
+              - generic "5星" [ref=e279] [cursor=pointer]: ★
+          - generic [ref=e280]:
+            - generic [ref=e281]: 代码质量与错误处理
+            - generic [ref=e282]:
+              - generic "1星" [ref=e283] [cursor=pointer]: ★
+              - generic "2星" [ref=e284] [cursor=pointer]: ★
+              - generic "3星" [ref=e285] [cursor=pointer]: ★
+              - generic "4星" [ref=e286] [cursor=pointer]: ★
+              - generic "5星" [ref=e287] [cursor=pointer]: ★
+        - generic [ref=e288]: "综合: ☆☆☆☆☆ 0/25"
+      - generic [ref=e289]:
+        - generic [ref=e290]: 多线程HTTP服务器
+        - generic [ref=e291]: epoll+线程池+静态文件+CGI
+        - generic [ref=e292]:
+          - generic [ref=e293]:
+            - generic [ref=e294]: 静态文件服务
+            - generic [ref=e295]:
+              - generic "1星" [ref=e296] [cursor=pointer]: ★
+              - generic "2星" [ref=e297] [cursor=pointer]: ★
+              - generic "3星" [ref=e298] [cursor=pointer]: ★
+              - generic "4星" [ref=e299] [cursor=pointer]: ★
+              - generic "5星" [ref=e300] [cursor=pointer]: ★
+          - generic [ref=e301]:
+            - generic [ref=e302]: 并发处理(线程池+epoll)
+            - generic [ref=e303]:
+              - generic "1星" [ref=e304] [cursor=pointer]: ★
+              - generic "2星" [ref=e305] [cursor=pointer]: ★
+              - generic "3星" [ref=e306] [cursor=pointer]: ★
+              - generic "4星" [ref=e307] [cursor=pointer]: ★
+              - generic "5星" [ref=e308] [cursor=pointer]: ★
+          - generic [ref=e309]:
+            - generic [ref=e310]: CGI支持
+            - generic [ref=e311]:
+              - generic "1星" [ref=e312] [cursor=pointer]: ★
+              - generic "2星" [ref=e313] [cursor=pointer]: ★
+              - generic "3星" [ref=e314] [cursor=pointer]: ★
+              - generic "4星" [ref=e315] [cursor=pointer]: ★
+              - generic "5星" [ref=e316] [cursor=pointer]: ★
+          - generic [ref=e317]:
+            - generic [ref=e318]: 配置解析(端口/根目录)
+            - generic [ref=e319]:
+              - generic "1星" [ref=e320] [cursor=pointer]: ★
+              - generic "2星" [ref=e321] [cursor=pointer]: ★
+              - generic "3星" [ref=e322] [cursor=pointer]: ★
+              - generic "4星" [ref=e323] [cursor=pointer]: ★
+              - generic "5星" [ref=e324] [cursor=pointer]: ★
+          - generic [ref=e325]:
+            - generic [ref=e326]: 健壮性与安全性
+            - generic [ref=e327]:
+              - generic "1星" [ref=e328] [cursor=pointer]: ★
+              - generic "2星" [ref=e329] [cursor=pointer]: ★
+              - generic "3星" [ref=e330] [cursor=pointer]: ★
+              - generic "4星" [ref=e331] [cursor=pointer]: ★
+              - generic "5星" [ref=e332] [cursor=pointer]: ★
+        - generic [ref=e333]: "综合: ☆☆☆☆☆ 0/25"
+      - generic [ref=e334]:
+        - generic [ref=e335]: 键值存储引擎(Mini Redis)
+        - generic [ref=e336]: String/Hash/List/ZSet+AOF+主从
+        - generic [ref=e337]:
+          - generic [ref=e338]:
+            - generic [ref=e339]: String操作(SET/GET/EXPIRE)
+            - generic [ref=e340]:
+              - generic "1星" [ref=e341] [cursor=pointer]: ★
+              - generic "2星" [ref=e342] [cursor=pointer]: ★
+              - generic "3星" [ref=e343] [cursor=pointer]: ★
+              - generic "4星" [ref=e344] [cursor=pointer]: ★
+              - generic "5星" [ref=e345] [cursor=pointer]: ★
+          - generic [ref=e346]:
+            - generic [ref=e347]: 数据结构(Hash/List/ZSet)
+            - generic [ref=e348]:
+              - generic "1星" [ref=e349] [cursor=pointer]: ★
+              - generic "2星" [ref=e350] [cursor=pointer]: ★
+              - generic "3星" [ref=e351] [cursor=pointer]: ★
+              - generic "4星" [ref=e352] [cursor=pointer]: ★
+              - generic "5星" [ref=e353] [cursor=pointer]: ★
+          - generic [ref=e354]:
+            - generic [ref=e355]: AOF持久化
+            - generic [ref=e356]:
+              - generic "1星" [ref=e357] [cursor=pointer]: ★
+              - generic "2星" [ref=e358] [cursor=pointer]: ★
+              - generic "3星" [ref=e359] [cursor=pointer]: ★
+              - generic "4星" [ref=e360] [cursor=pointer]: ★
+              - generic "5星" [ref=e361] [cursor=pointer]: ★
+          - generic [ref=e362]:
+            - generic [ref=e363]: 主从复制
+            - generic [ref=e364]:
+              - generic "1星" [ref=e365] [cursor=pointer]: ★
+              - generic "2星" [ref=e366] [cursor=pointer]: ★
+              - generic "3星" [ref=e367] [cursor=pointer]: ★
+              - generic "4星" [ref=e368] [cursor=pointer]: ★
+              - generic "5星" [ref=e369] [cursor=pointer]: ★
+          - generic [ref=e370]:
+            - generic [ref=e371]: RESP协议兼容
+            - generic [ref=e372]:
+              - generic "1星" [ref=e373] [cursor=pointer]: ★
+              - generic "2星" [ref=e374] [cursor=pointer]: ★
+              - generic "3星" [ref=e375] [cursor=pointer]: ★
+              - generic "4星" [ref=e376] [cursor=pointer]: ★
+              - generic "5星" [ref=e377] [cursor=pointer]: ★
+        - generic [ref=e378]: "综合: ☆☆☆☆☆ 0/25"
+      - generic [ref=e379]:
+        - generic [ref=e380]: 内存分配器(malloc替代)
+        - generic [ref=e381]: 空闲链表/mmap/Thread Cache/碎片整理
+        - generic [ref=e382]:
+          - generic [ref=e383]:
+            - generic [ref=e384]: 基本分配与释放(malloc/free)
+            - generic [ref=e385]:
+              - generic "1星" [ref=e386] [cursor=pointer]: ★
+              - generic "2星" [ref=e387] [cursor=pointer]: ★
+              - generic "3星" [ref=e388] [cursor=pointer]: ★
+              - generic "4星" [ref=e389] [cursor=pointer]: ★
+              - generic "5星" [ref=e390] [cursor=pointer]: ★
+          - generic [ref=e391]:
+            - generic [ref=e392]: 碎片整理与合并
+            - generic [ref=e393]:
+              - generic "1星" [ref=e394] [cursor=pointer]: ★
+              - generic "2星" [ref=e395] [cursor=pointer]: ★
+              - generic "3星" [ref=e396] [cursor=pointer]: ★
+              - generic "4星" [ref=e397] [cursor=pointer]: ★
+              - generic "5星" [ref=e398] [cursor=pointer]: ★
+          - generic [ref=e399]:
+            - generic [ref=e400]: Thread Cache(多线程优化)
+            - generic [ref=e401]:
+              - generic "1星" [ref=e402] [cursor=pointer]: ★
+              - generic "2星" [ref=e403] [cursor=pointer]: ★
+              - generic "3星" [ref=e404] [cursor=pointer]: ★
+              - generic "4星" [ref=e405] [cursor=pointer]: ★
+              - generic "5星" [ref=e406] [cursor=pointer]: ★
+          - generic [ref=e407]:
+            - generic [ref=e408]: 性能对比(与glibc对比)
+            - generic [ref=e409]:
+              - generic "1星" [ref=e410] [cursor=pointer]: ★
+              - generic "2星" [ref=e411] [cursor=pointer]: ★
+              - generic "3星" [ref=e412] [cursor=pointer]: ★
+              - generic "4星" [ref=e413] [cursor=pointer]: ★
+              - generic "5星" [ref=e414] [cursor=pointer]: ★
+          - generic [ref=e415]:
+            - generic [ref=e416]: 调试支持(内存泄漏检测)
+            - generic [ref=e417]:
+              - generic "1星" [ref=e418] [cursor=pointer]: ★
+              - generic "2星" [ref=e419] [cursor=pointer]: ★
+              - generic "3星" [ref=e420] [cursor=pointer]: ★
+              - generic "4星" [ref=e421] [cursor=pointer]: ★
+              - generic "5星" [ref=e422] [cursor=pointer]: ★
+        - generic [ref=e423]: "综合: ☆☆☆☆☆ 0/25"
+    - heading "⚙️ C++ 技术栈 — 实战项目" [level=2] [ref=e424]
+    - generic [ref=e425]:
+      - generic [ref=e426]:
+        - generic [ref=e427]: JSON解析器与序列化库
+        - generic [ref=e428]: SAX/DOM解析+模板推导+对标rapidjson
+        - generic [ref=e429]:
+          - generic [ref=e430]:
+            - generic [ref=e431]: 字符串/数字/布尔/null解析
+            - generic [ref=e432]:
+              - generic "1星" [ref=e433] [cursor=pointer]: ★
+              - generic "2星" [ref=e434] [cursor=pointer]: ★
+              - generic "3星" [ref=e435] [cursor=pointer]: ★
+              - generic "4星" [ref=e436] [cursor=pointer]: ★
+              - generic "5星" [ref=e437] [cursor=pointer]: ★
+          - generic [ref=e438]:
+            - generic [ref=e439]: 嵌套对象与数组解析
+            - generic [ref=e440]:
+              - generic "1星" [ref=e441] [cursor=pointer]: ★
+              - generic "2星" [ref=e442] [cursor=pointer]: ★
+              - generic "3星" [ref=e443] [cursor=pointer]: ★
+              - generic "4星" [ref=e444] [cursor=pointer]: ★
+              - generic "5星" [ref=e445] [cursor=pointer]: ★
+          - generic [ref=e446]:
+            - generic [ref=e447]: 序列化(美化输出)
+            - generic [ref=e448]:
+              - generic "1星" [ref=e449] [cursor=pointer]: ★
+              - generic "2星" [ref=e450] [cursor=pointer]: ★
+              - generic "3星" [ref=e451] [cursor=pointer]: ★
+              - generic "4星" [ref=e452] [cursor=pointer]: ★
+              - generic "5星" [ref=e453] [cursor=pointer]: ★
+          - generic [ref=e454]:
+            - generic [ref=e455]: 错误处理与定位
+            - generic [ref=e456]:
+              - generic "1星" [ref=e457] [cursor=pointer]: ★
+              - generic "2星" [ref=e458] [cursor=pointer]: ★
+              - generic "3星" [ref=e459] [cursor=pointer]: ★
+              - generic "4星" [ref=e460] [cursor=pointer]: ★
+              - generic "5星" [ref=e461] [cursor=pointer]: ★
+          - generic [ref=e462]:
+            - generic [ref=e463]: 性能(百万次解析耗时)
+            - generic [ref=e464]:
+              - generic "1星" [ref=e465] [cursor=pointer]: ★
+              - generic "2星" [ref=e466] [cursor=pointer]: ★
+              - generic "3星" [ref=e467] [cursor=pointer]: ★
+              - generic "4星" [ref=e468] [cursor=pointer]: ★
+              - generic "5星" [ref=e469] [cursor=pointer]: ★
+        - generic [ref=e470]: "综合: ☆☆☆☆☆ 0/25"
+      - generic [ref=e471]:
+        - generic [ref=e472]: 高性能异步日志库
+        - generic [ref=e473]: 无锁队列/分级滚动压缩/fmt集成
+        - generic [ref=e474]:
+          - generic [ref=e475]:
+            - generic [ref=e476]: 基本日志输出(INFO/WARN/ERROR)
+            - generic [ref=e477]:
+              - generic "1星" [ref=e478] [cursor=pointer]: ★
+              - generic "2星" [ref=e479] [cursor=pointer]: ★
+              - generic "3星" [ref=e480] [cursor=pointer]: ★
+              - generic "4星" [ref=e481] [cursor=pointer]: ★
+              - generic "5星" [ref=e482] [cursor=pointer]: ★
+          - generic [ref=e483]:
+            - generic [ref=e484]: 异步写入(无锁队列)
+            - generic [ref=e485]:
+              - generic "1星" [ref=e486] [cursor=pointer]: ★
+              - generic "2星" [ref=e487] [cursor=pointer]: ★
+              - generic "3星" [ref=e488] [cursor=pointer]: ★
+              - generic "4星" [ref=e489] [cursor=pointer]: ★
+              - generic "5星" [ref=e490] [cursor=pointer]: ★
+          - generic [ref=e491]:
+            - generic [ref=e492]: 日志滚动与压缩
+            - generic [ref=e493]:
+              - generic "1星" [ref=e494] [cursor=pointer]: ★
+              - generic "2星" [ref=e495] [cursor=pointer]: ★
+              - generic "3星" [ref=e496] [cursor=pointer]: ★
+              - generic "4星" [ref=e497] [cursor=pointer]: ★
+              - generic "5星" [ref=e498] [cursor=pointer]: ★
+          - generic [ref=e499]:
+            - generic [ref=e500]: 格式化(支持fmt/std::format)
+            - generic [ref=e501]:
+              - generic "1星" [ref=e502] [cursor=pointer]: ★
+              - generic "2星" [ref=e503] [cursor=pointer]: ★
+              - generic "3星" [ref=e504] [cursor=pointer]: ★
+              - generic "4星" [ref=e505] [cursor=pointer]: ★
+              - generic "5星" [ref=e506] [cursor=pointer]: ★
+          - generic [ref=e507]:
+            - generic [ref=e508]: 性能(百万条/秒)
+            - generic [ref=e509]:
+              - generic "1星" [ref=e510] [cursor=pointer]: ★
+              - generic "2星" [ref=e511] [cursor=pointer]: ★
+              - generic "3星" [ref=e512] [cursor=pointer]: ★
+              - generic "4星" [ref=e513] [cursor=pointer]: ★
+              - generic "5星" [ref=e514] [cursor=pointer]: ★
+        - generic [ref=e515]: "综合: ☆☆☆☆☆ 0/25"
+      - generic [ref=e516]:
+        - generic [ref=e517]: 轻量级RPC框架
+        - generic [ref=e518]: IDL+代码生成/序列化/服务发现/连接池
+        - generic [ref=e519]:
+          - generic [ref=e520]:
+            - generic [ref=e521]: IDL定义与代码生成
+            - generic [ref=e522]:
+              - generic "1星" [ref=e523] [cursor=pointer]: ★
+              - generic "2星" [ref=e524] [cursor=pointer]: ★
+              - generic "3星" [ref=e525] [cursor=pointer]: ★
+              - generic "4星" [ref=e526] [cursor=pointer]: ★
+              - generic "5星" [ref=e527] [cursor=pointer]: ★
+          - generic [ref=e528]:
+            - generic [ref=e529]: 序列化与反序列化
+            - generic [ref=e530]:
+              - generic "1星" [ref=e531] [cursor=pointer]: ★
+              - generic "2星" [ref=e532] [cursor=pointer]: ★
+              - generic "3星" [ref=e533] [cursor=pointer]: ★
+              - generic "4星" [ref=e534] [cursor=pointer]: ★
+              - generic "5星" [ref=e535] [cursor=pointer]: ★
+          - generic [ref=e536]:
+            - generic [ref=e537]: 服务注册与发现
+            - generic [ref=e538]:
+              - generic "1星" [ref=e539] [cursor=pointer]: ★
+              - generic "2星" [ref=e540] [cursor=pointer]: ★
+              - generic "3星" [ref=e541] [cursor=pointer]: ★
+              - generic "4星" [ref=e542] [cursor=pointer]: ★
+              - generic "5星" [ref=e543] [cursor=pointer]: ★
+          - generic [ref=e544]:
+            - generic [ref=e545]: 连接池管理
+            - generic [ref=e546]:
+              - generic "1星" [ref=e547] [cursor=pointer]: ★
+              - generic "2星" [ref=e548] [cursor=pointer]: ★
+              - generic "3星" [ref=e549] [cursor=pointer]: ★
+              - generic "4星" [ref=e550] [cursor=pointer]: ★
+              - generic "5星" [ref=e551] [cursor=pointer]: ★
+          - generic [ref=e552]:
+            - generic [ref=e553]: 超时重试与熔断
+            - generic [ref=e554]:
+              - generic "1星" [ref=e555] [cursor=pointer]: ★
+              - generic "2星" [ref=e556] [cursor=pointer]: ★
+              - generic "3星" [ref=e557] [cursor=pointer]: ★
+              - generic "4星" [ref=e558] [cursor=pointer]: ★
+              - generic "5星" [ref=e559] [cursor=pointer]: ★
+        - generic [ref=e560]: "综合: ☆☆☆☆☆ 0/25"
+      - generic [ref=e561]:
+        - generic [ref=e562]: 简易关系型数据库(MiniDB)
+        - generic [ref=e563]: SQL解析/B+树/MVCC/WAL/Buffer Pool
+        - generic [ref=e564]:
+          - generic [ref=e565]:
+            - generic [ref=e566]: SQL解析(CREATE/SELECT/INSERT)
+            - generic [ref=e567]:
+              - generic "1星" [ref=e568] [cursor=pointer]: ★
+              - generic "2星" [ref=e569] [cursor=pointer]: ★
+              - generic "3星" [ref=e570] [cursor=pointer]: ★
+              - generic "4星" [ref=e571] [cursor=pointer]: ★
+              - generic "5星" [ref=e572] [cursor=pointer]: ★
+          - generic [ref=e573]:
+            - generic [ref=e574]: B+树索引存储
+            - generic [ref=e575]:
+              - generic "1星" [ref=e576] [cursor=pointer]: ★
+              - generic "2星" [ref=e577] [cursor=pointer]: ★
+              - generic "3星" [ref=e578] [cursor=pointer]: ★
+              - generic "4星" [ref=e579] [cursor=pointer]: ★
+              - generic "5星" [ref=e580] [cursor=pointer]: ★
+          - generic [ref=e581]:
+            - generic [ref=e582]: MVCC多版本控制
+            - generic [ref=e583]:
+              - generic "1星" [ref=e584] [cursor=pointer]: ★
+              - generic "2星" [ref=e585] [cursor=pointer]: ★
+              - generic "3星" [ref=e586] [cursor=pointer]: ★
+              - generic "4星" [ref=e587] [cursor=pointer]: ★
+              - generic "5星" [ref=e588] [cursor=pointer]: ★
+          - generic [ref=e589]:
+            - generic [ref=e590]: WAL日志恢复
+            - generic [ref=e591]:
+              - generic "1星" [ref=e592] [cursor=pointer]: ★
+              - generic "2星" [ref=e593] [cursor=pointer]: ★
+              - generic "3星" [ref=e594] [cursor=pointer]: ★
+              - generic "4星" [ref=e595] [cursor=pointer]: ★
+              - generic "5星" [ref=e596] [cursor=pointer]: ★
+          - generic [ref=e597]:
+            - generic [ref=e598]: Buffer Pool缓存管理
+            - generic [ref=e599]:
+              - generic "1星" [ref=e600] [cursor=pointer]: ★
+              - generic "2星" [ref=e601] [cursor=pointer]: ★
+              - generic "3星" [ref=e602] [cursor=pointer]: ★
+              - generic "4星" [ref=e603] [cursor=pointer]: ★
+              - generic "5星" [ref=e604] [cursor=pointer]: ★
+        - generic [ref=e605]: "综合: ☆☆☆☆☆ 0/25"

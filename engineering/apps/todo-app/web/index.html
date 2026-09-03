@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GitHub Issue 待办工具</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 顶部导航 -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">◉</span>
+        <span class="brand-text">Issue 待办</span>
+      </div>
+      <div class="toolbar">
+        <input v-model.trim="search" @keyup.enter="loadIssues" class="search-input" placeholder="搜索关键字..." />
+        <select v-model="statusFilter" @change="loadIssues" class="status-select">
+          <option value="all">全部</option>
+          <option value="open">未关闭</option>
+          <option value="closed">已关闭</option>
+        </select>
+        <button class="btn btn-primary" @click="openCreate">+ 新建 Issue</button>
+      </div>
+    </header>
+
+    <!-- 主体 -->
+    <main class="layout">
+      <!-- 列表 -->
+      <section class="list-panel">
+        <div v-if="loading" class="empty">加载中...</div>
+        <div v-else-if="issues.length === 0" class="empty">还没有 Issue，先新建一个吧</div>
+        <ul v-else class="issue-list">
+          <li v-for="issue in issues" :key="issue.id"
+              :class="['issue-item', issue.status === 'closed' ? 'is-closed' : '', selectedId === issue.id ? 'is-active' : '']"
+              @click="selectIssue(issue.id)">
+            <div class="issue-row1">
+              <span class="issue-state">
+                <span v-if="issue.status === 'open'">◯</span>
+                <span v-else>✓</span>
+              </span>
+              <span class="issue-title">{{ issue.title }}</span>
+            </div>
+            <div class="issue-row2">
+              <span class="issue-meta">
+                #{{ issue.id }} · {{ formatTime(issue.updated_at) }}
+              </span>
+              <span v-for="label in parseLabels(issue.labels)" :key="label" class="label">
+                {{ label }}
+              </span>
+            </div>
+          </li>
+        </ul>
+        <div v-if="totalPages > 1" class="pagination">
+          <button @click="changePage(page - 1)" :disabled="page <= 1">上一页</button>
+          <span>{{ page }} / {{ totalPages }}</span>
+          <button @click="changePage(page + 1)" :disabled="page >= totalPages">下一页</button>
+        </div>
+      </section>
+
+      <!-- 详情 -->
+      <section class="detail-panel" v-if="current">
+        <div class="detail-header">
+          <span class="issue-state-large">
+            <button :class="['toggle-btn', current.status === 'closed' ? 'is-closed' : '']"
+                    @click="toggleStatus" :title="current.status === 'closed' ? '重新打开' : '关闭 Issue'">
+              <span v-if="current.status === 'open'">◯</span>
+              <span v-else>✓</span>
+            </button>
+          </span>
+          <div class="detail-title-wrap">
+            <h2 class="detail-title">{{ current.title }}</h2>
+            <div class="detail-meta">
+              #{{ current.id }} 由系统 于 {{ formatTime(current.created_at) }} 创建 · 最近更新 {{ formatTime(current.updated_at) }}
+            </div>
+          </div>
+          <button class="btn btn-danger btn-sm" @click="deleteCurrent">删除</button>
+        </div>
+
+        <div class="detail-body">
+          <!-- 编辑态 -->
+          <template v-if="editing">
+            <label class="label-text">标题</label>
+            <input v-model.trim="editForm.title" class="form-input" maxlength="255" />
+            <label class="label-text">描述</label>
+            <textarea v-model="editForm.description" class="form-textarea" rows="8" maxlength="4000"></textarea>
+            <label class="label-text">标签（逗号分隔）</label>
+            <input v-model="editForm.labels" class="form-input" placeholder="bug, urgent" />
+            <div class="form-actions">
+              <button class="btn btn-primary" @click="saveEdit" :disabled="!editForm.title">保存</button>
+              <button class="btn btn-secondary" @click="cancelEdit">取消</button>
+            </div>
+          </template>
+          <template v-else>
+            <div v-if="current.description" class="description">{{ current.description }}</div>
+            <div v-else class="description empty-desc">暂无描述</div>
+
+            <div v-if="parseLabels(current.labels).length > 0" class="labels">
+              <span v-for="label in parseLabels(current.labels)" :key="label" class="label">{{ label }}</span>
+            </div>
+
+            <div class="section-actions">
+              <button class="btn btn-secondary btn-sm" @click="startEdit">编辑</button>
+            </div>
+          </template>
+
+          <!-- Checklist -->
+          <div class="checklist">
+            <div class="checklist-header">
+              <h3>待办项</h3>
+              <span class="checklist-progress">
+                {{ doneCount }} / {{ checklist.length }} 已完成
+                <span v-if="checklist.length > 0" class="progress-bar">
+                  <span class="progress-bar-fill" :style="{ width: progressPct + '%' }"></span>
+                </span>
+              </span>
+            </div>
+            <ul class="checklist-items">
+              <li v-for="item in checklist" :key="item.id" :class="['checklist-item', item.done ? 'is-done' : '']">
+                <input type="checkbox" :checked="item.done" @change="toggleChecklistItem(item.id)" />
+                <span class="checklist-text">{{ item.text }}</span>
+                <button class="btn-icon" @click="removeChecklistItem(item.id)" title="删除">×</button>
+              </li>
+              <li v-if="checklist.length === 0" class="checklist-empty">还没有待办项</li>
+            </ul>
+            <div class="checklist-add">
+              <input v-model.trim="newChecklistText" @keyup.enter="addChecklistItem"
+                     class="form-input" placeholder="新增待办项，回车添加..." maxlength="500" />
+              <button class="btn btn-secondary" @click="addChecklistItem" :disabled="!newChecklistText">添加</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section v-else class="detail-panel placeholder">
+        <div class="placeholder-content">
+          <p class="placeholder-icon">→</p>
+          <p>从左侧选择一条 Issue，或点击右上角新建</p>
+        </div>
+      </section>
+    </main>
+
+    <!-- 新建弹窗 -->
+    <div v-if="showCreate" class="modal-mask" @click.self="showCreate = false">
+      <div class="modal">
+        <h3>新建 Issue</h3>
+        <label class="label-text">标题 *</label>
+        <input v-model.trim="createForm.title" class="form-input" maxlength="255" />
+        <label class="label-text">描述</label>
+        <textarea v-model="createForm.description" class="form-textarea" rows="6" maxlength="4000"></textarea>
+        <label class="label-text">标签（逗号分隔）</label>
+        <input v-model="createForm.labels" class="form-input" placeholder="bug, urgent" />
+        <div class="form-actions">
+          <button class="btn btn-primary" :disabled="!createForm.title" @click="submitCreate">创建</button>
+          <button class="btn btn-secondary" @click="showCreate = false">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 全局提示 -->
+    <div v-if="toast" :class="['toast', 'toast-' + toast.type]">{{ toast.msg }}</div>
+  </div>
+
+  <!-- Vue 3 通过 CDN 引入 -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,91 @@
+name: C CI Pipeline
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch:                     # 手动触发
+
+env:
+  CC_OPTS: -Wall -Wextra -Wpedantic -O2 -std=c11
+
+jobs:
+  # === Job 1: 多编译器矩阵编译 ===
+  build:
+    name: Build (${{ matrix.compiler }} ${{ matrix.version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        version: ['11', '12', '13', '14']
+        include:
+          - compiler: gcc
+            version: '14'
+            pkg: gcc-14
+          - compiler: clang
+            version: '15'
+            pkg: clang-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.pkg }}
+
+      - name: Cache build artifacts
+        uses: actions/cache@v3
+        with:
+          path: build/
+          key: ${{ runner.os }}-${{ matrix.compiler }}-${{ matrix.version }}-${{ hashFiles('**/*.c', '**/*.h') }}
+
+      - name: Compile
+        run: |
+          mkdir -p build
+          ${{ matrix.compiler }}-${{ matrix.version }} ${{ env.CC_OPTS }} -o build/ci_demo main.c
+          ./build/ci_demo > /dev/null   # 冒烟测试：能否运行
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ci-demo-${{ matrix.compiler }}-${{ matrix.version }}
+          path: build/ci_demo
+
+  # === Job 2: 单元测试（依赖 build） ===
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: gcc ${{ env.CC_OPTS }} -o build/test main.c
+
+      - name: Run
+        run: ./build/test
+
+  # === Job 3: 静态分析 ===
+  static-analysis:
+    name: Static analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cppcheck
+        run: sudo apt-get install -y cppcheck
+
+      - name: cppcheck
+        run: |
+          cppcheck --enable=all --error-exitcode=1 main.c
+          cppcheck --enable=warning,style --inconclusive main.c
+
+      - name: flawfinder
+        run: |
+          sudo apt-get install -y flawfinder
+          flawfinder --error-level=medium main.c

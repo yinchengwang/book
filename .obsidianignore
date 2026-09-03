@@ -1,0 +1,12 @@
+# 排除 node_modules
+project/reading-radar/node_modules
+
+# 排除大型源码目录（按需保留）
+# open_source/
+# demo_projects/
+
+# 排除构建产物
+build/
+*.exe
+*.o
+*.obj

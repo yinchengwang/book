@@ -1,0 +1,39 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - heading "📊 学习仪表盘" [level=1] [ref=e206] [cursor=pointer]
+    - generic [ref=e5]:
+      - button "🏠 首页" [ref=e6] [cursor=pointer]
+      - button "📊 仪表盘" [ref=e7] [cursor=pointer]
+      - button "🏆 项目验收" [ref=e8] [cursor=pointer]
+  - generic [ref=e10]:
+    - generic [ref=e11]: 💡
+    - generic [ref=e12]: 💡 设计模式：单例模式的懒汉式(Double-Checked Locking)在C++11之前因为内存重排序问题是不安全的。
+    - generic "关闭" [ref=e13] [cursor=pointer]: ✕
+  - generic [ref=e14]:
+    - button "← 返回首页" [ref=e207] [cursor=pointer]
+    - generic [ref=e208]:
+      - generic [ref=e209]:
+        - generic [ref=e210]: 1/86
+        - generic [ref=e211]: 📚 已测试/总知识点
+      - generic [ref=e212]:
+        - generic [ref=e213]: "100"
+        - generic [ref=e214]: 📊 综合平均分
+      - generic [ref=e215]:
+        - generic [ref=e216]: 100%
+        - generic [ref=e217]: ✅ 通过率(≥60分)
+      - generic [ref=e218]:
+        - generic [ref=e219]: 0.1h
+        - generic [ref=e220]: ⏱ 累计学习时长
+      - generic [ref=e221]:
+        - generic [ref=e222]: "2"
+        - generic [ref=e223]: 📝 累计测试次数
+    - heading "📈 最近测试趋势" [level=3] [ref=e225]
+    - generic [ref=e227]:
+      - generic [ref=e228]:
+        - heading "⚠️ 需要复习" [level=3] [ref=e229]
+        - generic [ref=e231]: 🎉 暂无薄弱知识点！继续加油！
+      - generic [ref=e232]:
+        - heading "🏅 掌握最好" [level=3] [ref=e233]
+        - generic [ref=e235]:
+          - generic [ref=e236]: ⚙️ 类与对象
+          - generic [ref=e239]: 100%

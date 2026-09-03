@@ -1,0 +1,235 @@
+[    1626ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[    1658ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8080/favicon.ico:0
+[   23396ms] ReferenceError: ITEMS_REGISTRY is not defined
+    at http://localhost:8080/data/app/kanban-data.js:11:39
+    at Array.forEach (<anonymous>)
+    at http://localhost:8080/data/app/kanban-data.js:10:49
+[   23396ms] SyntaxError: Failed to execute 'appendChild' on 'Node': Identifier 'API_BASE' has already been declared
+    at http://localhost:8080/data/app/nav-component.js:198:21
+    at Array.forEach (<anonymous>)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:195:19)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[   23396ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[   25462ms] ReferenceError: ITEMS_REGISTRY is not defined
+    at http://localhost:8080/data/quiz/tech.js:10:37
+    at Array.forEach (<anonymous>)
+    at http://localhost:8080/data/quiz/tech.js:9:49
+[   25462ms] ReferenceError: C_TECH_DATA is not defined
+    at http://localhost:8080/data/quiz/static.js:690:49
+[   25496ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/c/quiz-questions-c-language.js:6:1
+[   25496ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/c/quiz-questions-c-systems.js:6:1
+[   25497ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/c/quiz-questions-c-algorithms.js:6:1
+[   25497ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/c/quiz-questions-c-engineering.js:6:1
+[   25497ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/cpp/quiz-questions-cpp-language.js:6:1
+[   25498ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/cpp/quiz-questions-cpp-systems.js:6:1
+[   25498ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/cpp/quiz-questions-cpp-algorithms.js:6:1
+[   25498ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/cpp/quiz-questions-cpp-engineering.js:6:1
+[   25499ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/ds/quiz-questions-ds-language.js:6:1
+[   25499ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/ds/quiz-questions-ds-systems.js:6:1
+[   25500ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/ds/quiz-questions-ds-algorithms.js:6:1
+[   25500ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/ds/quiz-questions-ds-engineering.js:6:1
+[   25501ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/py/quiz-questions-py-language.js:6:1
+[   25502ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/py/quiz-questions-py-systems.js:6:1
+[   25502ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/py/quiz-questions-py-algorithms.js:6:1
+[   25502ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/py/quiz-questions-py-engineering.js:6:1
+[   25503ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/db/quiz-questions-db-mysql.js:7:1
+[   25503ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/db/quiz-questions-db-postgres.js:7:1
+[   25503ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/db/quiz-questions-db-redis.js:7:1
+[   25503ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/db/quiz-questions-db-rocksdb.js:7:1
+[   25503ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/db/quiz-questions-db-elasticsearch.js:7:1
+[   25503ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/db/quiz-questions-db-sqlite.js:7:1
+[   25504ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/db/quiz-questions-db-general.js:7:1
+[   25504ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/vdb/quiz-questions-vdb-faiss.js:7:1
+[   25504ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/vdb/quiz-questions-vdb-milvus.js:7:1
+[   25504ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/vdb/quiz-questions-vdb-diskann.js:7:1
+[   25505ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/vdb/quiz-questions-vdb-chroma.js:7:1
+[   25505ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/vdb/quiz-questions-vdb-pinecone.js:7:1
+[   25505ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/vdb/quiz-questions-vdb-general.js:7:1
+[   25505ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/linux/quiz-questions-linux-observability.js:7:1
+[   25505ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/linux/quiz-questions-linux-os-internals.js:7:1
+[   25505ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/linux/quiz-questions-linux-storage.js:7:1
+[   25505ms] ReferenceError: QUESTION_BANK is not defined
+    at http://localhost:8080/data/quiz/questions/linux/quiz-questions-linux-networking.js:7:1
+[   25537ms] SyntaxError: Failed to execute 'appendChild' on 'Node': Identifier 'API_BASE' has already been declared
+    at http://localhost:8080/data/app/nav-component.js:198:21
+    at Array.forEach (<anonymous>)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:195:19)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[   25538ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[   26792ms] Identifier 'C_TECH_DATA' has already been declared
+[   26793ms] Identifier 'DAILY_TIPS' has already been declared
+[   26817ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[   26823ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8080/data/content/learn-content-cpp.js:0
+[   26823ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8080/data/content/learn-content-ds.js:0
+[   26823ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8080/data/content/learn-content-c.js:0
+[   26824ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8080/data/content/learn-content-db.js:0
+[   26824ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8080/data/content/learn-content-py.js:0
+[   26824ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8080/data/content/learn-content-vdb.js:0
+[   26824ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:8080/data/content/learn-content-linux.js:0
+[   26825ms] ReferenceError: CATEGORIES is not defined
+    at <anonymous>:56:55
+    at Array.find (<anonymous>)
+    at getDefaultRoute (<anonymous>:56:34)
+    at parseRoute (<anonymous>:62:20)
+    at render (<anonymous>:852:18)
+    at HTMLDocument.init (<anonymous>:878:3)
+[   27718ms] Identifier 'C_TECH_DATA' has already been declared
+[   27718ms] Identifier 'DAILY_TIPS' has already been declared
+[   27765ms] SyntaxError: Failed to execute 'appendChild' on 'Node': Identifier 'QUESTION_BANK' has already been declared
+    at http://localhost:8080/data/app/nav-component.js:198:21
+    at Array.forEach (<anonymous>)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:195:19)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[   27797ms] SyntaxError: Failed to execute 'appendChild' on 'Node': Identifier 'API_BASE' has already been declared
+    at http://localhost:8080/data/app/nav-component.js:198:21
+    at Array.forEach (<anonymous>)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:195:19)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[   27798ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[   27798ms] TypeError: Cannot read properties of null (reading 'addEventListener')
+    at bindFilters (<anonymous>:871:41)
+    at HTMLDocument.init (<anonymous>:876:3)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:200:14)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[   29444ms] Identifier 'PRODUCT_LABELS' has already been declared
+[   29444ms] Identifier 'C_DATA' has already been declared
+[   29444ms] SyntaxError: Failed to execute 'appendChild' on 'Node': Identifier 'API_BASE' has already been declared
+    at http://localhost:8080/data/app/nav-component.js:198:21
+    at Array.forEach (<anonymous>)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:195:19)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[   29444ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[   29445ms] TypeError: Cannot read properties of null (reading 'addEventListener')
+    at bindFilters (<anonymous>:872:44)
+    at HTMLDocument.init (<anonymous>:876:3)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:200:14)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[   34751ms] Identifier 'PRODUCT_LABELS' has already been declared
+[   34752ms] Identifier 'C_TECH_DATA' has already been declared
+[   34752ms] SyntaxError: Failed to execute 'appendChild' on 'Node': Identifier 'API_BASE' has already been declared
+    at http://localhost:8080/data/app/nav-component.js:198:21
+    at Array.forEach (<anonymous>)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:195:19)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[   34753ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[   34787ms] TypeError: Cannot read properties of null (reading 'addEventListener')
+    at bindFilters (<anonymous>:872:44)
+    at HTMLDocument.init (<anonymous>:876:3)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:200:14)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[   41776ms] Identifier 'API_BASE' has already been declared
+[   41776ms] Identifier '_excerptState' has already been declared
+[   41777ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[   41777ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[   41785ms] TypeError: Cannot read properties of null (reading 'addEventListener')
+    at bindFilters (<anonymous>:871:41)
+    at HTMLDocument.init (<anonymous>:876:3)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:200:14)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[   42528ms] Identifier 'C_TECH_DATA' has already been declared
+[   42528ms] Identifier 'DAILY_TIPS' has already been declared
+[   42562ms] SyntaxError: Failed to execute 'appendChild' on 'Node': Identifier 'QUESTION_BANK' has already been declared
+    at http://localhost:8080/data/app/nav-component.js:198:21
+    at Array.forEach (<anonymous>)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:195:19)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[   42592ms] SyntaxError: Failed to execute 'appendChild' on 'Node': Identifier 'API_BASE' has already been declared
+    at http://localhost:8080/data/app/nav-component.js:198:21
+    at Array.forEach (<anonymous>)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:195:19)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[   42593ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[   42593ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[   42594ms] TypeError: Cannot read properties of null (reading 'addEventListener')
+    at bindFilters (<anonymous>:871:41)
+    at HTMLDocument.init (<anonymous>:876:3)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:200:14)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[   43837ms] Identifier 'PRODUCT_LABELS' has already been declared
+[   43837ms] Identifier 'C_DATA' has already been declared
+[   43837ms] SyntaxError: Failed to execute 'appendChild' on 'Node': Identifier 'API_BASE' has already been declared
+    at http://localhost:8080/data/app/nav-component.js:198:21
+    at Array.forEach (<anonymous>)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:195:19)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[   43838ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[   43838ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[   43838ms] TypeError: Cannot read properties of null (reading 'addEventListener')
+    at bindFilters (<anonymous>:872:44)
+    at HTMLDocument.init (<anonymous>:876:3)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:200:14)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[   44782ms] Identifier 'C_TECH_DATA' has already been declared
+[   44782ms] Identifier 'DAILY_TIPS' has already been declared
+[   44856ms] SyntaxError: Failed to execute 'appendChild' on 'Node': Identifier 'OPTIONAL_CONTENT_SCRIPTS' has already been declared
+    at http://localhost:8080/data/app/nav-component.js:198:21
+    at Array.forEach (<anonymous>)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:195:19)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[   44856ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[   44857ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[   44859ms] ReferenceError: CATEGORIES is not defined
+    at <anonymous>:56:55
+    at Array.find (<anonymous>)
+    at getDefaultRoute (<anonymous>:56:34)
+    at parseRoute (<anonymous>:62:20)
+    at render (<anonymous>:852:18)
+    at HTMLDocument.init (<anonymous>:878:3)
+[   45358ms] SyntaxError: Failed to execute 'appendChild' on 'Node': Identifier 'QUADRANT_LABELS' has already been declared
+    at http://localhost:8080/data/app/nav-component.js:198:21
+    at Array.forEach (<anonymous>)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:195:19)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[   45359ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[   45359ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[   45359ms] TypeError: Cannot read properties of null (reading 'addEventListener')
+    at bindFilters (<anonymous>:872:44)
+    at HTMLDocument.init (<anonymous>:876:3)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:200:14)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[  142206ms] Identifier 'PRODUCT_LABELS' has already been declared
+[  142206ms] Identifier 'C_TECH_DATA' has already been declared
+[  142208ms] SyntaxError: Failed to execute 'appendChild' on 'Node': Identifier 'API_BASE' has already been declared
+    at http://localhost:8080/data/app/nav-component.js:198:21
+    at Array.forEach (<anonymous>)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:195:19)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)
+[  142208ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[  142209ms] [LOG] [excerpt-view] 初始化完成 @ http://localhost:8080/data/app/excerpt-view.js:833
+[  142293ms] TypeError: Cannot read properties of null (reading 'addEventListener')
+    at bindFilters (<anonymous>:872:44)
+    at HTMLDocument.init (<anonymous>:876:3)
+    at runInlineAndDispatch (http://localhost:8080/data/app/nav-component.js:200:14)
+    at ns.onload.ns.onerror (http://localhost:8080/data/app/nav-component.js:216:36)

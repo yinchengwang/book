@@ -1,0 +1,146 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+*.gcda
+*.gcno
+*.gcov
+
+# Coverage build artifact (gcov-only run)
+engineering/build-cov/
+engineering/coverage-gcov/
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# 编译产物目录（build/<工程|学习|root>/）
+build/
+
+# 测试/运行产物目录（test-results/<工程|学习|root>/）
+test-results/
+
+# 根目录运行时产物防御（防止历史测试代码写到根目录）
+test_*.db
+test_*.db.wal
+test_*.bin
+test_*.wal
+test_vector_data/
+test_mm_pool_data/
+test_raft_state.bin.tmp
+test_dir/
+build-learning/
+build2/
+test-summary.json
+
+# CMake and Ninja build outputs (legacy flat build dirs)
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+DartConfiguration.tcl
+Testing/
+build.ninja
+.ninja_deps
+.ninja_log
+compile_commands.json
+
+# 旧双轨构建输出（legacy，已迁移到 build/ 下）
+build-default/
+build-engineering/
+build-learning/
+
+# Local datasets
+dataset/test-results/
+test-results/
+
+# 测试数据库文件
+*.db
+*.db.wal
+*.db.bin
+*.bin.tmp
+raft_state_test.bin*
+
+# 双重保护：即便 .gitignore 没生效，已跟踪的散落调试数据库也被 S1' 清理
+# （保留历史记录，但不进入新 commit）
+/test/test_*.db
+/test/test_*.db.wal
+/test/test_*.db.bin
+
+# Build artifacts
+build2/
+test_db.bin
+test_dir/
+
+# 运行时数据（不进入版本控制）
+data/
+test_data/
+test_db_init_*/
+
+# 散落调试产物二进制（即使误 commit 也不跟踪）
+*.db.bin
+
+# Third party
+third_part/libmicrohttpd/
+third_part/cjson/
+
+# Archived changes (don't track archive folder contents in working tree)
+openspec/changes/archive/
+
+# Local artifacts
+engineering/sdk/python/minivecdb/__pycache__/
+engineering/sdk/python/minivecdb/*.pyc
+__pycache__/
+*.pyc
+
+# Dual-track build outputs
+build-default/
+build-engineering/
+build-learning/
+.claude/worktrees/
+
+# kbase 模型文件
+reference/models/*.gguf
+reference/models/*.bin
+
+# 项目临时文件和构建产物
+node_modules/
+dist/
+.claude/sdd/
+*.bak
+err.txt
+out.txt
+test_vdb_data/
+temp_*.cpp
+# 根目录产物清理
+temp_output.txt
+temp_*.txt
+todo_app.json
+issue_tool.json.bak
+__test_todo__.json
+sift.tar.gz
