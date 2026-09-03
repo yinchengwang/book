@@ -608,10 +608,29 @@ std::string Server::handle_document(const std::string& id) {
     return create_error_response("Document not found", 404);
 }
 
-// 桩：Task 2 填充
 std::string Server::handle_document_content(const std::string& id) {
-    (void)id;
-    return create_error_response("Not implemented", 501);
+    if (!engine_) {
+        return create_error_response("Engine not initialized", 500);
+    }
+
+    auto docs = engine_->list_documents();
+    for (const auto& doc : docs) {
+        // 按文档 ID 匹配；同时允许按 file_path 匹配（前端只有 chunk 的 file_path 时也能用）
+        if (doc.id == id || doc.metadata.file_path == id) {
+            std::ostringstream oss;
+            oss << "{";
+            oss << "\"id\": \"" << json_escape(doc.id) << "\",";
+            oss << "\"file_path\": \"" << json_escape(doc.metadata.file_path) << "\",";
+            oss << "\"title\": \"" << json_escape(doc.metadata.title.empty()
+                                                 ? doc.metadata.file_name
+                                                 : doc.metadata.title) << "\",";
+            oss << "\"content\": \"" << json_escape(doc.content) << "\"";
+            oss << "}";
+            return create_json_response(oss.str());
+        }
+    }
+
+    return create_error_response("Document not found", 404);
 }
 
 // 桩：Task 3 填充
