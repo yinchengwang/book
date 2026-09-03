@@ -165,14 +165,105 @@ private:
     RecursiveChunker recursive_chunker_;
 };
 
+// ========== 代码感知分块器 ==========
+
+/**
+ * @brief 代码感知分块器配置
+ */
+struct CodeAwareChunkingConfig {
+    bool preserve_context = true;   // 保留依赖上下文
+    int min_chunk_lines = 5;        // 最小块行数
+    int merge_threshold = 50;       // 合并阈值（行数）
+};
+
+/**
+ * @brief 代码感知分块器
+ *
+ * 专门用于代码的分块器，能够：
+ * - 检测编程语言 (C++, Python, JavaScript, Java)
+ * - 按函数/类/方法级别分块
+ * - 保留依赖上下文（import/include）
+ * - 合并过小代码块
+ */
+class CodeAwareChunker : public Chunker {
+public:
+    /**
+     * @brief 配置结构
+     */
+    struct Config {
+        bool preserve_context = true;
+        int min_chunk_lines = 5;
+        int merge_threshold = 50;
+    };
+
+    /**
+     * @brief 代码块信息
+     */
+    struct CodeBlock {
+        std::string type;       // "function", "class", "method", "import", "general"
+        std::string name;        // 函数/类名
+        std::string content;    // 代码内容
+        int start_line = 0;     // 起始行
+        int end_line = 0;       // 结束行
+        std::vector<std::string> dependencies;  // 依赖
+    };
+
+    /**
+     * @brief 编程语言检测结果
+     */
+    struct LanguageInfo {
+        std::string language;   // "cpp", "python", "javascript", "java", "unknown"
+        std::vector<std::string> import_patterns;
+        std::vector<std::string> function_patterns;
+        std::vector<std::string> class_patterns;
+        std::string block_end;  // 块结束符
+    };
+
+    /**
+     * @brief 构造函数
+     * @param config 配置
+     */
+    explicit CodeAwareChunker(const Config& config);
+
+    /**
+     * @brief 默认构造函数
+     */
+    CodeAwareChunker();
+
+    // Chunker 接口
+    ChunkResult chunk(const std::string& text,
+                      const std::string& document_id,
+                      const DocumentMetadata& metadata) override;
+
+    std::vector<Chunk> chunk(const std::string& text,
+                             const std::string& document_id) override;
+
+    std::string name() const override;
+    const ChunkingConfig& config() const override;
+
+    // 检测编程语言
+    std::string detect_language(const std::string& text);
+
+    // 获取语言信息
+    static LanguageInfo detect_language_info(const std::string& text);
+
+private:
+    // 解析代码块
+    std::vector<CodeBlock> parse_code_blocks(const std::string& text,
+                                              const LanguageInfo& lang_info);
+
+    // 合并小代码块
+    std::vector<Chunk> merge_small_blocks(const std::vector<CodeBlock>& small_blocks,
+                                           const std::vector<std::string>& imports,
+                                           const std::string& document_id);
+
+    Config config_;
+    ChunkingConfig base_config_;
+};
+
 // ========== 工厂函数 ==========
 
-std::unique_ptr<Chunker> create_semantic_chunker(
-    const SemanticChunkingConfig& config,
-    std::shared_ptr<EmbeddingService> embed_service = nullptr);
-
-std::unique_ptr<Chunker> create_hybrid_chunker(
-    const ChunkingConfig& config,
-    std::shared_ptr<EmbeddingService> embed_service = nullptr);
+std::unique_ptr<Chunker> create_code_aware_chunker(
+    const CodeAwareChunker::Config& config = CodeAwareChunker::Config());
 
 }  // namespace rag

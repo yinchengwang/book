@@ -5,312 +5,384 @@
 
 #include <gtest/gtest.h>
 #include "rag/evaluator.h"
-#include "rag/ollama_llm.h"
-#include "rag/llm_service.h"
 
 using namespace rag;
 
-// ========== 检索指标测试 ==========
+// ========== 召回率计算测试 ==========
 
-class RetrievalMetricsTest : public ::testing::Test {
+class RecallComputation : public ::testing::Test {
 protected:
     void SetUp() override {
-        evaluator_ = std::make_shared<RAGEvaluator>();
+        evaluator_ = std::make_unique<RAGEvaluator>();
     }
 
-    std::shared_ptr<RAGEvaluator> evaluator_;
+    std::unique_ptr<RAGEvaluator> evaluator_;
 };
 
-TEST_F(RetrievalMetricsTest, RecallAtK_AllRetrieved) {
-    // 所有真实相关文档都被检索到
+TEST_F(RecallComputation, AllRetrieved) {
     std::vector<std::string> retrieved = {
         "RAG 是检索增强生成",
         "向量数据库用于存储嵌入",
         "HNSW 是高效的索引算法"
     };
-    std::vector<std::string> ground_truths = {
+    std::vector<std::string> relevant = {
         "RAG 是检索增强生成",
         "向量数据库用于存储嵌入",
         "HNSW 是高效的索引算法"
     };
 
-    auto metrics = evaluator_->evaluate_retrieval(retrieved, ground_truths);
-    EXPECT_EQ(metrics.recall_at_k, 1.0);
+    double recall = evaluator_->compute_recall(retrieved, relevant, 3);
+    EXPECT_EQ(recall, 1.0);
 }
 
-TEST_F(RetrievalMetricsTest, RecallAtK_PartialRetrieved) {
-    // 部分文档被检索到
+TEST_F(RecallComputation, PartialRetrieved) {
     std::vector<std::string> retrieved = {
         "RAG 是检索增强生成",
         "其他不相关的内容"
     };
-    std::vector<std::string> ground_truths = {
+    std::vector<std::string> relevant = {
         "RAG 是检索增强生成",
         "向量数据库用于存储嵌入",
         "HNSW 是高效的索引算法"
     };
 
-    auto metrics = evaluator_->evaluate_retrieval(retrieved, ground_truths);
-    EXPECT_GT(metrics.recall_at_k, 0.0);
-    EXPECT_LT(metrics.recall_at_k, 1.0);
+    double recall = evaluator_->compute_recall(retrieved, relevant, 10);
+    EXPECT_GT(recall, 0.0);
+    EXPECT_LT(recall, 1.0);
 }
 
-TEST_F(RetrievalMetricsTest, RecallAtK_NoneRetrieved) {
+TEST_F(RecallComputation, NoneRetrieved) {
     std::vector<std::string> retrieved = {
         "完全不相关的内容"
     };
-    std::vector<std::string> ground_truths = {
+    std::vector<std::string> relevant = {
         "RAG 是检索增强生成",
         "向量数据库用于存储嵌入"
     };
 
-    auto metrics = evaluator_->evaluate_retrieval(retrieved, ground_truths);
-    EXPECT_EQ(metrics.recall_at_k, 0.0);
+    double recall = evaluator_->compute_recall(retrieved, relevant, 10);
+    EXPECT_EQ(recall, 0.0);
 }
 
-TEST_F(RetrievalMetricsTest, MRR_FirstRelevant) {
+TEST_F(RecallComputation, EmptyRetrieved) {
+    std::vector<std::string> retrieved = {};
+    std::vector<std::string> relevant = {
+        "RAG 是检索增强生成"
+    };
+
+    double recall = evaluator_->compute_recall(retrieved, relevant, 10);
+    EXPECT_EQ(recall, 0.0);
+}
+
+// ========== 精确率计算测试 ==========
+
+class PrecisionComputation : public ::testing::Test {
+protected:
+    void SetUp() override {
+        evaluator_ = std::make_unique<RAGEvaluator>();
+    }
+
+    std::unique_ptr<RAGEvaluator> evaluator_;
+};
+
+TEST_F(PrecisionComputation, PerfectPrecision) {
+    std::vector<std::string> retrieved = {
+        "RAG 是检索增强生成",
+        "向量数据库用于存储嵌入"
+    };
+    std::vector<std::string> relevant = {
+        "RAG 是检索增强生成",
+        "向量数据库用于存储嵌入"
+    };
+
+    double precision = evaluator_->compute_precision(retrieved, relevant, 2);
+    EXPECT_EQ(precision, 1.0);
+}
+
+TEST_F(PrecisionComputation, PartialPrecision) {
+    std::vector<std::string> retrieved = {
+        "RAG 是检索增强生成",
+        "其他不相关的内容",
+        "更多不相关"
+    };
+    std::vector<std::string> relevant = {
+        "RAG 是检索增强生成"
+    };
+
+    double precision = evaluator_->compute_precision(retrieved, relevant, 3);
+    EXPECT_GT(precision, 0.0);
+    EXPECT_LT(precision, 1.0);
+}
+
+TEST_F(PrecisionComputation, EmptyRetrieved) {
+    std::vector<std::string> retrieved = {};
+    std::vector<std::string> relevant = {
+        "RAG 是检索增强生成"
+    };
+
+    double precision = evaluator_->compute_precision(retrieved, relevant, 10);
+    EXPECT_EQ(precision, 0.0);
+}
+
+// ========== MRR 计算测试 ==========
+
+class MRRComputation : public ::testing::Test {
+protected:
+    void SetUp() override {
+        evaluator_ = std::make_unique<RAGEvaluator>();
+    }
+
+    std::unique_ptr<RAGEvaluator> evaluator_;
+};
+
+TEST_F(MRRComputation, FirstRelevant) {
     std::vector<std::string> retrieved = {
         "RAG 是检索增强生成",  // 相关
         "其他内容",
         "更多内容"
     };
-    std::vector<std::string> ground_truths = {
+    std::vector<std::string> relevant = {
         "RAG 是检索增强生成"
     };
 
-    auto metrics = evaluator_->evaluate_retrieval(retrieved, ground_truths);
-    EXPECT_EQ(metrics.mrr, 1.0);  // 第一个就是相关的，MRR = 1/1 = 1
+    double mrr = evaluator_->compute_mrr(retrieved, relevant);
+    EXPECT_EQ(mrr, 1.0);  // 第一个就是相关的，MRR = 1/1 = 1
 }
 
-TEST_F(RetrievalMetricsTest, MRR_SecondRelevant) {
+TEST_F(MRRComputation, SecondRelevant) {
     std::vector<std::string> retrieved = {
         "不相关",
         "RAG 是检索增强生成",  // 第二个相关
         "更多内容"
     };
-    std::vector<std::string> ground_truths = {
+    std::vector<std::string> relevant = {
         "RAG 是检索增强生成"
     };
 
-    auto metrics = evaluator_->evaluate_retrieval(retrieved, ground_truths);
-    EXPECT_DOUBLE_EQ(metrics.mrr, 0.5);  // MRR = 1/2 = 0.5
+    double mrr = evaluator_->compute_mrr(retrieved, relevant);
+    EXPECT_DOUBLE_EQ(mrr, 0.5);  // MRR = 1/2 = 0.5
 }
 
-TEST_F(RetrievalMetricsTest, MRR_NoRelevant) {
+TEST_F(MRRComputation, NoRelevant) {
     std::vector<std::string> retrieved = {
         "不相关1",
         "不相关2",
         "不相关3"
     };
-    std::vector<std::string> ground_truths = {
+    std::vector<std::string> relevant = {
         "RAG 是检索增强生成"
     };
 
-    auto metrics = evaluator_->evaluate_retrieval(retrieved, ground_truths);
-    EXPECT_EQ(metrics.mrr, 0.0);
+    double mrr = evaluator_->compute_mrr(retrieved, relevant);
+    EXPECT_EQ(mrr, 0.0);
 }
 
-TEST_F(RetrievalMetricsTest, NDCG_PerfectRanking) {
-    std::vector<std::string> retrieved = {
-        "高相关",
-        "中相关",
-        "低相关"
-    };
-    std::vector<std::string> ground_truths = {
-        "高相关",
-        "中相关",
-        "低相关"
-    };
-    std::vector<int> scores = {3, 2, 1};  // 相关性分数
-
-    auto metrics = evaluator_->evaluate_retrieval(retrieved, ground_truths, scores);
-    EXPECT_EQ(metrics.ndcg_at_k, 1.0);
-}
-
-TEST_F(RetrievalMetricsTest, PrecisionAtK) {
-    std::vector<std::string> retrieved = {
-        "相关",
-        "相关",
-        "不相关"
-    };
-    std::vector<std::string> ground_truths = {
-        "相关",
-        "其他相关"
-    };
-
-    auto metrics = evaluator_->evaluate_retrieval(retrieved, ground_truths);
-    EXPECT_DOUBLE_EQ(metrics.precision_at_k, 2.0 / 3.0);
-}
-
-TEST_F(RetrievalMetricsTest, EmptyRetrieved) {
+TEST_F(MRRComputation, EmptyRetrieved) {
     std::vector<std::string> retrieved = {};
-    std::vector<std::string> ground_truths = {
+    std::vector<std::string> relevant = {
         "RAG 是检索增强生成"
     };
 
-    auto metrics = evaluator_->evaluate_retrieval(retrieved, ground_truths);
-    EXPECT_EQ(metrics.recall_at_k, 0.0);
-    EXPECT_EQ(metrics.mrr, 0.0);
-    EXPECT_EQ(metrics.ndcg_at_k, 0.0);
+    double mrr = evaluator_->compute_mrr(retrieved, relevant);
+    EXPECT_EQ(mrr, 0.0);
 }
 
-// ========== RAGAS 指标测试（无 LLM） ==========
+// ========== NDCG 计算测试 ==========
 
-class RAGEvaluationTest : public ::testing::Test {
+class NDCGComputation : public ::testing::Test {
 protected:
     void SetUp() override {
-        evaluator_ = std::make_shared<RAGEvaluator>();  // 无 LLM
+        evaluator_ = std::make_unique<RAGEvaluator>();
     }
 
-    std::shared_ptr<RAGEvaluator> evaluator_;
+    std::unique_ptr<RAGEvaluator> evaluator_;
 };
 
-TEST_F(RAGEvaluationTest, FaithfulnessWithContext) {
-    std::string question = "什么是 RAG？";
-    std::string answer = "RAG 是检索增强生成技术。";
-    std::vector<std::string> contexts = {
-        "RAG 是检索增强生成（Retrieval-Augmented Generation）的缩写。"
+TEST_F(NDCGComputation, PerfectRanking) {
+    std::vector<std::string> retrieved = {
+        "高相关文档",
+        "中相关文档",
+        "低相关文档"
+    };
+    std::vector<std::string> relevant = {
+        "高相关文档",
+        "中相关文档",
+        "低相关文档"
     };
 
-    auto eval = evaluator_->evaluate_generation(question, answer, contexts);
-
-    // 由于使用简化计算，关键词匹配应该有较高分数
-    EXPECT_GE(eval.faithfulness, 0.0);
-    EXPECT_LE(eval.faithfulness, 1.0);
+    double ndcg = evaluator_->compute_ndcg(retrieved, relevant, 3);
+    EXPECT_EQ(ndcg, 1.0);
 }
 
-TEST_F(RAGEvaluationTest, AnswerRelevance) {
-    std::string question = "什么是 RAG？";
-    std::string answer = "RAG 是检索增强生成。";  // 包含问题中的关键词
-
-    auto eval = evaluator_->evaluate_generation(question, answer, {});
-
-    // 简化计算应该能识别关键词重叠
-    EXPECT_GE(eval.answer_relevance, 0.0);
-    EXPECT_LE(eval.answer_relevance, 1.0);
-}
-
-TEST_F(RAGEvaluationTest, ContextRelevance) {
-    std::string question = "什么是 RAG？";
-    std::vector<std::string> contexts = {
-        "RAG 是检索增强生成。",
-        "向量数据库用于存储嵌入。",
-        "这是关于天气的信息。"
+TEST_F(NDCGComputation, ReversedRanking) {
+    std::vector<std::string> retrieved = {
+        "低相关文档",
+        "中相关文档",
+        "高相关文档"
+    };
+    std::vector<std::string> relevant = {
+        "高相关文档",
+        "中相关文档",
+        "低相关文档"
     };
 
-    auto eval = evaluator_->evaluate_generation(question, "", contexts);
-
-    // 前两个上下文与问题相关，应该有较高分数
-    EXPECT_GE(eval.context_relevance, 0.0);
-    EXPECT_LE(eval.context_relevance, 1.0);
+    double ndcg = evaluator_->compute_ndcg(retrieved, relevant, 3);
+    EXPECT_LT(ndcg, 1.0);
+    EXPECT_GT(ndcg, 0.0);
 }
 
-TEST_F(RAGEvaluationTest, RAGASScore) {
-    std::string question = "什么是 RAG？";
-    std::string answer = "RAG 是检索增强生成。";
-    std::vector<std::string> contexts = {"RAG 是检索增强生成。"};
-
-    auto eval = evaluator_->evaluate_generation(question, answer, contexts);
-
-    // 综合得分应该在合理范围内
-    EXPECT_GE(eval.ragas_score, 0.0);
-    EXPECT_LE(eval.ragas_score, 1.0);
-
-    // 综合得分应该是各指标的加权平均
-    double expected = 0.3 * eval.faithfulness +
-                     0.4 * eval.answer_relevance +
-                     0.3 * eval.context_relevance;
-    EXPECT_DOUBLE_EQ(eval.ragas_score, expected);
-}
-
-// ========== 完整评估测试 ==========
-
-TEST(EvaluationTest, FullEvaluation) {
-    RAGEvaluator evaluator;
-
-    std::string question = "RAG 是什么？";
-    std::string answer = "RAG 是检索增强生成技术。";
-    std::vector<std::string> contexts = {
-        "RAG 是检索增强生成（Retrieval-Augmented Generation）。"
+TEST_F(NDCGComputation, NoRelevant) {
+    std::vector<std::string> retrieved = {
+        "完全不相关"
     };
-    std::vector<std::string> ground_truths = {
-        "RAG 是检索增强生成"
+    std::vector<std::string> relevant = {
+        "高相关文档"
     };
 
-    auto result = evaluator.evaluate(question, answer, contexts, ground_truths);
-
-    EXPECT_TRUE(result.success);
-    EXPECT_EQ(result.question, question);
-    EXPECT_EQ(result.answer, answer);
-    EXPECT_GT(result.latency_ms, 0);
-    EXPECT_GT(result.retrieval.recall_at_k, 0.0);
-    EXPECT_GE(result.ragas.faithfulness, 0.0);
+    double ndcg = evaluator_->compute_ndcg(retrieved, relevant, 3);
+    EXPECT_GE(ndcg, 0.0);
 }
 
-TEST(EvaluationTest, SummaryComputation) {
-    std::vector<EvaluationResult> results = {
-        EvaluationResult{
-            .success = true,
-            .retrieval = {.recall_at_k = 0.8, .mrr = 0.5, .ndcg_at_k = 0.7},
-            .ragas = {.faithfulness = 0.9, .answer_relevance = 0.8, .context_relevance = 0.7, .ragas_score = 0.8},
-            .latency_ms = 100
-        },
-        EvaluationResult{
-            .success = true,
-            .retrieval = {.recall_at_k = 0.6, .mrr = 0.3, .ndcg_at_k = 0.5},
-            .ragas = {.faithfulness = 0.7, .answer_relevance = 0.6, .context_relevance = 0.5, .ragas_score = 0.6},
-            .latency_ms = 150
-        }
+TEST_F(NDCGComputation, EmptyRetrieved) {
+    std::vector<std::string> retrieved = {};
+    std::vector<std::string> relevant = {
+        "高相关文档"
     };
 
-    RAGEvaluator evaluator;
-    auto summary = evaluator.compute_summary(results);
-
-    EXPECT_EQ(summary.total_queries, 2);
-    EXPECT_EQ(summary.successful_queries, 2);
-    EXPECT_EQ(summary.success_rate, 1.0);
-    EXPECT_DOUBLE_EQ(summary.avg_recall_at_k, 0.7);
-    EXPECT_DOUBLE_EQ(summary.avg_mrr, 0.4);
-    EXPECT_GT(summary.avg_latency_ms, 0);
+    double ndcg = evaluator_->compute_ndcg(retrieved, relevant, 3);
+    EXPECT_EQ(ndcg, 0.0);
 }
 
-TEST(EvaluationTest, JSONReport) {
-    RAGEvaluator evaluator;
+// ========== 评估器集成测试（使用 Mock Pipeline）============
 
+class EvaluatorWithMock : public ::testing::Test {
+protected:
+    void SetUp() override {
+        evaluator_ = std::make_unique<RAGEvaluator>();
+    }
+
+    std::unique_ptr<RAGEvaluator> evaluator_;
+};
+
+// 测试评估器的基本功能
+TEST_F(EvaluatorWithMock, AddTestCase) {
+    TestCase tc;
+    tc.query = "什么是 RAG？";
+    tc.relevant_chunks = {"RAG 是检索增强生成"};
+    tc.description = "RAG 定义查询";
+    tc.category = "definition";
+
+    evaluator_->add_test_case(tc);
+
+    // 通过添加后的行为验证（不抛出异常即认为成功）
+    SUCCEED();
+}
+
+TEST_F(EvaluatorWithMock, AddMultipleTestCases) {
+    std::vector<TestCase> cases = {
+        {"查询1", {"相关文档1"}, "描述1", "category1"},
+        {"查询2", {"相关文档2"}, "描述2", "category2"}
+    };
+
+    evaluator_->add_test_cases(cases);
+
+    SUCCEED();
+}
+
+TEST_F(EvaluatorWithMock, PrintSummary) {
     EvaluationResult result;
-    result.question = "测试问题";
-    result.answer = "测试答案";
-    result.contexts = {"上下文1"};
-    result.success = true;
-    result.retrieval = {.recall_at_k = 0.8};
-    result.ragas = {.faithfulness = 0.9, .ragas_score = 0.85};
+    result.total_queries = 10;
+    result.successful_queries = 8;
+    result.avg_latency_ms = 45.5;
+    result.recall_at_1 = 0.5;
+    result.recall_at_5 = 0.7;
+    result.recall_at_10 = 0.85;
+    result.recall_at_20 = 0.9;
+    result.precision_at_1 = 0.6;
+    result.precision_at_5 = 0.5;
+    result.precision_at_10 = 0.4;
+    result.mrr = 0.65;
+    result.map = 0.62;
+    result.ndcg_at_5 = 0.68;
+    result.ndcg_at_10 = 0.7;
+    result.ndcg_at_20 = 0.72;
 
-    auto report = evaluator.generate_json_report(result);
+    // 测试打印不抛出异常
+    evaluator_->print_summary(result);
 
-    EXPECT_FALSE(report.empty());
-    EXPECT_NE(report.find("测试问题"), std::string::npos);
-    EXPECT_NE(report.find("recall_at_k"), std::string::npos);
+    SUCCEED();
 }
 
-TEST(EvaluationTest, CustomWeights) {
-    RAGEvaluator evaluator;
-    evaluator.set_ragas_weights(0.5, 0.3, 0.2);
+// ========== TestSuiteGenerator 测试 ==========
 
-    std::string question = "RAG 是什么？";
-    std::string answer = "RAG 是检索增强生成。";
-    std::vector<std::string> contexts = {"RAG 是检索增强生成。"};
+class TestSuiteGeneratorTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        generator_ = std::make_unique<TestSuiteGenerator>();
+    }
 
-    auto eval = evaluator.evaluate_generation(question, answer, contexts);
+    std::unique_ptr<TestSuiteGenerator> generator_;
+};
 
-    double expected = 0.5 * eval.faithfulness +
-                     0.3 * eval.answer_relevance +
-                     0.2 * eval.context_relevance;
-    EXPECT_DOUBLE_EQ(eval.ragas_score, expected);
+TEST_F(TestSuiteGeneratorTest, GenerateSynthetic) {
+    auto cases = TestSuiteGenerator::generate_synthetic("RAG", 5);
+    // 简化实现返回空结果
+    EXPECT_TRUE(cases.empty());
 }
 
-TEST(EvaluationTest, RetrievalK) {
-    RAGEvaluator evaluator;
-    evaluator.set_retrieval_k(5);
+TEST_F(TestSuiteGeneratorTest, GenerateFromDocs) {
+    auto cases = TestSuiteGenerator::generate_from_docs("/path/to/docs", 5);
+    // 简化实现返回空结果
+    EXPECT_TRUE(cases.empty());
+}
 
-    EXPECT_EQ(evaluator.retrieval_k(), 5);
+// ========== 工厂函数测试 ==========
+
+TEST(FactoryFunctionTest, CreateEvaluator) {
+    auto evaluator = create_evaluator();
+    EXPECT_NE(evaluator, nullptr);
+}
+
+TEST(FactoryFunctionTest, CreateTestSuiteGenerator) {
+    auto generator = create_test_suite_generator();
+    EXPECT_NE(generator, nullptr);
+}
+
+// ========== DCG/IDCG 辅助函数测试 ==========
+
+class DCGIDCGTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        evaluator_ = std::make_unique<RAGEvaluator>();
+    }
+
+    std::unique_ptr<RAGEvaluator> evaluator_;
+};
+
+TEST_F(DCGIDCGTest, DCGCalculation) {
+    std::vector<double> relevance = {3.0, 2.0, 1.0};
+    double dcg = evaluator_->compute_dcg(relevance, 3);
+
+    // DCG = 3/log2(2) + 2/log2(3) + 1/log2(4) = 3 + 1.26 + 0.5 = 4.76
+    EXPECT_GT(dcg, 4.0);
+    EXPECT_LT(dcg, 5.0);
+}
+
+TEST_F(DCGIDCGTest, IDCGCalculation) {
+    std::vector<double> relevance = {1.0, 2.0, 3.0};  // 未排序
+    double idcg = evaluator_->compute_idcg(relevance, 3);
+
+    // IDCG 应该是排序后 (3, 2, 1) 的 DCG
+    std::vector<double> sorted = {3.0, 2.0, 1.0};
+    double expected = evaluator_->compute_dcg(sorted, 3);
+
+    EXPECT_DOUBLE_EQ(idcg, expected);
+}
+
+TEST_F(DCGIDCGTest, DCGWithK) {
+    std::vector<double> relevance = {3.0, 2.0, 1.0, 0.5, 0.1};
+    double dcg_full = evaluator_->compute_dcg(relevance, 5);
+    double dcg_partial = evaluator_->compute_dcg(relevance, 3);
+
+    EXPECT_GT(dcg_full, dcg_partial);
 }

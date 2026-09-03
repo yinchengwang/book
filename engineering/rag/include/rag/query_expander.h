@@ -97,15 +97,15 @@ public:
 
     void set_max_expansions(int max) { max_expansions_ = max; }
 
+    // 分词 (公开以支持测试)
+    std::vector<std::string> tokenize(const std::string& text);
+
 private:
     // 从同义词表扩展
     std::vector<std::string> expand_from_dict(const std::string& query);
 
     // 从 Embedding 相似度扩展
     std::vector<std::string> expand_from_embeddings(const std::string& query);
-
-    // 分词
-    std::vector<std::string> tokenize(const std::string& text);
 
     float similarity_threshold_;
     int max_expansions_;

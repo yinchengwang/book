@@ -9,6 +9,7 @@
 
 #include "rag/pipeline.h"
 #include "rag/reranker.h"
+#include "rag/llm_service.h"
 #include <string>
 #include <memory>
 #include <vector>

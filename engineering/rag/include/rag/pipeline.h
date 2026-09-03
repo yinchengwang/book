@@ -98,6 +98,7 @@ struct PipelineResult {
     QueryType query_type = QueryType::FACTUAL;
     bool from_cache = false;
     std::string trace_id;
+    std::string error_message;
 };
 
 // ========== Stage Configuration ==========

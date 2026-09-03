@@ -18,6 +18,12 @@ add_executable(rag_test
     test_gpu.cpp
     test_batch.cpp
     test_cache.cpp
+    test_async.cpp
+    test_rrf.cpp
+    test_fallback.cpp
+    test_incremental.cpp
+    test_monitoring.cpp
+    test_crossmodal.cpp
 )
 target_include_directories(rag_test PRIVATE
     ${ENGINEERING_SOURCE_DIR}/include/rag
@@ -42,5 +48,15 @@ target_link_libraries(rag_test PRIVATE
     rag_gpu
     rag_batch
     rag_cache
+    rag_async
+    rag_fusion
+    rag_monitor
+    rag_incremental
+    rag_fallback
+    rag_crossmodal
+    rag_expander
+    rag_selfrag
+    rag_community
+    rag_multimodal
     GTest::gtest_main
 )

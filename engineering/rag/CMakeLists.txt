@@ -43,9 +43,21 @@ else()
     set(RAG_SQLITE3_LIBS "")
 endif()
 
+# ========== 核心库 (stub for legacy module compatibility) ==========
+# rag_core was historically a combined core library; we create a minimal stub
+# that just provides include paths for modules that still reference it.
+# Actual functionality is split into rag_error, rag_logger, rag_config, etc.
+add_library(rag_core INTERFACE)
+target_include_directories(rag_core INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
 # ========== 子目录 ==========
 
 add_subdirectory(src/rag/cache)
+add_subdirectory(src/rag/pipeline)
+add_subdirectory(src/rag/async)
 add_subdirectory(src/rag/error)
 add_subdirectory(src/rag/gpu)
 add_subdirectory(src/rag/batch)
@@ -59,6 +71,7 @@ add_subdirectory(src/rag/index)
 add_subdirectory(src/rag/retrieval)
 add_subdirectory(src/rag/embedding)
 add_subdirectory(src/rag/reranker)
+add_subdirectory(src/rag/fusion)
 add_subdirectory(src/rag/knowledge_graph)
 add_subdirectory(src/rag/entity_extraction)
 add_subdirectory(src/rag/graph_retrieval)
@@ -69,6 +82,15 @@ add_subdirectory(src/rag/metrics)
 add_subdirectory(src/rag/engine)
 add_subdirectory(src/rag/server)
 add_subdirectory(src/rag/cli)
+add_subdirectory(src/rag/incremental)
+add_subdirectory(src/rag/fallback)
+add_subdirectory(src/rag/crossmodal)
+# Additional modules (from task requirement)
+add_subdirectory(src/rag/expander)
+add_subdirectory(src/rag/selfrag)
+add_subdirectory(src/rag/community)
+add_subdirectory(src/rag/multimodal)
+add_subdirectory(src/rag/kg)
 
 # ========== CLI 可执行文件 ==========
 
