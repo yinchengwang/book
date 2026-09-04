@@ -23,9 +23,16 @@ export function Snake() {
 
   // Canvas 渲染（响应 state 变化）
   useEffect(() => {
-    if (!canvasRef.current) return;
-    const ctx = canvasRef.current.getContext('2d');
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = 400 * dpr;
+    canvas.height = 400 * dpr;
+    canvas.style.width = '400px';
+    canvas.style.height = '400px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     renderSnake(ctx, state, 20);
   }, [state]);
 
@@ -92,8 +99,6 @@ export function Snake() {
       <div className="relative mx-auto" style={{ width: 400, height: 400 }}>
         <canvas
           ref={canvasRef}
-          width={400}
-          height={400}
           className="border-2 border-gray-300 mx-auto block"
         />
         {state.over && (
