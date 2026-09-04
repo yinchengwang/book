@@ -36,4 +36,47 @@ export const g2048 = {
   },
 };
 
+export const snake = {
+  async init(seed: number, difficulty = 0) {
+    const m = await loadWasm();
+    m._snake_init_js(seed, difficulty);
+  },
+  async tick() {
+    const m = await loadWasm();
+    m._snake_tick_js();
+  },
+  async input(dir: 0 | 1 | 2 | 3) {
+    const m = await loadWasm();
+    m._snake_input_js(dir);
+  },
+  async len(): Promise<number> {
+    const m = await loadWasm();
+    return m._snake_len_js();
+  },
+  async bodyX(i: number): Promise<number> {
+    const m = await loadWasm();
+    return m._snake_body_x_js(i);
+  },
+  async bodyY(i: number): Promise<number> {
+    const m = await loadWasm();
+    return m._snake_body_y_js(i);
+  },
+  async foodX(): Promise<number> {
+    const m = await loadWasm();
+    return m._snake_food_x_js();
+  },
+  async foodY(): Promise<number> {
+    const m = await loadWasm();
+    return m._snake_food_y_js();
+  },
+  async score(): Promise<number> {
+    const m = await loadWasm();
+    return m._snake_score_js();
+  },
+  async over(): Promise<boolean> {
+    const m = await loadWasm();
+    return m._snake_over_js() === 1;
+  },
+};
+
 export type { GameExports };
