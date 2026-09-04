@@ -35,18 +35,31 @@ let cachedRegistry: RawRegistry | null = null;
 /**
  * Lazily evaluate the items-registry source and return the ITEMS_REGISTRY map.
  * The result is memoized so multiple loaders share one parse.
+ *
+ * Wrapped in try/catch because items-registry.js is a 134KB hand-edited file:
+ * a single syntax error would otherwise take down the whole module init.
+ * Returning `{}` keeps loadTechItems / loadAllTechItems as empty-result
+ * callers instead of throwing, so the UI can still render with an empty radar.
  */
 function getRegistry(): RawRegistry {
   if (cachedRegistry) return cachedRegistry;
 
-  // Append a `return ITEMS_REGISTRY;` to the source so the Function body exposes it.
-  // The source already declares `const ITEMS_REGISTRY = { ... }` at the top level,
-  // which is scoped to the Function body and not the global scope.
-  const body = `${_itemsRegistrySource}\nreturn ITEMS_REGISTRY;`;
-  // eslint-disable-next-line @typescript-eslint/no-implied-eval
-  const fn = new Function(body);
-  cachedRegistry = fn() as RawRegistry;
-  return cachedRegistry;
+  try {
+    // Append a `return ITEMS_REGISTRY;` to the source so the Function body exposes it.
+    // The source already declares `const ITEMS_REGISTRY = { ... }` at the top level,
+    // which is scoped to the Function body and not the global scope.
+    const body = `${_itemsRegistrySource}\nreturn ITEMS_REGISTRY;`;
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+    const fn = new Function(body);
+    cachedRegistry = fn() as RawRegistry;
+    return cachedRegistry;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[data/tech] Failed to load items-registry.js:', err);
+    // Cache the empty fallback so we don't re-parse + log on every call.
+    cachedRegistry = {};
+    return cachedRegistry;
+  }
 }
 
 /**
@@ -109,3 +122,13 @@ export async function loadAllTechItems(): Promise<Record<TechCategory, TechItem[
   }
   return result as Record<TechCategory, TechItem[]>;
 }
+
+/**
+ * Spec-named alias for `loadTechItems`. The original spec writes
+ * `loadTechMeta(cat)`; the underlying implementation was renamed to
+ * `loadTechItems(stack)` during refactor. This alias preserves both
+ * names so spec code and existing callers keep working.
+ *
+ * @deprecated Prefer `loadTechItems` — kept for spec compliance.
+ */
+export const loadTechMeta = loadTechItems;

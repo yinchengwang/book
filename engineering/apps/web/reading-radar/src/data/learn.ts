@@ -72,22 +72,6 @@ export async function loadLearnContent(
 }
 
 /**
- * Synchronous variant — use only when you've already awaited the raw
- * source via the internal loader. Most UI code should stick to
- * `loadLearnContent`.
- */
-export function getLearnPath(
-  cat: TechCategory,
-  quadrant: Quadrant,
-  itemId: string
-): string | null {
-  const entry = learnIndex.find(
-    (e) => e.cat === cat && e.quadrant === quadrant && e.itemId === itemId
-  );
-  return entry ? entry.load.toString() : null;
-}
-
-/**
  * List itemIds that have markdown content for a given (cat, quadrant).
  * Useful when building the learn view's TOC.
  */
