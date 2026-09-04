@@ -6,6 +6,7 @@ import { Quiz } from '@/pages/Quiz';
 import { Learn } from '@/pages/Learn';
 import { Kanban } from '@/pages/Kanban';
 import { Dashboard } from '@/pages/Dashboard';
+import { NotFound } from './pages/NotFound';
 
 const router = createBrowserRouter([
   {
@@ -18,6 +19,7 @@ const router = createBrowserRouter([
       { path: 'learn/:cat/:item', element: <Learn /> },
       { path: 'kanban', element: <Kanban /> },
       { path: 'dashboard', element: <Dashboard /> },
+      { path: '*', element: <NotFound /> }
     ],
   },
 ]);

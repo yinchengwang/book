@@ -1,4 +1,9 @@
 // src/pages/Home/index.tsx
+/**
+ * Home page — Knowledge map entry.
+ * MVP-5.1 enhancement: 8 stack cards link to /learn/:cat for early navigation.
+ * Not in original spec; kept because it provides discoverability.
+ */
 import { Link } from 'react-router-dom';
 
 const stacks = [
