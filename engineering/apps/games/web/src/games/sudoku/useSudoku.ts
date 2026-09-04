@@ -15,6 +15,7 @@ export function useSudoku(difficulty: 0 | 1 | 2 = 0) {
           value: await sudoku.value(r, c),
           given: await sudoku.given(r, c),
           conflict: await sudoku.conflict(r, c),
+          notes: await sudoku.notes(r, c),
         };
       }
     }
@@ -42,9 +43,17 @@ export function useSudoku(difficulty: 0 | 1 | 2 = 0) {
     [refresh]
   );
 
+  const toggleNote = useCallback(
+    async (r: number, c: number, n: number) => {
+      await sudoku.toggleNote(r, c, n);
+      await refresh();
+    },
+    [refresh]
+  );
+
   useEffect(() => {
     newGame();
   }, [newGame]);
 
-  return { board, newGame, setCell, eraseCell };
+  return { board, newGame, setCell, eraseCell, toggleNote };
 }

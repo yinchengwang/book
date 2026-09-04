@@ -144,3 +144,13 @@ EMSCRIPTEN_KEEPALIVE
 int sudoku_over_js(void) {
     return sd_state.over ? 1 : 0;
 }
+
+EMSCRIPTEN_KEEPALIVE
+void sudoku_toggle_note_js(int r, int c, int n) {
+    sudoku_toggle_note(&sd_state, r, c, n);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int sudoku_notes_at_js(int r, int c) {
+    return sudoku_notes_at(&sd_state, r, c);
+}

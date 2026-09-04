@@ -124,4 +124,12 @@ export const sudoku = {
     const m = await loadWasm();
     return m._sudoku_over_js() === 1;
   },
+  async toggleNote(r: number, c: number, n: number) {
+    const m = await loadWasm();
+    m._sudoku_toggle_note_js(r, c, n);
+  },
+  async notes(r: number, c: number): Promise<number> {
+    const m = await loadWasm();
+    return m._sudoku_notes_at_js(r, c);
+  },
 };

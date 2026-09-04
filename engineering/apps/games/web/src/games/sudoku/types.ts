@@ -3,6 +3,7 @@ export interface Cell {
   value: number;
   given: boolean;
   conflict: boolean;
+  notes: number;
 }
 
 export interface Board {

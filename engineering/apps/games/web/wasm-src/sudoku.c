@@ -218,6 +218,7 @@ int sudoku_set(SudokuGame *g, int row, int col, int num) {
   if (num < 0 || num > 9) return 0;
 
   g->board[row][col].value = num;
+  g->board[row][col].notes = 0;
   update_conflicts(g);
 
   if (all_filled_and_clean(g)) g->over = true;
@@ -230,6 +231,7 @@ void sudoku_erase(SudokuGame *g, int row, int col) {
   if (g->board[row][col].given) return;
 
   g->board[row][col].value = 0;
+  g->board[row][col].notes = 0;
   update_conflicts(g);
   g->over = false;
 }
@@ -257,4 +259,18 @@ bool sudoku_is_valid(const SudokuGame *g, int row, int col, int num) {
     }
   }
   return true;
+}
+
+void sudoku_toggle_note(SudokuGame *g, int row, int col, int num) {
+  if (num < 1 || num > 9) return;
+  if (row < 0 || row >= 9 || col < 0 || col >= 9) return;
+  SudokuCell *cell = &g->board[row][col];
+  if (cell->given) return;
+  int bit = 1 << (num - 1);
+  cell->notes ^= bit;
+}
+
+int sudoku_notes_at(const SudokuGame *g, int row, int col) {
+  if (row < 0 || row >= 9 || col < 0 || col >= 9) return 0;
+  return g->board[row][col].notes;
 }

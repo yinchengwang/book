@@ -11,6 +11,7 @@ typedef struct {
   int  value;    /* 0 = 空, 1..9 = 已填 */
   bool given;    /* 题目初始给定格（不可 set/erase） */
   bool conflict; /* 是否与同行/列/宫其它格冲突（渲染用） */
+  int  notes;    /* 笔记掩码：bit(i)=1 表示候选数 i+1 在笔记中 */
 } SudokuCell;
 
 typedef struct {
@@ -35,5 +36,11 @@ int  sudoku_hint(const SudokuGame *g, int row, int col);
 
 /* 在 (row,col) 填入 num 是否合法（行/列/宫无重复）。当前 value 不影响结果。 */
 bool sudoku_is_valid(const SudokuGame *g, int row, int col, int num);
+
+/* 切换 (row,col) 处 num 的笔记位。给定格直接拒绝。 */
+void sudoku_toggle_note(SudokuGame *g, int row, int col, int num);
+
+/* 返回 (row,col) 处的笔记掩码。 */
+int  sudoku_notes_at(const SudokuGame *g, int row, int col);
 
 #endif /* SUDOKU_H_INCLUDED */

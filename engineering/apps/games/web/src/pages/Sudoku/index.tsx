@@ -9,9 +9,10 @@ type Difficulty = 0 | 1 | 2;
 export function Sudoku() {
   const [difficulty, setDifficulty] = useState<Difficulty>(0);
   const [selected, setSelected] = useState<[number, number] | null>(null);
-  const { board, newGame, setCell, eraseCell } = useSudoku(difficulty);
+  const [noteMode, setNoteMode] = useState(false);
+  const { board, newGame, setCell, eraseCell, toggleNote } = useSudoku(difficulty);
 
-  // 键盘输入 1-9 + 0/Backspace/Delete 删除，Esc 取消选中
+  // 键盘输入
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!selected || !board) return;
@@ -19,17 +20,22 @@ export function Sudoku() {
       const n = parseInt(e.key, 10);
       if (n >= 1 && n <= 9) {
         e.preventDefault();
-        setCell(r, c, n);
+        if (noteMode) {
+          toggleNote(r, c, n).then(() => {});
+        } else {
+          setCell(r, c, n);
+        }
       } else if (e.key === '0' || e.key === 'Backspace' || e.key === 'Delete') {
         e.preventDefault();
         eraseCell(r, c);
       } else if (e.key === 'Escape') {
         setSelected(null);
+        setNoteMode(false);
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [selected, board, setCell, eraseCell]);
+  }, [selected, board, noteMode, setCell, eraseCell, toggleNote]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8 text-center">
@@ -43,7 +49,7 @@ export function Sudoku() {
         </Button>
       </header>
 
-      <div className="mb-4 flex justify-center gap-2">
+      <div className="mb-4 flex justify-center gap-2 flex-wrap">
         {(['简单', '中等', '困难'] as const).map((label, i) => (
           <Button
             key={i}
@@ -53,6 +59,13 @@ export function Sudoku() {
             {label}
           </Button>
         ))}
+        <Button
+          variant={noteMode ? 'primary' : 'ghost'}
+          onClick={() => setNoteMode((v) => !v)}
+          disabled={!selected || (selected && board?.cells[selected[0]]?.[selected[1]]?.given)}
+        >
+          📝 笔记
+        </Button>
       </div>
 
       {board?.over && (
@@ -88,7 +101,22 @@ export function Sudoku() {
                     }}
                     disabled={cell.given}
                   >
-                    {cell.value !== 0 ? cell.value : ''}
+                    {cell.value !== 0 ? (
+                      cell.value
+                    ) : cell.notes > 0 ? (
+                      <span className="grid grid-cols-3 gap-0 w-full h-full text-[8px] leading-none place-items-center text-gray-500 dark:text-gray-400">
+                        {Array.from({ length: 9 }, (_, i) => (
+                          <span
+                            key={i}
+                            className={`${(cell.notes >> i) & 1 ? '' : 'invisible'}`}
+                          >
+                            {i + 1}
+                          </span>
+                        ))}
+                      </span>
+                    ) : (
+                      ''
+                    )}
                   </button>
                 );
               })}
@@ -106,7 +134,9 @@ export function Sudoku() {
       )}
 
       <p className="mt-4 text-sm text-gray-500">
-        点击格子选中，按 1-9 填数，按 0/Backspace 删除，Esc 取消选中
+        {noteMode
+          ? '笔记模式：点击格子选中后按 1-9 切换候选数笔记，按 0/Backspace 清空，Esc 退出笔记模式'
+          : '点击格子选中，按 1-9 填数，按 0/Backspace 删除，Esc 取消选中'}
       </p>
     </div>
   );
