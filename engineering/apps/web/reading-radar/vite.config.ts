@@ -8,7 +8,7 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@data': path.resolve(__dirname, './data'),
-      '@shared': path.resolve(__dirname, '../games/web/shared/web/src'),
+      '@shared': path.resolve(__dirname, '../../games/web/shared/web/src'),
     },
   },
 });

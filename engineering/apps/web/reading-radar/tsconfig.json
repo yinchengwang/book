@@ -19,7 +19,7 @@
     "paths": {
       "@/*": ["src/*"],
       "@data/*": ["data/*"],
-      "@shared/*": ["../games/web/shared/web/src/*"]
+      "@shared/*": ["../../games/web/shared/web/src/*"]
     }
   },
   "include": ["src", "tests"]
