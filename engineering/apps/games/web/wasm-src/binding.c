@@ -2,6 +2,7 @@
 
 #include "g2048.h"
 #include "snake.h"
+#include "sudoku.h"
 
 static G2048Game g_state;
 
@@ -98,4 +99,43 @@ int snake_score_js(void) {
 EMSCRIPTEN_KEEPALIVE
 int snake_over_js(void) {
     return s_state.over ? 1 : 0;
+}
+
+/* —— sudoku —— */
+
+static SudokuGame sd_state;
+
+EMSCRIPTEN_KEEPALIVE
+void sudoku_init_js(int d, int seed) {
+    sudoku_init(&sd_state, d, seed);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int sudoku_set_js(int r, int c, int n) {
+    return sudoku_set(&sd_state, r, c, n);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void sudoku_erase_js(int r, int c) {
+    sudoku_erase(&sd_state, r, c);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int sudoku_value_js(int r, int c) {
+    return sd_state.board[r][c].value;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int sudoku_given_js(int r, int c) {
+    return sd_state.board[r][c].given ? 1 : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int sudoku_conflict_js(int r, int c) {
+    return sd_state.board[r][c].conflict ? 1 : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int sudoku_over_js(void) {
+    return sd_state.over ? 1 : 0;
 }
