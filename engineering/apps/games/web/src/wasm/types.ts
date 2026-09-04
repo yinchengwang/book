@@ -22,7 +22,17 @@ export interface SnakeExports {
   _snake_over_js(): number;
 }
 
-export interface GameExports extends G2048Exports, SnakeExports {}
+export interface SudokuExports {
+  _sudoku_init_js(difficulty: number, seed: number): void;
+  _sudoku_set_js(row: number, col: number, num: number): number;
+  _sudoku_erase_js(row: number, col: number): void;
+  _sudoku_value_js(row: number, col: number): number;
+  _sudoku_given_js(row: number, col: number): number;
+  _sudoku_conflict_js(row: number, col: number): number;
+  _sudoku_over_js(): number;
+}
+
+export interface GameExports extends G2048Exports, SnakeExports, SudokuExports {}
 
 interface GameModuleFactory {
   (options?: { locateFile?: (path: string) => string }): Promise<GameExports>;

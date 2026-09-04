@@ -80,3 +80,34 @@ export const snake = {
 };
 
 export type { GameExports };
+
+export const sudoku = {
+  async init(d: 0 | 1 | 2, seed: number) {
+    const m = await loadWasm();
+    m._sudoku_init_js(d, seed);
+  },
+  async set(r: number, c: number, n: number) {
+    const m = await loadWasm();
+    return m._sudoku_set_js(r, c, n);
+  },
+  async erase(r: number, c: number) {
+    const m = await loadWasm();
+    m._sudoku_erase_js(r, c);
+  },
+  async value(r: number, c: number): Promise<number> {
+    const m = await loadWasm();
+    return m._sudoku_value_js(r, c);
+  },
+  async given(r: number, c: number): Promise<boolean> {
+    const m = await loadWasm();
+    return m._sudoku_given_js(r, c) === 1;
+  },
+  async conflict(r: number, c: number): Promise<boolean> {
+    const m = await loadWasm();
+    return m._sudoku_conflict_js(r, c) === 1;
+  },
+  async over(): Promise<boolean> {
+    const m = await loadWasm();
+    return m._sudoku_over_js() === 1;
+  },
+};
