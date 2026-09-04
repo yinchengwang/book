@@ -5,27 +5,10 @@ import { useG2048 } from '@/games/g2048/useG2048';
 import { renderBoard } from '@/games/g2048/renderer';
 import { useSwipeHandlers } from '@/games/g2048/gesture';
 import { Button } from '@shared/ui/Button';
+import { safeGetNumber, safeSet } from '@shared/storage/safeStorage';
+import { useAchievements } from '@/stores/achievements';
 
 const HIGH_SCORE_KEY = 'g2048_high_score';
-
-function safeGetNumber(key: string, fallback: number): number {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw === null) return fallback;
-    const n = JSON.parse(raw);
-    return typeof n === 'number' && Number.isFinite(n) ? n : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function safeSetNumber(key: string, value: number): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // ignore quota / disabled storage
-  }
-}
 
 export function Game2048() {
   const { board, error, newGame, move, undo, canUndo } = useG2048();
@@ -54,9 +37,23 @@ export function Game2048() {
   useEffect(() => {
     if (board && board.score > highScore) {
       setHighScore(board.score);
-      safeSetNumber(HIGH_SCORE_KEY, board.score);
+      safeSet(HIGH_SCORE_KEY, board.score);
     }
   }, [board, highScore]);
+
+  // Achievement triggers: max tile on the board.
+  useEffect(() => {
+    if (!board) return;
+    let max = 0;
+    for (const row of board.tiles) {
+      for (const v of row) {
+        if (v > max) max = v;
+      }
+    }
+    const { unlock } = useAchievements.getState();
+    if (max >= 128) unlock('merge-128');
+    if (max >= 2048) unlock('first-2048');
+  }, [board]);
 
   const handleNewGame = useCallback(() => {
     newGame();
