@@ -22,5 +22,5 @@
       "@shared/*": ["../../games/web/shared/web/src/*"]
     }
   },
-  "include": ["src", "tests"]
+  "include": ["src", "tests", "server"]
 }
