@@ -15,7 +15,7 @@ export function Home() {
       </header>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
         <GameCard title="2048" desc="滑动合并" path="/2048" />
-        <GameCard title="贪吃蛇" desc="控制蛇身" path="/snake" disabled />
+        <GameCard title="贪吃蛇" desc="控制蛇身" path="/snake" />
         <GameCard title="数独" desc="逻辑推理" path="/sudoku" disabled />
       </div>
     </div>

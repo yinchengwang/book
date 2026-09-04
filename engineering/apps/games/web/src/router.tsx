@@ -2,10 +2,12 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { Home } from '@/pages/Home';
 import { Game2048 } from '@/pages/Game2048';
+import { Snake } from '@/pages/Snake';
 
 const router = createBrowserRouter([
   { path: '/', element: <Home /> },
   { path: '/2048', element: <Game2048 /> },
+  { path: '/snake', element: <Snake /> },
 ]);
 
 export function Router() {
