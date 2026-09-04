@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>游戏中心</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        h1 { font-size: 48px; margin-bottom: 40px; color: #e94560; }
+        .games {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .game-card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 30px 40px;
+            text-decoration: none;
+            color: #eee;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .game-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 12px rgba(233,69,96,0.3);
+        }
+        .game-card h2 { margin: 0 0 10px 0; font-size: 28px; }
+        .game-card p { margin: 0; color: #aaa; font-size: 14px; }
+        .note {
+            margin-top: 40px;
+            color: #888;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎮 游戏中心</h1>
+    <div class="games">
+        <a href="2048.html" class="game-card">
+            <h2>2048</h2>
+            <p>滑动合并，挑战 2048</p>
+        </a>
+        <a href="snake.html" class="game-card">
+            <h2>贪吃蛇</h2>
+            <p>控制蛇身，吃食物长大</p>
+        </a>
+    </div>
+    <p class="note">⚠️ 首次使用需先运行 <code>bash scripts/build-games-wasm.sh</code> 编译游戏核心</p>
+</body>
+</html>

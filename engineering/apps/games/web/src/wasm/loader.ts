@@ -20,7 +20,9 @@ export async function loadWasm(opts: LoadOptions = {}): Promise<GameExports> {
     }
 
     const module = await window.GameModule({
-      locateFile: (path) => opts.wasmPath ? `${opts.wasmPath}/${path}` : path,
+      // Always use an absolute /wasm/ prefix so the browser resolves the URL
+      // against the server root rather than the current SPA route.
+      locateFile: (path) => `${opts.wasmPath ?? '/wasm'}/${path}`,
     });
 
     return module as unknown as GameExports;
