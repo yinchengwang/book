@@ -1,0 +1,2165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>C/C++ 程序员读书雷达</title>
+<style>
+/* ============================================================
+   CSS 变量 & 全局样式
+   ============================================================ */
+:root {
+  --bg: #f8f9fa;
+  --card-bg: #ffffff;
+  --text: #2c3e50;
+  --text-secondary: #7f8c8d;
+  --border: #e9ecef;
+  --shadow: 0 2px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 8px 30px rgba(0,0,0,0.12);
+  --radius: 12px;
+
+  /* 状态颜色 */
+  --unread: #b0b0b0;
+  --reading: #5c9ce6;
+  --read: #67c23a;
+  --mastered: #e6a23c;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ============================================================
+   顶部导航
+   ============================================================ */
+.app-header {
+  background: var(--card-bg);
+  padding: 12px 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.app-title {
+  font-size: 18px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 10px;
+  letter-spacing: 1px;
+}
+
+/* Tab 切换 */
+.tab-bar {
+  display: flex;
+  background: #f1f3f5;
+  border-radius: 10px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 10px 0;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.tab-btn.active {
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* 模式选择器（读书雷达 / C 技术栈 / C++ 技术栈） */
+.mode-bar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.mode-btn {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 4px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.mode-btn.active {
+  background: #2c3e50;
+  color: #fff;
+  border-color: #2c3e50;
+}
+
+.mode-btn:active {
+  transform: scale(0.96);
+}
+
+/* ============================================================
+   主内容区域
+   ============================================================ */
+.main-content {
+  padding: 12px;
+  max-width: 1024px;
+  margin: 0 auto;
+}
+
+.view {
+  display: none;
+}
+
+.view.active {
+  display: block;
+}
+
+/* ============================================================
+   统计栏
+   ============================================================ */
+.stats-bar {
+  display: flex;
+  justify-content: space-around;
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  padding: 14px 8px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+}
+
+.stat-item {
+  text-align: center;
+  flex: 1;
+}
+
+.stat-num {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.stat-item.unread .stat-num { color: var(--unread); }
+.stat-item.reading .stat-num { color: var(--reading); }
+.stat-item.read .stat-num { color: var(--read); }
+.stat-item.mastered .stat-num { color: var(--mastered); }
+
+/* ============================================================
+   搜索栏
+   ============================================================ */
+.search-bar {
+  margin-bottom: 12px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px 16px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  font-size: 14px;
+  background: var(--card-bg);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-input:focus {
+  border-color: var(--reading);
+}
+
+/* 象限筛选条 */
+.quad-filter {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.quad-chip {
+  flex: 1;
+  min-width: 60px;
+  padding: 8px 6px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--card-bg);
+  text-align: center;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.quad-chip:active {
+  transform: scale(0.96);
+}
+
+.quad-chip.active {
+  color: #fff;
+  border-color: transparent;
+}
+
+.quad-chip.all.active      { background: #555; }
+.quad-chip.language.active { background: #43a047; }
+.quad-chip.systems.active  { background: #1e88e5; }
+.quad-chip.algorithms.active{ background: #ef6c00; }
+.quad-chip.engineering.active{ background: #8e24aa; }
+
+/* ============================================================
+   雷达视图
+   ============================================================ */
+.radar-container {
+  position: relative;
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.radar-container canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: manipulation;
+}
+
+.radar-legend {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  padding: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.legend-dot.unread { background: var(--unread); }
+.legend-dot.reading { background: var(--reading); }
+.legend-dot.read { background: var(--read); }
+.legend-dot.mastered { background: var(--mastered); }
+
+.radar-hint {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 0 10px 12px;
+}
+
+/* ============================================================
+   看板视图
+   ============================================================ */
+.kanban-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.kanban-column {
+  background: #f1f3f5;
+  border-radius: var(--radius);
+  min-height: 300px;
+  padding: 8px;
+  transition: background 0.2s;
+}
+
+.kanban-column.drag-over {
+  background: #e3f2fd;
+}
+
+.column-header {
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  padding: 8px 4px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  color: #fff;
+}
+
+.column-header.language   { background: #43a047; }
+.column-header.systems    { background: #1e88e5; }
+.column-header.algorithms { background: #ef6c00; }
+.column-header.engineering{ background: #8e24aa; }
+
+/* 看板分组切换条 */
+.kanban-toggle {
+  display: flex;
+  background: #f1f3f5;
+  border-radius: 8px;
+  padding: 2px;
+  margin-bottom: 10px;
+  gap: 2px;
+}
+
+.kanban-toggle-btn {
+  flex: 1;
+  padding: 7px 0;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+
+.kanban-toggle-btn.active {
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+
+.column-header.unread { background: var(--unread); }
+.column-header.reading { background: var(--reading); }
+.column-header.read { background: var(--read); }
+.column-header.mastered { background: var(--mastered); }
+
+.column-count {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.85;
+}
+
+.kanban-card {
+  background: var(--card-bg);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  cursor: grab;
+  transition: transform 0.15s, box-shadow 0.15s;
+  position: relative;
+  border-left: 3px solid transparent;
+}
+
+.kanban-card:active {
+  cursor: grabbing;
+  transform: scale(1.02);
+  box-shadow: var(--shadow-lg);
+}
+
+.kanban-card.unread { border-left-color: var(--unread); }
+.kanban-card.reading { border-left-color: var(--reading); }
+.kanban-card.read { border-left-color: var(--read); }
+.kanban-card.mastered { border-left-color: var(--mastered); }
+
+.kanban-card.dragging {
+  opacity: 0.5;
+  transform: rotate(2deg);
+}
+
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  line-height: 1.3;
+}
+
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-bottom: 6px;
+}
+
+.card-tag {
+  font-size: 10px;
+  background: #f1f3f5;
+  color: var(--text-secondary);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.card-quad-tag {
+  font-size: 10px;
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.card-quad-tag.language    { background: #43a047; }
+.card-quad-tag.systems     { background: #1e88e5; }
+.card-quad-tag.algorithms  { background: #ef6c00; }
+.card-quad-tag.engineering { background: #8e24aa; }
+
+.card-stars {
+  color: #f0ad4e;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.card-progress {
+  height: 4px;
+  background: #e9ecef;
+  border-radius: 2px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.card-progress-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+.card-progress-bar.reading { background: var(--reading); }
+.card-progress-bar.read { background: var(--read); }
+.card-progress-bar.mastered { background: var(--mastered); }
+
+.card-pdf-icon {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 12px;
+}
+
+/* 移动端看板改为双列 */
+@media (max-width: 640px) {
+  .kanban-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ============================================================
+   弹窗/详情卡片
+   ============================================================ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 200;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: fadeIn 0.2s;
+}
+
+.modal-overlay.closing {
+  animation: fadeOut 0.2s forwards;
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+.modal-sheet {
+  background: var(--card-bg);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-width: 600px;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 8px 20px 28px;
+  animation: slideUp 0.3s ease-out;
+  box-shadow: var(--shadow-lg);
+}
+
+.modal-handle {
+  width: 36px;
+  height: 4px;
+  background: #d0d5dd;
+  border-radius: 2px;
+  margin: 0 auto 16px;
+}
+
+.modal-book-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.modal-book-author {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.modal-book-stars {
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+
+.modal-book-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.modal-book-tag {
+  font-size: 12px;
+  background: #e8f4fd;
+  color: #5c9ce6;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.modal-book-desc {
+  font-size: 14px;
+  line-height: 1.7;
+  color: #555;
+  margin-bottom: 16px;
+}
+
+.modal-section {
+  margin-bottom: 14px;
+}
+
+.modal-section label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+}
+
+.status-selector {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.status-btn {
+  flex: 1;
+  min-width: 60px;
+  padding: 8px 4px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #fff;
+  text-align: center;
+  transition: all 0.2s;
+}
+
+.status-btn.active {
+  border-color: var(--reading);
+  color: var(--reading);
+  background: #e8f4fd;
+}
+
+.status-btn.mastered.active {
+  border-color: var(--mastered);
+  color: var(--mastered);
+  background: #fef3e2;
+}
+
+.progress-slider {
+  width: 100%;
+  accent-color: var(--reading);
+  height: 6px;
+}
+
+.progress-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.modal-btn {
+  flex: 1;
+  min-width: 80px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.15s;
+}
+
+.modal-btn:active {
+  transform: scale(0.96);
+}
+
+.btn-pdf {
+  background: #fef3e2;
+  color: #e6a23c;
+}
+
+.btn-note {
+  background: #e8f4fd;
+  color: #5c9ce6;
+}
+
+.btn-save {
+  background: #e8f5e9;
+  color: #67c23a;
+}
+
+.btn-close {
+  background: #f1f3f5;
+  color: #666;
+  margin-top: 6px;
+  width: 100%;
+}
+
+.note-textarea {
+  width: 100%;
+  min-height: 80px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+}
+
+.note-textarea:focus {
+  border-color: var(--reading);
+}
+
+.pdf-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  background: #e8f5e9;
+  color: #67c23a;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+/* ============================================================
+   摘抄视图样式 — 已移至 excerpt.html
+   ============================================================ */
+</style>
+</head>
+<body>
+
+<!-- 统一导航栏 -->
+<nav id="global-nav"></nav>
+
+<!-- ============================================================
+     顶部导航
+     ============================================================ -->
+<header class="app-header">
+  <div class="app-title" id="appTitle">C/C++ 程序员读书雷达</div>
+  <div class="mode-bar" id="modeBar">
+    <button class="mode-btn active" data-mode="books">📚 读书雷达</button>
+    <button class="mode-btn" data-mode="c_tech">🔧 C 技术栈</button>
+    <button class="mode-btn" data-mode="cpp_tech">⚙️ C++ 技术栈</button>
+    <button class="mode-btn" data-mode="ds_tech">🌳 数据结构</button>
+    <button class="mode-btn" data-mode="db_tech">🗄️ 数据库内核</button>
+    <button class="mode-btn" data-mode="py_tech">🐍 Python</button>
+    <button class="mode-btn" data-mode="linux_tech">🐧 Linux</button>
+    <button class="mode-btn" data-mode="vdb_tech">🔮 向量数据库</button>
+  </div>
+  <div class="tab-bar">
+    <button class="tab-btn active" data-view="radar" id="tab-radar">
+      📡 雷达视图
+    </button>
+  </div>
+</header>
+
+<!-- ============================================================
+     主内容
+     ============================================================ -->
+<div class="main-content">
+
+  <!-- 统计栏 -->
+  <div class="stats-bar" id="statsBar">
+    <div class="stat-item unread">
+      <div class="stat-num" id="countUnread">0</div>
+      <div class="stat-label">📚 待阅读</div>
+    </div>
+    <div class="stat-item reading">
+      <div class="stat-num" id="countReading">0</div>
+      <div class="stat-label">📖 阅读中</div>
+    </div>
+    <div class="stat-item read">
+      <div class="stat-num" id="countRead">0</div>
+      <div class="stat-label">✅ 已读完</div>
+    </div>
+    <div class="stat-item mastered">
+      <div class="stat-num" id="countMastered">0</div>
+      <div class="stat-label">⭐ 已掌握</div>
+    </div>
+  </div>
+
+  <!-- 搜索栏 -->
+  <div class="search-bar">
+    <input type="text" class="search-input" id="searchInput" placeholder="🔍 搜索书名、标签、作者...">
+  </div>
+
+  <!-- 象限筛选条 -->
+  <div class="quad-filter" id="quadFilter">
+    <button class="quad-chip all active" data-quad="all">📚 全部</button>
+    <button class="quad-chip language" data-quad="language">📗 语言与编译</button>
+    <button class="quad-chip systems" data-quad="systems">📘 系统与网络</button>
+    <button class="quad-chip algorithms" data-quad="algorithms">📙 数据结构与算法</button>
+    <button class="quad-chip engineering" data-quad="engineering">📕 工程与架构</button>
+  </div>
+
+  <!-- 雷达视图 -->
+  <div class="view active" id="view-radar">
+    <div class="radar-container">
+      <canvas id="radarCanvas"></canvas>
+    </div>
+    <div class="radar-legend">
+      <span class="legend-item"><span class="legend-dot unread"></span> 待阅读</span>
+      <span class="legend-item"><span class="legend-dot reading"></span> 阅读中</span>
+      <span class="legend-item"><span class="legend-dot read"></span> 已读完</span>
+      <span class="legend-item"><span class="legend-dot mastered"></span> 已掌握</span>
+      <span class="legend-item" id="quizLegend" style="display:none">
+        <span style="display:inline-flex;align-items:center;gap:4px;">
+          <span style="width:12px;height:12px;border-radius:50%;background:#27ae60;display:inline-block;"></span>
+          <span style="width:8px;height:8px;border-radius:50%;background:#f39c12;display:inline-block;margin-left:-5px;margin-bottom:-4px;border:1.5px solid #fff;"></span>
+        </span>
+        内圈=评测分：<span style="color:#27ae60">●≥85</span>
+        <span style="color:#f39c12">●60-84</span>
+        <span style="color:#e74c3c">●&lt;60</span>
+      </span>
+    </div>
+    <div class="radar-hint">💡 点击圆点查看详情 | 技术栈模式下内圈颜色=评测掌握度</div>
+  </div>
+
+
+
+<!-- ============================================================
+     弹窗（书籍详情）
+     ============================================================ -->
+<div class="modal-overlay" id="modalOverlay" style="display:none;">
+  <div class="modal-sheet" id="modalSheet">
+    <div class="modal-handle"></div>
+    <div class="modal-book-title" id="modalTitle"></div>
+    <div class="modal-book-author" id="modalAuthor"></div>
+    <div class="modal-book-stars" id="modalStars"></div>
+    <div class="modal-book-tags" id="modalTags"></div>
+    <div class="modal-book-desc" id="modalDesc"></div>
+
+    <!-- 摘抄入口 -->
+    <div class="modal-section" id="modalExcerptSection" style="display:none;">
+      <label>📝 摘抄</label>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span id="modalExcerptCount" style="font-size:20px;font-weight:700;color:#1a73e8;"></span>
+        <span style="color:#666;">条摘抄</span>
+        <button class="modal-btn btn-excerpt" id="btnViewExcerpts">🔗 查看摘抄</button>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <label>📌 阅读状态</label>
+      <div class="status-selector" id="statusSelector">
+        <button class="status-btn" data-status="unread">📚 待读</button>
+        <button class="status-btn" data-status="reading">📖 在读</button>
+        <button class="status-btn" data-status="read">✅ 已读</button>
+        <button class="status-btn mastered" data-status="mastered">⭐ 掌握</button>
+      </div>
+    </div>
+
+    <div class="modal-section" id="progressSection" style="display:none;">
+      <label>📊 阅读进度: <span id="progressPercent">0%</span></label>
+      <input type="range" class="progress-slider" id="progressSlider" min="0" max="100" value="0" step="5">
+    </div>
+
+    <div class="modal-section">
+      <label>📝 学习笔记</label>
+      <textarea class="note-textarea" id="noteTextarea" placeholder="记录你的学习心得..."></textarea>
+    </div>
+
+    <div class="modal-actions">
+      <button class="modal-btn btn-pdf" id="btnUploadPdf">📎 上传PDF</button>
+      <button class="modal-btn btn-note" id="btnSaveNote">💾 保存笔记</button>
+    </div>
+    <div class="modal-actions" style="margin-top:0;">
+      <span class="pdf-indicator" id="pdfIndicator" style="display:none;">📄 已关联PDF</span>
+    </div>
+    <input type="file" id="pdfFileInput" accept=".pdf" style="display:none;">
+
+    <button class="modal-btn btn-close" id="btnCloseModal">关闭</button>
+  </div>
+</div>
+
+<!-- ============================================================
+     JavaScript
+     ============================================================ -->
+
+<script src="data/app/items-registry.js"></script>
+<script src="data/app/nav-component.js"></script>
+<script src="data/app/kanban-render.js"></script>
+<script src="data/app/radar-tech.js"></script>
+<script>
+"use strict";
+
+// 初始化统一导航栏
+initGlobalNav("radar");
+
+// 数据集管理（五套数据，按模式切换）
+// ============================================================
+const DATASETS = {
+  books: BOOK_DATA,
+  c_tech: C_TECH_DATA,
+  cpp_tech: CPP_TECH_DATA,
+  ds_tech: DS_TECH_DATA,
+  db_tech: DB_TECH_DATA,
+  py_tech: PY_TECH_DATA,
+  linux_tech: LINUX_TECH_DATA,
+  vdb_tech: VDB_TECH_DATA,
+};
+
+let currentMode = 'books';
+
+function getCurrentData() {
+  return DATASETS[currentMode];
+}
+
+function getModeLabel(mode) {
+  return { books:'C/C++ 程序员读书雷达', c_tech:'C 程序员技术栈', cpp_tech:'C++ 程序员技术栈', ds_tech:'数据结构技术栈', db_tech:'数据库内核技术栈', py_tech:'Python 技术栈', linux_tech:'Linux 技术栈', vdb_tech:'向量数据库技术栈' }[mode] || mode;
+}
+
+// ============================================================
+// 状态管理 — 双模式存储（API 优先 / localStorage 回退）
+// ============================================================
+
+const API_BASE = (window.location.protocol === "http:" || window.location.protocol === "https:")
+  ? window.location.origin + "/api" : null;
+
+const PDF_DB_NAME = 'ReadingRadarPDFs';
+const PDF_STORE_NAME = 'pdfs';
+
+function getStorageKey() {
+  return 'reading-radar-' + currentMode;
+}
+
+function defaultState() {
+  const state = {};
+  getCurrentData().forEach(b => {
+    state[b.id] = { status: 'unread', progress: 0, notes: '', pdfFileName: null };
+  });
+  return state;
+}
+
+// —— 服务器通信 ——
+async function _apiLoadAll() {
+  if (!API_BASE) return null;
+  try {
+    const res = await fetch(API_BASE + '/state/index');
+    return res.ok ? await res.json() : null;
+  } catch(e) { return null; }
+}
+
+let _apiSaveTimer = null;
+function _apiSave(stateObj) {
+  if (!API_BASE) return;
+  clearTimeout(_apiSaveTimer);
+  _apiSaveTimer = setTimeout(async () => {
+    try {
+      await fetch(API_BASE + '/state/index', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(stateObj)
+      });
+    } catch(e) { /* 静默 */ }
+  }, 300);
+}
+
+// —— loadState: 从 localStorage 同步加载（速度优先）——
+function loadState() {
+  try {
+    const raw = localStorage.getItem(getStorageKey());
+    return raw ? JSON.parse(raw) : defaultState();
+  } catch(e) { return defaultState(); }
+}
+
+// —— saveState: localStorage 立即写 + API 防抖写 ——
+function saveState(state) {
+  try { localStorage.setItem(getStorageKey(), JSON.stringify(state)); }
+  catch(e) { console.warn('localStorage 保存失败:', e); }
+  if (API_BASE) _apiSave({ books: { [getStorageKey()]: state } });
+}
+
+// —— syncStateFromServer: 从服务器拉最新数据（启动/切换模式时调用）——
+async function syncStateFromServer() {
+  if (!API_BASE) return false;
+  const server = await _apiLoadAll();
+  if (!server || !server.books) return false;
+  const key = getStorageKey();
+  if (server.books[key]) {
+    const merged = Object.assign(defaultState(), server.books[key]);
+    localStorage.setItem(key, JSON.stringify(merged));
+    appState = merged;
+    return true;
+  }
+  return false;
+}
+
+let appState = loadState();
+let currentQuadrant = 'all'; // 当前象限筛选
+let kanbanGroupBy = 'status'; // 看板分组: 'status' | 'quadrant'
+
+// ============================================================
+// PDF 文件存储（API 模式 → 服务器 / file:// 模式 → IndexedDB）
+// ============================================================
+function openPDFDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(PDF_DB_NAME, 1);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(PDF_STORE_NAME)) {
+        db.createObjectStore(PDF_STORE_NAME, { keyPath: 'bookId' });
+      }
+    };
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+async function savePDF(bookId, file) {
+  // API 模式：上传到服务器
+  if (API_BASE) {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch(`${API_BASE}/books/${currentMode}/${bookId}/pdf`, {
+      method: 'POST', body: fd
+    });
+    if (!res.ok) throw new Error('PDF 上传失败');
+    return (await res.json()).filename;
+  }
+  // IndexedDB 模式
+  const db = await openPDFDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(PDF_STORE_NAME, 'readwrite');
+    const store = tx.objectStore(PDF_STORE_NAME);
+    const reader = new FileReader();
+    reader.onload = () => {
+      store.put({ bookId, name: file.name, data: reader.result, size: file.size });
+      resolve(file.name);
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+async function getPDFInfo(bookId) {
+  // API 模式：HEAD 请求检查是否存在
+  if (API_BASE) {
+    try {
+      const res = await fetch(`${API_BASE}/books/${currentMode}/${bookId}/pdf`, { method: 'HEAD' });
+      return res.ok ? { bookId, name: bookId + '.pdf' } : null;
+    } catch(e) { return null; }
+  }
+  // IndexedDB 模式
+  const db = await openPDFDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(PDF_STORE_NAME, 'readonly');
+    const store = tx.objectStore(PDF_STORE_NAME);
+    const req = store.get(bookId);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = reject;
+  });
+}
+
+// 获取 PDF 可访问 URL（API 模式下直接指向服务器文件）
+function getPDFUrl(bookId) {
+  if (API_BASE) return `${API_BASE}/books/${currentMode}/${bookId}/pdf`;
+  return null; // IndexedDB 模式需要手动读取 blob
+}
+
+// ============================================================
+// 工具函数
+// ============================================================
+function getStars(rec) { return '⭐'.repeat(rec); }
+
+function getRingLabel(ring) {
+  return { basic:'基础', intermediate:'进阶', advanced:'高级' }[ring] || ring;
+}
+
+// 每个模式下的象限显示标签（内部分组名 vs 显示名不同）
+const QUADRANT_LABEL_MAP = {
+  books:    { language:'语言与编译',   systems:'系统与网络',     algorithms:'数据结构与算法', engineering:'工程与架构' },
+  c_tech:   { language:'语言核心',     systems:'系统编程',       algorithms:'数据结构与算法', engineering:'工程实践' },
+  cpp_tech: { language:'语言核心',     systems:'内存与并发',     algorithms:'设计模式与架构', engineering:'工程与工具' },
+  ds_tech:  { language:'线性结构',     systems:'树形结构',       algorithms:'图与高级结构', engineering:'算法与设计' },
+  py_tech:  { language:'语言核心',     systems:'标准库与生态',   algorithms:'数据科学与ML',  engineering:'工程与工具' },
+  linux_tech:{ language:'资源观测与诊断', systems:'内核行为理解', algorithms:'存储与文件系统', engineering:'网络与系统编程' },
+};
+
+function getQuadrantLabel(q) {
+  const map = QUADRANT_LABEL_MAP[currentMode];
+  return (map && map[q]) || q;
+}
+
+// 更新象限相关的 UI 文本（筛选条、看板列头、雷达象限标签）
+function updateQuadrantUI() {
+  const labels = QUADRANT_LABEL_MAP[currentMode] || QUADRANT_LABEL_MAP.books;
+  // 更新筛选芯片文字（保留 emoji 和计数后缀）
+  const chips = document.querySelectorAll('.quad-chip');
+  chips.forEach(chip => {
+    const quad = chip.dataset.quad;
+    if (quad === 'all') return; // "全部"不变
+    const emoji = { language:'📗', systems:'📘', algorithms:'📙', engineering:'📕' }[quad] || '';
+    const countSpan = chip.querySelector('span');
+    const count = countSpan ? countSpan.textContent : '';
+    chip.childNodes[0] && (chip.childNodes[0].textContent = emoji + ' ' + (labels[quad] || quad) + ' ');
+  });
+  // 更新看板按象限分列的列头（仅在 learning-kanban.html 中有）
+  var elKL = document.getElementById('kanbanCountLang');
+  var elKS = document.getElementById('kanbanCountSys');
+  var elKA = document.getElementById('kanbanCountAlgo');
+  var elKE = document.getElementById('kanbanCountEng');
+  if (elKL) elKL.parentElement.childNodes[0].textContent = '📗 ' + (labels.language || '语言');
+  if (elKS) elKS.parentElement.childNodes[0].textContent = '📘 ' + (labels.systems || '系统');
+  if (elKA) elKA.parentElement.childNodes[0].textContent = '📙 ' + (labels.algorithms || '算法');
+  if (elKE) elKE.parentElement.childNodes[0].textContent = '📕 ' + (labels.engineering || '工程');
+}
+
+function getQuadrantAngleRange(q) {
+  return {
+    language:    { start: 0,   end: 90  },
+    systems:     { start: 90,  end: 180 },
+    algorithms:  { start: 180, end: 270 },
+    engineering: { start: 270, end: 360 },
+  }[q];
+}
+
+function getRingRadiusRange(ring, maxR) {
+  return {
+    basic:        { min: maxR * 0.16, max: maxR * 0.33 },
+    intermediate: { min: maxR * 0.38, max: maxR * 0.55 },
+    advanced:     { min: maxR * 0.60, max: maxR * 0.76 },
+  }[ring];
+}
+
+function hashString(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+// ============================================================
+// 第三层联动：读取评测系统分数用于雷达图着色
+// ============================================================
+// 雷达模式 → 评测 catId 的映射（books 模式无对应评测）
+const RADAR_TO_QUIZ_CAT = {
+  c_tech: 'c', cpp_tech: 'cpp', ds_tech: 'ds', db_tech: 'db', py_tech: 'py',
+};
+
+function getQuizMasteryForRadar(itemId) {
+  const catId = RADAR_TO_QUIZ_CAT[currentMode];
+  if (!catId) return null;
+  try {
+    const raw = localStorage.getItem('quiz_' + catId + '_hist_' + itemId);
+    if (!raw) return null;
+    const history = JSON.parse(raw);
+    if (!history.length) return null;
+    const recent3 = history.slice(-3);
+    return Math.round(recent3.reduce((s, h) => s + h.score, 0) / recent3.length);
+  } catch(e) { return null; }
+}
+
+// ============================================================
+// 统计
+// ============================================================
+function getStats() {
+  let unread = 0, reading = 0, read = 0, mastered = 0;
+  getCurrentData().forEach(b => {
+    // 象限过滤：与 drawRadar / renderKanbanStatus / renderProductBoard 保持一致
+    if (currentQuadrant !== 'all' && b.quadrant !== currentQuadrant) return;
+    const s = appState[b.id]?.status || 'unread';
+    if (s === 'unread') unread++;
+    else if (s === 'reading') reading++;
+    else if (s === 'read') read++;
+    else if (s === 'mastered') mastered++;
+  });
+  return { unread, reading, read, mastered };
+}
+
+function updateStatsUI() {
+  const stats = getStats();
+  document.getElementById('countUnread').textContent = stats.unread;
+  document.getElementById('countReading').textContent = stats.reading;
+  document.getElementById('countRead').textContent = stats.read;
+  document.getElementById('countMastered').textContent = stats.mastered;
+  // 看板元素仅在 learning-kanban.html 中存在，index.html 没有看板
+  const elKU = document.getElementById('kanbanCountUnread');
+  if (elKU) elKU.textContent = `(${stats.unread})`;
+  const elKR = document.getElementById('kanbanCountReading');
+  if (elKR) elKR.textContent = `(${stats.reading})`;
+  const elKRead = document.getElementById('kanbanCountRead');
+  if (elKRead) elKRead.textContent = `(${stats.read})`;
+  const elKM = document.getElementById('kanbanCountMastered');
+  if (elKM) elKM.textContent = `(${stats.mastered})`;
+  updateQuadrantCounts();
+}
+
+function updateQuadrantCounts() {
+  // 统计各象限的书籍总数
+  const quadCounts = { language: 0, systems: 0, algorithms: 0, engineering: 0 };
+  getCurrentData().forEach(b => { quadCounts[b.quadrant] = (quadCounts[b.quadrant] || 0) + 1; });
+
+  const chips = document.querySelectorAll('.quad-chip');
+  chips.forEach(chip => {
+    const quad = chip.dataset.quad;
+    if (quad === 'all') {
+      chip.innerHTML = `📚 全部 <span style="font-size:10px;opacity:0.7;">(${getCurrentData().length})</span>`;
+    } else if (quadCounts[quad] !== undefined) {
+      const emoji = { language:'📗', systems:'📘', algorithms:'📙', engineering:'📕' }[quad] || '';
+      const label = getQuadrantLabel(quad);
+      chip.innerHTML = `${emoji} ${label} <span style="font-size:10px;opacity:0.7;">(${quadCounts[quad]})</span>`;
+    }
+  });
+}
+
+// ============================================================
+// 雷达视图 — Canvas 绘制
+// ============================================================
+const radarCanvas = document.getElementById('radarCanvas');
+const radarCtx = radarCanvas.getContext('2d');
+let radarBooks = []; // 屏幕坐标缓存 { book, x, y, r }
+
+function drawRadar() {
+  const container = radarCanvas.parentElement;
+  const containerWidth = container.clientWidth;
+  const size = Math.min(containerWidth, 600);
+  const dpr = window.devicePixelRatio || 1;
+
+  radarCanvas.width = size * dpr;
+  radarCanvas.height = size * dpr;
+  radarCanvas.style.width = size + 'px';
+  radarCanvas.style.height = size + 'px';
+
+  radarCtx.setTransform(1, 0, 0, 1, 0, 0);
+  radarCtx.scale(dpr, dpr);
+
+  const cx = size / 2;
+  const cy = size / 2;
+  const maxR = size * 0.44;
+
+  radarCtx.clearRect(0, 0, size, size);
+
+  // 1. 象限背景（选中象限高亮，未选中变暗）
+  const quadDefs = [
+    { start: -90, end: 0,   quad:'language',    color: 'rgba(232,245,233,0.35)', dimColor: 'rgba(200,200,200,0.06)' },
+    { start: -180, end: -90, quad:'systems',     color: 'rgba(227,242,253,0.35)', dimColor: 'rgba(200,200,200,0.06)' },
+    { start: -270, end: -180,quad:'algorithms',  color: 'rgba(255,243,224,0.35)', dimColor: 'rgba(200,200,200,0.06)' },
+    { start: 0,   end: 90,  quad:'engineering',  color: 'rgba(243,229,245,0.35)', dimColor: 'rgba(200,200,200,0.06)' },
+  ];
+  quadDefs.forEach(q => {
+    const isActive = currentQuadrant === 'all' || currentQuadrant === q.quad;
+    radarCtx.beginPath();
+    radarCtx.moveTo(cx, cy);
+    radarCtx.arc(cx, cy, maxR, q.start * Math.PI/180, q.end * Math.PI/180);
+    radarCtx.closePath();
+    radarCtx.fillStyle = isActive ? q.color : q.dimColor;
+    radarCtx.fill();
+    // 选中象限加边框高亮
+    if (currentQuadrant !== 'all' && isActive) {
+      radarCtx.strokeStyle = q.color.replace('0.35', '0.7');
+      radarCtx.lineWidth = 2.5;
+      radarCtx.stroke();
+    }
+  });
+
+  // 2. 三层圆环（填充 + 虚线边界）
+  const rings = [
+    { r: maxR * 0.33, color: '#c8e6c9', fill: 'rgba(232,245,233,0.22)' },
+    { r: maxR * 0.55, color: '#bbdefb', fill: 'rgba(227,242,253,0.22)' },
+    { r: maxR * 0.76, color: '#f8bbd0', fill: 'rgba(252,228,236,0.22)' },
+  ];
+  rings.forEach((ring, i) => {
+    const innerR = i === 0 ? 0 : rings[i-1].r;
+    radarCtx.beginPath();
+    radarCtx.arc(cx, cy, ring.r, 0, Math.PI*2);
+    if (innerR > 0) radarCtx.arc(cx, cy, innerR, Math.PI*2, 0, true);
+    radarCtx.fillStyle = ring.fill;
+    radarCtx.fill();
+
+    radarCtx.beginPath();
+    radarCtx.arc(cx, cy, ring.r, 0, Math.PI*2);
+    radarCtx.strokeStyle = ring.color;
+    radarCtx.lineWidth = 2;
+    radarCtx.setLineDash([6, 4]);
+    radarCtx.stroke();
+    radarCtx.setLineDash([]);
+  });
+
+  // 圆心小圆
+  radarCtx.beginPath();
+  radarCtx.arc(cx, cy, maxR * 0.06, 0, Math.PI*2);
+  radarCtx.fillStyle = 'rgba(0,0,0,0.04)';
+  radarCtx.fill();
+  radarCtx.strokeStyle = '#ddd';
+  radarCtx.lineWidth = 1;
+  radarCtx.stroke();
+
+  // 3. 象限分割线
+  [0, 90, 180, 270].forEach(angle => {
+    const rad = (angle - 90) * Math.PI/180;
+    radarCtx.beginPath();
+    radarCtx.moveTo(cx, cy);
+    radarCtx.lineTo(cx + Math.cos(rad)*maxR*0.82, cy + Math.sin(rad)*maxR*0.82);
+    radarCtx.strokeStyle = '#e0e0e0';
+    radarCtx.lineWidth = 1.5;
+    radarCtx.stroke();
+  });
+
+  // 4. 象限标签（选中象限加粗放大）
+  const quadLabels = [
+    { label:getQuadrantLabel('language'),    angle:45,  color:'#43a047', quad:'language' },
+    { label:getQuadrantLabel('systems'),     angle:135, color:'#1e88e5', quad:'systems' },
+    { label:getQuadrantLabel('algorithms'),  angle:225, color:'#ef6c00', quad:'algorithms' },
+    { label:getQuadrantLabel('engineering'), angle:315, color:'#8e24aa', quad:'engineering' },
+  ];
+  quadLabels.forEach(q => {
+    const isActive = currentQuadrant === 'all' || currentQuadrant === q.quad;
+    const rad = (q.angle - 90) * Math.PI/180;
+    const lx = cx + Math.cos(rad) * maxR * 0.90;
+    const ly = cy + Math.sin(rad) * maxR * 0.90;
+    radarCtx.save();
+    const fontWeight = isActive ? 'bold' : 'normal';
+    const fontSize = isActive ? Math.max(13, size*0.030) : Math.max(11, size*0.026);
+    radarCtx.font = `${fontWeight} ${fontSize}px -apple-system, "PingFang SC", sans-serif`;
+    radarCtx.fillStyle = isActive ? q.color : '#bbb';
+    radarCtx.textAlign = 'center';
+    radarCtx.textBaseline = 'middle';
+    radarCtx.fillText(q.label, lx, ly);
+    radarCtx.restore();
+  });
+
+  // 5. 圆环标签
+  const ringLabels = [
+    { r: maxR * 0.17, label: '基础' },
+    { r: maxR * 0.44, label: '进阶' },
+    { r: maxR * 0.68, label: '高级' },
+  ];
+  ringLabels.forEach(rl => {
+    const tr = (45 - 90) * Math.PI/180;
+    radarCtx.save();
+    radarCtx.font = `${Math.max(10,size*0.022)}px -apple-system, "PingFang SC", sans-serif`;
+    radarCtx.fillStyle = '#999';
+    radarCtx.textAlign = 'left';
+    radarCtx.textBaseline = 'middle';
+    radarCtx.fillText(rl.label, cx + Math.cos(tr)*rl.r, cy + Math.sin(tr)*rl.r);
+    radarCtx.restore();
+  });
+
+  // 6. 预计算书籍散点位置（均匀分布 + 碰撞避免）
+  radarBooks = [];
+  const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
+
+  // --- 6a. 按象限+圆环分组，按ID排序保证确定性 ---
+  const buckets = {};
+  getCurrentData().forEach(book => {
+    if (searchTerm) {
+      const m = book.title.toLowerCase().includes(searchTerm)
+        || book.author.toLowerCase().includes(searchTerm)
+        || book.tags.some(t => t.toLowerCase().includes(searchTerm))
+        || getQuadrantLabel(book.quadrant).includes(searchTerm)
+        || getRingLabel(book.ring).includes(searchTerm);
+      if (!m) return;
+    }
+    if (currentQuadrant !== 'all' && book.quadrant !== currentQuadrant) return;
+    const key = book.quadrant + '|' + book.ring;
+    if (!buckets[key]) buckets[key] = [];
+    buckets[key].push(book);
+  });
+  Object.values(buckets).forEach(b => b.sort((a, b2) => a.id.localeCompare(b2.id)));
+
+  // --- 6b. 均匀分布：同组书按角度均匀散开，书多时分多层半径 ---
+  const placedDots = []; // { book, x, y, dotR, angle, radius, quadrant, ring }
+  Object.entries(buckets).forEach(([key, bucketBooks]) => {
+    const [quadrant, ring] = key.split('|');
+    const angleRange = getQuadrantAngleRange(quadrant);
+    const radiusRange = getRingRadiusRange(ring, maxR);
+    const N = bucketBooks.length;
+
+    const angleMargin = 8;
+    const availAngle = (angleRange.end - angleRange.start) - angleMargin * 2;
+    const availRadius = radiusRange.max - radiusRange.min;
+
+    // 每组最多 5 本一层，超过则用多层半径
+    const maxPerLayer = 5;
+    const layers = Math.ceil(N / maxPerLayer);
+
+    bucketBooks.forEach((book, idx) => {
+      const layer = Math.floor(idx / maxPerLayer);
+      const idxInLayer = idx % maxPerLayer;
+      const countInThisLayer = Math.min(maxPerLayer, N - layer * maxPerLayer);
+
+      // 角度：在本层均匀分布
+      const angleFrac = countInThisLayer <= 1 ? 0.5 : idxInLayer / (countInThisLayer - 1);
+      const angle = angleRange.start + angleMargin + angleFrac * availAngle;
+
+      // 半径：分层；相邻层角度微交错
+      let radius;
+      if (layers === 1) {
+        radius = radiusRange.min + availRadius / 2;
+      } else {
+        // 偶数层偏左，奇数层偏右的角度微调，减少重叠
+        const stagger = (layer % 2 === 0) ? -1.5 : 1.5;
+        // 这里不直接修改 angle，在下层处理
+        const layerFrac = (layer + 0.5) / layers;
+        radius = radiusRange.min + layerFrac * availRadius;
+      }
+
+      const dotR = 5 + book.rec * 2.5;
+      const rad = (angle - 90) * Math.PI / 180;
+      const bx = cx + Math.cos(rad) * radius;
+      const by = cy + Math.sin(rad) * radius;
+
+      placedDots.push({ book, x: bx, y: by, dotR, angle, radius, quadrant, ring });
+    });
+  });
+
+  // --- 6c. 力导向碰撞检测：圆点互斥（4轮迭代） ---
+  const MIN_GAP = 8;
+  for (let iter = 0; iter < 4; iter++) {
+    for (let i = 0; i < placedDots.length; i++) {
+      for (let j = i + 1; j < placedDots.length; j++) {
+        const a = placedDots[i];
+        const b = placedDots[j];
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const minDist = a.dotR + b.dotR + MIN_GAP;
+        if (dist < minDist && dist > 0.01) {
+          // 越重叠推得越远（力度随迭代递减）
+          const decay = 1 - iter * 0.2;
+          const push = ((minDist - dist) / 2 + 1) * decay;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          a.x += nx * push;
+          a.y += ny * push;
+          b.x -= nx * push;
+          b.y -= ny * push;
+        }
+      }
+    }
+  }
+
+  // --- 6d. 按半径排序绘制（内圈先画，外圈覆盖在上面）---
+  placedDots.sort((a, b) => a.radius - b.radius);
+
+  // --- 6e. 力导向标签布局 ---
+  const labelFontSize = Math.max(9, size * 0.02);
+  const allLabels = []; // { x, y, idealX, idealY, text, estWidth, dot, usedAngle }
+
+  // 初始化：计算每个标签的理想位置
+  placedDots.forEach(dot => {
+    const angleRad = (dot.angle - 90) * Math.PI / 180;
+    const offset = dot.dotR + 7;
+    const idealX = dot.x + Math.cos(angleRad) * offset;
+    const idealY = dot.y + Math.sin(angleRad) * offset;
+    let displayTitle = dot.book.title;
+    if (displayTitle.length > 10) displayTitle = displayTitle.slice(0, 9) + '…';
+    const estWidth = displayTitle.length * labelFontSize * 0.75;
+    allLabels.push({
+      x: idealX, y: idealY,
+      idealX, idealY,
+      text: displayTitle,
+      estWidth,
+      dot,
+      angleRad
+    });
+  });
+
+  // 力导向松弛：标签间互斥 + 理想位置吸引 + 约束
+  const MAX_DISP = Math.max(20, size * 0.05);
+  for (let iter = 0; iter < 12; iter++) {
+    const temp = 1 - iter / 13; // 温度递减
+    for (let i = 0; i < allLabels.length; i++) {
+      const a = allLabels[i];
+      let fx = 0, fy = 0;
+
+      // 排斥力：来自其他标签
+      for (let j = 0; j < allLabels.length; j++) {
+        if (i === j) continue;
+        const b = allLabels[j];
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const safeDist = (a.estWidth + b.estWidth) / 2 + 5;
+        if (dist < safeDist && dist > 0.01) {
+          const force = (safeDist - dist) / safeDist * 6 * temp;
+          fx += (dx / dist) * force;
+          fy += (dy / dist) * force;
+        }
+      }
+
+      // 排斥力：远离自己对应的圆点（避免标签盖住圆点）
+      const ddx = a.x - a.dot.x;
+      const ddy = a.y - a.dot.y;
+      const dd = Math.sqrt(ddx * ddx + ddy * ddy);
+      const minDotDist = a.dot.dotR + 4;
+      if (dd < minDotDist && dd > 0.01) {
+        const force = (minDotDist - dd) / minDotDist * 4;
+        fx += (ddx / dd) * force;
+        fy += (ddy / dd) * force;
+      }
+
+      // 排斥力：远离其他圆点
+      for (let j = 0; j < placedDots.length; j++) {
+        const d = placedDots[j];
+        if (d === a.dot) continue;
+        const dx2 = a.x - d.x;
+        const dy2 = a.y - d.y;
+        const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+        const safeDotDist = d.dotR + 8;
+        if (dist2 < safeDotDist && dist2 > 0.01) {
+          const force = (safeDotDist - dist2) / safeDotDist * 3 * temp;
+          fx += (dx2 / dist2) * force;
+          fy += (dy2 / dist2) * force;
+        }
+      }
+
+      // 吸引力：拉向理想位置
+      fx += (a.idealX - a.x) * 0.25;
+      fy += (a.idealY - a.y) * 0.25;
+
+      a.x += fx;
+      a.y += fy;
+
+      // 约束：不能离理想位置太远
+      const ddx2 = a.x - a.idealX;
+      const ddy2 = a.y - a.idealY;
+      const disp = Math.sqrt(ddx2 * ddx2 + ddy2 * ddy2);
+      if (disp > MAX_DISP) {
+        a.x = a.idealX + (ddx2 / disp) * MAX_DISP;
+        a.y = a.idealY + (ddy2 / disp) * MAX_DISP;
+      }
+    }
+  }
+
+  // --- 6f. 绘制圆点 + 标签 ---
+  placedDots.forEach(dot => {
+    const { book, x: bx, y: by, dotR, angle } = dot;
+    const status = appState[book.id]?.status || 'unread';
+
+    let dotColor;
+    switch(status) {
+      case 'reading':  dotColor = '#5c9ce6'; break;
+      case 'read':     dotColor = '#67c23a'; break;
+      case 'mastered': dotColor = '#e6a23c'; break;
+      default:         dotColor = '#b0b0b0'; break;
+    }
+
+    // 第三层联动：读取评测分，决定内圈着色
+    const quizScore = getQuizMasteryForRadar(book.id);
+
+    // 阴影
+    radarCtx.beginPath();
+    radarCtx.arc(bx, by + 1, dotR, 0, Math.PI * 2);
+    radarCtx.fillStyle = 'rgba(0,0,0,0.1)';
+    radarCtx.fill();
+    // 外圈（手动状态颜色）
+    radarCtx.beginPath();
+    radarCtx.arc(bx, by, dotR, 0, Math.PI * 2);
+    radarCtx.fillStyle = dotColor;
+    radarCtx.fill();
+    radarCtx.strokeStyle = '#fff';
+    radarCtx.lineWidth = 1.5;
+    radarCtx.stroke();
+
+    // 内圈（评测分颜色）：有评测记录时叠加
+    if (quizScore !== null) {
+      const innerColor = quizScore >= 85 ? '#27ae60'
+                       : quizScore >= 60 ? '#f39c12'
+                       : '#e74c3c';
+      radarCtx.beginPath();
+      radarCtx.arc(bx, by, dotR * 0.48, 0, Math.PI * 2);
+      radarCtx.fillStyle = innerColor;
+      radarCtx.fill();
+      // "高估盲点"：手动=掌握但评测<60，加红色描边警示
+      if (status === 'mastered' && quizScore < 60) {
+        radarCtx.beginPath();
+        radarCtx.arc(bx, by, dotR + 3, 0, Math.PI * 2);
+        radarCtx.strokeStyle = '#e74c3c';
+        radarCtx.lineWidth = 2;
+        radarCtx.setLineDash([3, 2]);
+        radarCtx.stroke();
+        radarCtx.setLineDash([]);
+      }
+    }
+
+    // 已掌握星标
+    if (status === 'mastered') {
+      radarCtx.save();
+      radarCtx.font = `${dotR * 1.3}px sans-serif`;
+      radarCtx.textAlign = 'center';
+      radarCtx.textBaseline = 'middle';
+      radarCtx.fillText('⭐', bx, by);
+      radarCtx.restore();
+    }
+    // PDF 标记
+    if (appState[book.id]?.pdfFileName) {
+      radarCtx.save();
+      radarCtx.font = `${dotR * 0.9}px sans-serif`;
+      radarCtx.textAlign = 'center';
+      radarCtx.textBaseline = 'middle';
+      radarCtx.fillText('📎', bx - dotR - 6, by);
+      radarCtx.restore();
+    }
+
+    // 摘抄徽标：有摘抄的书籍在圆点右下角显示 📝N
+    const excerptCount = book.excerptCount || 0;
+    if (excerptCount > 0) {
+      const badgeX = bx + dotR - 2;
+      const badgeY = by + dotR - 2;
+      const badgeR = 10;
+      radarCtx.save();
+      radarCtx.beginPath();
+      radarCtx.arc(badgeX, badgeY, badgeR, 0, Math.PI * 2);
+      radarCtx.fillStyle = '#1a73e8';
+      radarCtx.fill();
+      radarCtx.strokeStyle = '#fff';
+      radarCtx.lineWidth = 1.5;
+      radarCtx.stroke();
+      radarCtx.font = 'bold 9px -apple-system, sans-serif';
+      radarCtx.fillStyle = '#fff';
+      radarCtx.textAlign = 'center';
+      radarCtx.textBaseline = 'middle';
+      radarCtx.fillText('📝' + excerptCount, badgeX, badgeY);
+      radarCtx.restore();
+    }
+
+    // 书名标签（使用碰撞修正后的位置）
+    const lbl = allLabels.find(l => l.dot === dot);
+    const labelX = lbl ? lbl.x : bx;
+    const labelY = lbl ? lbl.y : by;
+    const displayTitle = lbl ? lbl.text : book.title;
+    const isRight = labelX >= cx;
+    const textAlign = isRight ? 'left' : 'right';
+
+    // 引导线：从圆点边缘连到标签（标签偏离理想位置时显示）
+    if (lbl) {
+      const dxL = labelX - bx;
+      const dyL = labelY - by;
+      const distL = Math.sqrt(dxL * dxL + dyL * dyL);
+      if (distL > dotR + 10) {
+        // 圆点边缘起点
+        const sx = bx + (dxL / distL) * (dotR + 2);
+        const sy = by + (dyL / distL) * (dotR + 2);
+        radarCtx.beginPath();
+        radarCtx.moveTo(sx, sy);
+        radarCtx.lineTo(labelX, labelY);
+        radarCtx.strokeStyle = 'rgba(0,0,0,0.15)';
+        radarCtx.lineWidth = 0.8;
+        radarCtx.stroke();
+      }
+    }
+
+    radarCtx.save();
+    radarCtx.font = `${labelFontSize}px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`;
+    radarCtx.fillStyle = '#555';
+    radarCtx.textAlign = textAlign;
+    radarCtx.textBaseline = 'middle';
+    radarCtx.fillText(displayTitle, labelX, labelY);
+    radarCtx.restore();
+
+    radarBooks.push({ book, x: bx, y: by, r: dotR + 3 });
+  });
+}
+
+// 雷达点击/触摸检测
+function hitTestRadar(mx, my) {
+  for (let i = radarBooks.length-1; i >= 0; i--) {
+    const rb = radarBooks[i];
+    if (Math.sqrt((mx-rb.x)**2 + (my-rb.y)**2) <= rb.r) return rb.book;
+  }
+  return null;
+}
+
+radarCanvas.addEventListener('click', (e) => {
+  const rect = radarCanvas.getBoundingClientRect();
+  const scaleX = radarCanvas.width / (window.devicePixelRatio * rect.width);
+  const scaleY = radarCanvas.height / (window.devicePixelRatio * rect.height);
+  const book = hitTestRadar((e.clientX-rect.left)*scaleX, (e.clientY-rect.top)*scaleY);
+  if (book) openBookModal(book);
+});
+
+radarCanvas.addEventListener('touchend', (e) => {
+  if (e.changedTouches.length !== 1) return;
+  const t = e.changedTouches[0];
+  const rect = radarCanvas.getBoundingClientRect();
+  const scaleX = radarCanvas.width / (window.devicePixelRatio * rect.width);
+  const scaleY = radarCanvas.height / (window.devicePixelRatio * rect.height);
+  const book = hitTestRadar((t.clientX-rect.left)*scaleX, (t.clientY-rect.top)*scaleY);
+  if (book) { openBookModal(book); e.preventDefault(); }
+});
+
+// ============================================================
+// 看板视图
+// ============================================================
+function renderKanban() {
+  const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
+
+  // 切换显示对应的网格
+  document.getElementById('kanbanGridStatus').style.display = kanbanGroupBy === 'status' ? '' : 'none';
+  document.getElementById('kanbanGridQuad').style.display = kanbanGroupBy === 'quadrant' ? '' : 'none';
+
+  if (kanbanGroupBy === 'status') {
+    renderKanbanStatus(searchTerm);
+  } else {
+    renderKanbanQuadrant(searchTerm);
+  }
+}
+
+function renderKanbanStatus(searchTerm) {
+  const containers = {
+    unread: document.getElementById('kanbanCardsUnread'),
+    reading: document.getElementById('kanbanCardsReading'),
+    read: document.getElementById('kanbanCardsRead'),
+    mastered: document.getElementById('kanbanCardsMastered'),
+  };
+  Object.values(containers).forEach(c => c.innerHTML = '');
+
+  getCurrentData().forEach(book => {
+    if (searchTerm) {
+      const m = book.title.toLowerCase().includes(searchTerm)
+        || book.author.toLowerCase().includes(searchTerm)
+        || book.tags.some(t => t.toLowerCase().includes(searchTerm));
+      if (!m) return;
+    }
+    if (currentQuadrant !== 'all' && book.quadrant !== currentQuadrant) return;
+
+    const status = appState[book.id]?.status || 'unread';
+    const progress = appState[book.id]?.progress || 0;
+    const pdfFileName = appState[book.id]?.pdfFileName;
+    const container = containers[status];
+    if (!container) return;
+
+    const card = document.createElement('div');
+    card.className = `kanban-card ${status}`;
+    card.draggable = true;
+    card.dataset.bookId = book.id;
+
+    card.innerHTML = `
+      <div class="card-title">${book.title}</div>
+      <div class="card-tags">
+        <span class="card-quad-tag ${book.quadrant}">${getQuadrantLabel(book.quadrant)}</span>
+        ${book.tags.map(t => `<span class="card-tag">#${t}</span>`).join('')}
+      </div>
+      <div class="card-stars">${getStars(book.rec)}</div>
+      ${status === 'reading' ? `<div class="card-progress"><div class="card-progress-bar reading" style="width:${progress}%"></div></div>` : ''}
+      ${status === 'read' || status === 'mastered' ? `<div class="card-progress"><div class="card-progress-bar ${status}" style="width:100%"></div></div>` : ''}
+      ${pdfFileName ? '<span class="card-pdf-icon">📎</span>' : ''}
+    `;
+
+    card.addEventListener('click', (e) => {
+      if (card.dataset.dragging === 'true') return;
+      openBookModal(book);
+    });
+    card.addEventListener('dragstart', handleDragStart);
+    card.addEventListener('dragend', handleDragEnd);
+    card.addEventListener('touchstart', handleTouchStart, { passive:false });
+    card.addEventListener('touchmove', handleTouchMove, { passive:false });
+    card.addEventListener('touchend', handleTouchEnd);
+    container.appendChild(card);
+  });
+
+  Object.values(containers).forEach(c => {
+    c.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+    c.addEventListener('dragenter', (e) => { e.preventDefault(); c.closest('.kanban-column')?.classList.add('drag-over'); });
+    c.addEventListener('dragleave', (e) => { c.closest('.kanban-column')?.classList.remove('drag-over'); });
+    c.addEventListener('drop', handleDrop);
+  });
+}
+
+function renderKanbanQuadrant(searchTerm) {
+  const STATUS_LABELS = { unread:'📚 待读', reading:'📖 在读', read:'✅ 已读', mastered:'⭐ 掌握' };
+  const STATUS_BG = { unread:'#b0b0b0', reading:'#5c9ce6', read:'#67c23a', mastered:'#e6a23c' };
+  const containers = {
+    language: document.getElementById('kanbanCardsLang'),
+    systems: document.getElementById('kanbanCardsSys'),
+    algorithms: document.getElementById('kanbanCardsAlgo'),
+    engineering: document.getElementById('kanbanCardsEng'),
+  };
+  Object.values(containers).forEach(c => c.innerHTML = '');
+
+  getCurrentData().forEach(book => {
+    if (searchTerm) {
+      const m = book.title.toLowerCase().includes(searchTerm)
+        || book.author.toLowerCase().includes(searchTerm)
+        || book.tags.some(t => t.toLowerCase().includes(searchTerm));
+      if (!m) return;
+    }
+    if (currentQuadrant !== 'all' && book.quadrant !== currentQuadrant) return;
+
+    const status = appState[book.id]?.status || 'unread';
+    const pdfFileName = appState[book.id]?.pdfFileName;
+    const container = containers[book.quadrant];
+    if (!container) return;
+
+    const card = document.createElement('div');
+    card.className = `kanban-card ${status}`;
+    card.dataset.bookId = book.id;
+
+    card.innerHTML = `
+      <div class="card-title">${book.title}</div>
+      <div class="card-tags">
+        <span class="card-tag" style="background:${STATUS_BG[status]};color:#fff;font-weight:600;">${STATUS_LABELS[status]}</span>
+        ${book.tags.map(t => `<span class="card-tag">#${t}</span>`).join('')}
+      </div>
+      <div class="card-stars">${getStars(book.rec)}</div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">${getRingLabel(book.ring)}</div>
+      ${pdfFileName ? '<span class="card-pdf-icon">📎</span>' : ''}
+    `;
+
+    card.addEventListener('click', () => openBookModal(book));
+    container.appendChild(card);
+  });
+
+  // 更新按象限的列计数
+  document.getElementById('kanbanCountLang').textContent = `(${containers.language.children.length})`;
+  document.getElementById('kanbanCountSys').textContent = `(${containers.systems.children.length})`;
+  document.getElementById('kanbanCountAlgo').textContent = `(${containers.algorithms.children.length})`;
+  document.getElementById('kanbanCountEng').textContent = `(${containers.engineering.children.length})`;
+}
+
+// 桌面拖拽
+let draggedCard = null;
+function handleDragStart(e) {
+  draggedCard = this;
+  this.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', this.dataset.bookId);
+  setTimeout(() => { this.dataset.dragging = 'true'; }, 0);
+}
+function handleDragEnd(e) {
+  this.classList.remove('dragging');
+  this.dataset.dragging = 'false';
+  draggedCard = null;
+  document.querySelectorAll('.kanban-column').forEach(col => col.classList.remove('drag-over'));
+}
+function handleDrop(e) {
+  e.preventDefault();
+  this.closest('.kanban-column')?.classList.remove('drag-over');
+  const bookId = e.dataTransfer.getData('text/plain');
+  const column = this.closest('.kanban-column');
+  // 仅状态列支持拖放（象限列不改变状态）
+  if (column && bookId && column.dataset.status) {
+    changeBookStatus(bookId, column.dataset.status);
+  }
+}
+
+// 触摸拖拽
+let touchDragCard = null, touchClone = null;
+let touchStartX, touchStartY, touchOffsetX, touchOffsetY, touchMoved = false;
+
+function handleTouchStart(e) {
+  touchDragCard = this;
+  touchMoved = false;
+  const t = e.touches[0];
+  touchStartX = t.clientX; touchStartY = t.clientY;
+  const rect = this.getBoundingClientRect();
+  touchOffsetX = t.clientX - rect.left;
+  touchOffsetY = t.clientY - rect.top;
+}
+function handleTouchMove(e) {
+  if (!touchDragCard) return;
+  const t = e.touches[0];
+  const dx = t.clientX - touchStartX, dy = t.clientY - touchStartY;
+  if (!touchMoved && (Math.abs(dx)>8 || Math.abs(dy)>8)) {
+    touchMoved = true;
+    touchDragCard.dataset.dragging = 'true';
+    touchDragCard.classList.add('dragging');
+    touchClone = touchDragCard.cloneNode(true);
+    touchClone.style.cssText = `position:fixed;z-index:300;width:${touchDragCard.offsetWidth}px;opacity:0.9;pointer-events:none;transform:rotate(2deg);`;
+    document.body.appendChild(touchClone);
+  }
+  if (touchMoved && touchClone) {
+    touchClone.style.left = (t.clientX-touchOffsetX)+'px';
+    touchClone.style.top = (t.clientY-touchOffsetY)+'px';
+    document.querySelectorAll('.kanban-column').forEach(col => col.classList.remove('drag-over'));
+    const el = document.elementFromPoint(t.clientX, t.clientY);
+    el?.closest('.kanban-column')?.classList.add('drag-over');
+    e.preventDefault();
+  }
+}
+function handleTouchEnd(e) {
+  if (touchClone) { touchClone.remove(); touchClone = null; }
+  document.querySelectorAll('.kanban-column').forEach(col => col.classList.remove('drag-over'));
+  if (touchDragCard) {
+    touchDragCard.classList.remove('dragging');
+    touchDragCard.dataset.dragging = 'false';
+  }
+  if (touchMoved && touchDragCard) {
+    const t = e.changedTouches[0];
+    const el = document.elementFromPoint(t.clientX, t.clientY);
+    const col = el?.closest('.kanban-column');
+    if (col && col.dataset.status) changeBookStatus(touchDragCard.dataset.bookId, col.dataset.status);
+  }
+  touchDragCard = null;
+  touchMoved = false;
+}
+
+function changeBookStatus(bookId, newStatus) {
+  if (!appState[bookId]) appState[bookId] = {};
+  appState[bookId].status = newStatus;
+  if (newStatus === 'reading' && !appState[bookId].progress) appState[bookId].progress = 1;
+  if (newStatus === 'mastered') appState[bookId].progress = 100;
+  if (newStatus === 'read') appState[bookId].progress = 100;
+  if (newStatus === 'unread') appState[bookId].progress = 0;
+  saveState(appState);
+  refreshAll();
+}
+
+// ============================================================
+// 弹窗
+// ============================================================
+let currentModalBook = null;
+
+async function openBookModal(book) {
+  currentModalBook = book;
+  const stat = appState[book.id] || { status:'unread', progress:0, notes:'', pdfFileName:null };
+
+  document.getElementById('modalTitle').textContent = book.title;
+  document.getElementById('modalAuthor').textContent = `✍️ ${book.author}`;
+  document.getElementById('modalStars').textContent = getStars(book.rec);
+  document.getElementById('modalDesc').textContent = book.desc;
+
+  // 摘抄入口
+  const excerptSection = document.getElementById('modalExcerptSection');
+  const excerptCount = book.excerptCount || 0;
+  if (excerptCount > 0) {
+    excerptSection.style.display = 'block';
+    document.getElementById('modalExcerptCount').textContent = excerptCount;
+  } else {
+    excerptSection.style.display = 'none';
+  }
+
+  document.getElementById('modalTags').innerHTML =
+    book.tags.map(t => `<span class="modal-book-tag">#${t}</span>`).join('') +
+    `<span class="modal-book-tag" style="background:#f5f5f5;color:#999;">${getQuadrantLabel(book.quadrant)} · ${getRingLabel(book.ring)}</span>`;
+
+  document.querySelectorAll('#statusSelector .status-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.status === stat.status);
+  });
+
+  const progressSection = document.getElementById('progressSection');
+  const progressSlider = document.getElementById('progressSlider');
+  if (stat.status === 'reading') {
+    progressSection.style.display = 'block';
+    progressSlider.value = stat.progress || 0;
+    document.getElementById('progressPercent').textContent = (stat.progress||0) + '%';
+  } else {
+    progressSection.style.display = 'none';
+  }
+
+  document.getElementById('noteTextarea').value = stat.notes || '';
+
+  const pdfIndicator = document.getElementById('pdfIndicator');
+  if (stat.pdfFileName) {
+    pdfIndicator.style.display = 'inline-flex';
+    pdfIndicator.textContent = '📄 ' + stat.pdfFileName;
+  } else {
+    pdfIndicator.style.display = 'none';
+  }
+
+  const overlay = document.getElementById('modalOverlay');
+  overlay.style.display = 'flex';
+  overlay.classList.remove('closing');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+  const overlay = document.getElementById('modalOverlay');
+  overlay.classList.add('closing');
+  setTimeout(() => {
+    overlay.style.display = 'none';
+    overlay.classList.remove('closing');
+    document.body.style.overflow = '';
+    // 保存笔记
+    if (currentModalBook) {
+      if (!appState[currentModalBook.id]) appState[currentModalBook.id] = {};
+      appState[currentModalBook.id].notes = document.getElementById('noteTextarea').value;
+      saveState(appState);
+    }
+    currentModalBook = null;
+    refreshAll();
+  }, 200);
+}
+
+document.getElementById('btnCloseModal').addEventListener('click', closeModal);
+document.getElementById('modalOverlay').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('modalOverlay')) closeModal();
+});
+
+// 从弹窗跳转到摘抄页面
+const btnViewExcerpts = document.getElementById('btnViewExcerpts');
+if (btnViewExcerpts) {
+  btnViewExcerpts.addEventListener('click', () => {
+    if (!currentModalBook) return;
+    closeModal();
+    // 跳转到独立摘抄页面，并带书籍参数
+    window.location.href = 'excerpt.html?book=' + encodeURIComponent(currentModalBook.title);
+  });
+}
+
+// 状态切换
+document.getElementById('statusSelector').addEventListener('click', (e) => {
+  const btn = e.target.closest('.status-btn');
+  if (!btn || !currentModalBook) return;
+  const newStatus = btn.dataset.status;
+  document.querySelectorAll('#statusSelector .status-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  if (!appState[currentModalBook.id]) appState[currentModalBook.id] = {};
+  appState[currentModalBook.id].status = newStatus;
+
+  if (newStatus === 'mastered' || newStatus === 'read') appState[currentModalBook.id].progress = 100;
+  else if (newStatus === 'unread') appState[currentModalBook.id].progress = 0;
+
+  const progressSection = document.getElementById('progressSection');
+  if (newStatus === 'reading') {
+    progressSection.style.display = 'block';
+    if (!appState[currentModalBook.id].progress) appState[currentModalBook.id].progress = 1;
+    document.getElementById('progressSlider').value = appState[currentModalBook.id].progress;
+    document.getElementById('progressPercent').textContent = appState[currentModalBook.id].progress + '%';
+  } else {
+    progressSection.style.display = 'none';
+  }
+  saveState(appState);
+});
+
+// 进度滑块
+document.getElementById('progressSlider').addEventListener('input', function() {
+  document.getElementById('progressPercent').textContent = this.value + '%';
+  if (currentModalBook && appState[currentModalBook.id]) {
+    appState[currentModalBook.id].progress = parseInt(this.value);
+    saveState(appState);
+  }
+});
+
+// PDF 上传
+document.getElementById('btnUploadPdf').addEventListener('click', () => {
+  document.getElementById('pdfFileInput').click();
+});
+
+document.getElementById('pdfFileInput').addEventListener('change', async function() {
+  const file = this.files[0];
+  if (!file || !currentModalBook) return;
+  if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+    alert('请选择 PDF 文件'); return;
+  }
+  try {
+    const fileName = await savePDF(currentModalBook.id, file);
+    if (!appState[currentModalBook.id]) appState[currentModalBook.id] = {};
+    appState[currentModalBook.id].pdfFileName = fileName;
+    saveState(appState);
+    const pdfIndicator = document.getElementById('pdfIndicator');
+    pdfIndicator.style.display = 'inline-flex';
+    pdfIndicator.textContent = '📄 ' + fileName;
+  } catch(e) { alert('文件上传失败: ' + e.message); }
+  this.value = '';
+});
+
+// 保存笔记按钮
+document.getElementById('btnSaveNote').addEventListener('click', () => {
+  if (!currentModalBook) return;
+  if (!appState[currentModalBook.id]) appState[currentModalBook.id] = {};
+  appState[currentModalBook.id].notes = document.getElementById('noteTextarea').value;
+  saveState(appState);
+  const btn = document.getElementById('btnSaveNote');
+  const orig = btn.textContent;
+  btn.textContent = '✅ 已保存';
+  setTimeout(() => { btn.textContent = orig; }, 1200);
+});
+
+// ============================================================
+// 模式切换（读书雷达 / C 技术栈 / C++ 技术栈）
+// ============================================================
+document.getElementById('modeBar').addEventListener('click', (e) => {
+  const btn = e.target.closest('.mode-btn');
+  if (!btn) return;
+  const newMode = btn.dataset.mode;
+  if (newMode === currentMode) return;
+
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  currentMode = newMode;
+  appState = loadState();  // 切换模式的存储
+  syncStateFromServer().then(function(changed) { if (changed) refreshAll(); });
+
+  // 更新标题
+  document.getElementById('appTitle').textContent = getModeLabel(newMode);
+
+  // 重置筛选与分组状态
+  currentQuadrant = 'all';
+  document.querySelectorAll('.quad-chip').forEach(c => c.classList.remove('active'));
+  const allChip = document.querySelector('.quad-chip.all');
+  if (allChip) allChip.classList.add('active');
+
+  // 更新搜索提示
+  document.getElementById('searchInput').placeholder = newMode === 'books'
+    ? '🔍 搜索书名、标签、作者...'
+    : newMode === 'ds_tech'
+      ? '🔍 搜索数据结构、算法、标签...'
+      : newMode === 'py_tech'
+        ? '🔍 搜索 Python 技术点、库、标签...'
+        : newMode === 'linux_tech'
+          ? '🔍 搜索 Linux 系统编程、内核、观测...'
+          : '🔍 搜索技术点、标签...';
+
+  // 更新象限标签 UI
+  updateQuadrantUI();
+  updateQuadrantCounts();
+
+  // 技术栈模式显示评测分图例
+  const quizLegend = document.getElementById('quizLegend');
+  if (quizLegend) quizLegend.style.display = (newMode !== 'books') ? 'inline-flex' : 'none';
+
+  refreshAll();
+});
+
+// ============================================================
+// Tab 切换
+// ============================================================
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    if (btn.tagName === 'A') return; // 看板是链接，不走 tab 逻辑
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    const targetView = document.getElementById('view-' + btn.dataset.view);
+    if (targetView) targetView.classList.add('active');
+    if (btn.dataset.view === 'radar') setTimeout(drawRadar, 50);
+  });
+});
+
+// ============================================================
+// 看板分组切换（按状态 / 按象限）— 看板页专用，index 中不生效
+// ============================================================
+const kanbanToggleEl = document.getElementById('kanbanToggle');
+if (kanbanToggleEl) {
+  kanbanToggleEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.kanban-toggle-btn');
+    if (!btn) return;
+    document.querySelectorAll('.kanban-toggle-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    kanbanGroupBy = btn.dataset.group;
+
+    // 切换到象限视图时自动重置象限筛选为"全部"，避免列全空
+    if (kanbanGroupBy === 'quadrant' && currentQuadrant !== 'all') {
+      document.querySelectorAll('.quad-chip').forEach(c => c.classList.remove('active'));
+      const allChip = document.querySelector('.quad-chip.all');
+      if (allChip) allChip.classList.add('active');
+      currentQuadrant = 'all';
+    }
+    renderKanban();
+  });
+}
+
+// ============================================================
+// 象限筛选
+// ============================================================
+const quadFilterEl = document.getElementById('quadFilter');
+if (quadFilterEl) {
+  quadFilterEl.addEventListener('click', (e) => {
+    const chip = e.target.closest('.quad-chip');
+    if (!chip) return;
+    document.querySelectorAll('.quad-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    currentQuadrant = chip.dataset.quad;
+    // 切换象限后重绘雷达 + 更新统计卡片
+    refreshAll();
+  });
+}
+
+// ============================================================
+// 搜索
+// ============================================================
+const searchInputEl = document.getElementById('searchInput');
+if (searchInputEl) {
+  searchInputEl.addEventListener('input', () => {
+    const activeView = document.querySelector('.view.active');
+    if (activeView && activeView.id === 'view-radar') drawRadar();
+  });
+}
+
+// ============================================================
+// 全局刷新
+// ============================================================
+function refreshAll() {
+  updateStatsUI();
+  const activeView = document.querySelector('.view.active');
+  if (activeView && activeView.id === 'view-radar') drawRadar();
+}
+
+// 窗口大小调整
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (document.querySelector('.view.active')?.id === 'view-radar') drawRadar();
+  }, 200);
+});
+
+// ESC 关闭弹窗
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('modalOverlay').style.display === 'flex') closeModal();
+});
+
+// ============================================================
+// 初始化
+// ============================================================
+updateStatsUI();
+drawRadar();
+// 从服务器同步最新数据（API 模式），完成后刷新 UI
+syncStateFromServer().then(function(changed) { if (changed) refreshAll(); });
+</script>
+</body>
+</html>
