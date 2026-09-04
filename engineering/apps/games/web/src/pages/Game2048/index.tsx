@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useG2048 } from '@/games/g2048/useG2048';
 import { renderBoard } from '@/games/g2048/renderer';
+import { useSwipeHandlers } from '@/games/g2048/gesture';
 import { Button } from '@shared/ui/Button';
 
 const HIGH_SCORE_KEY = 'g2048_high_score';
@@ -61,6 +62,10 @@ export function Game2048() {
     newGame();
   }, [newGame]);
 
+  const swipeHandlers = useSwipeHandlers(useCallback((dir: 0 | 1 | 2 | 3) => {
+    move(dir);
+  }, [move]));
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const map: Record<string, 0 | 1 | 2 | 3> = {
@@ -116,7 +121,7 @@ export function Game2048() {
           最高：<span className="font-bold" data-testid="high-score">{highScore}</span>
         </div>
       </div>
-      <div className="relative max-w-md mx-auto">
+      <div className="relative max-w-md mx-auto touch-none" {...swipeHandlers}>
         <canvas
           ref={canvasRef}
           className="mx-auto rounded-lg shadow-lg block"
@@ -137,7 +142,7 @@ export function Game2048() {
         <Button onClick={undo} disabled={!canUndo}>撤销 (U)</Button>
       </div>
       <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-4">
-        WASD 或方向键移动 · R 重新开始 · U 撤销
+        WASD / 方向键 / 滑动移动 · R 重新开始 · U 撤销
       </p>
     </div>
   );

@@ -96,7 +96,7 @@ export function Snake() {
         ))}
       </div>
 
-      <div className="relative mx-auto" style={{ width: 400, height: 400 }}>
+      <div className="relative mx-auto touch-none" style={{ width: 400, height: 400 }}>
         <canvas
           ref={canvasRef}
           className="border-2 border-gray-300 mx-auto block"
@@ -111,7 +111,54 @@ export function Snake() {
         )}
       </div>
 
-      <p className="mt-4 text-sm text-gray-500">WASD 或方向键移动 · R 重新开始</p>
+      <div className="mt-4 grid grid-cols-3 gap-2 max-w-[200px] mx-auto md:hidden">
+        <span />
+        <Button
+          onTouchStart={(e) => {
+            e.preventDefault();
+            snake.input(0);
+          }}
+          size="lg"
+          aria-label="上"
+        >
+          ↑
+        </Button>
+        <span />
+        <Button
+          onTouchStart={(e) => {
+            e.preventDefault();
+            snake.input(2);
+          }}
+          size="lg"
+          aria-label="左"
+        >
+          ←
+        </Button>
+        <Button
+          onTouchStart={(e) => {
+            e.preventDefault();
+            snake.input(1);
+          }}
+          size="lg"
+          aria-label="下"
+        >
+          ↓
+        </Button>
+        <Button
+          onTouchStart={(e) => {
+            e.preventDefault();
+            snake.input(3);
+          }}
+          size="lg"
+          aria-label="右"
+        >
+          →
+        </Button>
+      </div>
+
+      <p className="mt-4 text-sm text-gray-500">
+        WASD / 方向键 / 触屏按钮移动 · R 重新开始
+      </p>
     </div>
   );
 }
