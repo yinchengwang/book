@@ -1,17 +1,17 @@
 // src/pages/Home/index.tsx
 import { Link } from 'react-router-dom';
-import { Button } from '@shared/ui/Button';
-import { useTheme } from '@shared/theme/ThemeProvider';
+import { ThemeSwitcher } from '@/components/ThemeSwitcher';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 
 export function Home() {
-  const { theme, toggle } = useTheme();
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8">
       <header className="flex items-center justify-between max-w-4xl mx-auto mb-8">
         <h1 className="text-4xl font-bold">🎮 游戏中心</h1>
-        <Button variant="ghost" onClick={toggle}>
-          {theme === 'light' ? '🌙 暗色' : '☀️ 亮色'}
-        </Button>
+        <div className="flex gap-2">
+          <ThemeSwitcher />
+          <LanguageSwitcher />
+        </div>
       </header>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
         <GameCard title="2048" desc="滑动合并" path="/2048" />

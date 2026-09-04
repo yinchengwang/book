@@ -1,4 +1,5 @@
 // src/main.tsx
+import '@shared/i18n/i18n'; // i18n side-effect: init react-i18next before render
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
