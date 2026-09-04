@@ -1,17 +1,35 @@
 {
   "name": "reading-radar",
-  "version": "1.0.0",
-  "description": "这是一个面向 C / C++ / 数据结构 / 数据库内核 / Python 的静态学习站点。项目把知识地图、学习看板、知识测评、学习内容页、全景仪表盘和五年计划放在同一套本地数据模型上，默认无构建工具，直接打开 HTML 即可使用；如果需要多设备同步，可以启动 `server.js`，把状态持久化到 `user-data/`。",
-  "main": "server.js",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "description": "读书雷达：知识地图 / 学习看板 / 测评 / 学习内容 / 仪表盘 / 五年计划（Vite + React + TS 重构）。",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "server": "node server/dist/index.js",
+    "server:dev": "tsx watch server/index.ts",
+    "test": "vitest"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "playwright": "^1.60.0"
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.0",
+    "zustand": "^4.5.0",
+    "react-markdown": "^9.0.0",
+    "remark-gfm": "^4.0.0",
+    "rehype-mermaid": "^3.0.0",
+    "express": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "@types/express": "^5.0.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0",
+    "tailwindcss": "^3.4.0",
+    "tsx": "^4.7.0",
+    "vitest": "^1.0.0"
   }
 }
