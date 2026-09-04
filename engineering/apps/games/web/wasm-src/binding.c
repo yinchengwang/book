@@ -1,6 +1,7 @@
 #include <emscripten/emscripten.h>
 
 #include "g2048.h"
+#include "snake.h"
 
 static G2048Game g_state;
 
@@ -37,4 +38,64 @@ int g2048_won_js(void) {
 EMSCRIPTEN_KEEPALIVE
 int g2048_can_move_js(void) {
     return g2048_can_move(&g_state) ? 1 : 0;
+}
+
+/* —— snake —— */
+
+static SnakeGame s_state;
+
+EMSCRIPTEN_KEEPALIVE
+void snake_init_js(int seed, int diff) {
+    snake_init(&s_state, seed, diff);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void snake_tick_js(void) {
+    snake_tick(&s_state);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void snake_input_js(int d) {
+    snake_input(&s_state, (SnakeDir)d);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int snake_len_js(void) {
+    return s_state.len;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int snake_body_x_js(int i) {
+    if (i < 0 || i >= s_state.len) {
+        return -1;
+    }
+    return s_state.body[i].x;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int snake_body_y_js(int i) {
+    if (i < 0 || i >= s_state.len) {
+        return -1;
+    }
+    return s_state.body[i].y;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int snake_food_x_js(void) {
+    return s_state.food.x;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int snake_food_y_js(void) {
+    return s_state.food.y;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int snake_score_js(void) {
+    return s_state.score;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int snake_over_js(void) {
+    return s_state.over ? 1 : 0;
 }
