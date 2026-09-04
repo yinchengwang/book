@@ -8,6 +8,7 @@
 #include "rag/modular/pipeline/advanced_pipeline.h"
 #include "rag/logger.h"
 #include <chrono>
+#include <unordered_map>
 
 namespace rag::modular {
 
@@ -18,7 +19,7 @@ AdvancedPipeline::AdvancedPipeline()
 AdvancedPipeline::~AdvancedPipeline() = default;
 
 bool AdvancedPipeline::init(const ModularConfig& config) {
-    RAG_LOG_INFO("初始化 AdvancedPipeline...");
+    RAG_INFO("初始化 AdvancedPipeline...");
 
     // 保存配置
     config_ = config;
@@ -28,9 +29,9 @@ bool AdvancedPipeline::init(const ModularConfig& config) {
         llm_ = rag::create_llm_service();
         if (llm_) {
             llm_->load(config.llm.model_path, config.llm);
-            RAG_LOG_INFO("LLM 模型加载完成: " + config.llm.model_path);
+            RAG_INFO("LLM 模型加载完成: " + config.llm.model_path);
         } else {
-            RAG_LOG_WARN("LLM 服务创建失败");
+            RAG_WARN("LLM 服务创建失败");
         }
     }
 
@@ -41,7 +42,7 @@ bool AdvancedPipeline::init(const ModularConfig& config) {
     adaptive_rrf_->set_rrf_k(config.retrieval.rrf_k);
 
     initialized_ = true;
-    RAG_LOG_INFO("AdvancedPipeline 初始化完成");
+    RAG_INFO("AdvancedPipeline 初始化完成");
     return true;
 }
 
@@ -57,7 +58,7 @@ ModularQueryResult AdvancedPipeline::query(const ModularQuery& query) {
     // 检查是否就绪
     if (!is_ready()) {
         result.error_message = "Pipeline 未就绪，请先调用 init() 或设置必要的检索器";
-        RAG_LOG_ERROR(result.error_message);
+        RAG_ERROR(result.error_message);
         return result;
     }
 
@@ -68,7 +69,7 @@ ModularQueryResult AdvancedPipeline::query(const ModularQuery& query) {
     if (query_expander_) {
         auto expansion_start = std::chrono::steady_clock::now();
         expanded_queries = expand_query(query.text);
-        RAG_LOG_INFO("查询扩展完成，生成 " + std::to_string(expanded_queries.size()) +
+        RAG_INFO("查询扩展完成，生成 " + std::to_string(expanded_queries.size()) +
                     " 个查询变体");
         (void)expansion_start;  // 忽略未使用警告
     }
@@ -92,7 +93,7 @@ ModularQueryResult AdvancedPipeline::query(const ModularQuery& query) {
         std::chrono::steady_clock::now() - retrieval_start).count();
 
     if (all_hnsw_results.empty() && all_bm25_results.empty()) {
-        RAG_LOG_WARN("所有检索结果为空");
+        RAG_WARN("所有检索结果为空");
         result.success = true;
         result.answer = "抱歉，未找到与您查询相关的文档内容。";
         result.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -142,7 +143,7 @@ ModularQueryResult AdvancedPipeline::query(const ModularQuery& query) {
         std::chrono::steady_clock::now() - start_time).count();
     result.success = true;
 
-    RAG_LOG_INFO("AdvancedPipeline 查询完成，检索: " + std::to_string(result.retrieval_time_ms) +
+    RAG_INFO("AdvancedPipeline 查询完成，检索: " + std::to_string(result.retrieval_time_ms) +
                 "ms, 生成: " + std::to_string(result.generation_time_ms) + "ms");
 
     return result;
@@ -176,7 +177,7 @@ std::vector<std::string> AdvancedPipeline::expand_query(const std::string& query
         }
         return expansion.expanded_queries;
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("查询扩展异常: ") + e.what());
+        RAG_ERROR(std::string("查询扩展异常: ") + e.what());
         return {query};
     }
 }
@@ -190,7 +191,7 @@ std::vector<rag::RetrievalResult> AdvancedPipeline::retrieve_vectors(
     try {
         return hnsw_retriever_->retrieve(query, top_k);
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("向量检索异常: ") + e.what());
+        RAG_ERROR(std::string("向量检索异常: ") + e.what());
         return {};
     }
 }
@@ -204,7 +205,7 @@ std::vector<rag::RetrievalResult> AdvancedPipeline::retrieve_bm25(
     try {
         return bm25_retriever_->retrieve(query, top_k);
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("BM25 检索异常: ") + e.what());
+        RAG_ERROR(std::string("BM25 检索异常: ") + e.what());
         return {};
     }
 }
@@ -219,9 +220,9 @@ std::vector<rag::RetrievalResult> AdvancedPipeline::fuse_with_rrf(
 
     try {
         return adaptive_rrf_->fuse(hnsw_results, bm25_results,
-                                  rag::QueryType::SIMPLE, top_k);
+                                  rag::QueryType::FACTUAL, top_k);
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("RRF 融合异常: ") + e.what());
+        RAG_ERROR(std::string("RRF 融合异常: ") + e.what());
         // 降级: 返回 HNSW 结果
         if (!hnsw_results.empty()) {
             return hnsw_results;
@@ -241,8 +242,10 @@ std::vector<rag::RetrievalResult> AdvancedPipeline::rerank_results(
     try {
         // 转换为 Chunk 列表
         std::vector<rag::Chunk> chunks;
+        std::unordered_map<std::string, rag::Chunk> id_to_chunk;
         for (const auto& result : candidates) {
             chunks.push_back(result.chunk);
+            id_to_chunk[result.chunk.id] = result.chunk;
         }
 
         // 执行重排序
@@ -250,9 +253,12 @@ std::vector<rag::RetrievalResult> AdvancedPipeline::rerank_results(
 
         // 构建重排后的结果
         std::vector<rag::RetrievalResult> results;
-        for (size_t i = 0; i < reranked.size() && i < candidates.size(); ++i) {
+        for (size_t i = 0; i < reranked.size(); ++i) {
             rag::RetrievalResult r;
-            r.chunk = reranked[i].chunk;
+            auto it = id_to_chunk.find(reranked[i].chunk_id);
+            if (it != id_to_chunk.end()) {
+                r.chunk = it->second;
+            }
             r.score = reranked[i].score;
             r.source = "reranked";
             r.rank = static_cast<int>(i);
@@ -261,7 +267,7 @@ std::vector<rag::RetrievalResult> AdvancedPipeline::rerank_results(
 
         return results;
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("重排序异常: ") + e.what());
+        RAG_ERROR(std::string("重排序异常: ") + e.what());
         return candidates;
     }
 }

@@ -52,7 +52,7 @@ std::string ModularPipeline::generate_with_llm(
     const GenerateOptions& options) {
     // 检查 LLM 服务是否可用
     if (!llm_ || !llm_->is_loaded()) {
-        RAG_LOG_ERROR("LLM 服务未初始化或未加载模型");
+        RAG_ERROR("LLM 服务未初始化或未加载模型");
         return "错误: LLM 服务不可用";
     }
 
@@ -63,11 +63,11 @@ std::string ModularPipeline::generate_with_llm(
         if (result.finished) {
             return result.text;
         } else {
-            RAG_LOG_WARN("LLM 生成未正常完成: " + result.finish_reason);
+            RAG_WARN("LLM 生成未正常完成: " + result.finish_reason);
             return result.text;
         }
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("LLM 生成异常: ") + e.what());
+        RAG_ERROR(std::string("LLM 生成异常: ") + e.what());
         return std::string("错误: ") + e.what();
     }
 }

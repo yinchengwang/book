@@ -35,7 +35,7 @@ std::unique_ptr<ModularPipeline> PipelineFactory::create(
             return std::make_unique<HybridPipeline>();
 
         case PipelineType::HYDE:
-            return std::make_unique<HydePipeline>();
+            return std::make_unique<HyDEPipeline>();
 
         case PipelineType::GRAPH:
             return std::make_unique<GraphPipeline>();
@@ -53,7 +53,7 @@ std::unique_ptr<ModularPipeline> PipelineFactory::create(
             return std::make_unique<RecursivePipeline>();
 
         default:
-            RAG_LOG_ERROR("未知的 Pipeline 类型: " +
+            RAG_ERROR("未知的 Pipeline 类型: " +
                           pipeline_type_to_string(type));
             return nullptr;
     }

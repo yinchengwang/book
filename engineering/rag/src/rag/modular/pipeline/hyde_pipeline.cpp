@@ -10,6 +10,8 @@
 #include <chrono>
 #include <algorithm>
 #include <cctype>
+#include <regex>
+#include <unordered_set>
 
 namespace rag::modular {
 
@@ -67,7 +69,7 @@ HyDEPipeline::HyDEPipeline()
 HyDEPipeline::~HyDEPipeline() = default;
 
 bool HyDEPipeline::init(const ModularConfig& config) {
-    RAG_LOG_INFO("初始化 HyDEPipeline...");
+    RAG_INFO("初始化 HyDEPipeline...");
 
     // 保存配置
     config_ = config;
@@ -77,14 +79,14 @@ bool HyDEPipeline::init(const ModularConfig& config) {
         llm_ = rag::create_llm_service();
         if (llm_) {
             llm_->load(config.llm.model_path, config.llm);
-            RAG_LOG_INFO("LLM 模型加载完成: " + config.llm.model_path);
+            RAG_INFO("LLM 模型加载完成: " + config.llm.model_path);
         } else {
-            RAG_LOG_WARN("LLM 服务创建失败");
+            RAG_WARN("LLM 服务创建失败");
         }
     }
 
     initialized_ = true;
-    RAG_LOG_INFO("HyDEPipeline 初始化完成");
+    RAG_INFO("HyDEPipeline 初始化完成");
     return true;
 }
 
@@ -99,7 +101,7 @@ ModularQueryResult HyDEPipeline::query(const ModularQuery& query) {
     // 检查是否就绪
     if (!is_ready()) {
         result.error_message = "Pipeline 未就绪，请先调用 init() 或设置必要的检索器";
-        RAG_LOG_ERROR(result.error_message);
+        RAG_ERROR(result.error_message);
         return result;
     }
 
@@ -112,11 +114,11 @@ ModularQueryResult HyDEPipeline::query(const ModularQuery& query) {
         std::chrono::steady_clock::now() - hyde_start).count();
 
     if (hypotheses.empty()) {
-        RAG_LOG_WARN("HyDE 生成假设答案失败，使用原始查询检索");
+        RAG_WARN("HyDE 生成假设答案失败，使用原始查询检索");
         hypotheses = {query.text};
     }
 
-    RAG_LOG_INFO("HyDE 生成 " + std::to_string(hypotheses.size()) +
+    RAG_INFO("HyDE 生成 " + std::to_string(hypotheses.size()) +
                 " 个假设答案，耗时: " + std::to_string(hyde_time_ms) + "ms");
 
     // Step 2: 使用假设答案执行检索
@@ -126,7 +128,7 @@ ModularQueryResult HyDEPipeline::query(const ModularQuery& query) {
         std::chrono::steady_clock::now() - retrieval_start).count();
 
     if (retrieval_results.empty()) {
-        RAG_LOG_WARN("假设答案检索结果为空");
+        RAG_WARN("假设答案检索结果为空");
         result.success = true;
         result.answer = "抱歉，未找到与您查询相关的文档内容。";
         result.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -166,7 +168,7 @@ ModularQueryResult HyDEPipeline::query(const ModularQuery& query) {
         std::chrono::steady_clock::now() - start_time).count();
     result.success = true;
 
-    RAG_LOG_INFO("HyDEPipeline 查询完成，HyDE: " + std::to_string(hyde_time_ms) +
+    RAG_INFO("HyDEPipeline 查询完成，HyDE: " + std::to_string(hyde_time_ms) +
                 "ms, 检索: " + std::to_string(result.retrieval_time_ms) +
                 "ms, 生成: " + std::to_string(result.generation_time_ms) + "ms");
 
@@ -185,7 +187,7 @@ void HyDEPipeline::set_multi_hypothesis_mode(bool enable, int count) {
 std::vector<std::string> HyDEPipeline::generate_hypothetical_documents(
     const std::string& query) {
     if (!llm_ || !llm_->is_loaded()) {
-        RAG_LOG_ERROR("LLM 服务不可用");
+        RAG_ERROR("LLM 服务不可用");
         return {};
     }
 
@@ -207,10 +209,10 @@ std::vector<std::string> HyDEPipeline::generate_hypothetical_documents(
             return parse_hypothetical_documents(gen_result.text);
         }
 
-        RAG_LOG_WARN("HyDE LLM 生成未正常完成");
+        RAG_WARN("HyDE LLM 生成未正常完成");
         return {};
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("HyDE 生成假设答案异常: ") + e.what());
+        RAG_ERROR(std::string("HyDE 生成假设答案异常: ") + e.what());
         return {};
     }
 }
@@ -261,17 +263,17 @@ std::vector<rag::RetrievalResult> HyDEPipeline::retrieve_with_single_hypothesis(
     const std::string& hypothesis,
     int top_k) {
     if (!hnsw_retriever_) {
-        RAG_LOG_ERROR("HNSW 检索器未设置");
+        RAG_ERROR("HNSW 检索器未设置");
         return {};
     }
 
     try {
         // 使用假设答案作为查询向量进行检索
         auto results = hnsw_retriever_->retrieve(hypothesis, top_k);
-        RAG_LOG_DEBUG("假设答案检索到 " + std::to_string(results.size()) + " 个结果");
+        RAG_DEBUG("假设答案检索到 " + std::to_string(results.size()) + " 个结果");
         return results;
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("假设答案检索异常: ") + e.what());
+        RAG_ERROR(std::string("假设答案检索异常: ") + e.what());
         return {};
     }
 }
@@ -329,14 +331,19 @@ std::vector<std::string> HyDEPipeline::parse_hypothetical_documents(
         std::vector<std::pair<size_t, std::string>> parts;
         size_t last_pos = 0;
 
-        for (; it != end; ++it) {
-            size_t pos = it->position();
-            std::string match = it->str();
+        // 收集所有匹配位置
+        std::vector<std::pair<size_t, size_t>> match_positions;  // (match_pos, match_end)
+        for (auto mit = it; mit != end; ++mit) {
+            match_positions.emplace_back(mit->position(), mit->position() + mit->length());
+        }
 
-            // 提取分割标记后的内容
-            size_t content_start = pos + match.length();
-            size_t next_pos = (++it == end) ? trimmed_response.length() : it->position();
-            --it;  // 恢复迭代器
+        for (size_t i = 0; i < match_positions.size(); ++i) {
+            size_t pos = match_positions[i].first;
+            size_t match_end = match_positions[i].second;
+            size_t content_start = match_end;
+            size_t next_pos = (i + 1 < match_positions.size())
+                              ? match_positions[i + 1].first
+                              : trimmed_response.length();
 
             std::string content = trimmed_response.substr(content_start, next_pos - content_start);
             content = trim_string(content);

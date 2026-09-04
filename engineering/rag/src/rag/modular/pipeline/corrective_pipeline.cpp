@@ -10,6 +10,8 @@
 #include <chrono>
 #include <algorithm>
 #include <cctype>
+#include <regex>
+#include <unordered_set>
 
 namespace rag::modular {
 
@@ -39,7 +41,7 @@ CorrectivePipeline::CorrectivePipeline()
 CorrectivePipeline::~CorrectivePipeline() = default;
 
 bool CorrectivePipeline::init(const ModularConfig& config) {
-    RAG_LOG_INFO("初始化 CorrectivePipeline...");
+    RAG_INFO("初始化 CorrectivePipeline...");
 
     // 保存配置
     config_ = config;
@@ -49,9 +51,9 @@ bool CorrectivePipeline::init(const ModularConfig& config) {
         llm_ = rag::create_llm_service();
         if (llm_) {
             llm_->load(config.llm.model_path, config.llm);
-            RAG_LOG_INFO("LLM 模型加载完成: " + config.llm.model_path);
+            RAG_INFO("LLM 模型加载完成: " + config.llm.model_path);
         } else {
-            RAG_LOG_WARN("LLM 服务创建失败");
+            RAG_WARN("LLM 服务创建失败");
         }
     }
 
@@ -59,7 +61,7 @@ bool CorrectivePipeline::init(const ModularConfig& config) {
     corrective_rag_ = rag::create_corrective_rag(self_rag_config_);
 
     initialized_ = true;
-    RAG_LOG_INFO("CorrectivePipeline 初始化完成");
+    RAG_INFO("CorrectivePipeline 初始化完成");
     return true;
 }
 
@@ -75,7 +77,7 @@ ModularQueryResult CorrectivePipeline::query(const ModularQuery& query) {
     // 检查是否就绪
     if (!is_ready()) {
         result.error_message = "Pipeline 未就绪，请先调用 init() 或设置必要的检索器";
-        RAG_LOG_ERROR(result.error_message);
+        RAG_ERROR(result.error_message);
         return result;
     }
 
@@ -90,7 +92,7 @@ ModularQueryResult CorrectivePipeline::query(const ModularQuery& query) {
     for (int iteration = 0; iteration < max_iterations_; ++iteration) {
         stats_.total_iterations++;
 
-        RAG_LOG_INFO("CorrectivePipeline 迭代 " + std::to_string(iteration + 1) +
+        RAG_INFO("CorrectivePipeline 迭代 " + std::to_string(iteration + 1) +
                     "，查询: " + current_query);
 
         // Step 1: 执行检索
@@ -126,7 +128,7 @@ ModularQueryResult CorrectivePipeline::query(const ModularQuery& query) {
         stats_.avg_quality_score = (stats_.avg_quality_score * iteration +
                                    evaluation.overall_score()) / (iteration + 1);
 
-        RAG_LOG_INFO("质量评估完成 - 相关性: " + std::to_string(evaluation.relevance_score) +
+        RAG_INFO("质量评估完成 - 相关性: " + std::to_string(evaluation.relevance_score) +
                     ", 支持性: " + std::to_string(evaluation.support_score) +
                     ", 完整性: " + std::to_string(evaluation.completeness_score) +
                     ", 有用性: " + std::to_string(evaluation.usefulness_score));
@@ -134,18 +136,18 @@ ModularQueryResult CorrectivePipeline::query(const ModularQuery& query) {
         // Step 3: 判断是否需要纠正
         if (iteration > 0 || !needs_correction(evaluation)) {
             // 质量足够好或已达到最大迭代，使用当前结果
-            RAG_LOG_INFO("检索质量可接受或达到最大迭代，停止纠正");
+            RAG_INFO("检索质量可接受或达到最大迭代，停止纠正");
             result.context = retrieval_results;
             break;
         }
 
         // Step 4: 执行纠正
-        RAG_LOG_INFO("检索质量不足，执行纠正...");
+        RAG_INFO("检索质量不足，执行纠正...");
         stats_.corrections_performed++;
 
         std::string new_query = perform_correction(current_query, evaluation, iteration);
         if (new_query == current_query) {
-            RAG_LOG_WARN("纠正未产生新查询，停止迭代");
+            RAG_WARN("纠正未产生新查询，停止迭代");
             result.context = retrieval_results;
             break;
         }
@@ -199,7 +201,7 @@ ModularQueryResult CorrectivePipeline::query(const ModularQuery& query) {
         std::chrono::steady_clock::now() - start_time).count();
     result.success = true;
 
-    RAG_LOG_INFO("CorrectivePipeline 查询完成，迭代: " + std::to_string(stats_.total_iterations) +
+    RAG_INFO("CorrectivePipeline 查询完成，迭代: " + std::to_string(stats_.total_iterations) +
                 "，纠正次数: " + std::to_string(stats_.corrections_performed) +
                 "，检索: " + std::to_string(result.retrieval_time_ms) +
                 "ms，生成: " + std::to_string(result.generation_time_ms) + "ms");
@@ -225,7 +227,7 @@ std::vector<rag::RetrievalResult> CorrectivePipeline::retrieve(
             auto hnsw_results = hnsw_retriever_->retrieve(query, top_k);
             results.insert(results.end(), hnsw_results.begin(), hnsw_results.end());
         } catch (const std::exception& e) {
-            RAG_LOG_ERROR(std::string("HNSW 检索异常: ") + e.what());
+            RAG_ERROR(std::string("HNSW 检索异常: ") + e.what());
         }
     }
 
@@ -235,7 +237,7 @@ std::vector<rag::RetrievalResult> CorrectivePipeline::retrieve(
             auto bm25_results = bm25_retriever_->retrieve(query, top_k);
             results.insert(results.end(), bm25_results.begin(), bm25_results.end());
         } catch (const std::exception& e) {
-            RAG_LOG_ERROR(std::string("BM25 检索异常: ") + e.what());
+            RAG_ERROR(std::string("BM25 检索异常: ") + e.what());
         }
     }
 
@@ -258,7 +260,7 @@ rag::ReflectionResult CorrectivePipeline::evaluate_retrieval_quality(
 
     // 调用 LLM 进行评估
     if (!llm_ || !llm_->is_loaded()) {
-        RAG_LOG_ERROR("LLM 服务不可用");
+        RAG_ERROR("LLM 服务不可用");
         rag::ReflectionResult error_result;
         return error_result;
     }
@@ -274,7 +276,7 @@ rag::ReflectionResult CorrectivePipeline::evaluate_retrieval_quality(
             return parse_evaluation_response(eval_result.text);
         }
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("质量评估异常: ") + e.what());
+        RAG_ERROR(std::string("质量评估异常: ") + e.what());
     }
 
     rag::ReflectionResult fallback_result;
@@ -294,7 +296,7 @@ std::string CorrectivePipeline::perform_correction(
     std::string prompt = build_correction_prompt(query, evaluation);
 
     if (!llm_ || !llm_->is_loaded()) {
-        RAG_LOG_ERROR("LLM 服务不可用，无法执行纠正");
+        RAG_ERROR("LLM 服务不可用，无法执行纠正");
         return query;
     }
 
@@ -308,12 +310,12 @@ std::string CorrectivePipeline::perform_correction(
         if (result.finished && !result.text.empty()) {
             std::string new_query = trim_string(result.text);
             if (!new_query.empty() && new_query != query) {
-                RAG_LOG_INFO("纠正成功: " + query + " -> " + new_query);
+                RAG_INFO("纠正成功: " + query + " -> " + new_query);
                 return new_query;
             }
         }
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("纠正执行异常: ") + e.what());
+        RAG_ERROR(std::string("纠正执行异常: ") + e.what());
     }
 
     return query;
@@ -373,7 +375,7 @@ rag::ReflectionResult CorrectivePipeline::parse_evaluation_response(
 
     try {
         // 简单的 JSON 解析
-        std::regex re(R"("(\w+)":\s*([0-9.]+))");
+        std::regex re(R"RX("(\w+)":\s*([0-9.]+))RX");
         std::sregex_iterator it(response.begin(), response.end(), re);
         std::sregex_iterator end;
 
@@ -410,7 +412,7 @@ rag::ReflectionResult CorrectivePipeline::parse_evaluation_response(
             }
         }
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("评估结果解析异常: ") + e.what());
+        RAG_ERROR(std::string("评估结果解析异常: ") + e.what());
     }
 
     return result;

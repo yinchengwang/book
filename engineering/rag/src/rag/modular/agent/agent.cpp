@@ -152,7 +152,7 @@ ReActStep Agent::think(const std::string& query, const std::vector<ReActStep>& h
     prompt << "Current query: " << query << "\n\n";
 
     // 添加输出格式说明
-    prompt << R"(
+    prompt << R"JSON(
 Output your response in JSON format with the following fields:
 {
     "thought": "your reasoning about what to do next",
@@ -164,7 +164,7 @@ Output your response in JSON format with the following fields:
 Examples:
 - To search for information: {"thought": "I need to search for...", "action": "vector_search", "action_input": "{\"query\": \"search terms\"}", "is_final": false}
 - To finish: {"thought": "I have enough information", "action": "finish", "action_input": "The final answer is...", "is_final": true}
-)";
+)JSON";
 
     // 调用 LLM 生成
     rag::GenerateOptions options;

@@ -9,6 +9,8 @@
 #include "rag/logger.h"
 #include <chrono>
 #include <algorithm>
+#include <regex>
+#include <unordered_set>
 #include <cctype>
 
 namespace rag::modular {
@@ -43,7 +45,7 @@ RecursivePipeline::RecursivePipeline()
 RecursivePipeline::~RecursivePipeline() = default;
 
 bool RecursivePipeline::init(const ModularConfig& config) {
-    RAG_LOG_INFO("初始化 RecursivePipeline...");
+    RAG_INFO("初始化 RecursivePipeline...");
 
     // 保存配置
     config_ = config;
@@ -53,14 +55,14 @@ bool RecursivePipeline::init(const ModularConfig& config) {
         llm_ = rag::create_llm_service();
         if (llm_) {
             llm_->load(config.llm.model_path, config.llm);
-            RAG_LOG_INFO("LLM 模型加载完成: " + config.llm.model_path);
+            RAG_INFO("LLM 模型加载完成: " + config.llm.model_path);
         } else {
-            RAG_LOG_WARN("LLM 服务创建失败");
+            RAG_WARN("LLM 服务创建失败");
         }
     }
 
     initialized_ = true;
-    RAG_LOG_INFO("RecursivePipeline 初始化完成");
+    RAG_INFO("RecursivePipeline 初始化完成");
     return true;
 }
 
@@ -76,26 +78,26 @@ ModularQueryResult RecursivePipeline::query(const ModularQuery& query) {
     // 检查是否就绪
     if (!is_ready()) {
         result.error_message = "Pipeline 未就绪，请先调用 init() 或设置必要的检索器";
-        RAG_LOG_ERROR(result.error_message);
+        RAG_ERROR(result.error_message);
         return result;
     }
 
-    RAG_LOG_INFO("RecursivePipeline 开始处理查询: " + query.text);
+    RAG_INFO("RecursivePipeline 开始处理查询: " + query.text);
 
     // Step 1: 评估查询复杂度
     float complexity = evaluate_complexity(query.text);
     stats_.avg_complexity = (stats_.avg_complexity + complexity) / 2;
 
-    RAG_LOG_INFO("查询复杂度: " + std::to_string(complexity));
+    RAG_INFO("查询复杂度: " + std::to_string(complexity));
 
     // Step 2: 分解查询
     auto decomposition = decompose_query(query.text);
 
     if (decomposition.needs_decomposition) {
-        RAG_LOG_INFO("查询已分解为 " + std::to_string(decomposition.sub_queries.size()) +
+        RAG_INFO("查询已分解为 " + std::to_string(decomposition.sub_queries.size()) +
                     " 个子问题");
     } else {
-        RAG_LOG_INFO("查询不需要分解，直接检索");
+        RAG_INFO("查询不需要分解，直接检索");
     }
 
     // Step 3: 检索子问题
@@ -154,7 +156,7 @@ ModularQueryResult RecursivePipeline::query(const ModularQuery& query) {
         std::chrono::steady_clock::now() - start_time).count();
     result.success = true;
 
-    RAG_LOG_INFO("RecursivePipeline 查询完成，子问题数: " +
+    RAG_INFO("RecursivePipeline 查询完成，子问题数: " +
                 std::to_string(decomposition.sub_queries.size()) +
                 "，检索结果数: " + std::to_string(result.context.size()) +
                 "，生成: " + std::to_string(result.generation_time_ms) + "ms");
@@ -198,7 +200,7 @@ float RecursivePipeline::evaluate_complexity(const std::string& query) {
     complexity += std::min(0.3f, keyword_count * 0.1f);
 
     // 包含多个问题
-    int question_marks = std::count(query.begin(), query.end(), '？');
+    int question_marks = std::count(query.begin(), query.end(), L'？');
     question_marks += std::count(query.begin(), query.end(), '?');
     if (question_marks > 1) complexity += 0.2f;
 
@@ -233,7 +235,7 @@ DecompositionResult RecursivePipeline::decompose_query(const std::string& query)
 
     // 调用 LLM 进行分解
     if (!llm_ || !llm_->is_loaded()) {
-        RAG_LOG_WARN("LLM 不可用，使用简单分解");
+        RAG_WARN("LLM 不可用，使用简单分解");
         // 简单的基于规则的分解
         result.needs_decomposition = true;
         result.reason = "使用简单分解（LLM 不可用）";
@@ -262,7 +264,7 @@ DecompositionResult RecursivePipeline::decompose_query(const std::string& query)
             return result;
         }
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("查询分解异常: ") + e.what());
+        RAG_ERROR(std::string("查询分解异常: ") + e.what());
     }
 
     // 分解失败，返回简单分解
@@ -288,7 +290,7 @@ void RecursivePipeline::retrieve_sub_queries(std::vector<SubQuery>& sub_queries,
     for (auto& sq : sub_queries) {
         if (sq.results.empty()) {
             sq.results = retrieve(sq.text, top_k);
-            RAG_LOG_INFO("子问题 " + std::to_string(sq.id) +
+            RAG_INFO("子问题 " + std::to_string(sq.id) +
                         " 检索到 " + std::to_string(sq.results.size()) + " 个结果");
         }
 
@@ -339,7 +341,7 @@ std::vector<rag::RetrievalResult> RecursivePipeline::retrieve(
             auto hnsw_results = hnsw_retriever_->retrieve(query, top_k);
             results.insert(results.end(), hnsw_results.begin(), hnsw_results.end());
         } catch (const std::exception& e) {
-            RAG_LOG_ERROR(std::string("HNSW 检索异常: ") + e.what());
+            RAG_ERROR(std::string("HNSW 检索异常: ") + e.what());
         }
     }
 
@@ -349,7 +351,7 @@ std::vector<rag::RetrievalResult> RecursivePipeline::retrieve(
             auto bm25_results = bm25_retriever_->retrieve(query, top_k);
             results.insert(results.end(), bm25_results.begin(), bm25_results.end());
         } catch (const std::exception& e) {
-            RAG_LOG_ERROR(std::string("BM25 检索异常: ") + e.what());
+            RAG_ERROR(std::string("BM25 检索异常: ") + e.what());
         }
     }
 
@@ -419,7 +421,7 @@ DecompositionResult RecursivePipeline::parse_decomposition_response(
         }
 
         // 解析 reason
-        std::regex reason_re(R"("reason"\s*:\s*"([^"]*)")", std::regex::icase);
+        std::regex reason_re(R"RX("reason"\s*:\s*"([^"]*)")RX", std::regex::icase);
         auto reason_it = std::sregex_iterator(response.begin(), response.end(), reason_re);
         if (reason_it != std::sregex_iterator()) {
             result.reason = (*reason_it)[1].str();
@@ -427,7 +429,7 @@ DecompositionResult RecursivePipeline::parse_decomposition_response(
 
         // 解析 sub_queries
         // 简单的子问题解析
-        std::regex text_re(R"("text"\s*:\s*"([^"]*)")", std::regex::icase);
+        std::regex text_re(R"RX("text"\s*:\s*"([^"]*)")RX", std::regex::icase);
         auto text_it = std::sregex_iterator(response.begin(), response.end(), text_re);
 
         int id = 1;
@@ -470,7 +472,7 @@ DecompositionResult RecursivePipeline::parse_decomposition_response(
         }
 
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("分解结果解析异常: ") + e.what());
+        RAG_ERROR(std::string("分解结果解析异常: ") + e.what());
         // 解析失败，返回简单结果
         result.needs_decomposition = false;
         result.reason = "解析失败";

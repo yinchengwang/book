@@ -10,6 +10,7 @@
 #include <chrono>
 #include <algorithm>
 #include <cctype>
+#include <regex>
 
 namespace rag::modular {
 
@@ -41,7 +42,7 @@ IterativePipeline::IterativePipeline()
 IterativePipeline::~IterativePipeline() = default;
 
 bool IterativePipeline::init(const ModularConfig& config) {
-    RAG_LOG_INFO("初始化 IterativePipeline...");
+    RAG_INFO("初始化 IterativePipeline...");
 
     // 保存配置
     config_ = config;
@@ -51,14 +52,14 @@ bool IterativePipeline::init(const ModularConfig& config) {
         llm_ = rag::create_llm_service();
         if (llm_) {
             llm_->load(config.llm.model_path, config.llm);
-            RAG_LOG_INFO("LLM 模型加载完成: " + config.llm.model_path);
+            RAG_INFO("LLM 模型加载完成: " + config.llm.model_path);
         } else {
-            RAG_LOG_WARN("LLM 服务创建失败");
+            RAG_WARN("LLM 服务创建失败");
         }
     }
 
     initialized_ = true;
-    RAG_LOG_INFO("IterativePipeline 初始化完成");
+    RAG_INFO("IterativePipeline 初始化完成");
     return true;
 }
 
@@ -74,7 +75,7 @@ ModularQueryResult IterativePipeline::query(const ModularQuery& query) {
     // 检查是否就绪
     if (!is_ready()) {
         result.error_message = "Pipeline 未就绪，请先调用 init() 或设置必要的检索器";
-        RAG_LOG_ERROR(result.error_message);
+        RAG_ERROR(result.error_message);
         return result;
     }
 
@@ -84,13 +85,13 @@ ModularQueryResult IterativePipeline::query(const ModularQuery& query) {
     int64_t total_retrieval_time = 0;
     int64_t total_evaluation_time = 0;
 
-    RAG_LOG_INFO("IterativePipeline 开始处理查询: " + query.text);
+    RAG_INFO("IterativePipeline 开始处理查询: " + query.text);
 
     // 迭代循环
     for (int iteration = 0; iteration < max_iterations_; ++iteration) {
         stats_.total_iterations++;
 
-        RAG_LOG_INFO("IterativePipeline 迭代 " + std::to_string(iteration + 1) +
+        RAG_INFO("IterativePipeline 迭代 " + std::to_string(iteration + 1) +
                     "，查询: " + current_query);
 
         // Step 1: 执行检索
@@ -134,7 +135,7 @@ ModularQueryResult IterativePipeline::query(const ModularQuery& query) {
         stats_.avg_sufficiency_score = (stats_.avg_sufficiency_score * iteration +
                                         evaluation.sufficiency_score) / (iteration + 1);
 
-        RAG_LOG_INFO("充分性评估 - 分数: " + std::to_string(evaluation.sufficiency_score) +
+        RAG_INFO("充分性评估 - 分数: " + std::to_string(evaluation.sufficiency_score) +
                     "，足够: " + (evaluation.is_sufficient ? "是" : "否") +
                     "，原因: " + evaluation.reason);
 
@@ -150,7 +151,7 @@ ModularQueryResult IterativePipeline::query(const ModularQuery& query) {
             if (!new_query.empty() && new_query != current_query) {
                 current_query = new_query;
                 stats_.rewrite_count++;
-                RAG_LOG_INFO("查询已改写: " + current_query);
+                RAG_INFO("查询已改写: " + current_query);
             }
         }
     }
@@ -186,7 +187,7 @@ ModularQueryResult IterativePipeline::query(const ModularQuery& query) {
         std::chrono::steady_clock::now() - start_time).count();
     result.success = true;
 
-    RAG_LOG_INFO("IterativePipeline 查询完成，迭代: " + std::to_string(stats_.total_iterations) +
+    RAG_INFO("IterativePipeline 查询完成，迭代: " + std::to_string(stats_.total_iterations) +
                 "，改写次数: " + std::to_string(stats_.rewrite_count) +
                 "，检索: " + std::to_string(result.retrieval_time_ms) +
                 "ms，生成: " + std::to_string(result.generation_time_ms) + "ms");
@@ -212,7 +213,7 @@ std::vector<rag::RetrievalResult> IterativePipeline::retrieve(
             auto hnsw_results = hnsw_retriever_->retrieve(query, top_k);
             results.insert(results.end(), hnsw_results.begin(), hnsw_results.end());
         } catch (const std::exception& e) {
-            RAG_LOG_ERROR(std::string("HNSW 检索异常: ") + e.what());
+            RAG_ERROR(std::string("HNSW 检索异常: ") + e.what());
         }
     }
 
@@ -222,7 +223,7 @@ std::vector<rag::RetrievalResult> IterativePipeline::retrieve(
             auto bm25_results = bm25_retriever_->retrieve(query, top_k);
             results.insert(results.end(), bm25_results.begin(), bm25_results.end());
         } catch (const std::exception& e) {
-            RAG_LOG_ERROR(std::string("BM25 检索异常: ") + e.what());
+            RAG_ERROR(std::string("BM25 检索异常: ") + e.what());
         }
     }
 
@@ -254,7 +255,7 @@ IterativeEvaluation IterativePipeline::evaluate_sufficiency(
 
     // 调用 LLM 进行评估
     if (!llm_ || !llm_->is_loaded()) {
-        RAG_LOG_ERROR("LLM 服务不可用");
+        RAG_ERROR("LLM 服务不可用");
         IterativeEvaluation error_eval;
         return error_eval;
     }
@@ -270,7 +271,7 @@ IterativeEvaluation IterativePipeline::evaluate_sufficiency(
             return parse_evaluation_response(eval_result.text);
         }
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("充分性评估异常: ") + e.what());
+        RAG_ERROR(std::string("充分性评估异常: ") + e.what());
     }
 
     IterativeEvaluation fallback;
@@ -285,7 +286,7 @@ std::string IterativePipeline::rewrite_query(
     std::string prompt = build_rewrite_prompt(original_query, current_query, evaluation);
 
     if (!llm_ || !llm_->is_loaded()) {
-        RAG_LOG_ERROR("LLM 服务不可用，无法改写查询");
+        RAG_ERROR("LLM 服务不可用，无法改写查询");
         return current_query;
     }
 
@@ -299,12 +300,12 @@ std::string IterativePipeline::rewrite_query(
         if (result.finished && !result.text.empty()) {
             std::string new_query = trim_string(result.text);
             if (!new_query.empty()) {
-                RAG_LOG_INFO("查询改写成功: " + current_query + " -> " + new_query);
+                RAG_INFO("查询改写成功: " + current_query + " -> " + new_query);
                 return new_query;
             }
         }
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("查询改写异常: ") + e.what());
+        RAG_ERROR(std::string("查询改写异常: ") + e.what());
     }
 
     return current_query;
@@ -380,14 +381,14 @@ IterativeEvaluation IterativePipeline::parse_evaluation_response(
         }
 
         // 尝试提取 reason 字段
-        std::regex reason_re(R"("reason"\s*:\s*"([^"]*)")", std::regex::icase);
+        std::regex reason_re(R"RX("reason"\s*:\s*"([^"]*)")RX", std::regex::icase);
         auto reason_it = std::sregex_iterator(response.begin(), response.end(), reason_re);
         if (reason_it != std::sregex_iterator()) {
             result.reason = (*reason_it)[1].str();
         }
 
         // 尝试提取 suggestion 字段
-        std::regex suggestion_re(R"("suggestion"\s*:\s*"([^"]*)")", std::regex::icase);
+        std::regex suggestion_re(R"RX("suggestion"\s*:\s*"([^"]*)")RX", std::regex::icase);
         auto suggestion_it = std::sregex_iterator(response.begin(), response.end(), suggestion_re);
         if (suggestion_it != std::sregex_iterator()) {
             result.suggested_improvement = (*suggestion_it)[1].str();
@@ -404,7 +405,7 @@ IterativeEvaluation IterativePipeline::parse_evaluation_response(
         }
 
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("评估结果解析异常: ") + e.what());
+        RAG_ERROR(std::string("评估结果解析异常: ") + e.what());
         // 解析失败时返回保守估计
         result.is_sufficient = false;
         result.sufficiency_score = 0.3f;

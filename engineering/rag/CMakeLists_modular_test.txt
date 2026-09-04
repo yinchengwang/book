@@ -1,0 +1,48 @@
+# 最小化编译测试 - 仅验证 modular 模块语法
+cmake_minimum_required(VERSION 3.20)
+project(rag_modular_test LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# nlohmann/json - 从已下载的位置使用
+find_package(nlohmann_json QUIET PATHS build/_deps/nlohmann_json-src NO_DEFAULT_PATH)
+if(NOT nlohmann_json_FOUND)
+    message(STATUS "使用内置 JSON 头文件")
+endif()
+
+# 添加核心库
+add_library(rag_modular_core_test STATIC
+    src/rag/modular/types.cpp
+    src/rag/modular/agent/tool.cpp
+    src/rag/modular/agent/agent.cpp
+    src/rag/modular/agent/memory.cpp
+    src/rag/modular/pipeline/pipeline_base.cpp
+    src/rag/modular/pipeline/pipeline_factory.cpp
+    src/rag/modular/pipeline/naive_pipeline.cpp
+    src/rag/modular/pipeline/advanced_pipeline.cpp
+    src/rag/modular/pipeline/hybrid_pipeline.cpp
+    src/rag/modular/pipeline/hyde_pipeline.cpp
+    src/rag/modular/pipeline/graph_pipeline.cpp
+    src/rag/modular/pipeline/corrective_pipeline.cpp
+    src/rag/modular/pipeline/react_pipeline.cpp
+    src/rag/modular/pipeline/iterative_pipeline.cpp
+    src/rag/modular/pipeline/recursive_pipeline.cpp
+    src/rag/modular/api/server.cpp
+)
+
+# 包含路径
+target_include_directories(rag_modular_core_test PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/build/_deps/nlohmann_json-src/include
+)
+
+# Threads
+find_package(Threads QUIET)
+
+# 链接 nlohmann_json
+if(nlohmann_json_FOUND)
+    target_link_libraries(rag_modular_core_test PUBLIC nlohmann_json::nlohmann_json)
+endif()
+
+message(STATUS "Modular RAG 编译测试已配置")

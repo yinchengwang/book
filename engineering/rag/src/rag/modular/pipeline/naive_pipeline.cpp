@@ -16,7 +16,7 @@ NaivePipeline::NaivePipeline() : initialized_(false) {}
 NaivePipeline::~NaivePipeline() = default;
 
 bool NaivePipeline::init(const ModularConfig& config) {
-    RAG_LOG_INFO("初始化 NaivePipeline...");
+    RAG_INFO("初始化 NaivePipeline...");
 
     // 保存配置
     config_ = config;
@@ -26,14 +26,14 @@ bool NaivePipeline::init(const ModularConfig& config) {
         llm_ = rag::create_llm_service();
         if (llm_) {
             llm_->load(config.llm.model_path, config.llm);
-            RAG_LOG_INFO("LLM 模型加载完成: " + config.llm.model_path);
+            RAG_INFO("LLM 模型加载完成: " + config.llm.model_path);
         } else {
-            RAG_LOG_WARN("LLM 服务创建失败");
+            RAG_WARN("LLM 服务创建失败");
         }
     }
 
     initialized_ = true;
-    RAG_LOG_INFO("NaivePipeline 初始化完成");
+    RAG_INFO("NaivePipeline 初始化完成");
     return true;
 }
 
@@ -48,7 +48,7 @@ ModularQueryResult NaivePipeline::query(const ModularQuery& query) {
     // 检查是否就绪
     if (!is_ready()) {
         result.error_message = "Pipeline 未就绪，请先调用 init()";
-        RAG_LOG_ERROR(result.error_message);
+        RAG_ERROR(result.error_message);
         return result;
     }
 
@@ -60,7 +60,7 @@ ModularQueryResult NaivePipeline::query(const ModularQuery& query) {
         std::chrono::steady_clock::now() - retrieval_start).count();
 
     if (retrieval_results.empty()) {
-        RAG_LOG_WARN("检索结果为空: " + query.text);
+        RAG_WARN("检索结果为空: " + query.text);
         result.success = true;
         result.answer = "抱歉，未找到与您查询相关的文档内容。";
         result.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -94,7 +94,7 @@ ModularQueryResult NaivePipeline::query(const ModularQuery& query) {
         std::chrono::steady_clock::now() - start_time).count();
     result.success = true;
 
-    RAG_LOG_INFO("NaivePipeline 查询完成，检索: " + std::to_string(result.retrieval_time_ms) +
+    RAG_INFO("NaivePipeline 查询完成，检索: " + std::to_string(result.retrieval_time_ms) +
                 "ms, 生成: " + std::to_string(result.generation_time_ms) + "ms");
 
     return result;
@@ -107,14 +107,14 @@ void NaivePipeline::set_hnsw_retriever(std::shared_ptr<rag::HNSWRetriever> retri
 std::vector<rag::RetrievalResult> NaivePipeline::retrieve_vectors(
     const std::string& query, int top_k) {
     if (!hnsw_retriever_) {
-        RAG_LOG_ERROR("HNSW 检索器未设置");
+        RAG_ERROR("HNSW 检索器未设置");
         return {};
     }
 
     try {
         return hnsw_retriever_->retrieve(query, top_k);
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("向量检索异常: ") + e.what());
+        RAG_ERROR(std::string("向量检索异常: ") + e.what());
         return {};
     }
 }

@@ -46,7 +46,7 @@ ReActPipeline::ReActPipeline()
 ReActPipeline::~ReActPipeline() = default;
 
 bool ReActPipeline::init(const ModularConfig& config) {
-    RAG_LOG_INFO("初始化 ReActPipeline...");
+    RAG_INFO("初始化 ReActPipeline...");
 
     // 保存配置
     config_ = config;
@@ -56,9 +56,9 @@ bool ReActPipeline::init(const ModularConfig& config) {
         llm_ = rag::create_llm_service();
         if (llm_) {
             llm_->load(config.llm.model_path, config.llm);
-            RAG_LOG_INFO("LLM 模型加载完成: " + config.llm.model_path);
+            RAG_INFO("LLM 模型加载完成: " + config.llm.model_path);
         } else {
-            RAG_LOG_WARN("LLM 服务创建失败");
+            RAG_WARN("LLM 服务创建失败");
         }
     }
 
@@ -90,14 +90,14 @@ bool ReActPipeline::init(const ModularConfig& config) {
         agent_->register_tool(bm25_tool);
     }
 
-    RAG_LOG_INFO("Agent 实例创建并注册 Tools 完成");
+    RAG_INFO("Agent 实例创建并注册 Tools 完成");
 #else
     // 使用占位符 Agent (简单基于规则的实现)
-    RAG_LOG_INFO("ReActPipeline 使用占位符 Agent (Task 8 待实现)");
+    RAG_INFO("ReActPipeline 使用占位符 Agent (Task 8 待实现)");
 #endif
 
     initialized_ = true;
-    RAG_LOG_INFO("ReActPipeline 初始化完成");
+    RAG_INFO("ReActPipeline 初始化完成");
     return true;
 }
 
@@ -113,7 +113,7 @@ ModularQueryResult ReActPipeline::query(const ModularQuery& query) {
     // 检查是否就绪
     if (!is_ready()) {
         result.error_message = "Pipeline 未就绪，请先调用 init() 或设置必要的检索器";
-        RAG_LOG_ERROR(result.error_message);
+        RAG_ERROR(result.error_message);
         return result;
     }
 
@@ -126,7 +126,7 @@ ModularQueryResult ReActPipeline::query(const ModularQuery& query) {
 
     int top_k = query.top_k > 0 ? query.top_k : config_.retrieval.top_k;
 
-    RAG_LOG_INFO("ReActPipeline 开始处理查询: " + query.text);
+    RAG_INFO("ReActPipeline 开始处理查询: " + query.text);
 
 #ifdef RAG_AGENT_AVAILABLE
     // Task 8: 使用真实 Agent 执行查询
@@ -183,7 +183,7 @@ ModularQueryResult ReActPipeline::query(const ModularQuery& query) {
         std::chrono::steady_clock::now() - start_time).count();
 
     if (result.success) {
-        RAG_LOG_INFO("ReActPipeline 查询完成，迭代: " + std::to_string(stats_.total_iterations) +
+        RAG_INFO("ReActPipeline 查询完成，迭代: " + std::to_string(stats_.total_iterations) +
                     "，检索次数: " + std::to_string(stats_.retrieve_count) +
                     "，精炼次数: " + std::to_string(stats_.refine_count));
     }
@@ -215,7 +215,7 @@ std::vector<rag::RetrievalResult> ReActPipeline::retrieve(
             auto hnsw_results = hnsw_retriever_->retrieve(query, top_k);
             results.insert(results.end(), hnsw_results.begin(), hnsw_results.end());
         } catch (const std::exception& e) {
-            RAG_LOG_ERROR(std::string("HNSW 检索异常: ") + e.what());
+            RAG_ERROR(std::string("HNSW 检索异常: ") + e.what());
         }
     }
 
@@ -225,7 +225,7 @@ std::vector<rag::RetrievalResult> ReActPipeline::retrieve(
             auto bm25_results = bm25_retriever_->retrieve(query, top_k);
             results.insert(results.end(), bm25_results.begin(), bm25_results.end());
         } catch (const std::exception& e) {
-            RAG_LOG_ERROR(std::string("BM25 检索异常: ") + e.what());
+            RAG_ERROR(std::string("BM25 检索异常: ") + e.what());
         }
     }
 
@@ -252,7 +252,7 @@ void ReActPipeline::run_react_loop() {
     for (current_iteration_ = 0; current_iteration_ < max_iterations_; ++current_iteration_) {
         stats_.total_iterations++;
 
-        RAG_LOG_INFO("ReActPipeline 迭代 " + std::to_string(current_iteration_ + 1) +
+        RAG_INFO("ReActPipeline 迭代 " + std::to_string(current_iteration_ + 1) +
                     "，当前查询: " + state_.current_query);
 
         // 决定下一步动作
@@ -264,21 +264,21 @@ void ReActPipeline::run_react_loop() {
         step.action = next_action;
         step.thought = generate_thought(next_action);
 
-        RAG_LOG_INFO("ReAct 步骤 " + std::to_string(step.step_number) +
+        RAG_INFO("ReAct 步骤 " + std::to_string(step.step_number) +
                     " - 思考: " + step.thought.substr(0, 100) + "...");
 
         // 执行动作
         step.action_input = state_.current_query;
         step.observation = execute_action(next_action);
 
-        RAG_LOG_INFO("ReAct 步骤 " + std::to_string(step.step_number) +
+        RAG_INFO("ReAct 步骤 " + std::to_string(step.step_number) +
                     " - 观察: " + step.observation.substr(0, 100) + "...");
 
         state_.steps.push_back(step);
 
         // 检查是否满足
         if (is_satisfied() || next_action == ReActAction::FINISH) {
-            RAG_LOG_INFO("ReAct 循环满足条件，退出");
+            RAG_INFO("ReAct 循环满足条件，退出");
             break;
         }
     }
@@ -415,12 +415,12 @@ std::string ReActPipeline::execute_action(ReActAction action) {
                     if (!new_query.empty() && new_query != state_.current_query) {
                         state_.current_query = new_query;
                         stats_.refine_count++;
-                        RAG_LOG_INFO("查询优化: " + state_.current_query);
+                        RAG_INFO("查询优化: " + state_.current_query);
                         return "查询已优化为: " + new_query;
                     }
                 }
             } catch (const std::exception& e) {
-                RAG_LOG_ERROR(std::string("查询优化异常: ") + e.what());
+                RAG_ERROR(std::string("查询优化异常: ") + e.what());
             }
 
             return "查询优化未产生变化";
@@ -479,7 +479,7 @@ std::string ReActPipeline::build_final_answer() {
 
         return generate_with_llm(prompt.str(), options);
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("生成回答异常: ") + e.what());
+        RAG_ERROR(std::string("生成回答异常: ") + e.what());
         return "生成回答时发生错误。";
     }
 }

@@ -8,6 +8,7 @@
 #include "rag/modular/pipeline/graph_pipeline.h"
 #include "rag/logger.h"
 #include <chrono>
+#include <algorithm>
 
 namespace rag::modular {
 
@@ -26,7 +27,7 @@ GraphPipeline::GraphPipeline()
 GraphPipeline::~GraphPipeline() = default;
 
 bool GraphPipeline::init(const ModularConfig& config) {
-    RAG_LOG_INFO("初始化 GraphPipeline...");
+    RAG_INFO("初始化 GraphPipeline...");
 
     // 保存配置
     config_ = config;
@@ -36,14 +37,14 @@ bool GraphPipeline::init(const ModularConfig& config) {
         llm_ = rag::create_llm_service();
         if (llm_) {
             llm_->load(config.llm.model_path, config.llm);
-            RAG_LOG_INFO("LLM 模型加载完成: " + config.llm.model_path);
+            RAG_INFO("LLM 模型加载完成: " + config.llm.model_path);
         } else {
-            RAG_LOG_WARN("LLM 服务创建失败");
+            RAG_WARN("LLM 服务创建失败");
         }
     }
 
     initialized_ = true;
-    RAG_LOG_INFO("GraphPipeline 初始化完成");
+    RAG_INFO("GraphPipeline 初始化完成");
     return true;
 }
 
@@ -59,7 +60,7 @@ ModularQueryResult GraphPipeline::query(const ModularQuery& query) {
     // 检查是否就绪
     if (!is_ready()) {
         result.error_message = "Pipeline 未就绪，请先调用 init() 或设置必要的组件";
-        RAG_LOG_ERROR(result.error_message);
+        RAG_ERROR(result.error_message);
         return result;
     }
 
@@ -71,7 +72,7 @@ ModularQueryResult GraphPipeline::query(const ModularQuery& query) {
     int64_t extraction_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - extraction_start).count();
 
-    RAG_LOG_INFO("实体提取完成，提取到 " + std::to_string(entities.size()) +
+    RAG_INFO("实体提取完成，提取到 " + std::to_string(entities.size()) +
                 " 个实体，耗时: " + std::to_string(extraction_time_ms) + "ms");
 
     // Step 2: 执行图检索
@@ -97,7 +98,7 @@ ModularQueryResult GraphPipeline::query(const ModularQuery& query) {
 
     // Step 3: 检查是否有检索结果
     if (graph_result.chunks.empty() && vector_results.empty()) {
-        RAG_LOG_WARN("图检索和向量检索结果都为空");
+        RAG_WARN("图检索和向量检索结果都为空");
         result.success = true;
         result.answer = "抱歉，未找到与您查询相关的文档内容。";
         result.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -144,7 +145,7 @@ ModularQueryResult GraphPipeline::query(const ModularQuery& query) {
         std::chrono::steady_clock::now() - start_time).count();
     result.success = true;
 
-    RAG_LOG_INFO("GraphPipeline 查询完成，实体提取: " + std::to_string(extraction_time_ms) +
+    RAG_INFO("GraphPipeline 查询完成，实体提取: " + std::to_string(extraction_time_ms) +
                 "ms, 检索: " + std::to_string(retrieval_time_ms) +
                 "ms, 生成: " + std::to_string(result.generation_time_ms) + "ms");
 
@@ -165,17 +166,17 @@ void GraphPipeline::set_hnsw_retriever(std::shared_ptr<rag::HNSWRetriever> retri
 
 std::vector<rag::KGEntity> GraphPipeline::extract_entities(const std::string& query) {
     if (!entity_extractor_) {
-        RAG_LOG_WARN("实体提取器未设置");
+        RAG_WARN("实体提取器未设置");
         return {};
     }
 
     try {
         auto extraction_result = entity_extractor_->extract(query, "query_" + query);
-        RAG_LOG_DEBUG("提取到 " + std::to_string(extraction_result.entities.size()) +
+        RAG_DEBUG("提取到 " + std::to_string(extraction_result.entities.size()) +
                      " 个实体");
         return extraction_result.entities;
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("实体提取异常: ") + e.what());
+        RAG_ERROR(std::string("实体提取异常: ") + e.what());
         return {};
     }
 }
@@ -184,7 +185,7 @@ rag::GraphRetrievalResult GraphPipeline::retrieve_graph(
     const std::vector<rag::KGEntity>& entities,
     const rag::RetrievalConfig& config) {
     if (!graph_retriever_) {
-        RAG_LOG_ERROR("Graph 检索器未设置");
+        RAG_ERROR("Graph 检索器未设置");
         return {};
     }
 
@@ -204,11 +205,11 @@ rag::GraphRetrievalResult GraphPipeline::retrieve_graph(
         }
 
         auto result = graph_retriever_->retrieve(oss.str(), config);
-        RAG_LOG_DEBUG("Graph 检索到 " + std::to_string(result.chunks.size()) +
+        RAG_DEBUG("Graph 检索到 " + std::to_string(result.chunks.size()) +
                      " 个 chunks");
         return result;
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("Graph 检索异常: ") + e.what());
+        RAG_ERROR(std::string("Graph 检索异常: ") + e.what());
         return {};
     }
 }
@@ -222,7 +223,7 @@ std::vector<rag::RetrievalResult> GraphPipeline::retrieve_vectors(
     try {
         return hnsw_retriever_->retrieve(query, top_k);
     } catch (const std::exception& e) {
-        RAG_LOG_ERROR(std::string("向量检索异常: ") + e.what());
+        RAG_ERROR(std::string("向量检索异常: ") + e.what());
         return {};
     }
 }
@@ -243,8 +244,8 @@ std::string GraphPipeline::build_graph_context(
         oss << "【相关实体】\n";
         for (const auto& entity : subgraph.entities) {
             oss << "- " << entity.name;
-            if (!entity.type.empty()) {
-                oss << " (" << entity.type << ")";
+            if (entity.type != rag::EntityType::UNKNOWN) {
+                oss << " (type:" << static_cast<int>(entity.type) << ")";
             }
             if (!entity.description.empty()) {
                 oss << ": " << entity.description;
@@ -258,8 +259,8 @@ std::string GraphPipeline::build_graph_context(
     if (!subgraph.relations.empty()) {
         oss << "【相关关系】\n";
         for (const auto& relation : subgraph.relations) {
-            oss << "- " << relation.source << " --[" << relation.type << "]--> "
-                << relation.target;
+            oss << "- " << relation.source_id << " --[" << relation.type << "]--> "
+                << relation.target_id;
             if (!relation.description.empty()) {
                 oss << ": " << relation.description;
             }
