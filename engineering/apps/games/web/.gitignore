@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.wasm-cache/
+*.log
+.env
+.env.local
+playwright-report/
+test-results/
