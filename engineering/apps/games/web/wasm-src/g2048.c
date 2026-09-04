@@ -264,3 +264,14 @@ bool g2048_can_move(const G2048Game *g) {
 
     return false;
 }
+
+void g2048_set(G2048Game *g, const int tiles[16], int score) {
+    if (g == NULL || tiles == NULL) {
+        return;
+    }
+    for (int i = 0; i < BOARD_SIZE * BOARD_SIZE; i++) {
+        g->board[i / BOARD_SIZE][i % BOARD_SIZE] = tiles[i];
+    }
+    g->score = score;
+    update_status(g);
+}

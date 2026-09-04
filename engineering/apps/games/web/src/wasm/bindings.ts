@@ -34,6 +34,20 @@ export const g2048 = {
     const m = await loadWasm();
     return m._g2048_can_move_js() === 1;
   },
+  async setBoard(tiles: number[], score: number): Promise<void> {
+    const m = await loadWasm();
+    const size = 16;
+    const ptr = m._malloc(size * 4);
+    try {
+      const heap32 = new Int32Array(m.HEAPU8.buffer);
+      for (let i = 0; i < size; i++) {
+        heap32[(ptr >> 2) + i] = tiles[i] | 0;
+      }
+      m._g2048_set_js(ptr, score);
+    } finally {
+      m._free(ptr);
+    }
+  },
 };
 
 export const snake = {

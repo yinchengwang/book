@@ -27,7 +27,7 @@ function safeSetNumber(key: string, value: number): void {
 }
 
 export function Game2048() {
-  const { board, error, newGame, move } = useG2048();
+  const { board, error, newGame, move, undo, canUndo } = useG2048();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [highScore, setHighScore] = useState<number>(() =>
     safeGetNumber(HIGH_SCORE_KEY, 0)
@@ -75,10 +75,14 @@ export function Game2048() {
       if (e.key === 'r' || e.key === 'R') {
         handleNewGame();
       }
+      if (e.key === 'u' || e.key === 'U') {
+        e.preventDefault();
+        undo();
+      }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [move, handleNewGame]);
+  }, [move, handleNewGame, undo]);
 
   if (error) {
     return (
@@ -128,11 +132,12 @@ export function Game2048() {
           </div>
         )}
       </div>
-      <div className="text-center mt-4">
+      <div className="text-center mt-4 flex items-center justify-center gap-2">
         <Button onClick={handleNewGame}>新游戏 (R)</Button>
+        <Button onClick={undo} disabled={!canUndo}>撤销 (U)</Button>
       </div>
       <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-4">
-        WASD 或方向键移动 · R 重新开始
+        WASD 或方向键移动 · R 重新开始 · U 撤销
       </p>
     </div>
   );

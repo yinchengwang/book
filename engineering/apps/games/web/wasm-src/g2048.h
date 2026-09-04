@@ -18,5 +18,6 @@ void g2048_init(G2048Game *g, int seed);
 int g2048_move(G2048Game *g, G2048Dir dir);
 int g2048_tile_at(const G2048Game *g, int row, int col);
 bool g2048_can_move(const G2048Game *g);
+void g2048_set(G2048Game *g, const int tiles[16], int score);
 
 #endif

@@ -41,6 +41,11 @@ int g2048_can_move_js(void) {
     return g2048_can_move(&g_state) ? 1 : 0;
 }
 
+EMSCRIPTEN_KEEPALIVE
+void g2048_set_js(const int *tiles, int score) {
+    g2048_set(&g_state, tiles, score);
+}
+
 /* —— snake —— */
 
 static SnakeGame s_state;

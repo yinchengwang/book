@@ -7,6 +7,11 @@ export interface G2048Exports {
   _g2048_game_over_js(): number;
   _g2048_won_js(): number;
   _g2048_can_move_js(): number;
+  _g2048_set_js(tiles: number, score: number): void;
+  _malloc(size: number): number;
+  _free(ptr: number): void;
+  HEAPU8: Uint8Array;
+  HEAP32: Int32Array;
 }
 
 export interface SnakeExports {
