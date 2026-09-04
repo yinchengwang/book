@@ -7,7 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      '@shared': path.resolve(__dirname, '../shared/web/src'), // 跨项目共享
+      '@shared': path.resolve(__dirname, './shared/web/src'), // shared code inside web/ (MVP-1); cross-project sharing deferred
     },
   },
   server: {
