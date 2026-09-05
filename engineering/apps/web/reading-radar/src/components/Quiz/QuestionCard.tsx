@@ -69,7 +69,7 @@ export function QuestionCard({ question: q, index, total, onAnswer }: QuestionCa
         </pre>
       )}
 
-      {q.options.length > 0 ? (
+      {q.options && q.options.length > 0 ? (
         <ul className="space-y-2 mb-4">
           {q.options.map((opt, i) => {
             const correct = answerMatches(q, opt);

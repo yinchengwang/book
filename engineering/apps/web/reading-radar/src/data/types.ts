@@ -44,7 +44,8 @@ export interface Question {
   scenario: string;
   stem: string;
   code?: string;
-  options: string[];
+  /** Optional: true_false / fill_blank 等题型在真实题库中没有 options 字段. */
+  options?: string[];
   answer: string | string[] | boolean;
   explanation: string;
   quadrant?: Quadrant;
