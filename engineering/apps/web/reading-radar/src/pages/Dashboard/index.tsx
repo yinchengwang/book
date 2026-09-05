@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Card } from '@shared/ui/Card';
 import { safeGet } from '@shared/storage/safeStorage';
 import { loadAllTechItems } from '@/data/tech';
 import type { TechCategory, TechItem } from '@/data/types';
@@ -121,7 +122,7 @@ export function Dashboard() {
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Mastery rate */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-5">
+        <Card className="p-5">
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
             总掌握率
           </p>
@@ -131,10 +132,10 @@ export function Dashboard() {
           <p className="text-xs text-gray-400 mt-2">
             {totalMastered} / {totalItems} 个知识点
           </p>
-        </div>
+        </Card>
 
         {/* Learning */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-5">
+        <Card className="p-5">
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
             学习中
           </p>
@@ -142,10 +143,10 @@ export function Dashboard() {
             {loading ? '…' : totalLearning}
           </p>
           <p className="text-xs text-gray-400 mt-2">正在跟进的知识点</p>
-        </div>
+        </Card>
 
         {/* Not started */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-5">
+        <Card className="p-5">
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
             未开始
           </p>
@@ -153,11 +154,11 @@ export function Dashboard() {
             {loading ? '…' : totalNotStarted}
           </p>
           <p className="text-xs text-gray-400 mt-2">待学习知识点</p>
-        </div>
+        </Card>
       </div>
 
       {/* Category breakdown */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-5">
+      <Card className="p-5">
         <h2 className="text-lg font-semibold mb-4">分类明细</h2>
         {loading ? (
           <p className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">
@@ -215,7 +216,7 @@ export function Dashboard() {
             })}
           </div>
         )}
-      </div>
+      </Card>
 
       <div className="text-xs text-gray-400 dark:text-gray-500">
         数据来源于学习看板的浏览器本地进度。访问{' '}

@@ -164,7 +164,7 @@ function Column({
                 )}
               </div>
             </button>
-            <div className="flex gap-2 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="flex gap-2 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700 text-xs opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity">
               <Link
                 to={`/learn/${cat}/${item.id}`}
                 className="text-gray-500 hover:text-primary-500 dark:text-gray-400 dark:hover:text-primary-400"
