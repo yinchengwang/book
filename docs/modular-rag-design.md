@@ -1,7 +1,7 @@
 # Modular RAG 框架设计方案
 
-> 版本：1.0
-> 日期：2026-09-04
+> 版本：1.1
+> 日期：2026-09-05
 > 状态：设计完成，待实现
 
 ---
@@ -387,14 +387,16 @@ GET    /api/v1/health          # 健康检查
 
 ### 一、技术选型
 
-| 维度 | 选择 |
-|------|------|
-| 框架 | React 18 + TypeScript |
-| 构建工具 | Vite |
-| UI 组件库 | Ant Design 5 |
-| 状态管理 | Zustand |
-| 实时通信 | WebSocket + SSE |
-| 图表可视化 | ECharts |
+| 维度 | 选择 | 说明 |
+|------|------|------|
+| **框架** | React 18 + TypeScript + Next.js | App Router、React Server Components |
+| **构建工具** | Vite + Turbopack | 快速开发体验 |
+| **UI 组件库** | shadcn/ui + Tailwind CSS | 现代、灵活、可定制 |
+| **节点编辑器** | React Flow | 可视化流程构建 |
+| **状态管理** | Zustand + React Query | Zustand 用于 UI 状态，React Query 用于服务器状态 |
+| **实时通信** | SSE（流式响应）+ WebSocket（双向交互） | LLM 流式输出用 SSE |
+| **图表可视化** | ECharts / Recharts | 评估指标图表 |
+| **表单管理** | React Hook Form | 配置表单验证 |
 
 ### 二、功能模块
 
