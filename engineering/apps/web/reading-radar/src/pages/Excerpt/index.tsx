@@ -32,9 +32,13 @@ interface ExcerptEntry {
   excerpt: string; // first 80 chars for the card preview
 }
 
+// eager: true → values are the raw file contents synchronously (Record<string, string>).
+// Without it, values are async loaders () => Promise<string> and would crash
+// the sync parse below at module init (white-screening every route).
 const rawFiles = import.meta.glob<string>('@data/excerpt/**/*.md', {
   query: '?raw',
   import: 'default',
+  eager: true,
 });
 
 /** Parse a minimal YAML-ish frontmatter block (`---\n...\n---`). */
@@ -78,25 +82,16 @@ function truncate(text: string, max = 100): string {
 
 const entries: ExcerptEntry[] = (() => {
   const list: ExcerptEntry[] = [];
-  for (const [path, load] of Object.entries(rawFiles)) {
+  for (const [path, raw] of Object.entries(rawFiles)) {
     // path looks like: /data/excerpt/2025/c++新经典.md
-    const m = /\/excerpt\/([^/]+)\/[^/]+\.md$/.exec(path);
+    // or nested: /data/excerpt/reading_record/10x程序员工作法/00.md
+    // The first segment after /excerpt/ is the group; allow any depth below it.
+    const m = /\/excerpt\/([^/]+)\/(?:[^/]+\/)*[^/]+\.md$/.exec(path);
     const group = m ? m[1] : 'unknown';
     // Path-based fallback book name = filename without ext.
     const fname = path.replace(/^.*\//, '').replace(/\.md$/, '');
-    // Load synchronously (raw glob returns strings at build time).
-    let text = '';
-    try {
-      // import.meta.glob with query=raw + import=default returns the text.
-      // We can't `await` here — at module init time these are already
-      // resolved. Use the captured loader for first render only.
-      // For MVP, lazy-load on first index call via a Promise; but we
-      // want a synchronous list to drive the UI. So we accept that the
-      // loader is sync because `?raw` returns the bundled string.
-      text = (load as unknown as () => string)();
-    } catch {
-      text = '';
-    }
+    // eager glob: raw is already the file content string.
+    const text = typeof raw === 'string' ? raw : '';
     const { meta, body } = parseFrontmatter(text);
     list.push({
       path,
