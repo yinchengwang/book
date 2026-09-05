@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useTheme } from '@shared/theme/ThemeProvider';
+import { GlobalSearch } from '@/components/GlobalSearch';
 
 const navItems = [
   { to: '/quiz', label: '测评' },
@@ -24,6 +25,8 @@ export function Layout() {
   const { theme, toggle } = useTheme();
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement | null>(null);
+  // 移动端搜索行（md 以下：图标展开为头部下方的整行输入框）
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // 点外面关闭下拉
   useEffect(() => {
@@ -105,6 +108,24 @@ export function Layout() {
               )}
             </div>
 
+            {/* 全局搜索（MVP-6.2）：md 及以上为内联输入框 */}
+            <GlobalSearch className="hidden md:block" />
+
+            {/* 搜索入口（md 以下）：图标展开整行搜索框 */}
+            <button
+              type="button"
+              onClick={() => setSearchOpen((o) => !o)}
+              aria-label="打开/关闭搜索"
+              aria-expanded={searchOpen}
+              className={`px-3 py-2 rounded-md text-sm transition-colors md:hidden ${
+                searchOpen
+                  ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100'
+                  : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+              }`}
+            >
+              🔍
+            </button>
+
             <button
               type="button"
               onClick={toggle}
@@ -115,6 +136,19 @@ export function Layout() {
             </button>
           </nav>
         </div>
+
+        {/* 移动端搜索行：md 以下展开为整宽输入框 */}
+        {searchOpen && (
+          <div className="md:hidden border-t border-gray-200 dark:border-gray-800">
+            <div className="max-w-6xl mx-auto px-4 py-2">
+              <GlobalSearch
+                autoFocus
+                inputClassName="w-full"
+                panelClassName="left-0 right-0"
+              />
+            </div>
+          </div>
+        )}
       </header>
 
       <main className="flex-1 px-4 py-6">
