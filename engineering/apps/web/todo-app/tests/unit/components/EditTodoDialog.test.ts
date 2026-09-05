@@ -112,4 +112,61 @@ describe('EditTodoDialog', () => {
     const call = vi.mocked(todosApi.update).mock.calls.at(-1)
     expect(call?.[1]?.labels).toEqual(['a', 'b', 'c'])
   })
+
+  it('preserves string labels verbatim (no silent data loss)', () => {
+    const stringLabelsTodo: Todo = { ...baseTodo, labels: 'bug, urgent' }
+    const wrapper = mount(EditTodoDialog, {
+      props: { modelValue: true, todo: stringLabelsTodo, groups }
+    })
+    const input = wrapper.find('[data-test="edit-labels"]')
+    expect((input.element as HTMLInputElement).value).toBe('bug, urgent')
+  })
+
+  it('joins array labels with ", "', () => {
+    const wrapper = mountDialog()
+    const input = wrapper.find('[data-test="edit-labels"]')
+    expect((input.element as HTMLInputElement).value).toBe('urgent')
+  })
+
+  it('shows error and does not close when save fails', async () => {
+    vi.mocked(todosApi.update).mockRejectedValue(new Error('网络错误'))
+    const wrapper = mountDialog()
+    await wrapper.find('[data-test="edit-save"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('updated')).toBeFalsy()
+    expect(wrapper.emitted('update:modelValue')).toBeFalsy()
+    const errors = wrapper.emitted('error')
+    expect(errors).toBeTruthy()
+    expect(errors!.at(0)).toEqual([{ action: 'save', message: '网络错误' }])
+    const errorEl = wrapper.find('[data-test="edit-error"]')
+    expect(errorEl.exists()).toBe(true)
+    expect(errorEl.text()).toBe('网络错误')
+  })
+
+  it('shows error and does not close when delete fails', async () => {
+    vi.mocked(todosApi.remove).mockRejectedValue(new Error('删除失败'))
+    const wrapper = mountDialog()
+    await wrapper.find('[data-test="edit-delete"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('deleted')).toBeFalsy()
+    expect(wrapper.emitted('update:modelValue')).toBeFalsy()
+    const errors = wrapper.emitted('error')
+    expect(errors).toBeTruthy()
+    expect(errors!.at(0)).toEqual([{ action: 'delete', message: '删除失败' }])
+    const errorEl = wrapper.find('[data-test="edit-error"]')
+    expect(errorEl.exists()).toBe(true)
+    expect(errorEl.text()).toBe('删除失败')
+  })
+
+  it('clears the error message when the dialog is reopened with a new todo', async () => {
+    vi.mocked(todosApi.update).mockRejectedValueOnce(new Error('失败一次'))
+    const wrapper = mountDialog()
+    await wrapper.find('[data-test="edit-save"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-test="edit-error"]').exists()).toBe(true)
+
+    const fresh: Todo = { ...baseTodo, id: 99, title: 'Fresh' }
+    await wrapper.setProps({ todo: fresh })
+    expect(wrapper.find('[data-test="edit-error"]').exists()).toBe(false)
+  })
 })

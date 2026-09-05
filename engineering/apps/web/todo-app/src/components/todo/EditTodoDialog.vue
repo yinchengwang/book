@@ -49,6 +49,12 @@
         <option value="closed">已关闭</option>
         <option value="archived">已归档</option>
       </select>
+      <div
+        v-if="errorMessage"
+        class="dialog-error"
+        data-test="edit-error"
+        role="alert"
+      >{{ errorMessage }}</div>
       <div class="dialog-actions">
         <button class="btn btn-danger" data-test="edit-delete" @click="onDelete">删除</button>
         <div class="spacer"></div>
@@ -65,7 +71,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, watch } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { useTodosStore } from '@/stores/todos'
 import type { Todo, Group } from '@/types/models'
 
@@ -100,9 +106,23 @@ const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   updated: [todo: Todo]
   deleted: [id: number]
+  error: [payload: { action: 'save' | 'delete'; message: string }]
 }>()
 
 const store = useTodosStore()
+const errorMessage = ref<string | null>(null)
+
+/**
+ * Render `Todo.labels` (which the backend may serialize as either
+ * `string[]` or a JSON `string`) into the comma-separated string the
+ * form input expects. Preserves the value verbatim when it is already
+ * a string so we never silently drop user data.
+ */
+function labelsToString(labels: Todo['labels']): string {
+  if (Array.isArray(labels)) return labels.join(', ')
+  if (typeof labels === 'string') return labels
+  return ''
+}
 
 function makeForm(t: Todo): FormState {
   return {
@@ -111,7 +131,7 @@ function makeForm(t: Todo): FormState {
     priority: t.priority,
     due_date: t.due_date,
     group_id: t.group_id,
-    labelsRaw: Array.isArray(t.labels) ? t.labels.join(', ') : '',
+    labelsRaw: labelsToString(t.labels),
     status: t.status
   }
 }
@@ -122,38 +142,54 @@ watch(
   () => props.todo,
   (next) => {
     if (next) Object.assign(form, makeForm(next))
+    errorMessage.value = null
   },
   { immediate: true }
 )
 
 function close(): void {
+  errorMessage.value = null
   emit('update:modelValue', false)
 }
 
 async function save(): Promise<void> {
   if (!props.todo || !form.title) return
+  errorMessage.value = null
   const labels = form.labelsRaw
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
-  const updated = await store.update(props.todo.id, {
-    title: form.title,
-    description: form.description,
-    priority: form.priority,
-    due_date: form.due_date,
-    group_id: form.group_id,
-    labels,
-    status: form.status
-  })
-  emit('updated', updated)
-  close()
+  try {
+    const updated = await store.update(props.todo.id, {
+      title: form.title,
+      description: form.description,
+      priority: form.priority,
+      due_date: form.due_date,
+      group_id: form.group_id,
+      labels,
+      status: form.status
+    })
+    emit('updated', updated)
+    close()
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '保存失败'
+    errorMessage.value = message
+    emit('error', { action: 'save', message })
+  }
 }
 
 async function onDelete(): Promise<void> {
   if (!props.todo) return
-  await store.remove(props.todo.id)
-  emit('deleted', props.todo.id)
-  close()
+  errorMessage.value = null
+  try {
+    await store.remove(props.todo.id)
+    emit('deleted', props.todo.id)
+    close()
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '删除失败'
+    errorMessage.value = message
+    emit('error', { action: 'delete', message })
+  }
 }
 </script>
 
@@ -165,4 +201,13 @@ async function onDelete(): Promise<void> {
   align-items: center;
 }
 .dialog-actions .spacer { flex: 1; }
+.dialog-error {
+  color: var(--danger, #c0392b);
+  background: var(--danger-bg, rgba(192, 57, 43, 0.08));
+  border: 1px solid var(--danger-border, rgba(192, 57, 43, 0.25));
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-top: 12px;
+  font-size: 0.9em;
+}
 </style>
