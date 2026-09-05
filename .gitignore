@@ -101,6 +101,10 @@ test_dir/
 data/
 test_data/
 test_db_init_*/
+# 例外：reading-radar 的单元测试目录（tests/unit/data 是测试代码，非运行时数据）
+!engineering/apps/web/reading-radar/tests/unit/data/
+# vitest 覆盖率报告产物
+coverage/
 
 # 散落调试产物二进制（即使误 commit 也不跟踪）
 *.db.bin
