@@ -11,6 +11,16 @@
 import type { TechCategory, Quadrant } from './types';
 
 /**
+ * Result of loading a learn-deep markdown file.
+ * Distinguishes "file missing from index" from "load threw", so the
+ * Learn page can render an accurate error message instead of silently
+ * showing fallback content as if it were real.
+ */
+export type LearnContentResult =
+  | { ok: true; content: string }
+  | { ok: false; reason: 'not-found' | 'load-error' };
+
+/**
  * Eagerly raw-load every learn-deep markdown file at build/dev time.
  * Key format: absolute-ish path under /data/learn-deep/.../<cat>-<itemId>.md.
  */
@@ -18,9 +28,6 @@ const rawLearnFiles = import.meta.glob<string>(
   '@data/learn-deep/**/*.md',
   { query: '?raw', import: 'default' }
 );
-
-const FALLBACK_CONTENT =
-  '# 内容加载失败\n\n该知识点暂无详细内容。';
 
 const PATH_RE = /\/learn-deep\/([^/]+)\/([^/]+)\/([a-z]+)-([^/]+)\.md$/;
 
@@ -52,22 +59,36 @@ const learnIndex: IndexedEntry[] = (() => {
 
 /**
  * Load a single learn-deep markdown file as text.
- * Returns a friendly fallback when the file is missing so the UI never
- * crashes on a missing entry.
+ * Returns a result object so callers can distinguish "no such file"
+ * ('not-found') from "file exists but load threw" ('load-error').
+ * Never throws — errors are folded into the result.
+ *
+ * itemId comes from the tech registry, which uses snake_case ids
+ * (`control_flow`), while learn-deep filenames are kebab-case
+ * (`c-control-flow.md` → indexed as `control-flow`). Both forms are
+ * tried so registry-sourced URLs resolve.
  */
 export async function loadLearnContent(
   cat: TechCategory,
   quadrant: Quadrant,
   itemId: string
-): Promise<string> {
+): Promise<LearnContentResult> {
+  const candidates = new Set([
+    itemId,
+    itemId.replace(/_/g, '-'),
+    itemId.replace(/-/g, '_'),
+  ]);
   const entry = learnIndex.find(
-    (e) => e.cat === cat && e.quadrant === quadrant && e.itemId === itemId
+    (e) => e.cat === cat && e.quadrant === quadrant && candidates.has(e.itemId)
   );
-  if (!entry) return FALLBACK_CONTENT;
+  if (!entry) return { ok: false, reason: 'not-found' };
   try {
-    return await entry.load();
-  } catch {
-    return FALLBACK_CONTENT;
+    const content = await entry.load();
+    return { ok: true, content };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[data/learn] load failed:', cat, quadrant, itemId, err);
+    return { ok: false, reason: 'load-error' };
   }
 }
 
