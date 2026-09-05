@@ -1,10 +1,10 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import ListView from '../views/ListView.vue'
 import BoardView from '../views/BoardView.vue'
 import StatsView from '../views/StatsView.vue'
 import GroupManager from '../views/GroupManager.vue'
 
-const routes = [
+const routes: RouteRecordRaw[] = [
   { path: '/', component: ListView, meta: { title: '待办列表' } },
   { path: '/board', component: BoardView, meta: { title: '看板视图' } },
   { path: '/stats', component: StatsView, meta: { title: '统计看板' } },
