@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>技术摘抄 — Reading Radar</title>
+<style>
+:root {
+  --bg: #f0f2f5;
+  --card-bg: #fff;
+  --text: #2c3e50;
+  --text-secondary: #7f8c8d;
+  --border: #e1e4e8;
+  --shadow: 0 1px 4px rgba(0,0,0,0.06);
+  --shadow-lg: 0 8px 30px rgba(0,0,0,0.12);
+  --radius: 12px;
+  --reading: #1a73e8;
+  --reading-bg: #e8f4fd;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.6;
+}
+
+/* ===== 主容器 ===== */
+.excerpt-page {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 16px;
+  margin-top: 56px;
+}
+
+/* ===== 筛选栏 ===== */
+.excerpt-filter-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.excerpt-filter-select {
+  padding: 8px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--card-bg);
+  color: var(--text);
+  cursor: pointer;
+  outline: none;
+  min-width: 120px;
+}
+
+.excerpt-filter-select:focus {
+  border-color: var(--reading);
+}
+
+.excerpt-new-btn {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--reading);
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.excerpt-new-btn:hover {
+  background: #1557b0;
+}
+
+.excerpt-search-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 8px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  outline: none;
+  background: var(--card-bg);
+}
+
+.excerpt-total {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* ===== 双栏布局 ===== */
+.excerpt-layout {
+  display: flex;
+  gap: 16px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.excerpt-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  padding: 12px;
+  box-shadow: var(--shadow);
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  position: sticky;
+  top: 72px;
+}
+
+.excerpt-sidebar-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.excerpt-main {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ===== 书籍列表（侧栏） ===== */
+.excerpt-book-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.excerpt-book-item {
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.excerpt-book-item:hover {
+  background: #f1f3f5;
+}
+
+.excerpt-book-item.active {
+  background: var(--reading-bg);
+  border-left-color: var(--reading);
+}
+
+.excerpt-book-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.excerpt-book-info {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.excerpt-book-count {
+  margin-right: 6px;
+}
+
+.excerpt-book-year {
+  background: #f1f3f5;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* 书籍状态徽章 */
+.excerpt-status-badge {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  user-select: none;
+  transition: opacity 0.15s;
+}
+
+.excerpt-status-badge:hover {
+  opacity: 0.7;
+}
+
+.excerpt-book-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.excerpt-tag-mini {
+  font-size: 10px;
+  color: var(--reading);
+  cursor: pointer;
+}
+
+.excerpt-tag-mini:hover {
+  text-decoration: underline;
+}
+
+/* ===== 标签云 ===== */
+.excerpt-tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.excerpt-tag-cloud-item {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 2px 8px;
+  background: #f1f3f5;
+  border-radius: 12px;
+  transition: all 0.15s;
+  cursor: pointer;
+}
+
+.excerpt-tag-cloud-item:hover {
+  background: var(--reading);
+  color: #fff;
+}
+
+/* ===== 摘抄卡片 ===== */
+.excerpt-card {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  border-left: 3px solid transparent;
+  transition: box-shadow 0.2s;
+}
+
+.excerpt-card:hover {
+  box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+}
+
+.excerpt-card[data-favorite="1"] {
+  border-left-color: #f0ad4e;
+}
+
+.excerpt-card[data-has-note="1"] {
+  border-left-color: #5c9ce6;
+}
+
+.excerpt-body {
+  font-size: 15px;
+  line-height: 1.8;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+.excerpt-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.excerpt-meta .meta-book a {
+  color: var(--reading);
+  text-decoration: none;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.excerpt-meta .meta-book a:hover {
+  text-decoration: underline;
+}
+
+.excerpt-meta .meta-author {
+  color: #999;
+}
+
+.excerpt-meta .meta-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.excerpt-meta .meta-tags a {
+  color: #5c9ce6;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.excerpt-meta .meta-tags a:hover {
+  text-decoration: underline;
+}
+
+.excerpt-meta .meta-note,
+.excerpt-meta .meta-fav {
+  font-size: 11px;
+}
+
+.excerpt-meta .meta-note {
+  color: #5c9ce6;
+}
+
+.excerpt-meta .meta-fav {
+  color: #f0ad4e;
+}
+
+/* ===== 操作栏 ===== */
+.excerpt-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.excerpt-action-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: var(--text-secondary);
+}
+
+.excerpt-action-btn:hover {
+  background: #f1f3f5;
+  color: var(--text);
+  border-color: #ccc;
+}
+
+.excerpt-action-btn[data-action="delete"]:hover {
+  background: #fee;
+  color: #e74c3c;
+  border-color: #e74c3c;
+}
+
+/* ===== 批注面板 ===== */
+.excerpt-notes-panel {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.excerpt-note-item {
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.excerpt-note-source {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.excerpt-note-content blockquote {
+  margin: 0;
+  padding-left: 12px;
+  border-left: 3px solid #e0e0e0;
+  color: #555;
+}
+
+.excerpt-note-input textarea {
+  width: 100%;
+  min-height: 60px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+}
+
+.excerpt-note-input textarea:focus {
+  border-color: var(--reading);
+}
+
+.excerpt-note-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.excerpt-note-actions button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.btn-save-html {
+  background: var(--reading-bg);
+  color: var(--reading);
+}
+
+.btn-save-obsidian {
+  background: #e8f5e9;
+  color: #67c23a;
+}
+
+/* ===== 空状态 ===== */
+.excerpt-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+
+/* ===== 分页 ===== */
+.excerpt-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 12px 0;
+  flex-wrap: wrap;
+}
+
+.page-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--card-bg);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: var(--reading);
+  color: #fff;
+  border-color: var(--reading);
+}
+
+.page-btn.active {
+  background: var(--reading);
+  color: #fff;
+  border-color: var(--reading);
+}
+
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.page-info {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.page-size-select {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--card-bg);
+}
+
+/* ===== Toast ===== */
+.excerpt-toast {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.8);
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 20px;
+  font-size: 14px;
+  z-index: 9999;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+
+/* ===== 编辑弹窗 ===== */
+.excerpt-edit-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s;
+}
+
+.excerpt-edit-dialog {
+  background: var(--card-bg);
+  border-radius: 16px;
+  width: 90%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 24px;
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 0.3s ease-out;
+}
+
+.excerpt-edit-dialog h3 {
+  font-size: 16px;
+  margin-bottom: 16px;
+}
+
+.excerpt-edit-field {
+  margin-bottom: 12px;
+}
+
+.excerpt-edit-field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.excerpt-edit-field input,
+.excerpt-edit-field select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+}
+
+.excerpt-edit-field input:focus,
+.excerpt-edit-field select:focus {
+  border-color: var(--reading);
+}
+
+.excerpt-tags-editor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.excerpt-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: var(--reading-bg);
+  color: var(--reading);
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.excerpt-tag-pill .remove-tag {
+  cursor: pointer;
+  font-weight: bold;
+  opacity: 0.7;
+}
+
+.excerpt-tag-pill .remove-tag:hover {
+  opacity: 1;
+}
+
+.excerpt-edit-input-tag {
+  border: 1.5px dashed var(--border);
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 12px;
+  outline: none;
+  flex: 1;
+  min-width: 80px;
+}
+
+.excerpt-edit-input-tag:focus {
+  border-color: var(--reading);
+}
+
+.excerpt-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.excerpt-edit-actions button {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-save-obsidian-full {
+  background: #e8f5e9;
+  color: #67c23a;
+}
+
+.btn-save-html-full {
+  background: var(--reading-bg);
+  color: var(--reading);
+}
+
+.btn-save-both {
+  background: #fff3e0;
+  color: #e6a23c;
+}
+
+.btn-cancel-edit {
+  background: #f1f3f5;
+  color: #666;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes excerptFadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes excerptFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* 新增摘抄弹窗 */
+.excerpt-create-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s;
+}
+
+.excerpt-create-dialog {
+  background: var(--card-bg);
+  border-radius: 16px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 24px;
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 0.3s ease-out;
+}
+
+.excerpt-create-dialog h3 {
+  font-size: 16px;
+  margin-bottom: 16px;
+}
+
+.excerpt-create-dialog textarea {
+  width: 100%;
+  min-height: 120px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+}
+
+.excerpt-create-dialog textarea:focus {
+  border-color: var(--reading);
+}
+
+.excerpt-create-dialog select {
+  padding: 8px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  background: var(--card-bg);
+}
+
+.excerpt-create-dialog select:focus {
+  border-color: var(--reading);
+}
+
+.excerpt-create-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.excerpt-create-actions button {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-create-save {
+  background: var(--reading);
+  color: #fff;
+}
+
+.btn-create-cancel {
+  background: #f1f3f5;
+  color: #666;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .excerpt-page {
+    padding: 12px;
+    margin-top: 8px;
+  }
+  .excerpt-layout {
+    flex-direction: column;
+  }
+  .excerpt-sidebar {
+    width: 100%;
+    max-height: 200px;
+    position: static;
+  }
+  .excerpt-filter-bar {
+    flex-wrap: wrap;
+  }
+  .excerpt-filter-select {
+    flex: 1;
+    min-width: 0;
+  }
+  .excerpt-search-input {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .excerpt-edit-dialog {
+    width: 95%;
+    max-width: none;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- 统一导航栏 -->
+<nav id="global-nav"></nav>
+
+<!-- ===== 主内容 ===== -->
+<div class="excerpt-page">
+
+  <!-- 筛选栏 -->
+  <div class="excerpt-filter-bar">
+    <select class="excerpt-filter-select" id="excerptBookFilter">
+      <option value="">📚 全部书籍</option>
+    </select>
+    <select class="excerpt-filter-select" id="excerptStatusFilter">
+      <option value="">📖 全部状态</option>
+      <option value="unread">未读</option>
+      <option value="want">想读</option>
+      <option value="reading">在读</option>
+      <option value="done">读完</option>
+      <option value="abandoned">放弃</option>
+    </select>
+    <select class="excerpt-filter-select" id="excerptTagFilter">
+      <option value="">🏷️ 全部标签</option>
+    </select>
+    <select class="excerpt-filter-select" id="excerptYearFilter">
+      <option value="">📅 全部年份</option>
+    </select>
+    <input type="text" class="excerpt-search-input" id="excerptSearchInput" placeholder="🔍 搜索摘抄内容...">
+    <button class="excerpt-new-btn" id="excerptNewBtn" title="新增摘抄">➕ 新增</button>
+    <span class="excerpt-total" id="excerptTotalCount">0</span>
+  </div>
+
+  <!-- 双栏布局 -->
+  <div class="excerpt-layout">
+    <!-- 左侧书籍导航 -->
+    <aside class="excerpt-sidebar" id="excerptSidebar">
+      <div class="excerpt-sidebar-title">📚 书籍列表</div>
+      <div id="excerptBookList" class="excerpt-book-list"></div>
+      <div class="excerpt-sidebar-title" style="margin-top:16px;">🏷️ 标签云</div>
+      <div id="excerptTagCloud" class="excerpt-tag-cloud"></div>
+    </aside>
+
+    <!-- 右侧摘抄内容 -->
+    <main class="excerpt-main">
+      <div id="excerptCardList" class="excerpt-card-list"></div>
+      <div id="excerptPagination" class="excerpt-pagination"></div>
+    </main>
+  </div>
+</div>
+
+<!-- ===== 脚本 ===== -->
+<script src="data/app/nav-component.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="data/app/excerpt-api.js"></script>
+<script src="data/app/excerpt-view.js"></script>
+<script>
+"use strict";
+
+// 初始化导航栏（标记当前页面为 excerpt）
+initGlobalNav("excerpt");
+
+// 等待 DOM 就绪后初始化摘抄视图
+document.addEventListener("DOMContentLoaded", function () {
+  // 初始化视图（绑定筛选事件、搜索、hash 路由）
+  if (typeof initExcerptView === "function") {
+    initExcerptView();
+  }
+
+  // 从 URL 参数读取 ?book=xxx
+  var params = new URLSearchParams(window.location.search);
+  var bookParam = params.get("book");
+
+  // 解析 hash 中的 ?book=xxx（兼容旧链接）
+  if (!bookParam) {
+    var hashMatch = window.location.hash.match(/book=([^&]+)/);
+    if (hashMatch) bookParam = decodeURIComponent(hashMatch[1]);
+  }
+
+  // 如果 URL 指定了书，使用 setBookFilter 触发加载
+  if (bookParam && typeof setBookFilter === "function") {
+    setBookFilter(bookParam);
+  } else {
+    // 无参数：加载全部摘抄
+    if (typeof loadExcerptBooks === "function") loadExcerptBooks();
+    if (typeof loadExcerptPage === "function") loadExcerptPage();
+  }
+});
+</script>
+</body>
+</html>

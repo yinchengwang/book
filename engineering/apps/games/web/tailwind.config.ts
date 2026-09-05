@@ -2,13 +2,13 @@ import type { Config } from 'tailwindcss';
 import typography from '@tailwindcss/typography';
 
 export default {
-  content: ['./index.html', './src/**/*.{ts,tsx}'],
+  content: ['./index.html', './src/**/*.{ts,tsx}', './shared/web/src/**/*.{ts,tsx}'],
   darkMode: 'class',
   theme: {
     extend: {
       colors: {
         primary: {
-          50: '#eef2ff', 500: '#6366f1', 900: '#312e81',
+          50: '#eef2ff', 100: '#e0e7ff', 300: '#a5b4fc', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81',
         },
         g2048: {
           bg: '#faf8ef',

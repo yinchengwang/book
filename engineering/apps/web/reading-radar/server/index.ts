@@ -1,5 +1,5 @@
 import express from 'express';
-import { stateRouter } from './api/state';
+import { stateRouter } from './api/state.js';
 
 const app = express();
 app.use(express.json({ limit: '10mb' }));

@@ -89,12 +89,6 @@ export function Grok() {
                 >
                   📚 学习
                 </Link>
-                <Link
-                  to={`/quiz/grok/${it.id}`}
-                  className="text-primary-600 hover:underline dark:text-primary-400"
-                >
-                  🎯 测验
-                </Link>
               </div>
             </Card>
           ))}

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { readState, writeState, validateKey } from '../storage/jsonStore';
+import { readState, writeState, validateKey } from '../storage/jsonStore.js';
 
 export const stateRouter = Router();
 

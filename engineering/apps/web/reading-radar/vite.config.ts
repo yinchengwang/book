@@ -20,6 +20,10 @@ export default defineConfig({
       reporter: ['text', 'html'],
       // 覆盖率口径：仅数据层（UI 组件不在本任务范围）
       include: ['src/data/**'],
+      thresholds: { lines: 90, statements: 90 },
     },
+  },
+  build: {
+    chunkSizeWarningLimit: 1200,
   },
 });

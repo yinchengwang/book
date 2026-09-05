@@ -6,7 +6,9 @@
   "description": "读书雷达：知识地图 / 学习看板 / 测评 / 学习内容 / 仪表盘 / 五年计划（Vite + React + TS 重构）。",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "tsc -b && vite build",
+    "build:server": "tsc -p tsconfig.server.json",
     "preview": "vite preview",
     "server": "node server/dist/index.js",
     "server:dev": "tsx watch server/index.ts",
@@ -23,6 +25,7 @@
     "zustand": "^4.5.0"
   },
   "devDependencies": {
+    "@tailwindcss/typography": "^0.5.20",
     "@types/express": "^5.0.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.3.7",

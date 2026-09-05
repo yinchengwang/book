@@ -8,25 +8,13 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      '@shared': path.resolve(__dirname, './shared/web/src'), // shared code inside web/ (MVP-1); cross-project sharing deferred
+      '@shared': path.resolve(__dirname, './shared/web/src'), // cross-project shared design system (active since MVP-4)
     },
   },
   server: {
     port: 5173,
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
   },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'g2048': ['./src/games/g2048'],
-          'snake': ['./src/games/snake'],
-          'sudoku': ['./src/games/sudoku'],
-        },
-      },
-    },
+  test: {
+    include: ['tests/unit/**/*.test.ts'],
   },
 });

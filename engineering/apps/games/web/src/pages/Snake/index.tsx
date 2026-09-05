@@ -5,20 +5,16 @@ import { useSnake } from '@/games/snake/useSnake';
 import { snake } from '@/wasm/bindings';
 import { renderSnake } from '@/games/snake/renderer';
 import { Button } from '@shared/ui/Button';
+import { safeGetNumber, safeSet } from '@shared/storage/safeStorage';
 
 type Difficulty = 0 | 1 | 2;
 
 export function Snake() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [difficulty, setDifficulty] = useState<Difficulty>(0);
-  const [highScore, setHighScore] = useState<number>(() => {
-    try {
-      const v = JSON.parse(localStorage.getItem('snake_high_score') ?? '0');
-      return typeof v === 'number' && Number.isFinite(v) ? v : 0;
-    } catch {
-      return 0;
-    }
-  });
+  const [highScore, setHighScore] = useState<number>(() =>
+    safeGetNumber('snake_high_score', 0)
+  );
   const state = useSnake(difficulty);
 
   // Canvas 渲染（响应 state 变化）
@@ -40,11 +36,7 @@ export function Snake() {
   useEffect(() => {
     if (state.score > highScore) {
       setHighScore(state.score);
-      try {
-        localStorage.setItem('snake_high_score', JSON.stringify(state.score));
-      } catch {
-        // ignore quota / disabled storage
-      }
+      safeSet('snake_high_score', state.score);
     }
   }, [state.score, highScore]);
 
