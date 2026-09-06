@@ -9,6 +9,8 @@ import {
   Direction,
   SnakeState as SnakeStateType
 } from '@/utils/snake'
+import { buildSnakeShare } from '@/services/share'
+import { getSnakeBestScore } from '@/utils/storage'
 import './index.scss'
 
 function SnakePage () {
@@ -58,6 +60,15 @@ function SnakePage () {
       stopTimer()
     }
   }, [])
+
+  // 微信分享回调：根据当前得分动态生成分享卡片
+  useEffect(() => {
+    if (typeof Taro.useShareAppMessage === 'function') {
+      Taro.useShareAppMessage(() =>
+        buildSnakeShare(gameState.score, getSnakeBestScore())
+      )
+    }
+  }, [gameState.score])
 
   // 开始新游戏
   const startGame = useCallback(() => {

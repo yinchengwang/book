@@ -11,6 +11,7 @@ import {
   checkWin,
   SUDOKU_CONFIG
 } from '@/utils/sudoku'
+import { buildSudokuShare } from '@/services/share'
 import './index.scss'
 
 interface Cell {
@@ -39,6 +40,12 @@ class SudokuPage extends Component {
   }
 
   timer: NodeJS.Timeout | null = null
+
+  // 小程序分享回调：把难度当章节号，星级来自 calculateStars
+  onShareAppMessage = () => {
+    const { difficulty } = this.state.gameState
+    return buildSudokuShare(difficulty + 1, 1, this.calculateStars())
+  }
 
   componentDidMount() {
     this.startTimer()

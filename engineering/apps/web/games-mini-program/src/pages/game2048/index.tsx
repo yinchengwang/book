@@ -7,6 +7,7 @@ import {
   keepGoing,
   GAME2048_CONFIG
 } from '@/utils/2048'
+import { build2048Share } from '@/services/share'
 import './index.scss'
 
 interface Game2048State {
@@ -21,6 +22,12 @@ interface Game2048State {
 class Game2048Page extends Component {
   state: { gameState: Game2048State } = {
     gameState: createInitialState() as Game2048State
+  }
+
+  // 小程序分享回调：返回分享卡片（当前得分 + 最高分）
+  onShareAppMessage = () => {
+    const { score, bestScore } = this.state.gameState
+    return build2048Share(score, bestScore)
   }
 
   handleMove = (direction: 'left' | 'right' | 'up' | 'down') => {
