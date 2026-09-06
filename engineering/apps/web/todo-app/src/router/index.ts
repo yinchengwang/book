@@ -3,8 +3,13 @@ import ListView from '../views/ListView.vue'
 import BoardView from '../views/BoardView.vue'
 import StatsView from '../views/StatsView.vue'
 import GroupManager from '../views/GroupManager.vue'
+import LoginView from '../views/LoginView.vue'
+import RegisterView from '../views/RegisterView.vue'
+import { useAuthStore } from '@/stores/auth'
 
 const routes: RouteRecordRaw[] = [
+  { path: '/login', component: LoginView, meta: { title: '登录', public: true } },
+  { path: '/register', component: RegisterView, meta: { title: '注册', public: true } },
   { path: '/', component: ListView, meta: { title: '待办列表' } },
   { path: '/board', component: BoardView, meta: { title: '看板视图' } },
   { path: '/stats', component: StatsView, meta: { title: '统计看板' } },
@@ -18,6 +23,10 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   document.title = to.meta.title ? `${to.meta.title} - Todo App` : 'Todo App'
+  const auth = useAuthStore()
+  if (!to.meta.public && !auth.isAuthenticated) {
+    return { path: '/login', query: { redirect: to.fullPath } }
+  }
 })
 
 export default router
