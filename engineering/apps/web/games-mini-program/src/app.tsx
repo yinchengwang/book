@@ -1,18 +1,16 @@
-import { Component } from 'react'
+import { useEffect } from 'react'
+import { AchievementToast } from '@/components/common/AchievementToast'
+import { initStorage } from '@/utils/storage'
 import './app.scss'
 
-class App extends Component {
-  componentDidMount () {}
-
-  componentDidShow () {}
-
-  componentDidHide () {}
-
-  componentDidCatchError () {}
-
-  render () {
-    return this.props.children
-  }
+function App ({ children }: { children?: React.ReactNode }) {
+  useEffect(() => { initStorage() }, [])
+  return (
+    <>
+      {children}
+      <AchievementToast />
+    </>
+  )
 }
 
 export default App
