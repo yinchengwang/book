@@ -1,0 +1,37 @@
+.game-header {
+  display: flex;
+  align-items: center;
+  min-height: 88rpx;
+  padding: 0 32rpx;
+  box-sizing: border-box;
+}
+
+.game-header-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64rpx;
+  height: 64rpx;
+  margin-right: 16rpx;
+  font-size: 44rpx;
+  line-height: 1;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.game-header-title {
+  flex: 1;
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 36rpx;
+  font-weight: bold;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-header-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-left: 16rpx;
+}

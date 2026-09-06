@@ -6,7 +6,14 @@ export default defineConfig({
     // 测试环境
     environment: 'node',
     // 全局测试文件
-    include: ['src/utils/**/*.test.ts'],
+    include: [
+      'src/utils/**/*.test.ts',
+      'src/services/**/*.test.ts',
+      'src/hooks/**/*.test.ts',
+      'src/pages/**/*.test.ts',
+      'src/components/**/*.test.tsx'
+    ],
+    setupFiles: ['./tests/setup.ts'],
     // 报告器
     reporters: ['default', 'verbose'],
     // 覆盖率

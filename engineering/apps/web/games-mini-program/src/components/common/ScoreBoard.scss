@@ -1,0 +1,32 @@
+.score-board {
+  display: flex;
+  align-items: stretch;
+  gap: 16rpx;
+}
+
+.score-block {
+  display: flex;
+  min-width: 128rpx;
+  padding: 12rpx 24rpx;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12rpx;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.score-block.best {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.score-label {
+  color: #8b8b8b;
+  font-size: 24rpx;
+}
+
+.score-value {
+  margin-top: 4rpx;
+  color: #ffffff;
+  font-size: 32rpx;
+  font-weight: bold;
+}
