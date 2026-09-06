@@ -14,12 +14,13 @@
 </template>
 
 <script setup>
-import { ref, computed, inject } from 'vue'
+import { ref, computed } from 'vue'
 import * as todosApi from '@/api/todos'
+import { useUIStore } from '@/stores/ui'
 
 const props = defineProps({ 'todo-id': Number, items: Array })
 const emit = defineEmits(['updated'])
-const showToast = inject('showToast')
+const ui = useUIStore()
 const newText = ref('')
 const doneCount = computed(() => props.items.filter(i => i.done).length)
 
@@ -27,7 +28,7 @@ async function add() {
   if (!newText.value) return
   const r = await todosApi.addChecklist(props.todoId, newText.value)
   if (r.code === 0) { emit('updated'); newText.value = '' }
-  else showToast(r.msg || '添加失败', 'error')
+  else ui.pushToast({ msg: r.msg || '添加失败', type: 'error' })
 }
 async function toggle(itemId) {
   const r = await todosApi.toggleChecklist(props.todoId, itemId)

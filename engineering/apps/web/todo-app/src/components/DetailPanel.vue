@@ -25,14 +25,15 @@
 </template>
 
 <script setup>
-import { computed, inject } from 'vue'
+import { computed } from 'vue'
 import * as todosApi from '@/api/todos'
+import { useUIStore } from '@/stores/ui'
 import Checklist from './Checklist.vue'
 import Comments from './Comments.vue'
 
 const props = defineProps({ todo: Object })
 defineEmits(['updated', 'close'])
-const showToast = inject('showToast')
+const ui = useUIStore()
 
 const PRIORITY_LABELS = ['🔴紧急', '🟡高', '🔵中', '🟢低', '⚪无']
 const priorityLabel = computed(() => PRIORITY_LABELS[props.todo?.priority] || '⚪无')
@@ -46,8 +47,8 @@ function formatDate(ts) { return new Date(ts * 1000).toLocaleDateString() }
 
 async function createChange() {
   const r = await todosApi.createChange(props.todo.id)
-  if (r.code === 0) showToast(`变更已创建: ${r.data.change_id}`)
-  else showToast(r.msg || '创建变更失败', 'error')
+  if (r.code === 0) ui.pushToast({ msg: `变更已创建: ${r.data.change_id}`, type: 'success' })
+  else ui.pushToast({ msg: r.msg || '创建变更失败', type: 'error' })
 }
 </script>
 

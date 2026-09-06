@@ -14,19 +14,20 @@
 </template>
 
 <script setup>
-import { ref, inject } from 'vue'
+import { ref } from 'vue'
 import * as todosApi from '@/api/todos'
+import { useUIStore } from '@/stores/ui'
 
 const props = defineProps({ 'todo-id': Number, items: Array })
 const emit = defineEmits(['updated'])
-const showToast = inject('showToast')
+const ui = useUIStore()
 const newText = ref('')
 
 async function add() {
   if (!newText.value) return
   const r = await todosApi.addComment(props.todoId, newText.value)
   if (r.code === 0) { emit('updated'); newText.value = '' }
-  else showToast(r.msg || '发送失败', 'error')
+  else ui.pushToast({ msg: r.msg || '发送失败', type: 'error' })
 }
 async function remove(cid) {
   const r = await todosApi.deleteComment(props.todoId, cid)

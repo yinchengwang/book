@@ -30,7 +30,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { VueDraggable } from 'vue-draggable-plus'
 import * as todosApi from '@/api/todos'
 import * as groupsApi from '@/api/groups'
@@ -45,7 +45,6 @@ import SkeletonLoader from '@/components/SkeletonLoader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import type { Todo } from '@/types/models'
 
-const showToast = inject<(msg: string, type?: 'success' | 'error') => void>('showToast')
 const store = useTodosStore()
 const ui = useUIStore()
 const { onEnd: onReorder } = useSortableList()
@@ -67,7 +66,7 @@ async function load(): Promise<void> {
   try {
     await store.fetch(ui.filter)
   } catch {
-    showToast?.('加载失败', 'error')
+    ui.pushToast({ msg: '加载失败', type: 'error' })
   }
 }
 
@@ -89,11 +88,11 @@ async function reloadCurrent(): Promise<void> {
 async function onCreated(form: Todo): Promise<void> {
   const r = await todosApi.create(form)
   if (r.code === 0) {
-    showToast?.('已创建')
+    ui.pushToast({ msg: '已创建', type: 'success' })
     await load()
     await select(r.data)
   } else {
-    showToast?.(r.msg ?? '创建失败', 'error')
+    ui.pushToast({ msg: r.msg ?? '创建失败', type: 'error' })
   }
 }
 

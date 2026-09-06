@@ -39,20 +39,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { VueDraggable } from 'vue-draggable-plus'
 import * as todosApi from '@/api/todos'
 import { useTodosStore } from '@/stores/todos'
 import { useGroupsStore } from '@/stores/groups'
+import { useUIStore } from '@/stores/ui'
 import { useKanbanDnd } from '@/composables/useKanbanDnd'
 import TodoCard from '@/components/TodoCard.vue'
 import DetailPanel from '@/components/DetailPanel.vue'
 import CreateDialog from '@/components/CreateDialog.vue'
 import type { Todo } from '@/types/models'
 
-const showToast = inject<(msg: string, type?: 'success' | 'error') => void>('showToast')
 const todosStore = useTodosStore()
 const groupsStore = useGroupsStore()
+const ui = useUIStore()
 const groupBy = ref<'priority' | 'group'>('priority')
 const showCreate = ref(false)
 const current = ref<Todo | null>(null)
@@ -92,10 +93,10 @@ async function reloadCurrent(): Promise<void> {
 async function onCreated(form: Todo): Promise<void> {
   const r = await todosApi.create(form)
   if (r.code === 0) {
-    showToast?.('已创建')
+    ui.pushToast({ msg: '已创建', type: 'success' })
     await loadData()
   } else {
-    showToast?.(r.msg ?? '创建失败', 'error')
+    ui.pushToast({ msg: r.msg ?? '创建失败', type: 'error' })
   }
 }
 
