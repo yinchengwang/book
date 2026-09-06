@@ -61,14 +61,11 @@ function SnakePage () {
     }
   }, [])
 
-  // 微信分享回调：根据当前得分动态生成分享卡片
-  useEffect(() => {
-    if (typeof Taro.useShareAppMessage === 'function') {
-      Taro.useShareAppMessage(() =>
-        buildSnakeShare(gameState.score, getSnakeBestScore())
-      )
-    }
-  }, [gameState.score])
+  // 微信分享回调：顶层调用 Taro.useShareAppMessage hook。
+  // 回调闭包会捕获最新的 gameState.score 与 getSnakeBestScore()，Taro 在每次触发分享时重新读取，无需依赖数组。
+  Taro.useShareAppMessage(() =>
+    buildSnakeShare(gameState.score, getSnakeBestScore())
+  )
 
   // 开始新游戏
   const startGame = useCallback(() => {

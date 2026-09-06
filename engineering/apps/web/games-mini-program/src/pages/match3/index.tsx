@@ -41,12 +41,9 @@ function Match3Page () {
     startNewGame(1)
   }, [])
 
-  // 微信分享回调：小程序环境注册分享信息（包含当前关卡和分数）
-  useEffect(() => {
-    if (typeof Taro.useShareAppMessage === 'function') {
-      Taro.useShareAppMessage(() => buildMatch3Share(chapterId, levelId, score))
-    }
-  }, [chapterId, levelId, score])
+  // 微信分享回调：顶层调用 Taro.useShareAppMessage hook。
+  // 回调闭包会捕获最新的 chapterId/levelId/score，Taro 在每次触发分享时重新读取，无需依赖数组。
+  Taro.useShareAppMessage(() => buildMatch3Share(chapterId, levelId, score))
 
   function startNewGame (level: number) {
     const next = createGameState(level)
@@ -285,6 +282,6 @@ function Match3Page () {
   )
 }
 
-// 小程序分享回调由组件内的 useShareAppMessage 注册（见 useEffect）
+// 小程序分享回调由组件顶层的 Taro.useShareAppMessage 注册
 
 export default Match3Page
