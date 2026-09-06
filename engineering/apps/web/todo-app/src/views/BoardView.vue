@@ -1,7 +1,7 @@
 <template>
   <div class="board-view">
     <div class="board-controls">
-      <select v-model="groupBy" class="form-select">
+      <select v-model="groupBy" class="form-select" data-test="group-by">
         <option value="priority">按优先级</option>
         <option value="group">按分组</option>
       </select>
@@ -11,65 +11,110 @@
       <div v-for="col in columns" :key="col.key" class="board-column">
         <div class="column-header">
           <span>{{ col.name }}</span>
-          <span class="column-count">{{ col.todos.length }}</span>
+          <span class="column-count">{{ itemsFor(col.key).length }}</span>
         </div>
-        <div class="column-todos">
-          <TodoCard v-for="todo in col.todos" :key="todo.id" :todo="todo" @click="select(todo)" />
-          <div v-if="col.todos.length === 0" class="column-empty">无待办</div>
-        </div>
+        <VueDraggable
+          :model-value="itemsFor(col.key)"
+          :animation="180"
+          group="kanban"
+          :data-column="col.key"
+          class="column-todos"
+          item-key="id"
+          @add="onAdd($event, col.key)"
+          @update="onReorder($event, col.key)"
+        >
+          <TodoCard
+            v-for="todo in itemsFor(col.key)"
+            :key="todo.id"
+            :todo="todo"
+            @click="select(todo)"
+          />
+        </VueDraggable>
+        <div v-if="itemsFor(col.key).length === 0" class="column-empty">无待办</div>
       </div>
     </div>
-    <DetailPanel v-if="current" :todo="current" @updated="loadData" @close="current = null" />
+    <DetailPanel v-if="current" :todo="current" @updated="reloadCurrent" @close="current = null" />
     <CreateDialog v-model="showCreate" :groups="groups" @created="onCreated" />
   </div>
 </template>
 
-<script setup>
-import { ref, computed, onMounted, inject } from 'vue'
-import api from '../api.js'
-import TodoCard from '../components/TodoCard.vue'
-import DetailPanel from '../components/DetailPanel.vue'
-import CreateDialog from '../components/CreateDialog.vue'
+<script setup lang="ts">
+import { computed, inject, onMounted, ref } from 'vue'
+import { VueDraggable } from 'vue-draggable-plus'
+import api from '@/api.js'
+import { useTodosStore } from '@/stores/todos'
+import { useGroupsStore } from '@/stores/groups'
+import { useKanbanDnd } from '@/composables/useKanbanDnd'
+import TodoCard from '@/components/TodoCard.vue'
+import DetailPanel from '@/components/DetailPanel.vue'
+import CreateDialog from '@/components/CreateDialog.vue'
+import type { Todo } from '@/types/models'
 
-const showToast = inject('showToast')
-const todos = ref([])
-const groups = ref([])
-const current = ref(null)
+const showToast = inject<(msg: string, type?: 'success' | 'error') => void>('showToast')
+const todosStore = useTodosStore()
+const groupsStore = useGroupsStore()
+const groupBy = ref<'priority' | 'group'>('priority')
 const showCreate = ref(false)
-const groupBy = ref('priority')
+const current = ref<Todo | null>(null)
+const groups = computed(() => groupsStore.groups)
+
+const dnd = useKanbanDnd(groupBy.value)
 
 const PRIORITY_NAMES = ['🔴紧急', '🟡高', '🔵中', '🟢低', '⚪无']
 
 const columns = computed(() => {
   if (groupBy.value === 'priority') {
-    return PRIORITY_NAMES.map((name, i) => ({
-      key: i, name, todos: todos.value.filter(t => t.priority === i && t.status === 'open')
-    }))
-  } else {
-    const cols = [{ key: 0, name: '未分组', todos: todos.value.filter(t => t.group_id === 0 && t.status === 'open') }]
-    groups.value.forEach(g => {
-      cols.push({ key: g.id, name: g.name, todos: todos.value.filter(t => t.group_id === g.id && t.status === 'open') })
-    })
-    return cols
+    return PRIORITY_NAMES.map((name, i) => ({ key: i, name }))
   }
+  const cols = [{ key: 0, name: '未分组' }]
+  for (const g of groupsStore.groups) cols.push({ key: g.id, name: g.name })
+  return cols
 })
 
-async function loadData() {
-  const r = await api.list({ status: 'all', per_page: 1000 })
-  if (r.code === 0) todos.value = r.data.items
-  const rg = await api.listGroups()
-  if (rg.code === 0) groups.value = rg.data
+function itemsFor(key: number): Todo[] {
+  return dnd.getColumnItems(key)
 }
 
-async function select(todo) {
+async function loadData(): Promise<void> {
+  await Promise.all([todosStore.fetch({ status: 'all' }), groupsStore.fetch()])
+}
+
+async function select(todo: Todo): Promise<void> {
   const r = await api.get(todo.id)
   if (r.code === 0) current.value = r.data
 }
 
-async function onCreated(form) {
+async function reloadCurrent(): Promise<void> {
+  if (current.value) await select(current.value)
+  await loadData()
+}
+
+async function onCreated(form: Todo): Promise<void> {
   const r = await api.create(form)
-  if (r.code === 0) { showToast('已创建'); await loadData() }
-  else showToast(r.msg || '创建失败', 'error')
+  if (r.code === 0) {
+    showToast?.('已创建')
+    await loadData()
+  } else {
+    showToast?.(r.msg ?? '创建失败', 'error')
+  }
+}
+
+async function onAdd(evt: { item?: HTMLElement; newIndex?: number | undefined }, toColumn: number): Promise<void> {
+  const el = evt.item
+  const newIndex = evt.newIndex ?? 0
+  if (!el) return
+  const id = Number(el.dataset.id)
+  if (!id) return
+  const fromColumn = Number(el.dataset.column ?? toColumn)
+  await dnd.onDrop(id, fromColumn, toColumn, newIndex)
+}
+
+async function onReorder(evt: { oldIndex?: number | undefined; newIndex?: number | undefined }, columnKey: number): Promise<void> {
+  if (evt.oldIndex === undefined || evt.newIndex === undefined) return
+  const items = itemsFor(columnKey)
+  const todo = items[evt.oldIndex]
+  if (!todo) return
+  await dnd.onDrop(todo.id, columnKey, columnKey, evt.newIndex)
 }
 
 onMounted(loadData)
@@ -82,6 +127,6 @@ onMounted(loadData)
 .board-column { min-width: 280px; flex: 1; max-width: 320px; background: var(--bg-elev); border-radius: var(--radius); padding: 12px; border: 1px solid var(--border); }
 .column-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
 .column-count { color: var(--text-muted); font-weight: normal; font-size: 12px; background: var(--bg-elev2); padding: 2px 8px; border-radius: 10px; }
-.column-todos { display: flex; flex-direction: column; gap: 8px; }
+.column-todos { display: flex; flex-direction: column; gap: 8px; min-height: 40px; }
 .column-empty { text-align: center; color: var(--text-muted); font-size: 12px; padding: 20px 0; border: 2px dashed var(--border); border-radius: var(--radius); }
 </style>

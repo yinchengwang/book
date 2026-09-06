@@ -1,5 +1,5 @@
 <template>
-  <div :class="['todo-card', 'card', 'priority-' + todo.priority, todo.status === 'closed' ? 'is-closed' : '']" @click="$emit('click')">
+  <div :class="['todo-card', 'card', 'priority-' + todo.priority, todo.status === 'closed' ? 'is-closed' : '']" :data-id="todo.id" :data-column="todo.group_id" @click="$emit('click')">
     <div class="todo-actions">
       <button class="action-btn done" @click.stop="$emit('toggle')" title="完成">✓</button>
       <button class="action-btn delete" @click.stop="$emit('delete')" title="删除">×</button>
