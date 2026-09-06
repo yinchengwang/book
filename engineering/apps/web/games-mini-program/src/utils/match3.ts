@@ -5,7 +5,7 @@
  * 完整功能：
  * 1. 章节区域系统（普通/困难/超难关）
  * 2. 特效系统（直线/爆炸/彩虹）
- * 3. 障碍物系统（雪块/蜂蜜/藤蔓/石头）
+ * 3. 障碍物系统（冰块/蜘蛛网/石头）
  * 4. 特殊元素（钥匙/松鼠/发条鸟/蜗牛/宝箱）
  * 5. 章节解锁系统
  * 6. 星星评价系统
@@ -42,26 +42,57 @@ export const GEM_COLORS: Record<GemType, { primary: string; secondary: string }>
 
 // ==================== 特效类型 ====================
 
-export type SpecialType = 'line_h' | 'line_v' | 'bomb' | 'rainbow' | null
+/** 特效类型枚举 */
+export enum SpecialType {
+  ROW_CLEAR = 'row',
+  COL_CLEAR = 'col',
+  BOMB = 'bomb',
+  RAINBOW = 'rainbow'
+}
 
 /** 特效宝石表示 */
 export const SPECIAL_EMOJIS: Record<string, string> = {
-  line_h: '➡️',    // 横向直线
-  line_v: '⬇️',     // 纵向直线
-  bomb: '💥',       // 爆炸
-  rainbow: '🌈',    // 彩虹球
+  [SpecialType.ROW_CLEAR]: '➡️',    // 横向直线
+  [SpecialType.COL_CLEAR]: '⬇️',    // 纵向直线
+  [SpecialType.BOMB]: '💥',          // 爆炸
+  [SpecialType.RAINBOW]: '🌈',      // 彩虹球
 }
 
 // ==================== 障碍物类型 ====================
 
-export type ObstacleType = 'ice' | 'honey' | 'vine' | 'rock' | null
+export type ObstacleType = 'ice' | 'stone' | 'web' | null
 
-/** 障碍物信息 */
-export const OBSTACLE_INFO: Record<string, { emoji: string; hits: number; desc: string }> = {
-  ice: { emoji: '❄️', hits: 1, desc: '雪块' },
-  honey: { emoji: '🍯', hits: 1, desc: '蜂蜜' },
-  vine: { emoji: '🌿', hits: 2, desc: '藤蔓' },
-  rock: { emoji: '🪨', hits: -1, desc: '石头' },
+/** 障碍物信息（hits = 初始/最大 hp） */
+export const OBSTACLE_INFO: Record<NonNullable<ObstacleType>, {
+  emoji: string
+  hits: number
+  desc: string
+}> = {
+  ice:   { emoji: '❄️', hits: 1, desc: '冰块' },
+  stone: { emoji: '🪨', hits: 3, desc: '石头' },
+  web:   { emoji: '🕸️', hits: 2, desc: '蜘蛛网' },
+}
+
+/** 障碍物渲染信息（用于 UI 展示颜色与样式） */
+export const OBSTACLE_RENDER_INFO: Record<NonNullable<ObstacleType>, {
+  color: string
+  borderColor: string
+}> = {
+  ice:   { color: 'rgba(127,201,249,0.55)', borderColor: '#7FC9F9' },
+  stone: { color: 'rgba(123,111,92,0.55)',  borderColor: '#7B6F5C' },
+  web:   { color: 'rgba(158,158,158,0.45)', borderColor: '#9E9E9E' },
+}
+
+/** 障碍物渲染信息数据结构（getObstacleRenderInfo 返回值） */
+export interface ObstacleRenderInfo {
+  type: NonNullable<ObstacleType>
+  emoji: string
+  hp: number
+  maxHp: number
+  desc: string
+  color: string
+  borderColor: string
+  destroyed: boolean
 }
 
 // ==================== 特殊元素类型 ====================
@@ -137,7 +168,7 @@ export function isChapterUnlocked(chapter: Chapter, totalStars: number, unlocked
 
 export interface Cell {
   gem: GemType | null       // 宝石类型
-  special: SpecialType       // 特效类型
+  special: SpecialType | null  // 特效类型
   obstacle: ObstacleType     // 障碍物
   element: SpecialElementType // 特殊元素
   obstacleHp: number         // 障碍物血量
@@ -172,6 +203,41 @@ export function createGemCell(gem: GemType): Cell {
     element: null,
     obstacleHp: 0,
     locked: false,
+  }
+}
+
+/** 对障碍物造成伤害（默认 1 点），hp 不会低于 0。无障碍物时为 no-op。 */
+export function damageObstacle(cell: Cell, amount: number = 1): void {
+  if (!cell.obstacle) return
+  cell.obstacleHp = Math.max(0, cell.obstacleHp - amount)
+}
+
+/** 障碍物是否已被摧毁（hp 归零或更低） */
+export function isObstacleDestroyed(cell: Cell): boolean {
+  return cell.obstacle !== null && cell.obstacleHp <= 0
+}
+
+/** 清除 cell 上的障碍物（包括 obstacle 标记、hp、locked） */
+export function clearObstacle(cell: Cell): void {
+  cell.obstacle = null
+  cell.obstacleHp = 0
+  cell.locked = false
+}
+
+/** 获取 cell 的障碍物渲染信息（无障碍物返回 null） */
+export function getObstacleRenderInfo(cell: Cell): ObstacleRenderInfo | null {
+  if (!cell.obstacle) return null
+  const meta = OBSTACLE_INFO[cell.obstacle]
+  const render = OBSTACLE_RENDER_INFO[cell.obstacle]
+  return {
+    type: cell.obstacle,
+    emoji: meta.emoji,
+    hp: cell.obstacleHp,
+    maxHp: meta.hits,
+    desc: meta.desc,
+    color: render.color,
+    borderColor: render.borderColor,
+    destroyed: cell.obstacleHp <= 0,
   }
 }
 
@@ -321,33 +387,33 @@ export function triggerSpecial(board: Cell[][], pos: string, special: SpecialTyp
   const removed = new Set<string>()
 
   switch (special) {
-    case 'line_h': // 消除整行
+    case SpecialType.ROW_CLEAR: // 消除整行
       for (let c = 0; c < BOARD_SIZE; c++) {
-        if (!board[row][c].obstacle || board[row][c].obstacle === 'ice' || board[row][c].obstacle === 'honey') {
+        if (!board[row][c].obstacle || board[row][c].obstacle === 'ice' || board[row][c].obstacle === 'web') {
           removed.add(`${row},${c}`)
         }
       }
       break
-    case 'line_v': // 消除整列（发条鸟特效）
+    case SpecialType.COL_CLEAR: // 消除整列（发条鸟特效）
       for (let r = 0; r < BOARD_SIZE; r++) {
-        if (!board[r][col].obstacle || board[r][col].obstacle === 'ice' || board[r][col].obstacle === 'honey') {
+        if (!board[r][col].obstacle || board[r][col].obstacle === 'ice' || board[r][col].obstacle === 'web') {
           removed.add(`${r},${col}`)
         }
       }
       break
-    case 'bomb': // 消除3x3范围
+    case SpecialType.BOMB: // 消除3x3范围
       for (let dr = -1; dr <= 1; dr++) {
         for (let dc = -1; dc <= 1; dc++) {
           const nr = row + dr, nc = col + dc
           if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
-            if (!board[nr][nc].obstacle || board[nr][nc].obstacle === 'ice' || board[nr][nc].obstacle === 'honey') {
+            if (!board[nr][nc].obstacle || board[nr][nc].obstacle === 'ice' || board[nr][nc].obstacle === 'web') {
               removed.add(`${nr},${nc}`)
             }
           }
         }
       }
       break
-    case 'rainbow': // 消除所有同色宝石
+    case SpecialType.RAINBOW: // 消除所有同色宝石
       const gemType = board[row][col].gem
       for (let r = 0; r < BOARD_SIZE; r++) {
         for (let c = 0; c < BOARD_SIZE; c++) {
@@ -496,7 +562,7 @@ const LEVEL_CONFIGS: Partial<Record<number, Omit<LevelConfig, 'level' | 'chapter
     targetScore: 2800,
     obstacles: [
       { type: 'ice', count: 8 },
-      { type: 'honey', count: 5 },
+      { type: 'web', count: 5 },
     ],
     elements: [{ type: 'key', count: 1 }],
     goals: [
@@ -511,7 +577,7 @@ const LEVEL_CONFIGS: Partial<Record<number, Omit<LevelConfig, 'level' | 'chapter
     targetScore: 3500,
     obstacles: [
       { type: 'ice', count: 10 },
-      { type: 'honey', count: 8 },
+      { type: 'web', count: 8 },
     ],
     elements: [
       { type: 'key', count: 2 },
@@ -530,8 +596,8 @@ const LEVEL_CONFIGS: Partial<Record<number, Omit<LevelConfig, 'level' | 'chapter
     targetScore: 4500,
     obstacles: [
       { type: 'ice', count: 12 },
-      { type: 'honey', count: 10 },
-      { type: 'vine', count: 3 },
+      { type: 'web', count: 10 },
+      { type: 'web', count: 3 },
     ],
     elements: [
       { type: 'key', count: 2 },
@@ -551,8 +617,8 @@ const LEVEL_CONFIGS: Partial<Record<number, Omit<LevelConfig, 'level' | 'chapter
     targetScore: 5000,
     obstacles: [
       { type: 'ice', count: 10 },
-      { type: 'honey', count: 8 },
-      { type: 'vine', count: 5 },
+      { type: 'web', count: 8 },
+      { type: 'web', count: 5 },
     ],
     elements: [
       { type: 'bird', count: 1 },
@@ -570,9 +636,9 @@ const LEVEL_CONFIGS: Partial<Record<number, Omit<LevelConfig, 'level' | 'chapter
     targetScore: 6000,
     obstacles: [
       { type: 'ice', count: 12 },
-      { type: 'honey', count: 10 },
-      { type: 'vine', count: 6 },
-      { type: 'rock', count: 4 },
+      { type: 'web', count: 10 },
+      { type: 'web', count: 6 },
+      { type: 'stone', count: 4 },
     ],
     elements: [
       { type: 'bird', count: 2 },
@@ -592,9 +658,9 @@ const LEVEL_CONFIGS: Partial<Record<number, Omit<LevelConfig, 'level' | 'chapter
     targetScore: 8000,
     obstacles: [
       { type: 'ice', count: 15 },
-      { type: 'honey', count: 12 },
-      { type: 'vine', count: 8 },
-      { type: 'rock', count: 6 },
+      { type: 'web', count: 12 },
+      { type: 'web', count: 8 },
+      { type: 'stone', count: 6 },
     ],
     elements: [
       { type: 'bird', count: 2 },
@@ -617,9 +683,9 @@ const LEVEL_CONFIGS: Partial<Record<number, Omit<LevelConfig, 'level' | 'chapter
     targetScore: 10000,
     obstacles: [
       { type: 'ice', count: 20 },
-      { type: 'honey', count: 15 },
-      { type: 'vine', count: 10 },
-      { type: 'rock', count: 8 },
+      { type: 'web', count: 15 },
+      { type: 'web', count: 10 },
+      { type: 'stone', count: 8 },
     ],
     elements: [
       { type: 'bird', count: 3 },
@@ -638,9 +704,9 @@ const LEVEL_CONFIGS: Partial<Record<number, Omit<LevelConfig, 'level' | 'chapter
     targetScore: 15000,
     obstacles: [
       { type: 'ice', count: 25 },
-      { type: 'honey', count: 20 },
-      { type: 'vine', count: 12 },
-      { type: 'rock', count: 10 },
+      { type: 'web', count: 20 },
+      { type: 'web', count: 12 },
+      { type: 'stone', count: 10 },
     ],
     elements: [
       { type: 'bird', count: 3 },
@@ -662,9 +728,9 @@ const LEVEL_CONFIGS: Partial<Record<number, Omit<LevelConfig, 'level' | 'chapter
     targetScore: 30000,
     obstacles: [
       { type: 'ice', count: 30 },
-      { type: 'honey', count: 25 },
-      { type: 'vine', count: 15 },
-      { type: 'rock', count: 15 },
+      { type: 'web', count: 25 },
+      { type: 'web', count: 15 },
+      { type: 'stone', count: 15 },
     ],
     elements: [
       { type: 'bird', count: 5 },
@@ -725,26 +791,26 @@ function generateObstacles(level: number, type: LevelType): { type: ObstacleType
   const obstacles: { type: ObstacleType; count: number }[] = []
   const difficulty = type === 'boss' ? 3 : type === 'difficult' ? 2 : 1
 
-  // 雪块
+  // 冰块
   const iceCount = Math.min(25, Math.floor(level * 0.8 * difficulty))
   if (iceCount > 0) obstacles.push({ type: 'ice', count: iceCount })
 
-  // 蜂蜜
+  // 蜘蛛网（初级）
   if (level >= 10) {
-    const honeyCount = Math.min(20, Math.floor((level - 10) * 0.5 * difficulty))
-    if (honeyCount > 0) obstacles.push({ type: 'honey', count: honeyCount })
+    const webCount = Math.min(20, Math.floor((level - 10) * 0.5 * difficulty))
+    if (webCount > 0) obstacles.push({ type: 'web', count: webCount })
   }
 
-  // 藤蔓
+  // 蜘蛛网（高级）
   if (level >= 20) {
-    const vineCount = Math.min(12, Math.floor((level - 20) * 0.3 * difficulty))
-    if (vineCount > 0) obstacles.push({ type: 'vine', count: vineCount })
+    const webCount2 = Math.min(12, Math.floor((level - 20) * 0.3 * difficulty))
+    if (webCount2 > 0) obstacles.push({ type: 'web', count: webCount2 })
   }
 
   // 石头
   if (level >= 30) {
-    const rockCount = Math.min(10, Math.floor((level - 30) * 0.2 * difficulty))
-    if (rockCount > 0) obstacles.push({ type: 'rock', count: rockCount })
+    const stoneCount = Math.min(10, Math.floor((level - 30) * 0.2 * difficulty))
+    if (stoneCount > 0) obstacles.push({ type: 'stone', count: stoneCount })
   }
 
   return obstacles
@@ -822,8 +888,8 @@ export function verifyLevelBeatable(config: LevelConfig): boolean {
   let obstaclePenalty = 0
   for (const obs of config.obstacles) {
     if (obs.type === 'ice') obstaclePenalty += obs.count * 1
-    if (obs.type === 'honey') obstaclePenalty += obs.count * 1.5
-    if (obs.type === 'vine') obstaclePenalty += obs.count * 2
+    if (obs.type === 'web') obstaclePenalty += obs.count * 1.5
+    if (obs.type === 'stone') obstaclePenalty += obs.count * 3
   }
 
   // 考虑特殊元素收集
@@ -910,14 +976,15 @@ export function createGameState(level: number, earnedStars: Record<number, numbe
 }
 
 /** 放置障碍物 */
-function placeObstacles(board: Cell[][], obstacles: { type: ObstacleType; count: number }[]): void {
+export function placeObstacles(board: Cell[][], obstacles: { type: ObstacleType; count: number }[]): void {
   for (const obs of obstacles) {
+    if (!obs.type) continue
     for (let i = 0; i < obs.count; i++) {
       const pos = findEmptyPosition(board, true)
       if (pos) {
         const [row, col] = pos.split(',').map(Number)
         board[row][col].obstacle = obs.type
-        board[row][col].obstacleHp = OBSTACLE_INFO[obs.type!].hits
+        board[row][col].obstacleHp = OBSTACLE_INFO[obs.type].hits
         board[row][col].gem = randomGem()
       }
     }
@@ -1008,6 +1075,83 @@ export function processElementEffect(board: Cell[][], pos: string, element: Spec
   return removed
 }
 
+// ==================== 简化状态：特效测试用 ====================
+
+/** 简化的格子（用于特效函数） */
+export interface Match3Cell {
+  type: 'normal' | 'empty' | 'special'
+  color: GemType
+}
+
+/** 简化的 match3 状态（用于特效函数） */
+export interface Match3State {
+  grid: Match3Cell[][]
+}
+
+/** 创建初始状态（用于特效测试） */
+export function createInitialState(size: number = BOARD_SIZE): Match3State {
+  const grid: Match3Cell[][] = []
+  for (let r = 0; r < size; r++) {
+    grid[r] = []
+    for (let c = 0; c < size; c++) {
+      grid[r][c] = {
+        type: 'normal',
+        color: randomGem(),
+      }
+    }
+  }
+  return { grid }
+}
+
+/**
+ * 应用特效到状态
+ * - ROW_CLEAR: idx 为行索引，清空整行
+ * - COL_CLEAR: idx 为列索引，清空整列
+ * - BOMB: idx 为中心行列坐标，清空 3x3 范围
+ * - RAINBOW: idx 为扁平索引，清空所有同色 tile
+ */
+export function applySpecialEffect(state: Match3State, idx: number, kind: SpecialType): void {
+  const rows = state.grid.length
+  const cols = state.grid[0].length
+  switch (kind) {
+    case SpecialType.ROW_CLEAR: {
+      const row = idx
+      if (row >= 0 && row < rows) {
+        state.grid[row].forEach(c => { c.type = 'empty' })
+      }
+      break
+    }
+    case SpecialType.COL_CLEAR: {
+      const col = idx
+      if (col >= 0 && col < cols) {
+        state.grid.forEach(r => { r[col].type = 'empty' })
+      }
+      break
+    }
+    case SpecialType.BOMB: {
+      const row = idx
+      const col = idx
+      for (let r = Math.max(0, row - 1); r <= Math.min(rows - 1, row + 1); r++) {
+        for (let c = Math.max(0, col - 1); c <= Math.min(cols - 1, col + 1); c++) {
+          state.grid[r][c].type = 'empty'
+        }
+      }
+      break
+    }
+    case SpecialType.RAINBOW: {
+      const row = Math.floor(idx / cols)
+      const col = idx % cols
+      if (row >= 0 && row < rows && col >= 0 && col < cols) {
+        const color = state.grid[row][col].color
+        state.grid.forEach(r => r.forEach(c => {
+          if (c.color === color) c.type = 'empty'
+        }))
+      }
+      break
+    }
+  }
+}
+
 // ==================== 导出类型 ====================
 
-export type { Cell, LevelType, ObstacleType, SpecialElementType }
+export type { Cell, LevelType, ObstacleType, ObstacleRenderInfo, SpecialElementType }
