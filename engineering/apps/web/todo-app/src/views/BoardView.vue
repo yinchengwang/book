@@ -41,7 +41,7 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, ref } from 'vue'
 import { VueDraggable } from 'vue-draggable-plus'
-import api from '@/api.js'
+import * as todosApi from '@/api/todos'
 import { useTodosStore } from '@/stores/todos'
 import { useGroupsStore } from '@/stores/groups'
 import { useKanbanDnd } from '@/composables/useKanbanDnd'
@@ -80,7 +80,7 @@ async function loadData(): Promise<void> {
 }
 
 async function select(todo: Todo): Promise<void> {
-  const r = await api.get(todo.id)
+  const r = await todosApi.get(todo.id)
   if (r.code === 0) current.value = r.data
 }
 
@@ -90,7 +90,7 @@ async function reloadCurrent(): Promise<void> {
 }
 
 async function onCreated(form: Todo): Promise<void> {
-  const r = await api.create(form)
+  const r = await todosApi.create(form)
   if (r.code === 0) {
     showToast?.('已创建')
     await loadData()

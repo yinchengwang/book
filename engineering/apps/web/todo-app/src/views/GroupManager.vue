@@ -35,7 +35,8 @@
 
 <script setup>
 import { ref, onMounted, inject } from 'vue'
-import api from '../api.js'
+import * as todosApi from '@/api/todos'
+import * as groupsApi from '@/api/groups'
 
 const showToast = inject('showToast')
 const groups = ref([])
@@ -45,9 +46,9 @@ const editing = ref(null)
 const form = ref({ name: '', description: '' })
 
 async function loadData() {
-  const rg = await api.listGroups()
+  const rg = await groupsApi.list()
   if (rg.code === 0) groups.value = rg.data
-  const rt = await api.list({ status: 'all', per_page: 1000 })
+  const rt = await todosApi.list({ status: 'all', per_page: 1000 })
   if (rt.code === 0) todos.value = rt.data.items
 }
 
@@ -62,7 +63,7 @@ function edit(group) {
 
 function remove(group) {
   if (!confirm(`确认删除分组 "${group.name}"？`)) return
-  api.deleteGroup(group.id).then(r => {
+  groupsApi.remove(group.id).then(r => {
     if (r.code === 0) { showToast('已删除'); loadData() }
     else showToast(r.msg || '删除失败', 'error')
   })
@@ -71,11 +72,11 @@ function remove(group) {
 async function save() {
   if (!form.value.name) return
   if (editing.value) {
-    const r = await api.updateGroup(editing.value.id, form.value)
+    const r = await groupsApi.update(editing.value.id, form.value)
     if (r.code === 0) { showToast('已更新'); close(); loadData() }
     else showToast(r.msg || '更新失败', 'error')
   } else {
-    const r = await api.createGroup(form.value)
+    const r = await groupsApi.create(form.value)
     if (r.code === 0) { showToast('已创建'); close(); loadData() }
     else showToast(r.msg || '创建失败', 'error')
   }

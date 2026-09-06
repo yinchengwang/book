@@ -1,5 +1,5 @@
 import type { ApiResponse, TodoListQuery, CreateTodoInput, UpdateTodoInput, ReorderUpdate, TodoListResult } from '@/types/api'
-import type { Todo } from '@/types/models'
+import type { ChecklistItem, Comment, Todo } from '@/types/models'
 
 const BASE = '/api'
 
@@ -54,4 +54,43 @@ export function updateSort(id: number, sort_order: number): Promise<ApiResponse<
 
 export async function reorder(updates: ReorderUpdate[]): Promise<void> {
   await Promise.all(updates.map((u) => updateSort(u.id, u.sort_order)))
+}
+
+/* Checklist */
+export function addChecklist(todoId: number, text: string): Promise<ApiResponse<ChecklistItem>> {
+  return request<ChecklistItem>(`/todos/${todoId}/checklist`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text })
+  })
+}
+
+export function toggleChecklist(todoId: number, itemId: number): Promise<ApiResponse<ChecklistItem>> {
+  return request<ChecklistItem>(`/todos/${todoId}/checklist/${itemId}`, { method: 'PATCH' })
+}
+
+export function removeChecklist(todoId: number, itemId: number): Promise<ApiResponse<null>> {
+  return request<null>(`/todos/${todoId}/checklist/${itemId}`, { method: 'DELETE' })
+}
+
+/* Comments */
+export function listComments(todoId: number): Promise<ApiResponse<Comment[]>> {
+  return request<Comment[]>(`/todos/${todoId}/comments`)
+}
+
+export function addComment(todoId: number, text: string): Promise<ApiResponse<Comment>> {
+  return request<Comment>(`/todos/${todoId}/comments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text })
+  })
+}
+
+export function deleteComment(todoId: number, commentId: number): Promise<ApiResponse<null>> {
+  return request<null>(`/todos/${todoId}/comments/${commentId}`, { method: 'DELETE' })
+}
+
+/* OPSX 变更 */
+export function createChange(todoId: number): Promise<ApiResponse<{ change_id: string }>> {
+  return request<{ change_id: string }>(`/todos/${todoId}/create-change`, { method: 'POST' })
 }

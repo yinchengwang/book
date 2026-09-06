@@ -32,7 +32,8 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, ref } from 'vue'
 import { VueDraggable } from 'vue-draggable-plus'
-import api from '@/api.js'
+import * as todosApi from '@/api/todos'
+import * as groupsApi from '@/api/groups'
 import { useTodosStore } from '@/stores/todos'
 import { useUIStore } from '@/stores/ui'
 import { useSortableList } from '@/composables/useSortableList'
@@ -76,7 +77,7 @@ function onFilter(patch: { status?: 'open' | 'closed' | 'archived' | 'all'; prio
 }
 
 async function select(todo: Todo): Promise<void> {
-  const r = await api.get(todo.id)
+  const r = await todosApi.get(todo.id)
   if (r.code === 0) current.value = r.data
 }
 
@@ -86,7 +87,7 @@ async function reloadCurrent(): Promise<void> {
 }
 
 async function onCreated(form: Todo): Promise<void> {
-  const r = await api.create(form)
+  const r = await todosApi.create(form)
   if (r.code === 0) {
     showToast?.('已创建')
     await load()
@@ -103,7 +104,7 @@ async function onDragEnd(evt: { oldIndex?: number | undefined; newIndex?: number
 }
 
 onMounted(async () => {
-  const rg = await api.listGroups()
+  const rg = await groupsApi.list()
   if (rg.code === 0) groups.value = rg.data
   await load()
 })

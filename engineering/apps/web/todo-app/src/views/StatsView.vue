@@ -58,7 +58,8 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import api from '../api.js'
+import * as todosApi from '@/api/todos'
+import * as groupsApi from '@/api/groups'
 
 const todos = ref([])
 const groups = ref([])
@@ -91,9 +92,9 @@ const groupStats = computed(() => {
 })
 
 async function loadData() {
-  const r = await api.list({ status: 'all', per_page: 1000 })
+  const r = await todosApi.list({ status: 'all', per_page: 1000 })
   if (r.code === 0) todos.value = r.data.items
-  const rg = await api.listGroups()
+  const rg = await groupsApi.list()
   if (rg.code === 0) groups.value = rg.data
 }
 

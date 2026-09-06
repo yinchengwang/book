@@ -15,7 +15,7 @@
 
 <script setup>
 import { ref, inject } from 'vue'
-import api from '../api.js'
+import * as todosApi from '@/api/todos'
 
 const props = defineProps({ 'todo-id': Number, items: Array })
 const emit = defineEmits(['updated'])
@@ -24,12 +24,12 @@ const newText = ref('')
 
 async function add() {
   if (!newText.value) return
-  const r = await api.addComment(props.todoId, newText.value)
+  const r = await todosApi.addComment(props.todoId, newText.value)
   if (r.code === 0) { emit('updated'); newText.value = '' }
   else showToast(r.msg || '发送失败', 'error')
 }
 async function remove(cid) {
-  const r = await api.deleteComment(props.todoId, cid)
+  const r = await todosApi.deleteComment(props.todoId, cid)
   if (r.code === 0) emit('updated')
 }
 function formatTime(ts) {

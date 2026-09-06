@@ -15,7 +15,7 @@
 
 <script setup>
 import { ref, computed, inject } from 'vue'
-import api from '../api.js'
+import * as todosApi from '@/api/todos'
 
 const props = defineProps({ 'todo-id': Number, items: Array })
 const emit = defineEmits(['updated'])
@@ -25,17 +25,17 @@ const doneCount = computed(() => props.items.filter(i => i.done).length)
 
 async function add() {
   if (!newText.value) return
-  const r = await api.addChecklist(props.todoId, newText.value)
+  const r = await todosApi.addChecklist(props.todoId, newText.value)
   if (r.code === 0) { emit('updated'); newText.value = '' }
   else showToast(r.msg || '添加失败', 'error')
 }
 async function toggle(itemId) {
-  const r = await api.toggleChecklist(props.todoId, itemId)
+  const r = await todosApi.toggleChecklist(props.todoId, itemId)
   if (r.code === 0) emit('updated')
 }
 async function remove(itemId) {
   if (!confirm('确认删除?')) return
-  const r = await api.removeChecklist(props.todoId, itemId)
+  const r = await todosApi.removeChecklist(props.todoId, itemId)
   if (r.code === 0) emit('updated')
 }
 </script>

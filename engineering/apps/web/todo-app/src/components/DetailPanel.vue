@@ -26,7 +26,7 @@
 
 <script setup>
 import { computed, inject } from 'vue'
-import api from '../api.js'
+import * as todosApi from '@/api/todos'
 import Checklist from './Checklist.vue'
 import Comments from './Comments.vue'
 
@@ -45,7 +45,7 @@ const isOverdue = computed(() => props.todo?.due_date > 0 && props.todo?.due_dat
 function formatDate(ts) { return new Date(ts * 1000).toLocaleDateString() }
 
 async function createChange() {
-  const r = await api.createChange(props.todo.id)
+  const r = await todosApi.createChange(props.todo.id)
   if (r.code === 0) showToast(`变更已创建: ${r.data.change_id}`)
   else showToast(r.msg || '创建变更失败', 'error')
 }
