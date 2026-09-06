@@ -15,6 +15,7 @@
   "dependencies": {
     "@vueuse/core": "^10.11.1",
     "pinia": "^2.3.1",
+    "pinia-plugin-persistedstate": "^3.2.3",
     "vue": "^3.4.0",
     "vue-draggable-plus": "^0.5.6",
     "vue-router": "^4.2.0"
