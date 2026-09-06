@@ -22,7 +22,16 @@ export function subscribe (fn: Subscriber): () => void {
 
 function emit (a: Achievement | null) {
   if (!a) return
-  subscribers.forEach(fn => fn(a))
+  // 每个订阅者独立 try/catch：一个抛出不影响其他监听器（toast、analytics、sound 等）
+  subscribers.forEach(fn => {
+    try {
+      fn(a)
+    } catch (err) {
+      // 单个订阅者出错不影响其他订阅者；记录到 console 便于排查
+      // eslint-disable-next-line no-console
+      console.error('[achievements] subscriber threw:', err)
+    }
+  })
 }
 
 interface Rule {
@@ -46,7 +55,7 @@ const RULES: Rule[] = [
   },
   {
     id: 'sudoku_no_hint',
-    test: e => e.type === 'sudoku.complete' && e.hintCount === 3
+    test: e => e.type === 'sudoku.complete' && e.hintCount === 0
   },
   {
     id: 'game2048_reach_2048',

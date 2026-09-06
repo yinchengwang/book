@@ -1107,7 +1107,7 @@ export function createInitialState(size: number = BOARD_SIZE): Match3State {
  * 应用特效到状态
  * - ROW_CLEAR: idx 为行索引，清空整行
  * - COL_CLEAR: idx 为列索引，清空整列
- * - BOMB: idx 为中心行列坐标，清空 3x3 范围
+ * - BOMB: idx 为扁平索引（row = floor(idx/cols), col = idx%cols），清空 3x3 范围
  * - RAINBOW: idx 为扁平索引，清空所有同色 tile
  */
 export function applySpecialEffect(state: Match3State, idx: number, kind: SpecialType): void {
@@ -1129,11 +1129,14 @@ export function applySpecialEffect(state: Match3State, idx: number, kind: Specia
       break
     }
     case SpecialType.BOMB: {
-      const row = idx
-      const col = idx
-      for (let r = Math.max(0, row - 1); r <= Math.min(rows - 1, row + 1); r++) {
-        for (let c = Math.max(0, col - 1); c <= Math.min(cols - 1, col + 1); c++) {
-          state.grid[r][c].type = 'empty'
+      // 与 RAINBOW 一致：用扁平索引推算 (row, col)，避免 BOMB 中心点被强制在对角线上
+      const row = Math.floor(idx / cols)
+      const col = idx % cols
+      if (row >= 0 && row < rows && col >= 0 && col < cols) {
+        for (let r = Math.max(0, row - 1); r <= Math.min(rows - 1, row + 1); r++) {
+          for (let c = Math.max(0, col - 1); c <= Math.min(cols - 1, col + 1); c++) {
+            state.grid[r][c].type = 'empty'
+          }
         }
       }
       break

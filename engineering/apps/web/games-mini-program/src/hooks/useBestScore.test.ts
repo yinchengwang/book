@@ -7,7 +7,7 @@ vi.mock('@tarojs/taro', () => ({
   }
 }))
 
-import { renderHook, act } from '@testing-library/react-hooks'
+import { renderHook, act } from '@testing-library/react'
 import { useBestScore } from './useBestScore'
 import { updateSnakeBestScore } from '@/utils/storage'
 
