@@ -22,7 +22,6 @@ vi.mock('@tarojs/taro', () => {
   }
 })
 
-import Taro from '@tarojs/taro'
 import {
   getSnakeBestScore,
   updateSnakeBestScore,

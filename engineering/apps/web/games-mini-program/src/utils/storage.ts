@@ -5,6 +5,12 @@
  * 支持微信小程序和 H5 环境的统一存储接口
  */
 import Taro from '@tarojs/taro'
+import type {
+  Achievement,
+  AchievementData,
+  AchievementId,
+  AchievementProgress
+} from '@/types/achievements'
 
 // 存储键名前缀
 const STORAGE_PREFIX = 'games_'
@@ -216,13 +222,6 @@ export function setMatch3ChapterStars(chapterId: number, levelId: number, stars:
 }
 
 // ==================== 成就存储 ====================
-
-import type {
-  Achievement,
-  AchievementData,
-  AchievementId,
-  AchievementProgress
-} from '@/types/achievements'
 
 const ACHIEVEMENT_KEY = 'games_achievements'
 
