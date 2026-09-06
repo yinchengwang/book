@@ -4,6 +4,7 @@
  *
  * 支持微信小程序和 H5 环境的统一存储接口
  */
+import Taro from '@tarojs/taro'
 
 // 存储键名前缀
 const STORAGE_PREFIX = 'games_'
@@ -105,12 +106,6 @@ export function setData<T>(game: string, data: T): boolean {
     console.warn(`保存 ${game} 数据失败:`, e)
     return false
   }
-}
-
-// Taro 类型声明（兼容微信小程序和 H5）
-declare const Taro: {
-  getStorageSync: (key: string) => string | undefined
-  setStorageSync: (key: string, value: string) => void
 }
 
 // ==================== 游戏数据访问接口 ====================
@@ -220,6 +215,47 @@ export function setMatch3ChapterStars(chapterId: number, levelId: number, stars:
   return setMatch3Data(data)
 }
 
+// ==================== 成就存储 ====================
+
+import type {
+  Achievement,
+  AchievementData,
+  AchievementId,
+  AchievementProgress
+} from '@/types/achievements'
+
+const ACHIEVEMENT_KEY = 'games_achievements'
+
+export function getAchievements(): AchievementData {
+  return getData<AchievementData>(ACHIEVEMENT_KEY, {
+    unlocked: [],
+    progress: {} as AchievementProgress
+  })
+}
+
+export function setAchievements(data: AchievementData): boolean {
+  return setData(ACHIEVEMENT_KEY, data)
+}
+
+export function recordAchievementProgress(id: AchievementId, delta: number): boolean {
+  const data = getAchievements()
+  const current = data.progress[id] ?? 0
+  const next = Math.max(current, current + delta)
+  data.progress[id] = next
+  return setAchievements(data)
+}
+
+export function unlockAchievement(id: AchievementId): Achievement | null {
+  const data = getAchievements()
+  if (data.unlocked.some(a => a.id === id)) {
+    return null
+  }
+  const achievement: Achievement = { id, unlockedAt: Date.now() }
+  data.unlocked.push(achievement)
+  setAchievements(data)
+  return achievement
+}
+
 // ==================== 版本迁移 ====================
 
 export interface StorageVersion {
@@ -262,6 +298,11 @@ export function migrateData(): boolean {
       const match3Data = Taro.getStorageSync(getKey('match3'))
       if (!match3Data) {
         setData('match3', defaultData.match3)
+      }
+
+      const achievementsData = Taro.getStorageSync(ACHIEVEMENT_KEY)
+      if (!achievementsData) {
+        setData(ACHIEVEMENT_KEY, { unlocked: [], progress: {} as AchievementProgress })
       }
     }
 
