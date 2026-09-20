@@ -148,3 +148,21 @@ todo_app.json
 issue_tool.json.bak
 __test_todo__.json
 sift.tar.gz
+
+# Next.js 前端构建缓存
+.next/
+
+# 本地环境变量（可能含密钥，严禁提交）
+.env
+.env.local
+.env.*.local
+
+# 类型/构建缓存
+*.tsbuildinfo
+
+# 运行日志
+*_out.txt
+*_err.txt
+
+# 运行时数据目录
+rag_data/
