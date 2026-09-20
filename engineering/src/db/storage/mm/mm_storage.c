@@ -11,11 +11,16 @@
 #include <string.h>
 #include <stdio.h>
 #include <sys/stat.h>
-#include <errno.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #ifdef _WIN32
 #include <direct.h>
-#define mkdir(path) _mkdir(path)
+#define mkdir(path, mode) _mkdir(path)
 #endif
+#include <errno.h>
 
 /* ========================================================================
  * 内部数据结构
@@ -72,7 +77,7 @@ static int mkpath(char *path) {
     for (char *sep = cur; *sep != '\0'; sep++) {
         if (*sep == '/') {
             *sep = '\0';
-            if (strlen(cur) > 0 && mkdir(cur) != 0 && errno != EEXIST) {
+            if (strlen(cur) > 0 && mkdir(cur, 0755) != 0 && errno != EEXIST) {
                 free(p);
                 return -1;
             }
@@ -81,7 +86,7 @@ static int mkpath(char *path) {
     }
 
     /* 创建最后一层目录 */
-    if (strlen(cur) > 0 && mkdir(cur) != 0 && errno != EEXIST) {
+    if (strlen(cur) > 0 && mkdir(cur, 0755) != 0 && errno != EEXIST) {
         free(p);
         return -1;
     }

@@ -24,11 +24,13 @@
 
 #ifdef _WIN32
 #include <direct.h>
-#define mm_mkdir(path) _mkdir(path)
-#else
-#include <unistd.h>
-#define mm_mkdir(path) mkdir(path, 0755)
+#define mkdir(path, mode) _mkdir(path)
 #endif
+
+#ifdef _WIN32
+#include <direct.h>  // for _mkdir on Windows
+#endif
+
 
 /* mm_storage 默认根目录（可通过环境变量 MM_STORAGE_DATA_DIR 覆盖） */
 #define MM_STORAGE_DEFAULT_ROOT "./data/mm_storage"
@@ -90,11 +92,19 @@ static void ensure_dir_recursive(const char *path) {
         if (*p == '/' || *p == '\\') {
             char sep = *p;
             *p = '\0';
-            mm_mkdir(tmp);
+#ifdef _WIN32
+            _mkdir(tmp);
+#else
+            mkdir(tmp, 0755);
+#endif
             *p = sep;
         }
     }
-    mm_mkdir(tmp);
+#ifdef _WIN32
+    _mkdir(tmp);
+#else
+    mkdir(tmp, 0755);
+#endif
 }
 
 /* 获取（或创建并缓存）指定 collection 对应的 Blob 引擎 */

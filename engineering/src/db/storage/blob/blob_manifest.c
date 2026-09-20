@@ -21,12 +21,23 @@
 
 #ifdef _WIN32
 #include <direct.h>
-#include <io.h>
+#define mkdir(path, mode) _mkdir(path)
+#endif
+
+#ifndef mkdir_path
+#ifdef _WIN32
+#include <direct.h>
 #define mkdir_path(path) _mkdir(path)
 #else
-#include <unistd.h>
 #define mkdir_path(path) mkdir(path, 0755)
 #endif
+#endif
+
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 
 /* ========================================================================
  * 日志宏（简化版本，避免引入额外依赖）

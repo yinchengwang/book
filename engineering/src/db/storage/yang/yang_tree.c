@@ -5,9 +5,11 @@
 
 #include "db/storage/yang/yang_tree.h"
 #include "log.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdbool.h>
 
 /* ========================================================================
  * 工具函数
@@ -458,6 +460,30 @@ void yang_free_path_info(YangPathInfo *info) {
  * 路径匹配
  * ======================================================================== */
 
+typedef struct {
+    const char *prefix;
+    size_t prefix_len;
+    YangPatternMatch *matches;
+    size_t count;
+    size_t capacity;
+} yang_prefix_ctx_t;
+
+static bool yang_prefix_callback(const char *path, yang_node_t *node, void *ctx_ptr) {
+    yang_prefix_ctx_t *ctx = (yang_prefix_ctx_t *)ctx_ptr;
+    if (strncmp(path, ctx->prefix, ctx->prefix_len) == 0) {
+        if (ctx->count >= ctx->capacity) {
+            ctx->capacity *= 2;
+            ctx->matches = (YangPatternMatch *)realloc(ctx->matches,
+                ctx->capacity * sizeof(YangPatternMatch));
+        }
+        ctx->matches[ctx->count].path = strdup(path);
+        ctx->matches[ctx->count].node = node;
+        ctx->matches[ctx->count].depth = yang_path_depth(path, "/");
+        ctx->count++;
+    }
+    return true;
+}
+
 YangPatternMatch *yang_match_prefix(void *tree,
                                    const char *prefix,
                                    size_t *out_count) {
@@ -465,29 +491,17 @@ YangPatternMatch *yang_match_prefix(void *tree,
 
     yang_engine_db_t *db = (yang_engine_db_t *)tree;
     YangPatternMatch *matches = (YangPatternMatch *)calloc(64, sizeof(YangPatternMatch));
-    size_t count = 0;
-    size_t capacity = 64;
-    size_t prefix_len = strlen(prefix);
+    yang_prefix_ctx_t ctx = {
+        .prefix = prefix,
+        .prefix_len = strlen(prefix),
+        .matches = matches,
+        .count = 0,
+        .capacity = 64,
+    };
 
-    int traverse_callback(const char *path, yang_node_t *node, void *ctx) {
-        (void)ctx;
-        if (strncmp(path, prefix, prefix_len) == 0) {
-            if (count >= capacity) {
-                capacity *= 2;
-                matches = (YangPatternMatch *)realloc(matches,
-                    capacity * sizeof(YangPatternMatch));
-            }
-            matches[count].path = strdup(path);
-            matches[count].node = node;
-            matches[count].depth = yang_path_depth(path, "/");
-            count++;
-        }
-        return true;
-    }
+    yang_engine_traverse(tree, yang_prefix_callback, &ctx);
 
-    yang_engine_traverse(tree, traverse_callback, NULL);
-
-    *out_count = count;
+    *out_count = ctx.count;
     return matches;
 }
 

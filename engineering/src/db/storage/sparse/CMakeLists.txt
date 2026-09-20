@@ -13,6 +13,7 @@ add_library(storage_sparse OBJECT ${SPARSE_SOURCES})
 target_include_directories(storage_sparse PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include
     ${ENGINEERING_SOURCE_DIR}/include/db
+    ${ENGINEERING_SOURCE_DIR}/third_part/uthash/src
 )
 
 # db_utils 可能为空，改为可选链接

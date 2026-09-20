@@ -11,8 +11,13 @@
 
 #ifdef _WIN32
 #include <direct.h>
-#define mkdir(path) _mkdir(path)
+#define mkdir(path, mode) _mkdir(path)
 #endif
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 
 /* ========================================================================
  * 内部辅助函数
@@ -24,7 +29,7 @@ static int ensure_dir(const char *path) {
     if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
         return 0;
     }
-    return mkdir(path) == 0 ? 0 : -1;
+    return mkdir(path, 0755) == 0 ? 0 : -1;
 }
 
 static void get_mview_path(const ts_mview_t *mview, char *path, size_t size) {

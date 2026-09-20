@@ -16,6 +16,15 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/stat.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+#ifdef _WIN32
+#include <direct.h>
+#define mkdir(path, mode) _mkdir(path)
+#endif
 #include <errno.h>
 
 /* ============================================================
@@ -76,7 +85,7 @@ static void make_idx_path(char *buf, size_t size, const char *dir, uint32_t seg_
 static int ensure_dir(const char *path) {
     struct stat st = {0};
     if (stat(path, &st) == -1) {
-        if (mkdir(path) == -1 && errno != EEXIST) {
+        if (mkdir(path, 0755) == -1 && errno != EEXIST) {
             LOG_ERROR("创建目录失败: %s", path);
             return -1;
         }

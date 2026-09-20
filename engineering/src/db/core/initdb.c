@@ -14,16 +14,12 @@
 #include <string.h>
 #include <errno.h>
 #include <time.h>
+#include <sys/stat.h>  // for struct stat (Linux GCC requires explicit include)
 
 #ifdef _WIN32
-#include <direct.h>
-#include <windows.h>
-#define mkdir(path, mode) _mkdir(path)
-#else
-#include <sys/stat.h>
-#include <unistd.h>
-#include <dirent.h>
+#include <windows.h>  // for CreateDirectoryA, GetLastError, DWORD, ERROR_ALREADY_EXISTS
 #endif
+
 
 /* ============================================================
  * 常量定义

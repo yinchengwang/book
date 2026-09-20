@@ -408,7 +408,7 @@ int heap_insert(Relation rel, const void *tuple, size_t len,
     if (out_tid != NULL) {
         uint8_t *tid_out = (uint8_t *)out_tid;
         uint32_t blk = buf->blocknum;
-        uint16_t off = lp;
+        uint16_t off = (uint16_t)(lp ? lp->t_off : 0);
         memcpy(tid_out, &blk, sizeof(blk));
         memcpy(tid_out + sizeof(blk), &off, sizeof(off));
     }
@@ -544,7 +544,7 @@ int heap_update(Relation rel, const void *tid,
     }
 
     /* 页面空间不足，在新页面插入 */
-    if (heap_insert(rel, newtuple, newlen, cid, 0, NULL) != 0) {
+    if (heap_insert(rel, newtuple, newlen, cid, 0, NULL, NULL) != 0) {
         return -1;
     }
 

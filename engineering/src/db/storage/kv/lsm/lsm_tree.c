@@ -15,7 +15,10 @@
 #include <sys/stat.h>
 
 #ifdef _WIN32
-    #include <windows.h>
+#include <windows.h>
+#endif
+
+#ifdef _WIN32
     #define mkdir(path, mode) mkdir(path)
 #else
     #include <unistd.h>
@@ -708,7 +711,7 @@ int lsm_tree_flush(lsm_tree_t *tree) {
     /* 写入 SSTable 头 */
     uint32_t magic = LSM_MAGIC;
     uint32_t version = LSM_VERSION;
-    uint32_t num_entries = (uint32_t)skip_list_size(tree->memtable);
+    uint32_t num_entries = (uint32_t)memtable_size(tree->memtable);
     fwrite(&magic, sizeof(uint32_t), 1, fp);
     fwrite(&version, sizeof(uint32_t), 1, fp);
     fwrite(&num_entries, sizeof(uint32_t), 1, fp);

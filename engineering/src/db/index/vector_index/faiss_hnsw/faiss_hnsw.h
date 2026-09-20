@@ -84,6 +84,14 @@ void faiss_hnsw_index_drop(faiss_hnsw_t *index);
 int32_t faiss_hnsw_index_size(const faiss_hnsw_t *index);
 
 /**
+ * @brief 获取索引当前已插入的向量数量（faiss_hnsw_index_size 的别名）
+ *
+ * faiss_hnsw_index_size 是正确命名（与 FAISS 兼容），faiss_hnsw_index_ntotal
+ * 是历史别名，调用方可任选其一。
+ */
+int32_t faiss_hnsw_index_ntotal(const faiss_hnsw_t *index);
+
+/**
  * 获取索引当前的最高层号（0-indexed，空索引时为 -1）
  *
  * @param index 索引指针

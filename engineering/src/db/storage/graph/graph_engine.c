@@ -11,11 +11,16 @@
 #include <string.h>
 #include <stdio.h>
 #include <sys/stat.h>
-#include <errno.h>
+
 #ifdef _WIN32
 #include <direct.h>
-#define mkdir(path) _mkdir(path)
+#define mkdir(path, mode) _mkdir(path)
 #endif
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+#include <errno.h>
 
 #define GRAPH_ENGINE_NAME "graph_engine"
 #define GRAPH_DATA_PREFIX "graph_"
@@ -35,7 +40,7 @@ static int mkpath(char *path) {
     for (char *sep = cur; *sep != '\0'; sep++) {
         if (*sep == '/') {
             *sep = '\0';
-            if (strlen(cur) > 0 && mkdir(cur) != 0 && errno != EEXIST) {
+            if (strlen(cur) > 0 && mkdir(cur, 0755) != 0 && errno != EEXIST) {
                 free(p);
                 return -1;
             }
@@ -43,7 +48,7 @@ static int mkpath(char *path) {
         }
     }
 
-    if (strlen(cur) > 0 && mkdir(cur) != 0 && errno != EEXIST) {
+    if (strlen(cur) > 0 && mkdir(cur, 0755) != 0 && errno != EEXIST) {
         free(p);
         return -1;
     }

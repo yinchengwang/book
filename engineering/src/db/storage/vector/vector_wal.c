@@ -14,6 +14,10 @@
 #include <stdio.h>
 #include <pthread.h>
 #include <sys/stat.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include <time.h>
 
 /* ============================================================
@@ -144,17 +148,28 @@ vector_wal_t *vector_wal_open(const char *path, uint32_t segment_id) {
     /* 读取头部 */
     vector_wal_file_header_t header;
     if (fread(&header, sizeof(header), 1, wal->fp) != 1) {
-        LOG_ERROR("读取 WAL 头部失败");
+        /* 文件为空或不完整（上次崩溃留下的空文件），重建 WAL */
+        long file_pos = ftell(wal->fp);
         fclose(wal->fp);
         free(wal);
-        return NULL;
+        if (file_pos <= 0) {
+            LOG_WARN("WAL 文件为空，将重新创建");
+        } else {
+            LOG_WARN("WAL 头部读取不完整 (%ld bytes)，将重新创建", file_pos);
+        }
+        /* 删除损坏的文件，重新创建 */
+        remove(wal->path);
+        return vector_wal_create(path, segment_id);
     }
 
     if (header.magic != VECTOR_WAL_MAGIC) {
-        LOG_ERROR("WAL 魔数不匹配: 0x%X != 0x%X", header.magic, VECTOR_WAL_MAGIC);
+        /* 魔数不匹配，文件损坏，重建 WAL */
+        LOG_WARN("WAL 魔数不匹配: 0x%X != 0x%X，将重新创建",
+                 header.magic, VECTOR_WAL_MAGIC);
         fclose(wal->fp);
         free(wal);
-        return NULL;
+        remove(wal->path);
+        return vector_wal_create(path, segment_id);
     }
 
     /* 分配缓冲区 */

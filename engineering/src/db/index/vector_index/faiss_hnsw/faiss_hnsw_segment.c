@@ -2,7 +2,8 @@
  * @file faiss_hnsw_segment.c
  * @brief faiss_hnsw COW segment + collection 实装（C5.1-C5.3）
  */
-#include "db/index/vector_index/hnsw/faiss_hnsw_segment.h"
+#include "db/index/vector_index/faiss_hnsw/faiss_hnsw_segment.h"
+#include "db/index/vector_index/faiss_hnsw/faiss_hnsw_internal.h"
 #include "db/core/log.h"
 
 #include <stdlib.h>
@@ -132,7 +133,7 @@ int faiss_hnsw_collection_add(faiss_hnsw_collection_t *col,
 /* 在单个 segment 内做 top-k 线性扫描 */
 static void segment_topk(faiss_hnsw_segment_t *seg, const float *query, int32_t k,
                         float *out_dist, int32_t *out_id, int32_t *base_offset) {
-    int32_t n = (int32_t)faiss_hnsw_index_ntotal(seg->index);
+    int32_t n = (int32_t)faiss_hnsw_index_size(seg->index);
     if (n <= 0) return;
     float *d = malloc(sizeof(float) * (size_t)n);
     int32_t *ids = malloc(sizeof(int32_t) * (size_t)n);
@@ -140,14 +141,14 @@ static void segment_topk(faiss_hnsw_segment_t *seg, const float *query, int32_t 
 
     /* 单点对所有向量的距离（无 SIMD，简单循环） */
     for (int32_t i = 0; i < n; ++i) {
-        const float *v = seg->index->vectors + (size_t)i * (size_t)seg->index->dims;
+        const float *v = ((faiss_hnsw_t *)seg->index)->vectors + (size_t)i * (size_t)((faiss_hnsw_t *)seg->index)->dims;
         float dot = 0.0f;
-        for (int32_t j = 0; j < seg->index->dims; ++j) dot += query[j] * v[j];
+        for (int32_t j = 0; j < ((faiss_hnsw_t *)seg->index)->dims; ++j) dot += query[j] * v[j];
         /* distance = -dot for inner product / dot for cosine */
-        if (seg->index->metric == 2) d[i] = -dot;  /* IP：越大越相似 */
-        else if (seg->index->metric == 1) {
+        if (((faiss_hnsw_t *)seg->index)->metric == 2) d[i] = -dot;  /* IP：越大越相似 */
+        else if (((faiss_hnsw_t *)seg->index)->metric == 1) {
             float dist = 0.0f;
-            for (int32_t j = 0; j < seg->index->dims; ++j) {
+            for (int32_t j = 0; j < ((faiss_hnsw_t *)seg->index)->dims; ++j) {
                 float diff = query[j] - v[j];
                 dist += diff * diff;
             }
@@ -181,7 +182,7 @@ int32_t faiss_hnsw_collection_search(faiss_hnsw_collection_t *col,
     /* 简化：单段足够大时直查，否则多段各查后 RRF-like 合并 */
     int32_t total_candidates = 0;
     for (int32_t i = 0; i < col->n_segs; ++i) {
-        total_candidates += (int32_t)col->segs[i].index->n_total;
+        total_candidates += (int32_t)faiss_hnsw_index_size(col->segs[i].index);
     }
     total_candidates += col->buf_count;
 
@@ -217,19 +218,21 @@ int32_t faiss_hnsw_collection_search(faiss_hnsw_collection_t *col,
     }
 
     /* 输出 top-k */
+    int32_t out_n = 0;
     for (int32_t i = 0; i < k && i < offset; ++i) {
         distances[i] = all_d[i];
         ids[i] = all_i[i];
+        out_n = i + 1;
     }
     free(all_d); free(all_i);
-    return (i < k ? i : k);
+    return out_n;
 }
 
 int32_t faiss_hnsw_collection_ntotal(const faiss_hnsw_collection_t *col) {
     if (!col) return 0;
     int32_t total = 0;
     for (int32_t i = 0; i < col->n_segs; ++i) {
-        total += (int32_t)col->segs[i].index->n_total;
+        total += (int32_t)faiss_hnsw_index_size(col->segs[i].index);
     }
     return total + col->buf_count;
 }

@@ -9,6 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* 数据页起始偏移（溢出链，跳过头部 chain_next 字节） */
+#define PAGE_DATA_START_ITER (PAGE_HEADER_SIZE + sizeof(uint8_t))
+
 /* ============================================================
  * 内部数据结构
  * ============================================================ */
@@ -121,13 +124,13 @@ kv_iter_t *kv_scan(kv_t *db,
 kv_result_t kv_iter_next(kv_iter_t *iter) {
     if (!iter) return KV_ERROR;
 
-    /* 获取数据页 */
+    /* 获取或推进数据页 */
     if (!iter->page) {
         iter->page = buffer_get_page(iter->pool, iter->data_page_id);
         if (!iter->page) {
             return KV_NOT_FOUND;
         }
-        iter->current_offset = PAGE_HEADER_SIZE;
+        iter->current_offset = PAGE_DATA_START_ITER;
     }
 
     /* 遍历页面中的记录 */
@@ -175,7 +178,23 @@ kv_result_t kv_iter_next(kv_iter_t *iter) {
         return KV_OK;
     }
 
-    /* 页面遍历完毕 */
+    /* 页面遍历完毕，尝试下一个溢出页 */
+    if (iter->page) {
+        buffer_unpin_page(iter->pool, iter->data_page_id);
+        iter->page = NULL;
+    }
+    /* 读取当前页的 next_page_id */
+    {
+        page_t *p = buffer_get_page(iter->pool, iter->data_page_id);
+        if (p) {
+            page_id_t next_id = (page_id_t)p->header.reserved;
+            buffer_unpin_page(iter->pool, iter->data_page_id);
+            if (next_id != 0 && next_id != iter->data_page_id) {
+                iter->data_page_id = next_id;
+                return kv_iter_next(iter);  /* 递归获取下一页 */
+            }
+        }
+    }
     return KV_NOT_FOUND;
 }
 

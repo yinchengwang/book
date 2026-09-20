@@ -6,6 +6,7 @@
  */
 
 #include "db/disk.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -17,6 +18,9 @@
     #include <unistd.h>
     #include <fcntl.h>
     #include <sys/stat.h>
+
+#ifdef _WIN32
+#endif
 #endif
 
 /* ============================================================
@@ -74,7 +78,12 @@ static ssize_t file_pread(int fd, void *buf, size_t count, off_t offset) {
 }
 
 static ssize_t file_pwrite(int fd, const void *buf, size_t count, off_t offset) {
-    return pwrite(fd, buf, count, offset);
+    ssize_t r = pwrite(fd, buf, count, offset);
+    if (r < 0 || (size_t)r != count) {
+        fprintf(stderr, "[DEBUG pwrite] fd=%d count=%zu offset=%ld -> r=%zd errno=%d (%s)\n",
+                fd, count, (long)offset, r, errno, strerror(errno));
+    }
+    return r;
 }
 
 static int file_sync(int fd) {
@@ -124,7 +133,7 @@ struct db_file_s {
 /**
  * @brief 标记页面为已分配（简化实现：依赖空闲链表管理）
  */
-static void mark_page_allocated(db_file_header_t *header, page_id_t page_id) {
+__attribute__((unused)) static void mark_page_allocated(db_file_header_t *header, page_id_t page_id) {
     (void)header;
     (void)page_id;
     /* 位图操作暂时省略，依赖空闲链表管理 */
@@ -255,6 +264,65 @@ db_file_t *disk_open_raw(const char *path) {
 #endif
 
     return file;
+}
+
+db_file_t *disk_open_append(const char *path) {
+    if (!path) return NULL;
+
+    db_file_t *file = (db_file_t *)calloc(1, sizeof(db_file_t));
+    if (!file) return NULL;
+
+    file->path = strdup(path);
+    file->page_size = 8192;  /* 默认页面大小 */
+
+#ifdef _WIN32
+    file->fd = CreateFileA(path,
+        GENERIC_READ | GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        NULL,
+        OPEN_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL);
+    if (file->fd == INVALID_FD) {
+        free(file->path);
+        free(file);
+        return NULL;
+    }
+#else
+    /* O_APPEND ensures all writes go to end-of-file atomically.
+     * This avoids the pwrite sparse-file issue that caused WAL failures.
+     * See: https://man7.org/linux/man-pages/man2/open.2.html */
+    file->fd = open(path, O_RDWR | O_CREAT | O_APPEND, 0644);
+    if (file->fd < 0) {
+        free(file->path);
+        free(file);
+        return NULL;
+    }
+#endif
+
+    return file;
+}
+
+int64_t disk_append(db_file_t *file, const void *buf, size_t count) {
+    if (!file || !buf) return -1;
+
+    /* Get current file size first (for return value) */
+    int64_t offset_before = disk_get_size(file);
+
+#ifdef _WIN32
+    DWORD written = 0;
+    OVERLAPPED ov = {0};
+    if (!WriteFile(file->fd, buf, (DWORD)count, &written, &ov)) {
+        return -1;
+    }
+#else
+    ssize_t written = write(file->fd, buf, count);
+    if (written != (ssize_t)count) {
+        return -1;
+    }
+#endif
+
+    return offset_before;
 }
 
 bool disk_exists(const char *path) {

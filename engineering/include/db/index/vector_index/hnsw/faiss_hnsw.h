@@ -7,6 +7,7 @@
 #include <algo-prod/distance/distance.h>
 #include <algo-prod/quantization/quantization.h>
 #include <db/index/vector_ref.h>
+#include <db/index/vector_index/hnsw/faiss_hnsw_segment.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -170,7 +171,7 @@ bool faiss_hnsw_index_is_deleted(const faiss_hnsw_t *index, int32_t id);
  * 搜索并发 UAF。
  * ======================================================================== */
 
-typedef struct faiss_hnsw_segment faiss_hnsw_segment_t;
+/* faiss_hnsw_segment_t 已在 faiss_hnsw_segment.h 中定义（含 typedef） */
 
 /**
  * @brief 创建不可变段快照（占位：当前实现直接返回 index 引用）

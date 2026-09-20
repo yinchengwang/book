@@ -20,8 +20,8 @@ extern "C" {
  * 常量定义
  * ============================================================ */
 
-/** 默认页面大小：8KB */
-#define DEFAULT_PAGE_SIZE 8192
+/** 默认页面大小：64KB（增大以支持更多 KV 数据） */
+#define DEFAULT_PAGE_SIZE 65536
 
 /** 页面头部大小：16 字节 */
 #define PAGE_HEADER_SIZE 16

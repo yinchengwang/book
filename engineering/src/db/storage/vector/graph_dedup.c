@@ -14,9 +14,9 @@
 #include <sys/stat.h>
 
 #ifdef _WIN32
-#include <direct.h>
-#define mkdir(path) _mkdir(path)
+#include <windows.h>
 #endif
+
 
 /* ========================================================================
  * 常量定义

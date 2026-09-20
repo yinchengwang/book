@@ -16,10 +16,6 @@
 #define WAL_SEGMENT_SIZE (16 * 1024 * 1024)  /* 16MB */
 #endif
 
-#ifdef _WIN32
-#include <direct.h>
-#define mkdir(path) _mkdir(path)
-#endif
 
 /* ========================================================================
  * WAL 解析器内部结构

@@ -12,6 +12,9 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#endif
+
+#ifdef _WIN32
 #include <direct.h>
 #define mkdir_path(p) _mkdir(p)
 #else

@@ -13,12 +13,6 @@
 #include <stdio.h>
 #include <time.h>
 #include <stdarg.h>
-#ifdef _WIN32
-#include <direct.h>
-#define mkdir(path, mode) _mkdir(path)
-#else
-#include <sys/stat.h>
-#endif
 
 /* ========================================================================
  * 内部结构
@@ -560,7 +554,7 @@ int vector_api_save(VectorAPI *api) {
 
     /* 确保数据目录存在 */
 #ifdef _WIN32
-    _mkdir(api->data_dir);
+    _mkdir(api->data_dir, 0755);
 #else
     mkdir(api->data_dir, 0755);
 #endif

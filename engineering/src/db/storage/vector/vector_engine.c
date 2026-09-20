@@ -23,6 +23,15 @@
 #include <stdio.h>
 #include <math.h>
 #include <sys/stat.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+#ifdef _WIN32
+#include <direct.h>
+#define mkdir(path, mode) _mkdir(path)
+#endif
 #include <errno.h>
 
 /* ========================================================================
@@ -127,7 +136,7 @@ static void vector_heap_free(vector_min_heap_t *heap) {
  * @param k 返回结果数量
  * @return vector_search_result_t* 结果数组（需调用方释放）
  */
-static vector_search_result_t *vector_search(vector_engine_t *engine, const float *query, int k) {
+static vector_search_result_t *vector_search(vector_engine_db_t *engine, const float *query, int k) {
     vector_min_heap_t heap;
     if (vector_heap_init(&heap, k) != 0) return NULL;
 
@@ -195,10 +204,6 @@ typedef struct {
     int32_t n_total;
     int32_t metric;
 } hnsw_persist_meta_t;
-#ifdef _WIN32
-#include <direct.h>
-#define mkdir(path) _mkdir(path)
-#endif
 
 #define VECTOR_ENGINE_NAME "vector_engine"
 #define VECTOR_DATA_PREFIX "vec_"
@@ -209,11 +214,13 @@ typedef struct {
 typedef struct vector_engine_global_s {
     char data_dir[512];
     bool initialized;
+    int32_t default_dimension;    /**< 默认向量维度（create 时使用） */
 } vector_engine_global_t;
 
 static vector_engine_global_t g_vector_engine = {
     .data_dir = {0},
-    .initialized = false
+    .initialized = false,
+    .default_dimension = 128
 };
 
 /* 前向声明：全局锁管理器和清理函数 */
@@ -284,7 +291,7 @@ static int mkpath(char *path) {
     for (char *sep = cur; *sep != '\0'; sep++) {
         if (*sep == '/') {
             *sep = '\0';
-            if (strlen(cur) > 0 && mkdir(cur) != 0 && errno != EEXIST) {
+            if (strlen(cur) > 0 && mkdir(cur, 0755) != 0 && errno != EEXIST) {
                 free(p);
                 return -1;
             }
@@ -293,7 +300,7 @@ static int mkpath(char *path) {
     }
 
     /* 创建最后一层目录 */
-    if (strlen(cur) > 0 && mkdir(cur) != 0 && errno != EEXIST) {
+    if (strlen(cur) > 0 && mkdir(cur, 0755) != 0 && errno != EEXIST) {
         free(p);
         return -1;
     }
@@ -325,7 +332,7 @@ static int vector_engine_table_create(const char *name, const storage_schema_t *
     get_meta_path(name, meta_path, sizeof(meta_path));
 
     vector_header_t header = {
-        .dimension = 128,
+        .dimension = g_vector_engine.default_dimension,
         .metric = METRIC_L2,
         .num_vectors = 0
     };
@@ -699,6 +706,13 @@ int vector_engine_init(const char *data_dir) {
     }
 
     g_vector_engine.initialized = true;
+    return 0;
+}
+
+int vector_engine_set_default_dimension(int32_t dimension) {
+    if (dimension <= 0) return -1;
+    if (!g_vector_engine.initialized) return -1;
+    g_vector_engine.default_dimension = dimension;
     return 0;
 }
 

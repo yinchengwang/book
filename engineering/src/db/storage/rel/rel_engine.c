@@ -24,11 +24,12 @@
 
 /* Windows 兼容：mkdir / sys/stat.h */
 #ifdef _WIN32
-    #include <direct.h>
-    #include <io.h>
-    #define mkdir _mkdir
+#include <direct.h>
+#include <io.h>
+#include <windows.h>
+#define mkdir(path, mode) _mkdir(path)
 #else
-    #include <sys/stat.h>
+#include <sys/stat.h>
 #endif
 
 /* ============================================================
@@ -107,7 +108,7 @@ int rel_engine_init(const char *data_dir) {
 
     /* 确保数据目录存在 */
 #ifdef _WIN32
-    if (mkdir(g_rel_engine.data_dir) != 0 && errno != EEXIST) {
+    if (mkdir(g_rel_engine.data_dir, 0755) != 0 && errno != EEXIST) {
         LOG_WARN("数据目录创建失败: %s", g_rel_engine.data_dir);
     }
 #else

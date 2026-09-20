@@ -111,6 +111,17 @@ const storage_ops_t *vector_engine_get_ops(void);
 int vector_engine_init(const char *data_dir);
 
 /**
+ * @brief 设置默认向量维度
+ *
+ * 必须在 vector_engine_create 之前调用。
+ * 默认维度为 128。
+ *
+ * @param dimension 向量维度（必须 > 0）
+ * @return 0 成功，-1 失败
+ */
+int vector_engine_set_default_dimension(int32_t dimension);
+
+/**
  * @brief 关闭向量引擎
  */
 int vector_engine_shutdown(void);

@@ -14,16 +14,6 @@
 #include <math.h>
 #include <dirent.h>
 
-#ifdef _WIN32
-#include <direct.h>
-#include <errno.h>
-#define mkdir(path) _mkdir(path)
-#define unlink(path) _unlink(path)
-#define rmdir(path) _rmdir(path)
-#else
-#include <sys/stat.h>
-#include <unistd.h>
-#endif
 
 #define ST_ENGINE_NAME "st_engine"
 #define ST_DATA_PREFIX "st_"
@@ -138,7 +128,7 @@ int st_engine_init(const char *data_dir) {
 
     /* 创建数据目录 */
 #ifdef _WIN32
-    mkdir(g_st_engine.data_dir);
+    mkdir(g_st_engine.data_dir, 0755);
 #else
     mkdir(g_st_engine.data_dir, 0755);
 #endif
@@ -166,7 +156,7 @@ static int st_engine_table_create(const char *name, const storage_schema_t *sche
     get_dir_path(name, dir_path, sizeof(dir_path));
 
 #ifdef _WIN32
-    if (mkdir(dir_path) != 0 && errno != EEXIST) {
+    if (mkdir(dir_path, 0755) != 0 && errno != EEXIST) {
 #else
     if (mkdir(dir_path, 0755) != 0 && errno != EEXIST) {
 #endif

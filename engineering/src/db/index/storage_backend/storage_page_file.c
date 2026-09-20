@@ -10,13 +10,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include "storage_backend.h"
 
-/* Windows 平台兼容 */
 #ifdef _WIN32
 #include <direct.h>
 #define mkdir(path, mode) _mkdir(path)
 #endif
+#include "storage_backend.h"
+
+/* Windows 平台兼容 */
 
 /** 默认页面大小（与 db/page.h 的 DEFAULT_PAGE_SIZE 一致） */
 #define PAGE_FILE_DEFAULT_PAGE_SIZE 8192u

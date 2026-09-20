@@ -28,15 +28,23 @@
 
 #ifdef _WIN32
 #include <direct.h>
-#include <io.h>
-#define mkdir_path(path) _mkdir(path)
-#define fsync_func(fd) _commit(fd)
-#else
-#include <unistd.h>
-#include <sys/time.h>
-#define mkdir_path(path) mkdir(path, 0755)
-#define fsync_func(fd) fsync(fd)
+#define mkdir(path, mode) _mkdir(path)
 #endif
+
+#ifndef mkdir_path
+#ifdef _WIN32
+#include <direct.h>
+#define mkdir_path(path) _mkdir(path)
+#else
+#define mkdir_path(path) mkdir(path, 0755)
+#endif
+#endif
+
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 
 /* ========================================================================
  * 引擎内部结构

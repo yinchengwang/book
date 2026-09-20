@@ -7,7 +7,14 @@
  *
  * 其中 IDF(q) = log((N - n(q) + 0.5) / (n(q) + 0.5))
  */
+#define _GNU_SOURCE
+#define _POSIX_C_SOURCE 200809L
 #include "db/bm25_index.h"
+
+/* MinGW 不会在 <string.h> 中暴露 strndup，本地声明 */
+#ifdef __MINGW32__
+extern char *strndup(const char *s, size_t n);
+#endif
 #include "log.h"
 #include <stdlib.h>
 #include <string.h>

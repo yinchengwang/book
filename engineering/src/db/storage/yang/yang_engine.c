@@ -2,19 +2,24 @@
  * @file yang_engine.c
  * @brief Yang 树存储引擎实现
  */
-#include "yang_engine.h"
+#include "db/storage/yang/yang_engine.h"
 #include "log.h"
 #include "db/storage/wal/wal.h"  /* C0-2：WAL 接入 */
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <sys/stat.h>
-#include <errno.h>
-#include <ctype.h>
+
 #ifdef _WIN32
 #include <direct.h>
-#define mkdir(path) _mkdir(path)
+#define mkdir(path, mode) _mkdir(path)
 #endif
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+#include <errno.h>
+#include <ctype.h>
 
 #define YANG_ENGINE_NAME "yang_engine"
 #define YANG_DATA_PREFIX "yang_"
@@ -34,7 +39,7 @@ static int mkpath(char *path) {
     for (char *sep = cur; *sep != '\0'; sep++) {
         if (*sep == '/') {
             *sep = '\0';
-            if (strlen(cur) > 0 && mkdir(cur) != 0 && errno != EEXIST) {
+            if (strlen(cur) > 0 && mkdir(cur, 0755) != 0 && errno != EEXIST) {
                 free(p);
                 return -1;
             }
@@ -42,7 +47,7 @@ static int mkpath(char *path) {
         }
     }
 
-    if (strlen(cur) > 0 && mkdir(cur) != 0 && errno != EEXIST) {
+    if (strlen(cur) > 0 && mkdir(cur, 0755) != 0 && errno != EEXIST) {
         free(p);
         return -1;
     }

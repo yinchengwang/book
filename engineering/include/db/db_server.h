@@ -7,6 +7,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>  // for size_t (Linux GCC requires explicit include)
 
 #ifdef __cplusplus
 extern "C" {

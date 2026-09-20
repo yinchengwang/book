@@ -17,6 +17,15 @@
 #include <time.h>
 #include <sys/stat.h>
 
+#ifdef _WIN32
+#include <direct.h>
+#define mkdir(path, mode) _mkdir(path)
+#endif
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #define TS_ENGINE_NAME "ts_engine"
 #define TS_DATA_PREFIX "ts_"
 
@@ -74,7 +83,7 @@ static int ts_engine_table_create(const char *name, const storage_schema_t *sche
 
     /* 创建数据目录（兼容 Windows/macOS/Linux） */
 #ifdef _WIN32
-    if (mkdir(g_ts_engine.data_dir) != 0 && errno != EEXIST) {
+    if (mkdir(g_ts_engine.data_dir, 0755) != 0 && errno != EEXIST) {
 #else
     if (mkdir(g_ts_engine.data_dir, 0755) != 0 && errno != EEXIST) {
 #endif

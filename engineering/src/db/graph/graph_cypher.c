@@ -438,7 +438,6 @@ static CypherNodePattern *cypher_parse_node_pattern(CypherParser *parser)
         /* 检查是否有变量名 */
         if (cypher_check(parser, CYPHER_TOKEN_IDENTIFIER)) {
             /* 可能是变量名，后面跟着 : 或 { */
-            const char *token_start = parser->input + parser->pos;
 
             /* 向前看：检查下一个非空白字符 */
             size_t saved_pos = parser->pos;
@@ -552,24 +551,24 @@ static CypherRelPattern *cypher_parse_rel_pattern(CypherParser *parser)
      */
     rel->min_hops = 1;
     rel->max_hops = 1;
-    if (cypher_check(parser, CYPHER_TOKEN_ASTERISK)) {
+    if (cypher_check(parser, CYPHER_TOKEN_MULTIPLY)) {
         /* 解析 *N..M 或 * 或 *N */
-        if (cypher_check(parser, CYPHER_TOKEN_NUMBER)) {
-            int n = (int)parser->current_token.value.num_value;
+        if (cypher_check(parser, CYPHER_TOKEN_INTEGER)) {
+            int n = (int)atoi(parser->current_token.lexeme);
             rel->min_hops = n;
             rel->max_hops = n;
             /* 检查 ..M */
             if (parser->input[parser->pos] == '.' && parser->input[parser->pos + 1] == '.') {
                 parser->pos += 2;
-                if (cypher_check(parser, CYPHER_TOKEN_NUMBER)) {
-                    rel->max_hops = (int)parser->current_token.value.num_value;
+                if (cypher_check(parser, CYPHER_TOKEN_INTEGER)) {
+                    rel->max_hops = (int)atoi(parser->current_token.lexeme);
                 }
             }
         } else if (parser->input[parser->pos] == '.' && parser->input[parser->pos + 1] == '.') {
             /* ..M 形式 */
             parser->pos += 2;
-            if (cypher_check(parser, CYPHER_TOKEN_NUMBER)) {
-                rel->max_hops = (int)parser->current_token.value.num_value;
+            if (cypher_check(parser, CYPHER_TOKEN_INTEGER)) {
+                rel->max_hops = (int)atoi(parser->current_token.lexeme);
                 rel->min_hops = 0;
             }
         }
@@ -577,19 +576,17 @@ static CypherRelPattern *cypher_parse_rel_pattern(CypherParser *parser)
     }
 
     /* C3-5 T8: 处理 OPTIONAL MATCH 关键字 + UNWIND 子句（占位） */
-    if (parser->current_token.type == CYPHER_TOKEN_OPTIONAL && parser->next_token.type == CYPHER_TOKEN_MATCH) {
+    if (parser->current_token.type == CYPHER_TOKEN_OPTIONAL && cypher_peek(parser) == 'M' ) {
         cypher_advance_token(parser);  /* OPTIONAL */
         cypher_advance_token(parser);  /* MATCH */
-        /* 占位：调用 parse_match 处理后续节点 */
-        /* 当前骨架：与普通 MATCH 同处理，语义上 OPTIONAL 不强制 null 检查 */
-        return cypher_parse_match_block(parser);
+        /* 占位：OPTIONAL MATCH 当前不解析，跳过标记返回 NULL 由外层处理 */
+        return NULL;
     }
 
     /* 检查是否有关系模式（不是简单的 --> */
     if (!cypher_check(parser, CYPHER_TOKEN_GREATER) && !cypher_check(parser, CYPHER_TOKEN_RPAREN)) {
         /* 可能是变量 */
         if (cypher_check(parser, CYPHER_TOKEN_IDENTIFIER)) {
-            const char *token_start = parser->input + parser->pos;
             size_t saved_pos = parser->pos;
 
             cypher_advance_token(parser);

@@ -10,4 +10,7 @@ if(WAL_SOURCE_FILES)
         ${ENGINEERING_SOURCE_DIR}/include/db/storage
         ${ENGINEERING_SOURCE_DIR}/include/db/core
     )
+    # Workaround: disable WAL by default (pwrite issues on some filesystems / NTFS via WSL2).
+    # Override with -DDB_NO_WAL=0 to re-enable.
+    # target_compile_definitions(storage_wal PUBLIC DB_NO_WAL=1)
 endif()

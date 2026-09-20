@@ -16,15 +16,16 @@
 #include <stdio.h>
 #include <sys/stat.h>
 
-/* Windows/macOS/Linux 跨平台兼容 */
 #ifdef _WIN32
-    #include <direct.h>
-    #include <errno.h>
-    #define mkdir(path) _mkdir(path)
-    #define rmdir(path) _rmdir(path)
-#else
-    #include <unistd.h>
+#include <direct.h>
+#define mkdir(path, mode) _mkdir(path)
 #endif
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+/* Windows/macOS/Linux 跨平台兼容 */
 
 #define DOC_ENGINE_NAME "doc_engine"
 #define DOC_DATA_PREFIX "doc_"
@@ -59,7 +60,7 @@ static int doc_engine_table_create(const char *name, const storage_schema_t *sch
 
     /* 创建目录（兼容 Windows/macOS/Linux） */
 #ifdef _WIN32
-    if (mkdir(dir_path) != 0 && errno != EEXIST) {
+    if (mkdir(dir_path, 0755) != 0 && errno != EEXIST) {
 #else
     if (mkdir(dir_path, 0755) != 0 && errno != EEXIST) {
 #endif

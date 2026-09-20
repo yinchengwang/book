@@ -19,6 +19,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
+#include <limits.h>   // for INT_MAX (Linux GCC requires explicit include)
+#include <time.h>     // for CLOCK_MONOTONIC
 
 #ifdef _WIN32
 #include <windows.h>

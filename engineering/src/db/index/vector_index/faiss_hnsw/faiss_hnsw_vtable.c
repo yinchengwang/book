@@ -1,5 +1,5 @@
-#include "db/index/vector_index/hnsw/faiss_hnsw_vtable.h"
-#include "db/index/vector_index/hnsw/faiss_hnsw.h"
+#include "db/index/vector_index/faiss_hnsw/faiss_hnsw_vtable.h"
+#include "db/index/vector_index/faiss_hnsw/faiss_hnsw.h"
 #include "db/core/log.h"
 
 #include <stdlib.h>

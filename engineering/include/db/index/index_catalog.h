@@ -14,6 +14,8 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <time.h>  // for time_t (Linux GCC requires explicit include; MSVC tolerates omission)
+#include <stdint.h>
 #include <stdlib.h>
 #include <time.h>
 

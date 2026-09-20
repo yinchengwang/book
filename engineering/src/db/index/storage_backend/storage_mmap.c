@@ -21,24 +21,6 @@
  * 平台相关头文件与类型
  * ============================================================ */
 
-#ifdef _WIN32
-#include <windows.h>
-#include <io.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <direct.h>
-
-/* Windows mkdir */
-#define MMAP_MKDIR(path) _mkdir(path)
-#else
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
-
-/* POSIX mkdir */
-#define MMAP_MKDIR(path) mkdir(path, 0755)
-#endif
 
 /* ============================================================
  * 常量

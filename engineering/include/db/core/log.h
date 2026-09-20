@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdarg.h>
+#include <time.h>  // for time_t (Linux GCC requires explicit include; MSVC tolerates omission)
 
 #ifdef __cplusplus
 extern "C" {

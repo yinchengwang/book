@@ -9,13 +9,18 @@
 #ifndef DB_FAISS_HNSW_SEGMENT_H
 #define DB_FAISS_HNSW_SEGMENT_H
 
-#include "db/index/vector_index/hnsw/faiss_hnsw.h"
 #include <stdint.h>
 #include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/*
+ * faiss_hnsw_t 在 faiss_hnsw.h 中定义。此处只做前置声明，
+ * 避免 segment.h <-> faiss_hnsw.h 的循环 include。
+ */
+typedef struct faiss_hnsw faiss_hnsw_t;
 
 typedef struct faiss_hnsw_segment_s {
     faiss_hnsw_t *index;        /**< 不可变 segment（外部 search 期间指针不变） */

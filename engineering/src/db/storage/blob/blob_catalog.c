@@ -18,14 +18,29 @@
 
 #ifdef _WIN32
 #include <direct.h>
+#define mkdir(path, mode) _mkdir(path)
+#endif
+
+#ifndef fsync_func
+#ifdef _WIN32
 #include <io.h>
-#define mkdir_path(path) _mkdir(path)
 #define fsync_func(fd) _commit(fd)
 #else
-#include <unistd.h>
-#define mkdir_path(path) mkdir(path, 0755)
 #define fsync_func(fd) fsync(fd)
 #endif
+#endif
+
+
+#ifndef mkdir_path
+#ifdef _WIN32
+#include <direct.h>
+#define mkdir_path(path) _mkdir(path)
+#else
+#define mkdir_path(path) mkdir(path, 0755)
+#endif
+#endif
+
+
 
 /* ========================================================================
  * 调试日志宏（可选）

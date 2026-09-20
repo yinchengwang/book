@@ -14,8 +14,13 @@
 
 #ifdef _WIN32
 #include <direct.h>
-#define mkdir(path) _mkdir(path)
+#define mkdir(path, mode) _mkdir(path)
 #endif
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 
 /* strndup polyfill for MinGW */
 #if defined(_WIN32) || !defined(_GNU_SOURCE)
@@ -42,7 +47,7 @@ static int ensure_dir(const char *path) {
     if (path == NULL) return -1;
     struct stat st;
     if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) return 0;
-    return mkdir(path) == 0 ? 0 : -1;
+    return mkdir(path, 0755) == 0 ? 0 : -1;
 }
 
 /* 简单的字符串哈希函数 */

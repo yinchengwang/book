@@ -18,9 +18,16 @@
 #include <direct.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #else
 #include <dirent.h>
 #include <sys/stat.h>
+
+#ifdef _WIN32
+#endif
 #include <unistd.h>
 #endif
 

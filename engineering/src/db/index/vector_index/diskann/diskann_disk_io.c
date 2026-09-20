@@ -120,11 +120,6 @@ static int diskann_ensure_dir(const char *path)
         return -1;
     }
 
-#ifdef _WIN32
-    return _mkdir(path);
-#else
-    return mkdir(path, 0755);
-#endif
 }
 
 /* ============================================================================

@@ -11,10 +11,6 @@
 #include <stdio.h>
 #include <time.h>
 
-#ifdef _WIN32
-#include <direct.h>
-#define mkdir(path) _mkdir(path)
-#endif
 
 /* ========================================================================
  * 内部函数
@@ -99,7 +95,7 @@ ledger_t *ledger_create(const char *name, const char *data_dir) {
 
     /* 创建数据目录 */
 #ifdef _WIN32
-    if (mkdir(data_dir) != 0 && errno != EEXIST) {
+    if (mkdir(data_dir, 0755) != 0 && errno != EEXIST) {
 #else
     if (mkdir(data_dir, 0755) != 0 && errno != EEXIST) {
 #endif

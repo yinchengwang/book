@@ -13,14 +13,6 @@
 #include <math.h>
 
 /* Windows/macOS/Linux 跨平台兼容 */
-#ifdef _WIN32
-    #include <direct.h>
-    #include <errno.h>
-    #define mkdir(path) _mkdir(path)
-#else
-    #include <sys/stat.h>
-    #include <unistd.h>
-#endif
 
 #define SPATIAL_ENGINE_NAME "spatial_engine"
 #define SPATIAL_DATA_PREFIX "spatial_"

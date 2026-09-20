@@ -11,11 +11,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include <time.h>
 
 #ifdef _WIN32
 #include <direct.h>
-#include <windows.h>
 #define unlink_c(f) _unlink(f)
 #else
 #include <unistd.h>

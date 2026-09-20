@@ -9,6 +9,8 @@
 
 #include "db/page.h"
 #include <stdbool.h>
+#include <sys/types.h>  // for ssize_t (Linux GCC requires explicit include)
+#include <stddef.h>     // for size_t
 
 #ifdef __cplusplus
 extern "C" {
@@ -154,6 +156,25 @@ ssize_t disk_pwrite(db_file_t *file, uint64_t offset, const void *buf, size_t co
  * @return 文件句柄，失败返回 NULL
  */
 db_file_t *disk_open_raw(const char *path);
+
+/**
+ * @brief 以追加模式打开文件（用于 WAL 日志写入）
+ *
+ * 所有 write() 自动追加到文件末尾，绕过 pwrite 的稀疏文件问题。
+ * Linux: O_APPEND, Windows: FILE_APPEND_DATA
+ * @param path 文件路径
+ * @return 文件句柄，失败返回 NULL
+ */
+db_file_t *disk_open_append(const char *path);
+
+/**
+ * @brief 追加写入（写入到文件末尾）
+ * @param file 文件句柄
+ * @param buf 数据缓冲区
+ * @param count 要写入的字节数
+ * @return 写入位置（文件偏移），失败返回 -1
+ */
+int64_t disk_append(db_file_t *file, const void *buf, size_t count);
 
 /* ============================================================
  * 元数据操作

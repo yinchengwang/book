@@ -31,20 +31,19 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#ifndef unlink_func
 #ifdef _WIN32
-#include <direct.h>
-#include <io.h>
-#include <windows.h>
-#define mkdir_path(path) _mkdir(path)
 #define unlink_func(path) _unlink(path)
-#define fsync_func(fd) _commit(fd)
 #else
-#include <unistd.h>
-#include <sys/time.h>
-#define mkdir_path(path) mkdir(path, 0755)
 #define unlink_func(path) unlink(path)
-#define fsync_func(fd) fsync(fd)
 #endif
+#endif
+
+
+#ifdef _WIN32
+#include <windows.h>  // for FILETIME, GetSystemTimeAsFileTime
+#endif
+
 
 /* ========================================================================
  * 日志宏

@@ -11,6 +11,7 @@
 //   6. 更新 entry_point 和 max_level
 
 #include "faiss_hnsw_internal.h"
+#include "db/index/vector_index/faiss_hnsw/faiss_hnsw_segment.h"
 
 #include <float.h>
 #include <math.h>
@@ -445,6 +446,10 @@ int32_t faiss_hnsw_index_add(faiss_hnsw_t *idx, int32_t n, const float *vectors)
 int32_t faiss_hnsw_index_size(const faiss_hnsw_t *index) {
     if (!index) return 0;
     return index->n_total;
+}
+
+int32_t faiss_hnsw_index_ntotal(const faiss_hnsw_t *index) {
+    return faiss_hnsw_index_size(index);
 }
 
 // =============================================================================

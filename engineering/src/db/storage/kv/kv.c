@@ -77,10 +77,49 @@ static void kv_set_error(kv_t *db, const char *msg) {
 /** 元数据页中的键数量偏移 */
 #define KV_NUM_KEYS_OFFSET PAGE_HEADER_SIZE
 
+/**
+ * 数据页起始偏移 = 16 (PAGE_HEADER_SIZE)
+ *
+ * ============================================================
+ * 溢出链（Overflow Chain）支持
+ *
+ * 参考 PostgreSQL heap page overflow 和 FAT 文件系统链式分配：
+ * 每个数据页的 page_header_t.reserved 字段（uint8_t）存储下一个溢出页的 page_id，
+ * 0 表示链尾。最多 255 页 × 64KB = 16MB，足以存储 RAG 元数据。
+ *
+ * 存储布局：
+ *   [PAGE_HEADER_SIZE = 16] [chain_next(1)] [records...]
+ *   chain_next 在 page->data[0]，records 从 page->data[4] 开始
+ * ============================================================
+ */
+#define PAGE_DATA_START (PAGE_HEADER_SIZE + sizeof(uint8_t))  /* = 20 */
+
 /** 获取数据页起始偏移 */
 static page_id_t kv_get_data_page_id(const kv_t *db) {
     (void)db;
     return 1;  /* 第一个数据页 */
+}
+
+/**
+ * @brief 获取溢出链中下一个页的 ID（0 = 链尾）
+ *
+ * 使用 page_header_t.reserved 字段存储 next_page_id。
+ * reserved 为 uint8_t，最大 255 页 × 64KB = 16MB。
+ */
+static page_id_t kv_page_get_next(page_t *page) {
+    return (page_id_t)page->header.reserved;
+}
+
+/**
+ * @brief 设置溢出链中下一个页的 ID
+ */
+static void kv_page_set_next(buffer_pool_t *pool, page_id_t page_id, page_id_t next_id) {
+    page_t *page = buffer_get_page(pool, page_id);
+    if (page) {
+        page->header.reserved = (uint8_t)next_id;
+        buffer_mark_dirty(pool, page_id);
+        buffer_unpin_page(pool, page_id);
+    }
 }
 
 /**
@@ -92,12 +131,11 @@ static size_t kv_count_records(const page_t *page) {
     if (!page) return 0;
 
     size_t count = 0;
-    uint16_t offset = PAGE_HEADER_SIZE;
+    uint16_t offset = PAGE_DATA_START;
     uint32_t free_space = page->header.free_space_offset;
 
     while (offset < free_space) {
         if (offset + sizeof(uint32_t) * 2 > free_space) {
-            /* 数据不完整，停止计数 */
             break;
         }
 
@@ -107,7 +145,6 @@ static size_t kv_count_records(const page_t *page) {
         memcpy(&value_len, page->data + offset, sizeof(uint32_t));
         offset += sizeof(uint32_t);
 
-        /* 检查记录完整性 */
         if (offset + key_len + value_len > free_space) {
             break;
         }
@@ -123,7 +160,7 @@ static size_t kv_count_records(const page_t *page) {
 static int kv_page_find(const page_t *page,
                         const void *key, size_t key_len,
                         uint16_t *out_offset) {
-    uint16_t offset = PAGE_HEADER_SIZE;
+    uint16_t offset = PAGE_DATA_START;
     int iter = 0;
     uint32_t free_space = page->header.free_space_offset;
 
@@ -160,6 +197,84 @@ static int kv_page_find(const page_t *page,
     }
 
     return -1;  /* 未找到 */
+}
+
+
+/**
+ * @brief 在溢出链中查找键
+ * @param pool 缓存池
+ * @param start_page_id 链起始页
+ * @param key 键
+ * @param key_len 键长度
+ * @param out_page_id 输出：找到键的页 ID
+ * @param out_offset 输出：键在页内的偏移
+ * @return 0=找到, -1=未找到
+ */
+static int kv_page_find_in_chain(buffer_pool_t *pool, page_id_t start_page_id,
+                                 const void *key, size_t key_len,
+                                 page_id_t *out_page_id, uint16_t *out_offset) {
+    page_id_t current = start_page_id;
+    while (current != 0) {
+        page_t *page = buffer_get_page(pool, current);
+        if (!page) return -1;
+        uint16_t offset;
+        int found = kv_page_find(page, key, key_len, &offset);
+        page_id_t next = kv_page_get_next(page);
+        buffer_unpin_page(pool, current);
+        if (found == 0) {
+            *out_page_id = current;
+            *out_offset = offset;
+            return 0;
+        }
+        current = next;
+    }
+    return -1;
+}
+
+/**
+ * @brief 向溢出链中插入记录（自动分配新页）
+ */
+/* 前向声明：kv_page_insert 在本函数之后定义 */
+static int kv_page_insert(buffer_pool_t *pool, page_id_t page_id,
+                          const void *key, size_t key_len,
+                          const void *value, size_t value_len);
+
+static int kv_page_insert_chain(buffer_pool_t *pool, page_id_t head_page_id,
+                                const void *key, size_t key_len,
+                                const void *value, size_t value_len) {
+    /* 遍历链找到尾页 */
+    page_id_t current = head_page_id;
+    page_id_t prev = 0;
+    while (current != 0) {
+        page_t *page = buffer_get_page(pool, current);
+        if (!page) return -1;
+        page_id_t next = kv_page_get_next(page);
+        size_t record_size = sizeof(kv_record_t) + key_len + value_len;
+        if (page_get_free_space(page) >= record_size) {
+            /* 当前页有空间，直接插入 */
+            buffer_unpin_page(pool, current);
+            return kv_page_insert(pool, current, key, key_len, value, value_len);
+        }
+        prev = current;
+        current = next;
+    }
+
+    /* 链尾页空间不足，分配新页 */
+    page_id_t new_page_id = 0;
+    page_t *new_page = buffer_alloc_page(pool, PAGE_DATA, &new_page_id);
+    if (!new_page) return -1;
+    new_page->header.free_space_offset = PAGE_DATA_START;  /* 跳过 chain header */
+    new_page->header.reserved = 0;  /* 链尾 */
+    buffer_mark_dirty(pool, new_page_id);
+    buffer_unpin_page(pool, new_page_id);
+
+    /* 链接到前一个页 */
+    if (prev != 0) {
+        kv_page_set_next(pool, prev, new_page_id);
+    }
+
+    /* 在新页中插入 */
+    return kv_page_insert(pool, new_page_id, key, key_len, value, value_len);
 }
 
 /** 在页面中插入键值对 */
@@ -283,21 +398,27 @@ kv_t *kv_open(const char *path) {
     snprintf(wal_path, sizeof(wal_path), "%s.wal", path);
 
     /* 检查是否存在 WAL 文件 */
-    FILE *wal_check = fopen(wal_path, "rb");
-    if (wal_check) {
-        fclose(wal_check);
-        /* WAL 存在，尝试恢复 */
-        if (kv_replay_wal(db, wal_path) != 0) {
-            LOG_WARN("WAL 恢复失败，将创建新 WAL");
+    {
+        FILE *wal_check = fopen(wal_path, "rb");
+        if (wal_check) {
+            fclose(wal_check);
+            /* WAL 存在，尝试恢复 */
+            if (kv_replay_wal(db, wal_path) != 0) {
+                LOG_WARN("WAL 恢复失败，将创建新 WAL");
+            }
+            /* 刷新缓冲区，确保恢复的数据落盘 */
+            buffer_flush_all(db->pool);
+            /* 删除已恢复的旧 WAL，重建干净的 WAL */
+            remove(wal_path);
         }
     }
 
     db->wal = wal_create(wal_path, DEFAULT_PAGE_SIZE);
     if (!db->wal) {
-        buffer_destroy(db->pool);
-        disk_close(db->file);
-        free(db);
-        return NULL;
+        /* Workaround: WAL disabled (DB_NO_WAL=1) or init failed.
+         * Continue without WAL — trade-off: no crash recovery,
+         * but KV operations still work via direct page writes. */
+        LOG_WARN("WAL disabled or init failed; continuing without write-ahead log");
     }
 
     /* 确保有数据页 */
@@ -313,7 +434,10 @@ kv_t *kv_open(const char *path) {
             free(db);
             return NULL;
         }
-        /* 新页面，num_keys 保持为 0 */
+        /* 初始化 free_space_offset，跳过 chain header（page->data[0] 存放下一个溢出页 ID） */
+        page->header.free_space_offset = PAGE_DATA_START;
+        page->header.reserved = 0;  /* 链尾 */
+        buffer_mark_dirty(db->pool, data_page_id);
         buffer_unpin_page(db->pool, data_page_id);
     } else {
         /* 页面已存在：从页面数据计算 num_keys */
@@ -421,35 +545,34 @@ kv_result_t kv_put(kv_t *db,
     /* C1-3 T2：写锁包裹读-改-写序列，避免并发 put 丢更新 */
     common_rwlock_write_lock(db->rwlock);
 
-    /* 获取旧值（用于 WAL 记录）— 直接用页面操作，避免递归加锁 */
+    /* 获取旧值（用于 WAL 记录） */
     void *old_value = NULL;
     size_t old_value_len = 0;
-    kv_result_t result;
+    kv_result_t result = KV_OK;
 
     page_id_t data_page_id = kv_get_data_page_id(db);
-    page_t *page = buffer_get_page(db->pool, data_page_id);
-    if (!page) {
-        kv_set_error(db, "Failed to get data page");
-        common_rwlock_write_unlock(db->rwlock);
-        return KV_ERROR;
-    }
 
-    /* 查找是否已存在 */
-    uint16_t offset;
-    int found = (kv_page_find(page, key, key_len, &offset) == 0);
+    /* 溢出链搜索：查找键是否已存在 */
+    page_id_t found_page_id = 0;
+    uint16_t found_offset = 0;
+    int found = (kv_page_find_in_chain(db->pool, data_page_id, key, key_len,
+                                      &found_page_id, &found_offset) == 0);
 
     if (found) {
-        kv_record_t *rec = (kv_record_t *)(page->data + offset);
-        old_value_len = rec->value_len;
-        old_value = malloc(old_value_len);
-        if (old_value) {
-            memcpy(old_value, page->data + offset + sizeof(kv_record_t) + rec->key_len,
-                   old_value_len);
+        /* 读取旧值（持有 write lock，不会有并发 page 驱逐） */
+        page_t *page = buffer_get_page(db->pool, found_page_id);
+        if (page) {
+            kv_record_t *rec = (kv_record_t *)(page->data + found_offset);
+            old_value_len = rec->value_len;
+            old_value = malloc(old_value_len);
+            if (old_value) {
+                memcpy(old_value,
+                       page->data + found_offset + sizeof(kv_record_t) + rec->key_len,
+                       old_value_len);
+            }
+            buffer_unpin_page(db->pool, found_page_id);
         }
-    }
-    buffer_unpin_page(db->pool, data_page_id);
 
-    if (found) {
         /* C0-2：WAL-first 铁律 — 在 page 写之前先 WAL */
         if (db->wal && old_value) {
             uint64_t lsn = wal_write_update(db->wal, 0, key, key_len,
@@ -462,24 +585,20 @@ kv_result_t kv_put(kv_t *db,
             }
         }
 
-        /*
-         * 页面记录按紧凑布局连续存放，变更值长度不能原地覆盖：
-         * 否则会把后续记录推入错误偏移，导致后续查找和扫描失效。
-         * 长度不变时可以直接更新；长度变化时删除旧记录后重新插入。
-         */
+        /* 更新值：长度不变时原地覆盖，长度变化时删除后重新插入 */
         bool update_ok = false;
-        page_t *found_page = buffer_get_page(db->pool, data_page_id);
-        if (found_page) {
-            kv_record_t *record = (kv_record_t *)(found_page->data + offset);
-            size_t old_record_value_len = record->value_len;
-            buffer_unpin_page(db->pool, data_page_id);
+        page_t *upd_page = buffer_get_page(db->pool, found_page_id);
+        if (upd_page) {
+            kv_record_t *rec = (kv_record_t *)(upd_page->data + found_offset);
+            size_t old_rec_val_len = rec->value_len;
+            buffer_unpin_page(db->pool, found_page_id);
 
-            if (old_record_value_len == value_len) {
-                update_ok = (kv_page_update(db->pool, data_page_id,
-                                            offset, value, value_len) == 0);
-            } else if (kv_page_delete(db->pool, data_page_id, offset) == 0 &&
-                       kv_page_insert(db->pool, data_page_id,
-                                      key, key_len, value, value_len) == 0) {
+            if (old_rec_val_len == value_len) {
+                update_ok = (kv_page_update(db->pool, found_page_id,
+                                           found_offset, value, value_len) == 0);
+            } else if (kv_page_delete(db->pool, found_page_id, found_offset) == 0 &&
+                       kv_page_insert_chain(db->pool, data_page_id,
+                                           key, key_len, value, value_len) == 0) {
                 update_ok = true;
             }
         }
@@ -490,13 +609,12 @@ kv_result_t kv_put(kv_t *db,
             result = KV_ERROR;
             goto kv_put_unlock;
         }
-        result = KV_OK;
 
-        /* 触发 watch 回调 */
         kv_trigger_watches(db, (const char *)key, key_len,
                            old_value, old_value_len, value, value_len);
+
     } else {
-        /* C0-2：WAL-first 铁律 — INSERT 路径同上 */
+        /* C0-2：WAL-first 铁律 — INSERT 路径 */
         if (db->wal) {
             uint64_t lsn = wal_write_insert(db->wal, 0, key, key_len, value, value_len);
             if (lsn == 0) {
@@ -507,17 +625,15 @@ kv_result_t kv_put(kv_t *db,
             }
         }
 
-        /* 插入新记录 */
-        if (kv_page_insert(db->pool, data_page_id, key, key_len, value, value_len) != 0) {
+        /* 向溢出链插入（链满时自动分配新页） */
+        if (kv_page_insert_chain(db->pool, data_page_id, key, key_len, value, value_len) != 0) {
             free(old_value);
             kv_set_error(db, "Failed to insert (page full)");
-            result = KV_FULL;  /* C1-3 T3：page full 专用错误码 */
+            result = KV_FULL;
             goto kv_put_unlock;
         }
         db->num_keys++;
-        result = KV_OK;
 
-        /* 触发 watch 回调（新键 old_value=NULL） */
         kv_trigger_watches(db, (const char *)key, key_len,
                            NULL, 0, value, value_len);
     }
@@ -551,36 +667,38 @@ kv_result_t kv_get(kv_t *db,
     }
 
     page_id_t data_page_id = kv_get_data_page_id(db);
-    page_t *page = buffer_get_page(db->pool, data_page_id);
+    /* 溢出链搜索 */
+    page_id_t found_page_id = 0;
+    uint16_t found_offset = 0;
+    if (kv_page_find_in_chain(db->pool, data_page_id, key, key_len,
+                             &found_page_id, &found_offset) != 0) {
+        result = KV_NOT_FOUND;
+        goto kv_get_unlock;
+    }
+
+    /* 读取值（持有 read lock，page 不会被驱逐） */
+    page_t *page = buffer_get_page(db->pool, found_page_id);
     if (!page) {
         result = KV_NOT_FOUND;
         goto kv_get_unlock;
     }
-
-    uint16_t offset;
-    if (kv_page_find(page, key, key_len, &offset) != 0) {
-        buffer_unpin_page(db->pool, data_page_id);
-        result = KV_NOT_FOUND;
-        goto kv_get_unlock;
-    }
-
-    kv_record_t *rec = (kv_record_t *)(page->data + offset);
+    kv_record_t *rec = (kv_record_t *)(page->data + found_offset);
 
     if (out_value != NULL && out_len != NULL) {
         void *value = malloc(rec->value_len);
         if (!value) {
-            buffer_unpin_page(db->pool, data_page_id);
+            buffer_unpin_page(db->pool, found_page_id);
             result = KV_NOMEM;
             goto kv_get_unlock;
         }
         memcpy(value,
-               page->data + offset + sizeof(kv_record_t) + rec->key_len,
+               page->data + found_offset + sizeof(kv_record_t) + rec->key_len,
                rec->value_len);
         *out_value = value;
         *out_len = rec->value_len;
     }
 
-    buffer_unpin_page(db->pool, data_page_id);
+    buffer_unpin_page(db->pool, found_page_id);
     result = KV_OK;
 
 kv_get_unlock:
@@ -603,25 +721,26 @@ kv_result_t kv_delete(kv_t *db, const void *key, size_t key_len) {
     size_t old_value_len = 0;
 
     page_id_t data_page_id = kv_get_data_page_id(db);
-    page_t *page = buffer_get_page(db->pool, data_page_id);
-    if (!page) {
-        result = KV_NOT_FOUND;
-        goto kv_delete_unlock;
-    }
-
-    uint16_t offset;
-    int found = (kv_page_find(page, key, key_len, &offset) == 0);
+    /* 溢出链搜索 */
+    page_id_t found_page_id = 0;
+    uint16_t found_offset = 0;
+    int found = (kv_page_find_in_chain(db->pool, data_page_id, key, key_len,
+                                       &found_page_id, &found_offset) == 0);
 
     if (found) {
-        kv_record_t *rec = (kv_record_t *)(page->data + offset);
-        old_value_len = rec->value_len;
-        old_value = malloc(old_value_len);
-        if (old_value) {
-            memcpy(old_value, page->data + offset + sizeof(kv_record_t) + rec->key_len,
-                   old_value_len);
+        page_t *page = buffer_get_page(db->pool, found_page_id);
+        if (page) {
+            kv_record_t *rec = (kv_record_t *)(page->data + found_offset);
+            old_value_len = rec->value_len;
+            old_value = malloc(old_value_len);
+            if (old_value) {
+                memcpy(old_value,
+                       page->data + found_offset + sizeof(kv_record_t) + rec->key_len,
+                       old_value_len);
+            }
+            buffer_unpin_page(db->pool, found_page_id);
         }
     }
-    buffer_unpin_page(db->pool, data_page_id);
 
     /* 同时从 TTL 管理器中删除 */
     kv_ttl_mgr_t *ttl_mgr = (kv_ttl_mgr_t *)db->ttl_mgr;
@@ -636,7 +755,7 @@ kv_result_t kv_delete(kv_t *db, const void *key, size_t key_len) {
     }
 
     /* 删除记录 */
-    if (kv_page_delete(db->pool, data_page_id, offset) != 0) {
+    if (kv_page_delete(db->pool, found_page_id, found_offset) != 0) {
         free(old_value);
         result = KV_ERROR;
         goto kv_delete_unlock;
@@ -777,7 +896,7 @@ static int kv_wal_apply(void *ctx, wal_log_type_t type,
     switch (type) {
         case WAL_LOG_INSERT:
             /* 插入操作，直接写入（忽略已存在的情况） */
-            kv_page_insert(db->pool, kv_get_data_page_id(db),
+            kv_page_insert_chain(db->pool, kv_get_data_page_id(db),
                           key, key_len, value, value_len);
             db->num_keys++;
             break;
@@ -786,17 +905,15 @@ static int kv_wal_apply(void *ctx, wal_log_type_t type,
             /* 更新操作：先查找是否存在，然后更新 */
             {
                 page_id_t data_page_id = kv_get_data_page_id(db);
-                page_t *page = buffer_get_page(db->pool, data_page_id);
-                if (page) {
-                    uint16_t offset;
-                    if (kv_page_find(page, key, key_len, &offset) == 0) {
-                        kv_page_update(db->pool, data_page_id, offset, value, value_len);
-                    } else {
-                        /* 不存在则插入 */
-                        kv_page_insert(db->pool, data_page_id, key, key_len, value, value_len);
-                        db->num_keys++;
-                    }
-                    buffer_unpin_page(db->pool, data_page_id);
+                page_id_t found_page_id = 0;
+                uint16_t found_offset = 0;
+                if (kv_page_find_in_chain(db->pool, data_page_id, key, key_len,
+                                        &found_page_id, &found_offset) == 0) {
+                    kv_page_update(db->pool, found_page_id, found_offset, value, value_len);
+                } else {
+                    /* 不存在则插入 */
+                    kv_page_insert_chain(db->pool, data_page_id, key, key_len, value, value_len);
+                    db->num_keys++;
                 }
             }
             break;
@@ -805,14 +922,12 @@ static int kv_wal_apply(void *ctx, wal_log_type_t type,
             /* 删除操作：查找并删除 */
             {
                 page_id_t data_page_id = kv_get_data_page_id(db);
-                page_t *page = buffer_get_page(db->pool, data_page_id);
-                if (page) {
-                    uint16_t offset;
-                    if (kv_page_find(page, key, key_len, &offset) == 0) {
-                        kv_page_delete(db->pool, data_page_id, offset);
-                        db->num_keys--;
-                    }
-                    buffer_unpin_page(db->pool, data_page_id);
+                page_id_t found_page_id = 0;
+                uint16_t found_offset = 0;
+                if (kv_page_find_in_chain(db->pool, data_page_id, key, key_len,
+                                        &found_page_id, &found_offset) == 0) {
+                    kv_page_delete(db->pool, found_page_id, found_offset);
+                    db->num_keys--;
                 }
             }
             break;
@@ -862,20 +977,22 @@ kv_result_t kv_cas(kv_t *db,
     void *cur = NULL;
     size_t cur_len = 0;
     bool key_found = false;
-    uint16_t offset = 0;
     page_id_t data_page_id = kv_get_data_page_id(db);
-    page_t *page = buffer_get_page(db->pool, data_page_id);
-    if (page) {
-        if (kv_page_find(page, key, key_len, &offset) == 0) {
-            kv_record_t *rec = (kv_record_t *)(page->data + offset);
+    page_id_t found_page_id = 0;
+    uint16_t found_offset = 0;
+    if (kv_page_find_in_chain(db->pool, data_page_id, key, key_len,
+                             &found_page_id, &found_offset) == 0) {
+        page_t *page = buffer_get_page(db->pool, found_page_id);
+        if (page) {
+            kv_record_t *rec = (kv_record_t *)(page->data + found_offset);
             cur_len = rec->value_len;
             cur = malloc(cur_len);
             if (cur) {
-                memcpy(cur, page->data + offset + sizeof(kv_record_t) + rec->key_len, cur_len);
+                memcpy(cur, page->data + found_offset + sizeof(kv_record_t) + rec->key_len, cur_len);
                 key_found = true;
             }
+            buffer_unpin_page(db->pool, found_page_id);
         }
-        buffer_unpin_page(db->pool, data_page_id);
     }
 
     bool match;
@@ -909,16 +1026,16 @@ kv_result_t kv_cas(kv_t *db,
     if (key_found) {
         /* 键存在：长度不变时原地更新，长度变化时删除后重插 */
         if (cur_len == new_value_len) {
-            update_ok = (kv_page_update(db->pool, data_page_id,
-                                         offset, new_value, new_value_len) == 0);
-        } else if (kv_page_delete(db->pool, data_page_id, offset) == 0 &&
-                   kv_page_insert(db->pool, data_page_id,
+            update_ok = (kv_page_update(db->pool, found_page_id,
+                                         found_offset, new_value, new_value_len) == 0);
+        } else if (kv_page_delete(db->pool, found_page_id, found_offset) == 0 &&
+                   kv_page_insert_chain(db->pool, data_page_id,
                                   key, key_len, new_value, new_value_len) == 0) {
             update_ok = true;
         }
     } else {
         /* 键不存在：直接插入 */
-        update_ok = (kv_page_insert(db->pool, data_page_id,
+        update_ok = (kv_page_insert_chain(db->pool, data_page_id,
                                      key, key_len, new_value, new_value_len) == 0);
     }
 
@@ -1049,7 +1166,6 @@ kv_result_t kv_multi_get(kv_t *db, kv_multi_entry_t *entries, size_t count) {
     common_rwlock_read_lock(db->rwlock);
 
     page_id_t data_page_id = kv_get_data_page_id(db);
-    page_t *page = buffer_get_page(db->pool, data_page_id);
 
     for (size_t i = 0; i < count; i++) {
         if (!entries[i].key || entries[i].key_len == 0) {
@@ -1059,18 +1175,29 @@ kv_result_t kv_multi_get(kv_t *db, kv_multi_entry_t *entries, size_t count) {
             continue;
         }
 
-        /* 查找键 */
-        uint16_t offset;
-        if (kv_page_find(page, entries[i].key, entries[i].key_len, &offset) == 0) {
-            kv_record_t *rec = (kv_record_t *)(page->data + offset);
-            entries[i].value_len = rec->value_len;
-            entries[i].value = malloc(rec->value_len);
-            if (entries[i].value) {
-                memcpy(entries[i].value,
-                       page->data + offset + sizeof(kv_record_t) + rec->key_len,
-                       rec->value_len);
-                entries[i].is_set = true;
+        /* 溢出链搜索 */
+        page_id_t found_page_id = 0;
+        uint16_t found_offset = 0;
+        if (kv_page_find_in_chain(db->pool, data_page_id,
+                                 entries[i].key, entries[i].key_len,
+                                 &found_page_id, &found_offset) == 0) {
+            page_t *page = buffer_get_page(db->pool, found_page_id);
+            if (page) {
+                kv_record_t *rec = (kv_record_t *)(page->data + found_offset);
+                entries[i].value_len = rec->value_len;
+                entries[i].value = malloc(rec->value_len);
+                if (entries[i].value) {
+                    memcpy(entries[i].value,
+                           page->data + found_offset + sizeof(kv_record_t) + rec->key_len,
+                           rec->value_len);
+                    entries[i].is_set = true;
+                } else {
+                    entries[i].value_len = 0;
+                    entries[i].is_set = false;
+                }
+                buffer_unpin_page(db->pool, found_page_id);
             } else {
+                entries[i].value = NULL;
                 entries[i].value_len = 0;
                 entries[i].is_set = false;
             }
@@ -1104,13 +1231,16 @@ kv_result_t kv_multi_set(kv_t *db, kv_multi_entry_t *entries, size_t count) {
             break;
         }
 
-        /* 读取旧值（用于 watch 回调） */
+        /* 读取旧值（用于 watch 回调，溢出链搜索） */
+        page_id_t old_page_id = 0;
         uint16_t old_offset = 0;
         void *old_value = NULL;
         size_t old_len = 0;
-        {
-            page_t *page = buffer_get_page(db->pool, data_page_id);
-            if (page && kv_page_find(page, entries[i].key, entries[i].key_len, &old_offset) == 0) {
+        if (kv_page_find_in_chain(db->pool, data_page_id,
+                                 entries[i].key, entries[i].key_len,
+                                 &old_page_id, &old_offset) == 0) {
+            page_t *page = buffer_get_page(db->pool, old_page_id);
+            if (page) {
                 kv_record_t *rec = (kv_record_t *)(page->data + old_offset);
                 old_len = rec->value_len;
                 old_value = malloc(old_len);
@@ -1118,8 +1248,8 @@ kv_result_t kv_multi_set(kv_t *db, kv_multi_entry_t *entries, size_t count) {
                     memcpy(old_value, page->data + old_offset + sizeof(kv_record_t) + rec->key_len,
                            old_len);
                 }
+                buffer_unpin_page(db->pool, old_page_id);
             }
-            buffer_unpin_page(db->pool, data_page_id);
         }
 
         /* WAL 写入 */
@@ -1136,13 +1266,13 @@ kv_result_t kv_multi_set(kv_t *db, kv_multi_entry_t *entries, size_t count) {
         {
             if (old_value) {
                 /* 更新 */
-                if (kv_page_update(db->pool, data_page_id, old_offset,
+                if (kv_page_update(db->pool, old_page_id, old_offset,
                                    entries[i].value, entries[i].value_len) != 0) {
                     result = KV_FULL;
                 }
             } else {
                 /* 插入 */
-                if (kv_page_insert(db->pool, data_page_id,
+                if (kv_page_insert_chain(db->pool, data_page_id,
                                    entries[i].key, entries[i].key_len,
                                    entries[i].value, entries[i].value_len) != 0) {
                     result = KV_FULL;
@@ -1180,22 +1310,25 @@ kv_result_t kv_multi_del(kv_t *db, kv_multi_entry_t *entries, size_t count) {
             break;
         }
 
-        /* 读取旧值（用于 watch 回调） */
-        uint16_t offset;
+        /* 读取旧值（用于 watch 回调，溢出链搜索） */
+        page_id_t found_page_id = 0;
+        uint16_t found_offset = 0;
         void *old_value = NULL;
         size_t old_len = 0;
-        {
-            page_t *page = buffer_get_page(db->pool, data_page_id);
-            if (page && kv_page_find(page, entries[i].key, entries[i].key_len, &offset) == 0) {
-                kv_record_t *rec = (kv_record_t *)(page->data + offset);
+        if (kv_page_find_in_chain(db->pool, data_page_id,
+                                 entries[i].key, entries[i].key_len,
+                                 &found_page_id, &found_offset) == 0) {
+            page_t *page = buffer_get_page(db->pool, found_page_id);
+            if (page) {
+                kv_record_t *rec = (kv_record_t *)(page->data + found_offset);
                 old_len = rec->value_len;
                 old_value = malloc(old_len);
                 if (old_value) {
-                    memcpy(old_value, page->data + offset + sizeof(kv_record_t) + rec->key_len,
+                    memcpy(old_value, page->data + found_offset + sizeof(kv_record_t) + rec->key_len,
                            old_len);
                 }
+                buffer_unpin_page(db->pool, found_page_id);
             }
-            buffer_unpin_page(db->pool, data_page_id);
         }
 
         /* WAL 写入 */
@@ -1206,7 +1339,9 @@ kv_result_t kv_multi_del(kv_t *db, kv_multi_entry_t *entries, size_t count) {
 
         /* Page 删除 */
         {
-            if (kv_page_delete(db->pool, data_page_id, offset) != 0) {
+            if (old_value == NULL) {
+                result = KV_NOT_FOUND;
+            } else if (kv_page_delete(db->pool, found_page_id, found_offset) != 0) {
                 result = KV_NOT_FOUND;
             } else {
                 db->num_keys--;

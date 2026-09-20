@@ -144,7 +144,20 @@ static uint32_t wal_calc_checksum(const void *data, size_t len) {
  * WAL 创建与销毁
  * ============================================================ */
 
+/* Workaround: Disable WAL on systems where pwrite has issues with sparse files.
+ * Setting DB_NO_WAL=1 (compile flag) skips WAL creation entirely.
+ * Trade-off: no crash recovery — last few writes may be lost on hard crash.
+ */
+#ifndef DB_NO_WAL
+#define DB_NO_WAL 0
+#endif
+
 wal_t *wal_create(const char *path, uint32_t page_size) {
+#if DB_NO_WAL
+    (void)path;
+    (void)page_size;
+    return NULL;
+#else
     if (!path) path = "wal.db";
 
     wal_t *wal = (wal_t *)calloc(1, sizeof(wal_t));
@@ -152,8 +165,8 @@ wal_t *wal_create(const char *path, uint32_t page_size) {
 
     wal->path = strdup(path);
     wal->page_size = page_size;
-    wal->current_lsn = 0;
-    wal->checkpoint_lsn = 0;
+    wal->current_lsn = 1;  /* 1-based LSN; 0 reserved for failure */
+    wal->checkpoint_lsn = 1;
     wal->state = WAL_STATE_ACTIVE;
     wal->sync_mode = WAL_SYNC_FULL;  /* 默认全同步模式 */
 
@@ -170,8 +183,8 @@ wal_t *wal_create(const char *path, uint32_t page_size) {
     wal->active_txn_capacity = 64;
     wal->active_txns = (uint32_t *)malloc(wal->active_txn_capacity * sizeof(uint32_t));
 
-    /* 打开文件 */
-    wal->file = disk_open(path, page_size);
+    /* 打开文件（追加模式，避免 pwrite 稀疏文件问题） */
+    wal->file = disk_open_append(path);
     if (!wal->file) {
         free(wal->buffer);
         free(wal->path);
@@ -179,7 +192,7 @@ wal_t *wal_create(const char *path, uint32_t page_size) {
         return NULL;
     }
 
-    /* 写入文件头 */
+    /* 写入文件头（offset=0: 不使用 append 模式，使用 pwrite 精确偏移） */
     wal_file_header_t header;
     memset(&header, 0, sizeof(header));
     header.magic = WAL_MAGIC;
@@ -196,6 +209,7 @@ wal_t *wal_create(const char *path, uint32_t page_size) {
     }
 
     return wal;
+#endif
 }
 
 wal_t *wal_open(const char *path) {
@@ -269,10 +283,10 @@ wal_t *wal_open(const char *path) {
     wal->state = WAL_STATE_ACTIVE;
     wal->sync_mode = WAL_SYNC_FULL;  /* 默认全同步模式 */
 
-    /* 计算当前 LSN（字节偏移 = 文件大小 - 头大小） */
+    /* 计算当前 LSN（1-based） */
     uint64_t file_size = disk_get_size(wal->file);
     if (file_size > WAL_HEADER_SIZE) {
-        wal->current_lsn = file_size - WAL_HEADER_SIZE;
+        wal->current_lsn = file_size - WAL_HEADER_SIZE + 1;
     }
 
     return wal;
@@ -394,12 +408,21 @@ static uint64_t wal_write_record(wal_t *wal, wal_log_type_t type,
                                  const void *key, size_t key_len,
                                  const void *value, size_t value_len) {
     if (!wal || wal->state != WAL_STATE_ACTIVE) {
+        /* 添加调试输出帮助定位问题 */
+        fprintf(stderr, "WAL: state=%d (expected %d), wal=%p\n",
+                wal ? wal->state : -1, WAL_STATE_ACTIVE, (void*)wal);
         return 0;
     }
 
     /* 计算记录大小 */
     size_t data_size = sizeof(uint32_t) * 2 + key_len + value_len;  /* key_len + key + value_len + value */
     size_t total_size = WAL_RECORD_HEADER_SIZE + data_size;
+
+    /* 检查记录是否过大 */
+    if (total_size > WAL_BUFFER_SIZE) {
+        wal_set_error(wal, "WAL record too large");
+        return 0;
+    }
 
     /* 分配记录空间 */
     uint8_t *record = (uint8_t *)malloc(total_size);
@@ -438,30 +461,44 @@ static uint64_t wal_write_record(wal_t *wal, wal_log_type_t type,
     /* 计算校验和 */
     header->checksum = wal_calc_checksum(record + 1, total_size - 1);
 
-    /* 写入文件（追加） */
+    /* 写入文件（追加模式 — 使用 disk_append 而非 disk_pwrite，
+     * 避免稀疏文件问题。O_APPEND 保证每次 write 自动追加到文件末尾。） */
     uint64_t file_offset = WAL_HEADER_SIZE + wal->current_lsn;
 
-    /* 如果缓冲区有空间，先放缓冲区 */
     if (wal->buffer_used + total_size <= wal->buffer_size) {
         memcpy(wal->buffer + wal->buffer_used, record, total_size);
         wal->buffer_used += total_size;
     } else {
-        /* 缓冲区满了，刷盘 */
+        fprintf(stderr, "WAL: buffer full, flushing %zu bytes\n", wal->buffer_used);
+        /* 缓冲区满了，先刷盘旧缓冲区 */
         if (wal->buffer_used > 0) {
-            disk_pwrite(wal->file, WAL_HEADER_SIZE + (wal->current_lsn - wal->buffer_used),
-                        wal->buffer, wal->buffer_used);
+            int64_t append_result = disk_append(wal->file, wal->buffer, wal->buffer_used);
+            if (append_result < 0) {
+                wal_set_error(wal, "Failed to flush WAL buffer");
+                free(record);
+                return 0;
+            }
+            wal->buffer_used = 0;
         }
-        /* 直接写记录 */
-        disk_pwrite(wal->file, file_offset, record, total_size);
-        wal->buffer_used = 0;
+        /* 直接写记录（如果记录比缓冲区大，直接写；否则放缓冲区） */
+        if (total_size <= wal->buffer_size) {
+            memcpy(wal->buffer, record, total_size);
+            wal->buffer_used = total_size;
+        } else {
+            int64_t append_result = disk_append(wal->file, record, total_size);
+            if (append_result < 0) {
+                wal_set_error(wal, "Failed to write WAL record (append)");
+                free(record);
+                return 0;
+            }
+        }
     }
 
     /* 更新 LSN（字节偏移 += 记录大小） */
-    uint64_t lsn = wal->current_lsn;
+    uint64_t lsn = wal->current_lsn + 1;  /* 1-based LSN; 0 保留给 "失败" */
     wal->current_lsn += total_size;
+    return lsn;  /* 返回 1-based LSN */
 
-    free(record);
-    return lsn;  /* 返回字节偏移作为 LSN */
 }
 
 /* ============================================================
@@ -693,10 +730,9 @@ uint64_t wal_write_cross_abort(wal_t *wal, uint32_t txn_id) {
 int wal_flush(wal_t *wal) {
     if (!wal || wal->buffer_used == 0) return 0;
 
-    /* 计算起始偏移 */
-    uint64_t offset = WAL_HEADER_SIZE + (wal->current_lsn - wal->buffer_used);
-
-    if (disk_pwrite(wal->file, offset, wal->buffer, wal->buffer_used) != (ssize_t)wal->buffer_used) {
+    /* 追加写入（O_APPEND 模式自动写在文件末尾） */
+    int64_t append_result = disk_append(wal->file, wal->buffer, wal->buffer_used);
+    if (append_result < 0) {
         wal_set_error(wal, "Failed to flush WAL");
         return -1;
     }
@@ -1128,7 +1164,11 @@ void wal_recovery_info_free(wal_recovery_info_t *info) {
  * ============================================================ */
 
 #ifdef _WIN32
-__declspec(thread) static wal_t *s_current_wal = NULL;
+/* MinGW TLS via __declspec(thread) is unreliable across DLL boundaries,
+   leading to s_current_wal being NULL in kv_put paths.
+   Fall back to plain static — single-process serialization is acceptable
+   for the multimodal_rag usage pattern. */
+static wal_t *s_current_wal = NULL;
 #else
 __thread wal_t *s_current_wal = NULL;
 #endif

@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <errno.h>
+#include <limits.h>  // for INT_MAX (Linux GCC requires explicit include)
 
 /*** ============================================================
  * 常量定义

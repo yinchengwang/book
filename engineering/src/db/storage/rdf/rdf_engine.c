@@ -10,17 +10,6 @@
 #include <string.h>
 #include <stdio.h>
 
-#ifdef _WIN32
-#include <direct.h>
-#include <errno.h>
-#include <windows.h>
-#include <fileapi.h>
-#define mkdir(path) _mkdir(path)
-#else
-#include <sys/stat.h>
-#include <unistd.h>
-#include <ftw.h>
-#endif
 
 #define RDF_ENGINE_NAME "rdf_engine"
 #define RDF_DATA_PREFIX "rdf_"
@@ -159,7 +148,7 @@ int rdf_engine_init(const char *data_dir) {
     }
 
 #ifdef _WIN32
-    mkdir(g_rdf_engine.data_dir);
+    mkdir(g_rdf_engine.data_dir, 0755);
 #else
     mkdir(g_rdf_engine.data_dir, 0755);
 #endif
@@ -187,7 +176,7 @@ static int rdf_engine_table_create(const char *name, const storage_schema_t *sch
     get_dir_path(name, dir_path, sizeof(dir_path));
 
 #ifdef _WIN32
-    if (mkdir(dir_path) != 0 && errno != EEXIST) {
+    if (mkdir(dir_path, 0755) != 0 && errno != EEXIST) {
 #else
     if (mkdir(dir_path, 0755) != 0 && errno != EEXIST) {
 #endif
