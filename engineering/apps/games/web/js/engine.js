@@ -1,8 +1,8 @@
 /**
- * LocalEngine - 2048 游戏引擎通信层
+ * LocalEngine - 2048 & 贪吃蛇游戏引擎通信层
  *
  * 调用 WASM 模块（由 emcc 生成的 games.js 提供 window.GameModule）
- * 使用前需先执行: bash engineering/scripts/build-games-wasm.sh
+ * 编译: bash D:\code\book\engineering\scripts\build-games-wasm.sh
  */
 
 class LocalEngine {
@@ -13,11 +13,10 @@ class LocalEngine {
 
     /**
      * 异步加载 WASM 模块
-     * games.js 由 emcc 生成，调用 window.GameModule() 获取 WASM 实例
      */
     async init() {
         if (typeof window.GameModule === 'undefined') {
-            console.error('[LocalEngine] games.js 未加载，请先执行 bash engineering/scripts/build-games-wasm.sh');
+            console.error('[LocalEngine] games.js 未加载，请先执行编译脚本');
             return;
         }
         this.wasm = await window.GameModule();
@@ -36,11 +35,8 @@ class LocalEngine {
      * @param {number} seed 随机种子
      */
     g2048_create(seed) {
-        if (!this.ready) {
-            console.warn('[LocalEngine] WASM 未就绪，调用被忽略');
-            return;
-        }
-        this.wasm._g2048_create(seed);
+        if (!this.ready) return;
+        this.wasm.wasm_g2048_create(seed);
     }
 
     /**
@@ -49,7 +45,7 @@ class LocalEngine {
      */
     g2048_move(dir) {
         if (!this.ready) return;
-        this.wasm._g2048_move(dir);
+        this.wasm.wasm_g2048_move(dir);
     }
 
     /**
@@ -60,7 +56,7 @@ class LocalEngine {
      */
     g2048_tile(r, c) {
         if (!this.ready) return 0;
-        return this.wasm._g2048_tile(r, c);
+        return this.wasm.wasm_g2048_tile(r, c);
     }
 
     /**
@@ -69,7 +65,7 @@ class LocalEngine {
      */
     g2048_score() {
         if (!this.ready) return 0;
-        return this.wasm._g2048_score();
+        return this.wasm.wasm_g2048_score();
     }
 
     /**
@@ -78,7 +74,7 @@ class LocalEngine {
      */
     g2048_game_over() {
         if (!this.ready) return false;
-        return this.wasm._g2048_game_over();
+        return this.wasm.wasm_g2048_game_over();
     }
 
     /**
@@ -87,7 +83,7 @@ class LocalEngine {
      */
     g2048_won() {
         if (!this.ready) return false;
-        return this.wasm._g2048_won();
+        return this.wasm.wasm_g2048_won();
     }
 
     /**
@@ -96,7 +92,7 @@ class LocalEngine {
      */
     g2048_can_move() {
         if (!this.ready) return false;
-        return this.wasm._g2048_can_move();
+        return this.wasm.wasm_g2048_can_move();
     }
 
     // ==================== 贪吃蛇核心接口 ====================
@@ -107,11 +103,8 @@ class LocalEngine {
      * @param {number} diff 难度: 0=简单(180ms), 1=中等(120ms), 2=困难(80ms)
      */
     snake_create(seed, diff) {
-        if (!this.ready) {
-            console.warn('[LocalEngine] WASM 未就绪，调用被忽略');
-            return;
-        }
-        this.wasm._snake_create(seed, diff);
+        if (!this.ready) return;
+        this.wasm.wasm_snake_create(seed, diff);
     }
 
     /**
@@ -119,7 +112,7 @@ class LocalEngine {
      */
     snake_tick() {
         if (!this.ready) return;
-        this.wasm._snake_tick();
+        this.wasm.wasm_snake_tick();
     }
 
     /**
@@ -128,7 +121,7 @@ class LocalEngine {
      */
     snake_input_dir(dir) {
         if (!this.ready) return;
-        this.wasm._snake_input_dir(dir);
+        this.wasm.wasm_snake_input(dir);
     }
 
     /**
@@ -137,7 +130,7 @@ class LocalEngine {
      */
     snake_body_count() {
         if (!this.ready) return 0;
-        return this.wasm._snake_body_count();
+        return this.wasm.wasm_snake_body_count();
     }
 
     /**
@@ -147,7 +140,7 @@ class LocalEngine {
      */
     snake_body_x(i) {
         if (!this.ready) return 0;
-        return this.wasm._snake_body_x(i);
+        return this.wasm.wasm_snake_body_x(i);
     }
 
     /**
@@ -157,7 +150,7 @@ class LocalEngine {
      */
     snake_body_y(i) {
         if (!this.ready) return 0;
-        return this.wasm._snake_body_y(i);
+        return this.wasm.wasm_snake_body_y(i);
     }
 
     /**
@@ -166,7 +159,7 @@ class LocalEngine {
      */
     snake_food_x() {
         if (!this.ready) return 0;
-        return this.wasm._snake_food_x();
+        return this.wasm.wasm_snake_food_x();
     }
 
     /**
@@ -175,7 +168,7 @@ class LocalEngine {
      */
     snake_food_y() {
         if (!this.ready) return 0;
-        return this.wasm._snake_food_y();
+        return this.wasm.wasm_snake_food_y();
     }
 
     /**
@@ -184,7 +177,7 @@ class LocalEngine {
      */
     snake_score_val() {
         if (!this.ready) return 0;
-        return this.wasm._snake_score_val();
+        return this.wasm.wasm_snake_score();
     }
 
     /**
@@ -193,6 +186,6 @@ class LocalEngine {
      */
     snake_over() {
         if (!this.ready) return false;
-        return this.wasm._snake_over();
+        return this.wasm.wasm_snake_over();
     }
 }

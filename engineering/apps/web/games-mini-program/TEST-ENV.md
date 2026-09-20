@@ -80,3 +80,11 @@
 
 为方便后续调试，5 个 shim 目前保留在 `node_modules/` 下。
 下次 `npm install` 会自动覆盖。
+
+## 本次修复清单（2026-09-06 session）
+
+| 文件 | 修复内容 |
+|------|----------|
+| `src/components/common/GameHeader.test.tsx` | 添加缺失的 `onBack` prop |
+| `src/pages/game2048/index.tsx` | 添加 `update2048BestScore()` 持久化 bestScore |
+| `src/pages/sudoku/index.tsx` | 在 3 个 handler 中添加 `updateSudokuBestScore()` |

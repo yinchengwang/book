@@ -73,9 +73,13 @@ export const useTodosStore = defineStore('todos', () => {
 
   async function reorder(updates: ReorderUpdate[]): Promise<void> {
     const map = new Map(updates.map((u) => [u.id, u.sort_order]))
-    todos.value = [...todos.value]
+    const reorderedIds = new Set(updates.map((u) => u.id))
+    const kept = todos.value.filter((t) => !reorderedIds.has(t.id))
+    const reordered = todos.value
+      .filter((t) => reorderedIds.has(t.id))
       .map((t) => ({ ...t, sort_order: map.get(t.id) ?? t.sort_order } as Todo))
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    todos.value = [...kept, ...reordered]
     await api.reorder(updates)
   }
 

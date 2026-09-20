@@ -8,17 +8,17 @@
 
 export const GAME2048_CONFIG = {
   GRID_SIZE: 4,
-  WIN_VALUE: 2048
-}
+  WIN_VALUE: 2048,
+};
 
 // 游戏状态
 export interface Game2048State {
-  board: number[][]       // 0=空格，非0=数字
-  score: number           // 当前得分
-  bestScore: number       // 历史最高分
-  isGameOver: boolean     // 无可用移动
-  hasWon: boolean         // 已达成 2048
-  keepGoing: boolean      // 达成 2048 后继续游戏
+  board: number[][]; // 0=空格，非0=数字
+  score: number; // 当前得分
+  bestScore: number; // 历史最高分
+  isGameOver: boolean; // 无可用移动
+  hasWon: boolean; // 已达成 2048
+  keepGoing: boolean; // 达成 2048 后继续游戏
 }
 
 /**
@@ -27,7 +27,7 @@ export interface Game2048State {
 function createEmptyBoard(): number[][] {
   return Array(GAME2048_CONFIG.GRID_SIZE)
     .fill(null)
-    .map(() => Array(GAME2048_CONFIG.GRID_SIZE).fill(0))
+    .map(() => Array(GAME2048_CONFIG.GRID_SIZE).fill(0));
 }
 
 /**
@@ -40,98 +40,111 @@ export function createInitialState(bestScore: number = 0): Game2048State {
     bestScore,
     isGameOver: false,
     hasWon: false,
-    keepGoing: false
-  }
+    keepGoing: false,
+  };
 
   // 初始生成 2 个格子
-  spawnTile(state)
-  spawnTile(state)
+  spawnTile(state);
+  spawnTile(state);
 
-  return state
+  return state;
 }
 
 /**
  * 深拷贝棋盘
  */
 function copyBoard(board: number[][]): number[][] {
-  return board.map(row => [...row])
+  return board.map((row) => [...row]);
 }
 
 /**
  * 获取所有空格位置
  */
 function getEmptyCells(board: number[][]): { row: number; col: number }[] {
-  const cells: { row: number; col: number }[] = []
+  const cells: { row: number; col: number }[] = [];
   for (let r = 0; r < GAME2048_CONFIG.GRID_SIZE; r++) {
     for (let c = 0; c < GAME2048_CONFIG.GRID_SIZE; c++) {
       if (board[r][c] === 0) {
-        cells.push({ row: r, col: c })
+        cells.push({ row: r, col: c });
       }
     }
   }
-  return cells
+  return cells;
 }
 
 /**
  * 生成新数字（90% 为 2，10% 为 4）
  */
 export function spawnTile(state: Game2048State): boolean {
-  const emptyCells = getEmptyCells(state.board)
-  if (emptyCells.length === 0) return false
+  const emptyCells = getEmptyCells(state.board);
+  if (emptyCells.length === 0) return false;
 
-  const pos = emptyCells[Math.floor(Math.random() * emptyCells.length)]
-  state.board[pos.row][pos.col] = Math.random() < 0.9 ? 2 : 4
-  return true
+  const pos = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+  state.board[pos.row][pos.col] = Math.random() < 0.9 ? 2 : 4;
+  return true;
 }
 
 /**
  * 压缩一行（移除空格）
  */
 function compressRow(row: number[]): number[] {
-  return row.filter(val => val !== 0)
+  return row.filter((val) => val !== 0);
 }
 
 /**
- * 合并一行（返回合并后的行和得分增量）
+ * 合并一行（返回合并后的行、得分增量和最大合并方块值）
  */
-function mergeRow(row: number[]): { row: number[]; addedScore: number } {
-  const { GRID_SIZE } = GAME2048_CONFIG
-  const result: number[] = []
-  let addedScore = 0
-  let i = 0
+function mergeRow(row: number[]): {
+  row: number[];
+  addedScore: number;
+  maxMerged: number;
+} {
+  const { GRID_SIZE } = GAME2048_CONFIG;
+  const result: number[] = [];
+  let addedScore = 0;
+  let maxMerged = 0;
+  let i = 0;
 
   while (i < row.length) {
     if (i + 1 < row.length && row[i] === row[i + 1]) {
       // 合并
-      const merged = row[i] * 2
-      result.push(merged)
-      addedScore += merged
-      i += 2
+      const merged = row[i] * 2;
+      result.push(merged);
+      addedScore += merged;
+      if (merged > maxMerged) {
+        maxMerged = merged;
+      }
+      i += 2;
     } else {
-      result.push(row[i])
-      i++
+      result.push(row[i]);
+      i++;
     }
   }
 
   // 补齐到 GRID_SIZE
   while (result.length < GRID_SIZE) {
-    result.push(0)
+    result.push(0);
   }
 
-  return { row: result, addedScore }
+  return { row: result, addedScore, maxMerged };
 }
 
 /**
  * 移动并合并一行
  */
-function slideRow(row: number[]): { row: number[]; moved: boolean; addedScore: number } {
-  const compressed = compressRow(row)
-  const { row: merged, addedScore } = mergeRow(compressed)
+function slideRow(row: number[]): {
+  row: number[];
+  moved: boolean;
+  addedScore: number;
+  maxMerged: number;
+} {
+  const compressed = compressRow(row);
+  const { row: merged, addedScore, maxMerged } = mergeRow(compressed);
 
   // 检查是否有变化
-  const moved = row.some((val, i) => val !== merged[i])
+  const moved = row.some((val, i) => val !== merged[i]);
 
-  return { row: merged, moved, addedScore }
+  return { row: merged, moved, addedScore, maxMerged };
 }
 
 /**
@@ -140,74 +153,86 @@ function slideRow(row: number[]): { row: number[]; moved: boolean; addedScore: n
 function moveBoard(
   state: Game2048State,
   transform: (board: number[][]) => number[][],
-  reverse: boolean
-): boolean {
-  const originalBoard = copyBoard(state.board)
-  let totalAddedScore = 0
+  reverse: boolean,
+): { moved: boolean; mergedTile: number } {
+  const originalBoard = copyBoard(state.board);
+  let totalAddedScore = 0;
+  let maxMergedTile = 0;
 
   // 变换棋盘
-  let board = transform(state.board)
+  let board = transform(state.board);
 
   // 对每一行执行滑动
-  const newBoard: number[][] = []
+  const newBoard: number[][] = [];
   for (let r = 0; r < GAME2048_CONFIG.GRID_SIZE; r++) {
-    let row = board[r]
-    if (reverse) row = [...row].reverse()
+    let row = board[r];
+    if (reverse) row = [...row].reverse();
 
-    const result = slideRow(row)
+    const result = slideRow(row);
 
-    if (reverse) result.row.reverse()
-    newBoard.push(result.row)
-    totalAddedScore += result.addedScore
+    if (reverse) result.row.reverse();
+    newBoard.push(result.row);
+    totalAddedScore += result.addedScore;
+
+    // 记录本次合并的最大方块值
+    if (result.maxMerged > maxMergedTile) {
+      maxMergedTile = result.maxMerged;
+    }
   }
 
   // 检查是否有变化
-  let moved = false
+  let moved = false;
   for (let r = 0; r < GAME2048_CONFIG.GRID_SIZE; r++) {
     for (let c = 0; c < GAME2048_CONFIG.GRID_SIZE; c++) {
       if (originalBoard[r][c] !== newBoard[r][c]) {
-        moved = true
-        break
+        moved = true;
+        break;
       }
     }
-    if (moved) break
+    if (moved) break;
   }
 
   if (moved) {
-    state.board = newBoard
-    state.score += totalAddedScore
+    state.board = newBoard;
+    state.score += totalAddedScore;
     if (state.score > state.bestScore) {
-      state.bestScore = state.score
+      state.bestScore = state.score;
     }
-    spawnTile(state)
+    spawnTile(state);
 
     // 检查是否达到 2048
     if (!state.hasWon) {
       for (let r = 0; r < GAME2048_CONFIG.GRID_SIZE; r++) {
         for (let c = 0; c < GAME2048_CONFIG.GRID_SIZE; c++) {
           if (state.board[r][c] === GAME2048_CONFIG.WIN_VALUE) {
-            state.hasWon = true
+            state.hasWon = true;
           }
         }
       }
     }
   }
 
-  return moved
+  return { moved, mergedTile: maxMergedTile };
 }
 
 /**
  * 向左移动
  */
-export function moveLeft(state: Game2048State): boolean {
-  return moveBoard(state, (board) => board, false)
+export function moveLeft(state: Game2048State): {
+  moved: boolean;
+  mergedTile: number;
+} {
+  return moveBoard(state, (board) => board, false);
 }
 
 /**
  * 向右移动
  */
-export function moveRight(state: Game2048State): boolean {
-  return moveBoard(state, (board) => board, true)
+export function moveRight(state: Game2048State): {
+  moved: boolean;
+  mergedTile: number;
+} {
+  return moveBoard(state, (board) => board, true);
 }
 
 /**
@@ -215,207 +240,245 @@ export function moveRight(state: Game2048State): boolean {
  * @param col 原始列
  * @param toTop true=向上移动（值填在前面），false=向下移动（值填在后面）
  */
-function slideColumn(col: number[], toTop: boolean): { col: number[]; addedScore: number } {
-  const { GRID_SIZE } = GAME2048_CONFIG
+function slideColumn(
+  col: number[],
+  toTop: boolean,
+): { col: number[]; addedScore: number; maxMerged: number } {
+  const { GRID_SIZE } = GAME2048_CONFIG;
 
   // 收集非零值
-  const values = col.filter(val => val !== 0)
+  const values = col.filter((val) => val !== 0);
 
   // 合并
-  const merged: number[] = []
-  let addedScore = 0
-  let i = 0
+  const merged: number[] = [];
+  let addedScore = 0;
+  let maxMerged = 0;
+  let i = 0;
   while (i < values.length) {
     if (i + 1 < values.length && values[i] === values[i + 1]) {
-      merged.push(values[i] * 2)
-      addedScore += values[i] * 2
-      i += 2
+      const mergedVal = values[i] * 2;
+      merged.push(mergedVal);
+      addedScore += mergedVal;
+      if (mergedVal > maxMerged) {
+        maxMerged = mergedVal;
+      }
+      i += 2;
     } else {
-      merged.push(values[i])
-      i++
+      merged.push(values[i]);
+      i++;
     }
   }
 
   // 根据方向填充结果
-  const result: number[] = Array(GRID_SIZE).fill(0)
+  const result: number[] = Array(GRID_SIZE).fill(0);
   if (toTop) {
     // 向上：值从索引 0 开始填
     for (let j = 0; j < merged.length; j++) {
-      result[j] = merged[j]
+      result[j] = merged[j];
     }
   } else {
     // 向下：值从最后开始填
     for (let j = 0; j < merged.length; j++) {
-      result[GRID_SIZE - 1 - j] = merged[merged.length - 1 - j]
+      result[GRID_SIZE - 1 - j] = merged[merged.length - 1 - j];
     }
   }
 
-  return { col: result, addedScore }
+  return { col: result, addedScore, maxMerged };
 }
 
 /**
  * 向上移动
  */
-export function moveUp(state: Game2048State): boolean {
-  const originalBoard = copyBoard(state.board)
-  let totalAddedScore = 0
+export function moveUp(state: Game2048State): {
+  moved: boolean;
+  mergedTile: number;
+} {
+  const originalBoard = copyBoard(state.board);
+  let totalAddedScore = 0;
+  let maxMergedTile = 0;
 
   for (let c = 0; c < GAME2048_CONFIG.GRID_SIZE; c++) {
-    const col: number[] = []
+    const col: number[] = [];
     for (let r = 0; r < GAME2048_CONFIG.GRID_SIZE; r++) {
-      col.push(state.board[r][c])
+      col.push(state.board[r][c]);
     }
 
-    const { col: slidCol, addedScore } = slideColumn(col, true)
-    totalAddedScore += addedScore
+    const { col: slidCol, addedScore, maxMerged } = slideColumn(col, true);
+    totalAddedScore += addedScore;
+    if (maxMerged > maxMergedTile) {
+      maxMergedTile = maxMerged;
+    }
 
     for (let r = 0; r < GAME2048_CONFIG.GRID_SIZE; r++) {
-      state.board[r][c] = slidCol[r]
+      state.board[r][c] = slidCol[r];
     }
   }
 
   // 检查是否有变化
-  let moved = false
+  let moved = false;
   for (let r = 0; r < GAME2048_CONFIG.GRID_SIZE; r++) {
     for (let c = 0; c < GAME2048_CONFIG.GRID_SIZE; c++) {
       if (originalBoard[r][c] !== state.board[r][c]) {
-        moved = true
-        break
+        moved = true;
+        break;
       }
     }
-    if (moved) break
+    if (moved) break;
   }
 
   if (moved) {
-    state.score += totalAddedScore
+    state.score += totalAddedScore;
     if (state.score > state.bestScore) {
-      state.bestScore = state.score
+      state.bestScore = state.score;
     }
-    spawnTile(state)
+    spawnTile(state);
 
     // 检查是否达到 2048
     if (!state.hasWon) {
       for (let r = 0; r < GAME2048_CONFIG.GRID_SIZE; r++) {
         for (let c = 0; c < GAME2048_CONFIG.GRID_SIZE; c++) {
           if (state.board[r][c] === GAME2048_CONFIG.WIN_VALUE) {
-            state.hasWon = true
+            state.hasWon = true;
           }
         }
       }
     }
   }
 
-  return moved
+  return { moved, mergedTile: maxMergedTile };
 }
 
 /**
  * 向下移动
  */
-export function moveDown(state: Game2048State): boolean {
-  const originalBoard = copyBoard(state.board)
-  let totalAddedScore = 0
+export function moveDown(state: Game2048State): {
+  moved: boolean;
+  mergedTile: number;
+} {
+  const originalBoard = copyBoard(state.board);
+  let totalAddedScore = 0;
+  let maxMergedTile = 0;
 
   for (let c = 0; c < GAME2048_CONFIG.GRID_SIZE; c++) {
-    const col: number[] = []
+    const col: number[] = [];
     for (let r = 0; r < GAME2048_CONFIG.GRID_SIZE; r++) {
-      col.push(state.board[r][c])
+      col.push(state.board[r][c]);
     }
 
-    const { col: slidCol, addedScore } = slideColumn(col, false)
-    totalAddedScore += addedScore
+    const { col: slidCol, addedScore, maxMerged } = slideColumn(col, false);
+    totalAddedScore += addedScore;
+    if (maxMerged > maxMergedTile) {
+      maxMergedTile = maxMerged;
+    }
 
     for (let r = 0; r < GAME2048_CONFIG.GRID_SIZE; r++) {
-      state.board[r][c] = slidCol[r]
+      state.board[r][c] = slidCol[r];
     }
   }
 
   // 检查是否有变化
-  let moved = false
+  let moved = false;
   for (let r = 0; r < GAME2048_CONFIG.GRID_SIZE; r++) {
     for (let c = 0; c < GAME2048_CONFIG.GRID_SIZE; c++) {
       if (originalBoard[r][c] !== state.board[r][c]) {
-        moved = true
-        break
+        moved = true;
+        break;
       }
     }
-    if (moved) break
+    if (moved) break;
   }
 
   if (moved) {
-    state.score += totalAddedScore
+    state.score += totalAddedScore;
     if (state.score > state.bestScore) {
-      state.bestScore = state.score
+      state.bestScore = state.score;
     }
-    spawnTile(state)
+    spawnTile(state);
 
     // 检查是否达到 2048
     if (!state.hasWon) {
       for (let r = 0; r < GAME2048_CONFIG.GRID_SIZE; r++) {
         for (let c = 0; c < GAME2048_CONFIG.GRID_SIZE; c++) {
           if (state.board[r][c] === GAME2048_CONFIG.WIN_VALUE) {
-            state.hasWon = true
+            state.hasWon = true;
           }
         }
       }
     }
   }
 
-  return moved
+  return { moved, mergedTile: maxMergedTile };
 }
 
 /**
  * 检查是否还有可用移动
  */
 export function canMove(state: Game2048State): boolean {
-  const { GRID_SIZE } = GAME2048_CONFIG
+  const { GRID_SIZE } = GAME2048_CONFIG;
 
   // 检查是否有空格
   for (let r = 0; r < GRID_SIZE; r++) {
     for (let c = 0; c < GRID_SIZE; c++) {
-      if (state.board[r][c] === 0) return true
+      if (state.board[r][c] === 0) return true;
     }
   }
 
   // 检查是否可以合并
   for (let r = 0; r < GRID_SIZE; r++) {
     for (let c = 0; c < GRID_SIZE; c++) {
-      const val = state.board[r][c]
+      const val = state.board[r][c];
       // 检查右边
-      if (c + 1 < GRID_SIZE && state.board[r][c + 1] === val) return true
+      if (c + 1 < GRID_SIZE && state.board[r][c + 1] === val) return true;
       // 检查下边
-      if (r + 1 < GRID_SIZE && state.board[r + 1][c] === val) return true
+      if (r + 1 < GRID_SIZE && state.board[r + 1][c] === val) return true;
     }
   }
 
-  return false
+  return false;
+}
+
+export interface MoveResult {
+  moved: boolean;
+  mergedTile: number; // 本次移动合并的最大方块值，无合并则为 0
 }
 
 /**
  * 执行一次移动（自动检测方向）
  */
-export function move(state: Game2048State, direction: 'left' | 'right' | 'up' | 'down'): boolean {
-  let moved = false
+export function move(
+  state: Game2048State,
+  direction: "left" | "right" | "up" | "down",
+): MoveResult {
+  let result: MoveResult = { moved: false, mergedTile: 0 };
 
   switch (direction) {
-    case 'left': moved = moveLeft(state); break
-    case 'right': moved = moveRight(state); break
-    case 'up': moved = moveUp(state); break
-    case 'down': moved = moveDown(state); break
+    case "left":
+      result = moveLeft(state);
+      break;
+    case "right":
+      result = moveRight(state);
+      break;
+    case "up":
+      result = moveUp(state);
+      break;
+    case "down":
+      result = moveDown(state);
+      break;
   }
 
   // 检查游戏结束
   if (!canMove(state) && !state.hasWon) {
-    state.isGameOver = true
+    state.isGameOver = true;
   }
 
-  return moved
+  return result;
 }
 
 /**
  * 继续游戏（达成 2048 后）
  */
 export function keepGoing(state: Game2048State): void {
-  state.keepGoing = true
+  state.keepGoing = true;
 }
 
 /**
@@ -423,31 +486,31 @@ export function keepGoing(state: Game2048State): void {
  */
 export function getTileColor(value: number): string {
   const colors: Record<number, string> = {
-    0: '#3c3a32',
-    2: '#eee4da',
-    4: '#ede0c8',
-    8: '#f2b179',
-    16: '#f59563',
-    32: '#f67c5f',
-    64: '#f65e3b',
-    128: '#edcf72',
-    256: '#edcc61',
-    512: '#edc850',
-    1024: '#edc53f',
-    2048: '#edc22e'
-  }
+    0: "#3c3a32",
+    2: "#eee4da",
+    4: "#ede0c8",
+    8: "#f2b179",
+    16: "#f59563",
+    32: "#f67c5f",
+    64: "#f65e3b",
+    128: "#edcf72",
+    256: "#edcc61",
+    512: "#edc850",
+    1024: "#edc53f",
+    2048: "#edc22e",
+  };
 
   // 对于更大的数字，使用渐变色
   if (value > 2048) {
-    return '#3c3a32'
+    return "#3c3a32";
   }
 
-  return colors[value] || colors[0]
+  return colors[value] || colors[0];
 }
 
 /**
  * 获取数字对应的文字颜色
  */
 export function getTextColor(value: number): string {
-  return value <= 4 ? '#776e65' : '#f9f6f2'
+  return value <= 4 ? "#776e65" : "#f9f6f2";
 }

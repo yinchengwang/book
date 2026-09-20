@@ -21,10 +21,10 @@ import {
 } from '@/utils/match3'
 import {
   setMatch3ChapterStars,
-  unlockMatch3Chapter,
-  unlockAchievement
+  unlockMatch3Chapter
 } from '@/utils/storage'
 import { buildMatch3Share } from '@/services/share'
+import { evaluate } from '@/services/achievements'
 import './index.scss'
 
 function Match3Page () {
@@ -159,11 +159,12 @@ function Match3Page () {
       const stars = calculateStars(state.score, par, state.moves, state.maxMoves)
       state.stars = stars
 
-      // 持久化章节进度 + 成就
+      // 持久化章节进度
       setMatch3ChapterStars(state.chapter, state.level, stars)
       unlockMatch3Chapter(state.chapter + 1)
-      unlockAchievement('match3_first_clear')
-      if (stars === 3) unlockAchievement('match3_three_stars')
+
+      // 通过 evaluate 触发成就规则引擎（会同时调用 unlockAchievement + emit Toast）
+      evaluate({ type: 'match3.complete', stars })
 
       setGameState({ ...state })
       setIsGameOver(true)
