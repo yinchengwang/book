@@ -1,0 +1,32 @@
+# Placeholder config file for multimodal_rag.
+# Filled in by later phases.
+server:
+  port: 8080
+  host: "0.0.0.0"
+
+embedding.type: "kbase"  # "kbase" (本地 FP32 weights + WordPiece tokenizer) | "http" (云端 API) | "simple" (哈希随机向量)
+embedding.dim: 1024
+embedding.model_path: "/mnt/d/code/book/engineering/apps/multimodal_rag/models/bge-large/fp32_out"
+# BGE-large-en-v1.5 GGUF → FP32 by scripts/gguf_to_fp32.py
+# 1024 维, 24 层, 16 heads, 4096 FF dim, 1.27GB weights
+hnsw.dim: 1024
+embedding.timeout: 30
+
+index:
+  type: "flat_array"
+
+storage:
+  path: "mmrag.db"
+
+# 数据目录（上传的文档存放位置）
+# 服务器启动时会自动调整为相对于工程根目录的绝对路径
+data_dir: "apps/multimodal_rag/rag_data"
+
+# 日志文件路径
+logging:
+  level: "info"
+  file: "apps/multimodal_rag/rag_data/logs/rag.log"
+  max_size: 104857600  # 100MB
+  max_backups: 5
+  console: true
+
