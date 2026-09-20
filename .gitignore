@@ -169,3 +169,21 @@ rag_data/
 
 # 模型权重（大文件不入库，走外部存储）
 engineering/apps/multimodal_rag/models/
+engineering/apps/multimodal_rag/reference/
+
+# 构建/缓存/运行时残留（避免拖慢 git status）
+emsdk/
+engineering/build-linux/
+.pytest_cache/
+third_part/cmocka_install/
+.claude/tasks/
+.remember/
+
+# legacy 构建产物
+*.wasm-legacy
+*.js-legacy
+
+# FetchContent 拉取的第三方依赖（与 libmicrohttpd/cjson 同类）
+engineering/third_part/cpp-httplib/
+engineering/third_part/nlohmann/
+engineering/third_part/openssl-stubs/
