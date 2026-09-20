@@ -31,10 +31,23 @@ option(MMDB_ENABLE_DISTRIBUTED_SHARD "Enable Sharding" OFF)
 # ========================================================================
 
 set(MMDB_MODEL_COUNT 13)
-set(MULTIMODAL_CONFIG_HEADER "${ENGINEERING_SOURCE_DIR}/include/db/multimodal_config.h")
+# Write the generated header to the build tree (not the source tree). This:
+#   - Avoids polluting the source tree with generated files.
+#   - Allows building on read-only source filesystems (e.g. NTFS via WSL2
+#     where atomic rename() of existing files is not permitted).
+# The build tree is always writable (Linux ext4 / native FS).
+set(MULTIMODAL_CONFIG_HEADER "${CMAKE_BINARY_DIR}/generated/include/db/multimodal_config.h")
 configure_file(
     "${CMAKE_CURRENT_LIST_DIR}/multimodal_config.h.in"
     "${MULTIMODAL_CONFIG_HEADER}"
+)
+
+# Expose the generated header via an INTERFACE library so any target that
+# wants MMDB_* macros can link `multimodal_config_gen` (PRIVATE or PUBLIC
+# based on whether it propagates the macros).
+add_library(multimodal_config_gen INTERFACE)
+target_include_directories(multimodal_config_gen INTERFACE
+    "${CMAKE_BINARY_DIR}/generated/include"
 )
 
 # ========================================================================

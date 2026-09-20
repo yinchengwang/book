@@ -166,3 +166,6 @@ sift.tar.gz
 
 # 运行时数据目录
 rag_data/
+
+# 模型权重（大文件不入库，走外部存储）
+engineering/apps/multimodal_rag/models/

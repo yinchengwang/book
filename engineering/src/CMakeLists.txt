@@ -23,8 +23,8 @@ add_subdirectory(db)             # 数据库内核
 # RAG 模块 (暂时禁用以便验证 db 重构)
 # add_subdirectory(rag)            # RAG 系统
 
-# kbase 库（轻量级推理引擎 + Obsidian 知识库）
-add_subdirectory(kbase)
+# kbase 库 - 已迁移到 apps/multimodal_rag (Phase 10 清理)
+# add_subdirectory(kbase)
 
 # 多模态 SDK（依赖 db 模块，必须在 db 之后）
 add_subdirectory(sdk)

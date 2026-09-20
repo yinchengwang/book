@@ -35,12 +35,32 @@ set(ENGINEERING_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # ========================================================================
+# 构建优化配置
+# ========================================================================
+
+# 使用 ccache 加速重复编译（如果安装了 ccache）
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    message(STATUS "Using ccache: ${CCACHE_PROGRAM}")
+endif()
+
+# 设置并行编译（GCC/MinGW 使用 -j，MSVC 使用 /MP）
+include(ProcessorCount)
+ProcessorCount(N_CORES)
+if(N_CORES EQUAL 0)
+    set(N_CORES 4)
+endif()
+set(CMAKE_BUILD_PARALLEL_LEVEL ${N_CORES})
+
+# ========================================================================
 # 多模态编译配置（模态开关、分布式开关）
 # ========================================================================
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/MultimodalConfig.cmake")
 
-include(CTest)
-include(GNUInstallDirs)
+# include(CTest)
+# include(GNUInstallDirs)
 
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
 option(BUILD_TESTING "Build tests" ON)

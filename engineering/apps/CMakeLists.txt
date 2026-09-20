@@ -18,5 +18,8 @@ add_subdirectory(vdb_cli)
 # Todo App 待办事项应用
 add_subdirectory(todo-app)
 
-# kbase CLI 工具（轻量级推理引擎 + Obsidian 知识库）
-add_subdirectory(kbase)
+# kbase CLI 工具 - 已迁移到 apps/multimodal_rag (Phase 10 清理)
+# add_subdirectory(kbase)
+
+# 多模态 RAG 服务（迁移自 rag/ + kbase/，统一后端）
+add_subdirectory(multimodal_rag)

@@ -2,8 +2,14 @@ name: Build & Test
 on:
   push:
     branches: [main]
+    paths:
+      - 'engineering/apps/web/reading-radar/**'
+      - 'engineering/apps/games/web/shared/**'
   pull_request:
     branches: [main]
+    paths:
+      - 'engineering/apps/web/reading-radar/**'
+      - 'engineering/apps/games/web/shared/**'
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -13,6 +19,10 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+          cache-dependency-path: engineering/apps/web/reading-radar/package-lock.json
       - run: npm ci
-      - run: npm test
+        working-directory: engineering/apps/web/reading-radar
+      - run: npm test -- --run
+        working-directory: engineering/apps/web/reading-radar
       - run: npm run build
+        working-directory: engineering/apps/web/reading-radar

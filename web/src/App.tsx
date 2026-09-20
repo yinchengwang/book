@@ -4,10 +4,14 @@ import { Chat } from './components/Chat'
 import { SettingsPanel, DEFAULT_SETTINGS } from './components/SettingsPanel'
 import { ThemeToggle } from './components/ThemeToggle'
 import { DocumentPreview } from './components/DocumentPreview'
+import { FileManager } from './components/FileManager'
+import { UploadDialog } from './components/UploadDialog'
+import { NewFolderDialog } from './components/DirManager'
+import { RebuildDialog } from './components/RebuildDialog'
 import { Button } from './components/ui/button'
 import { useContext } from './hooks/useContext'
 import { useDocument } from './hooks/useDocument'
-import { Settings, MessageSquare, RotateCcw, Loader2 } from 'lucide-react'
+import { Settings, MessageSquare, RotateCcw, Loader2, FolderOpen, Plus } from 'lucide-react'
 import type { Settings as SettingsType, QueryOptions, ChunkReference } from './types'
 
 const queryClient = new QueryClient({
@@ -30,6 +34,11 @@ function App() {
   })
   const [showSettings, setShowSettings] = useState(false)
   const [chatKey, setChatKey] = useState(0)
+  const [activeTab, setActiveTab] = useState<'chat' | 'files'>('chat')
+  const [showUpload, setShowUpload] = useState(false)
+  const [showNewFolder, setShowNewFolder] = useState(false)
+  const [showRebuild, setShowRebuild] = useState(false)
+  const [currentDir, setCurrentDir] = useState('')
 
   const { buildQuery, recordTurn, clearContext } = useContext(settings.maxTurns)
   const { previewDocument, isLoading: isDocLoading, loadDocument, closePreview } = useDocument()
@@ -71,12 +80,47 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-900">
         <header className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="w-6 h-6 text-blue-600" />
-            <h1 className="text-lg md:text-xl font-bold">D-code-book RAG</h1>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-6 h-6 text-blue-600" />
+              <h1 className="text-lg md:text-xl font-bold">D-code-book RAG</h1>
+            </div>
+            {/* Tab 切换 */}
+            <div className="flex items-center border rounded-md overflow-hidden border-gray-200 dark:border-gray-600">
+              <button
+                className={`px-3 py-1 text-sm transition-colors ${
+                  activeTab === 'chat'
+                    ? 'bg-blue-50 text-blue-600 dark:bg-blue-900 dark:text-blue-300'
+                    : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300'
+                }`}
+                onClick={() => setActiveTab('chat')}
+              >
+                对话
+              </button>
+              <button
+                className={`px-3 py-1 text-sm transition-colors ${
+                  activeTab === 'files'
+                    ? 'bg-blue-50 text-blue-600 dark:bg-blue-900 dark:text-blue-300'
+                    : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 dark:text-gray-300'
+                }`}
+                onClick={() => setActiveTab('files')}
+              >
+                文件管理
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center gap-1 md:gap-2">
+            {activeTab === 'files' && (
+              <>
+                <Button variant="ghost" size="icon" onClick={() => setShowNewFolder(true)} title="新建文件夹">
+                  <Plus className="w-5 h-5" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => setShowUpload(true)} title="上传">
+                  <FolderOpen className="w-5 h-5" />
+                </Button>
+              </>
+            )}
             <Button variant="ghost" size="icon" onClick={handleNewChat} title="新对话">
               <RotateCcw className="w-5 h-5" />
             </Button>
@@ -93,13 +137,23 @@ function App() {
         </header>
 
         <main className="flex-1 relative overflow-hidden">
-          <Chat
-            key={chatKey}
-            options={queryOptions}
-            buildQuery={handleBuildQuery}
-            onAssistantMessage={handleAssistantMessage}
-            onChunkClick={handleChunkClick}
-          />
+          {activeTab === 'chat' ? (
+            <Chat
+              key={chatKey}
+              options={queryOptions}
+              buildQuery={handleBuildQuery}
+              onAssistantMessage={handleAssistantMessage}
+              onChunkClick={handleChunkClick}
+            />
+          ) : (
+            <div className="h-full">
+              <FileManager
+                onUploadClick={() => setShowUpload(true)}
+                onRebuildClick={() => setShowRebuild(true)}
+                onDirChange={setCurrentDir}
+              />
+            </div>
+          )}
 
           {isDocLoading && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/20 z-20">
@@ -126,6 +180,26 @@ function App() {
             onClose={closePreview}
           />
         )}
+
+        {showUpload && (
+          <UploadDialog
+            open={showUpload}
+            onClose={() => setShowUpload(false)}
+            currentDir=""
+          />
+        )}
+
+        <NewFolderDialog
+          open={showNewFolder}
+          onClose={() => setShowNewFolder(false)}
+          currentDir=""
+        />
+
+        <RebuildDialog
+          open={showRebuild}
+          onClose={() => setShowRebuild(false)}
+          currentDir={currentDir}
+        />
       </div>
     </QueryClientProvider>
   )

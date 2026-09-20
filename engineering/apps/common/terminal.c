@@ -6,6 +6,7 @@
 #include "terminal.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <locale.h>  // for LC_ALL (Linux GCC requires explicit include)
 
 #ifdef _WIN32
 #include <conio.h>

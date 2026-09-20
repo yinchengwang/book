@@ -56,3 +56,56 @@ export interface DocumentContent {
   content: string;
   title: string;
 }
+
+// ===== 文档管理 =====
+
+// 文档元数据（匹配后端 /api/v1/documents 输出）
+export interface DocumentMeta {
+  id: string;
+  file_name: string;
+  file_path: string;
+  file_type: string;
+  file_size: number;
+  status: number;  // 0=待处理, 1=处理中, 2=已索引, 3=失败
+  indexed_at: number;  // Unix timestamp
+}
+
+// 文档列表响应
+export interface DocumentsResponse {
+  documents: DocumentMeta[];
+  total: number;
+}
+
+// 上传响应
+export interface UploadResponse {
+  uploaded: number;
+  skipped: number;
+  errors: number;
+  files: {
+    name: string;
+    size: number;
+    status: string;
+  }[];
+}
+
+// 目录响应
+export interface DirsResponse {
+  dirs: string[];
+  total: number;
+}
+
+// 删除响应
+export interface DeleteResponse {
+  deleted: boolean;
+  id?: string;
+  error?: string;
+}
+
+// 索引状态
+export interface IndexStatus {
+  index_name: string;
+  document_count: number;
+  chunk_count: number;
+  vector_count: number;
+  status: number;
+}
