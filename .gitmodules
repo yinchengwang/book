@@ -215,3 +215,13 @@
 [submodule "reference/document/couchbase"]
 	path = reference/document/couchbase
 	url = https://github.com/couchbase/couchbase-lite-core.git
+
+[submodule "third_part/uthash"]
+	path = third_part/uthash
+	url = https://gitee.com/mirrors/uthash.git
+[submodule "engineering/third_part/googletest"]
+	path = engineering/third_part/googletest
+	url = https://gitee.com/mirrors/googletest.git
+[submodule "engineering/third_part/uthash"]
+	path = engineering/third_part/uthash
+	url = https://gitee.com/mirrors/uthash.git
