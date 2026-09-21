@@ -22,11 +22,16 @@ Pipeline
 ```
 
 ### 新建文件
-- `engineering/src/rag/rag_pipeline.c`（400 行）
-- `engineering/src/rag/rag_ingestion.c`（300 行）
-- `engineering/src/rag/rag_retrieval.c`（250 行）
-- `engineering/src/rag/rag_eval.c`（150 行）
-- `engineering/test/db/rag/rag_pipeline_test.cpp`（300 行）
+- ~~`engineering/src/rag/rag_pipeline.c`（400 行）~~
+- ~~`engineering/src/rag/rag_ingestion.c`（300 行）~~
+- ~~`engineering/src/rag/rag_retrieval.c`（250 行）~~
+- ~~`engineering/src/rag/rag_eval.c`（150 行）~~
+- ~~`engineering/test/db/rag/rag_pipeline_test.cpp`（300 行）~~
+
+> **实施时更正**：上述文件无需新建 —— `engineering/src/db/executor/rag/`
+> 已有完整实现（rag_pipeline.c + 四个算子 + graphrag_*.c，~5700 行）。
+> 实际工作是把自包含的 rag/*.c 直接编入 test_rag_executor，
+> 绕开 bit-rot 的 db_executor 整库（归 Gap03）。
 
 ### 复用现有
 - faiss_hnsw（vector_index）
@@ -42,9 +47,12 @@ Pipeline
 
 ## 三、Learning 推进
 
-- ds-c 链表专题验证（64 文件）
-- algo-c 排序算法测试（18 文件）
-- code-solutions LeetCode 前 10 题验证
+- ~~ds-c 链表专题验证（64 文件）~~ → 实际 33 个实现文件、无测试文件，
+  验证改为全量构建通过（libds.a）
+- ~~algo-c 排序算法测试（18 文件）~~ → 实际仅 4 个文件、无排序专题，
+  验证改为全量构建通过（libalgo-c.a）
+- code-solutions LeetCode 前 10 题验证 → 补齐缺失的 7 题实现与 18 个用例，
+  全量 ctest 176/176 通过
 
 ## 四、验收标准
 

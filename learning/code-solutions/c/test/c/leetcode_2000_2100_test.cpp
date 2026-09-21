@@ -12,51 +12,51 @@ protected:
     void TearDown() override {}
 };
 
-// 测试 maxi_mum_difference 函数 (LeetCode 2016)
-TEST_F(LeetCode2000To2100CTest, maxi_mum_difference_EmptyArray) {
-    EXPECT_EQ(maxi_mum_difference(NULL, 0), -1);
+// 测试 maximum_difference 函数 (LeetCode 2016)
+TEST_F(LeetCode2000To2100CTest, maximum_difference_EmptyArray) {
+    EXPECT_EQ(maximum_difference(NULL, 0), -1);
 }
 
-TEST_F(LeetCode2000To2100CTest, maxi_mum_difference_SingleElement) {
+TEST_F(LeetCode2000To2100CTest, maximum_difference_SingleElement) {
     int nums[] = {5};
-    EXPECT_EQ(maxi_mum_difference(nums, 1), -1);
+    EXPECT_EQ(maximum_difference(nums, 1), -1);
 }
 
-TEST_F(LeetCode2000To2100CTest, maxi_mum_difference_TwoElements) {
+TEST_F(LeetCode2000To2100CTest, maximum_difference_TwoElements) {
     int nums[] = {1, 5};
-    EXPECT_EQ(maxi_mum_difference(nums, 2), 4);
+    EXPECT_EQ(maximum_difference(nums, 2), 4);
 
     int nums2[] = {5, 1};
-    EXPECT_EQ(maxi_mum_difference(nums2, 2), -1); // 没有递增对
+    EXPECT_EQ(maximum_difference(nums2, 2), -1); // 没有递增对
 }
 
-TEST_F(LeetCode2000To2100CTest, maxi_mum_difference_Increasing) {
+TEST_F(LeetCode2000To2100CTest, maximum_difference_Increasing) {
     int nums[] = {1, 2, 3, 4, 5};
-    EXPECT_EQ(maxi_mum_difference(nums, 5), 4); // 5-1
+    EXPECT_EQ(maximum_difference(nums, 5), 4); // 5-1
 
     int nums2[] = {7, 1, 5, 4};
-    EXPECT_EQ(maxi_mum_difference(nums2, 4), 4); // 5-1
+    EXPECT_EQ(maximum_difference(nums2, 4), 4); // 5-1
 }
 
-TEST_F(LeetCode2000To2100CTest, maxi_mum_difference_Decreasing) {
+TEST_F(LeetCode2000To2100CTest, maximum_difference_Decreasing) {
     int nums[] = {5, 4, 3, 2, 1};
-    EXPECT_EQ(maxi_mum_difference(nums, 5), -1);
+    EXPECT_EQ(maximum_difference(nums, 5), -1);
 }
 
-TEST_F(LeetCode2000To2100CTest, maxi_mum_difference_WithDuplicates) {
+TEST_F(LeetCode2000To2100CTest, maximum_difference_WithDuplicates) {
     int nums[] = {1, 2, 2, 3, 1};
-    EXPECT_EQ(maxi_mum_difference(nums, 5), 2); // 3-1
+    EXPECT_EQ(maximum_difference(nums, 5), 2); // 3-1
 
     int nums2[] = {7, 1, 5, 3, 6, 4};
-    EXPECT_EQ(maxi_mum_difference(nums2, 6), 5); // 6-1
+    EXPECT_EQ(maximum_difference(nums2, 6), 5); // 6-1
 }
 
-TEST_F(LeetCode2000To2100CTest, maxi_mum_difference_NegativeNumbers) {
+TEST_F(LeetCode2000To2100CTest, maximum_difference_NegativeNumbers) {
     int nums[] = {-3, -1, -2, 0};
-    EXPECT_EQ(maxi_mum_difference(nums, 4), 3); // 0-(-3)
+    EXPECT_EQ(maximum_difference(nums, 4), 3); // 0-(-3)
 
     int nums2[] = {-5, -4, -3, -2, -1};
-    EXPECT_EQ(maxi_mum_difference(nums2, 5), 4); // -1-(-5)
+    EXPECT_EQ(maximum_difference(nums2, 5), 4); // -1-(-5)
 }
 
 // 测试 isBalance 函数 (LeetCode 2048 辅助函数)

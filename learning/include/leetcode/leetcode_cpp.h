@@ -28,11 +28,32 @@ public:
     // 1 hash表
     vector<int> twoSumHash(vector<int>& nums, int target);
 
+    // 2
+    ListNode* addTwoNumbers(ListNode* l1, ListNode* l2);
+
+    // 3
+    int lengthOfLongestSubstring(string s);
+
+    // 4
+    double findMedianSortedArrays(vector<int>& nums1, vector<int>& nums2);
+
+    // 5
+    string longestPalindrome(string s);
+
+    // 6
+    string convert(string s, int numRows);
+
     // 7
     int reverse(int x);
 
     // 8
     int myAtoi(string s);
+
+    // 9
+    bool isPalindrome(int x);
+
+    // 10
+    bool isMatch(string s, string p);
 
     // 56
     vector<vector<int>> merge(vector<vector<int>>& intervals);
