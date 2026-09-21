@@ -3,9 +3,27 @@ package com.mmdb;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLWarning;
 import java.sql.Statement;
 
 public class MMDBStatement implements Statement {
+
+    private final MMDBConnection connection;
+    private boolean closed = false;
+
+    public MMDBStatement(MMDBConnection connection) {
+        this.connection = connection;
+    }
+
+    @Override
+    public void close() throws SQLException {
+        closed = true;
+    }
+
+    @Override
+    public boolean isClosed() throws SQLException {
+        return closed;
+    }
 
     @Override
     public ResultSet executeQuery(String sql) throws SQLException {
@@ -128,7 +146,7 @@ public class MMDBStatement implements Statement {
 
     @Override
     public Connection getConnection() throws SQLException {
-        return null;
+        return connection;
     }
 
     @Override
@@ -174,10 +192,6 @@ public class MMDBStatement implements Statement {
     @Override
     public int getResultSetHoldability() throws SQLException {
         return ResultSet.HOLD_CURSORS_OVER_COMMIT;
-    }
-
-    @Override
-    public void close() throws SQLException {
     }
 
     @Override

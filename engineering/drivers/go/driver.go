@@ -1,6 +1,10 @@
 package mmdb
 
-import "fmt"
+import (
+	"fmt"
+	"net"
+	"strconv"
+)
 
 type Driver struct{}
 
@@ -26,18 +30,13 @@ func (d *Driver) Open(name string) (*Conn, error) {
 
 // parseDSN parses a DSN string in the format host:port
 func parseDSN(name string) (string, int, error) {
-	var host string
-	var port int
-
-	// Simple parsing: assume host:port format
-	fmt.Sscanf(name, "%s:%d", &host, &port)
-
-	if host == "" {
-		host = "localhost"
+	host, portStr, err := net.SplitHostPort(name)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid DSN %q (expect host:port): %w", name, err)
 	}
-	if port == 0 {
-		port = 8080
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid port in DSN %q: %w", name, err)
 	}
-
 	return host, port, nil
 }

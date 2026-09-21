@@ -3,10 +3,16 @@ package com.mmdb;
 import java.sql.Connection;
 import java.sql.Driver;
 import java.sql.DriverPropertyInfo;
+import java.sql.SQLFeatureNotSupportedException;
 import java.sql.SQLException;
 import java.util.Properties;
 
 public class MMDBDriver implements Driver {
+
+    @Override
+    public java.util.logging.Logger getParentLogger() throws SQLFeatureNotSupportedException {
+        throw new SQLFeatureNotSupportedException("MMDB driver does not use java.util.logging");
+    }
 
     @Override
     public Connection connect(String url, Properties info) throws SQLException {

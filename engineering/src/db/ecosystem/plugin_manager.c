@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <pthread.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>

@@ -1,8 +1,8 @@
 package mmdb
 
 import (
-	"fmt"
 	"net"
+	"strconv"
 )
 
 type Conn struct {
@@ -15,7 +15,7 @@ func (c *Conn) Query(query string) (*Rows, error) {
 	// Execute query
 	// Connect to the server and send the query
 	if c.conn == nil {
-		conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", c.host, c.port))
+		conn, err := net.Dial("tcp", net.JoinHostPort(c.host, strconv.Itoa(c.port)))
 		if err != nil {
 			return nil, err
 		}

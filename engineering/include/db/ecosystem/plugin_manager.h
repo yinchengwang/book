@@ -24,8 +24,21 @@ typedef enum {
     PLUGIN_TYPE_UDF           /**< User-defined function plugin */
 } plugin_type_t;
 
-/** Plugin handle (opaque) */
-typedef struct plugin plugin_t;
+/**
+ * Plugin descriptor —— 公开结构体。
+ *
+ * 插件（DLL）须导出 `plugin_t *get_plugin(void)` 返回本结构体指针，
+ * 由插件管理器读取描述信息与生命周期回调；全部回调均可为 NULL。
+ */
+typedef struct plugin {
+    int api_version;                  /**< Plugin API version */
+    plugin_type_t type;               /**< Plugin type */
+    const char *name;                 /**< Plugin name */
+    int (*init)(void);                /**< Init callback (optional) */
+    int (*start)(void);               /**< Start callback (optional) */
+    void (*stop)(void);               /**< Stop callback (optional) */
+    void (*destroy)(void);            /**< Destroy callback (optional) */
+} plugin_t;
 
 /** Plugin manager handle (opaque) */
 typedef struct plugin_manager plugin_manager_t;
