@@ -8,6 +8,7 @@
  * Checkpoint 格式：固定头 + Blob 条目数组 + Chunk 引用数组 + checksum
  */
 #include "db/blob_catalog.h"
+#include "db/mmdb_lock.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -131,7 +132,8 @@ struct blob_catalog_s {
     /* WAL 状态 */
     FILE *wal_fp;                       /**< WAL 文件指针 */
     uint32_t current_lsn;               /**< 当前 LSN */
-    bool in_transaction;                /**< 是否在事务中 */
+
+    mmdb_rwlock_t lock;                 /**< 读写锁：保护哈希表 + WAL + LSN（C9-2 Task 2） */
 
     /* 错误状态 */
     int last_error;
@@ -203,13 +205,9 @@ static size_t hash_chunk_id(const uint8_t chunk_id[32]) {
  * Blob 条目查找
  * ======================================================================== */
 
-int blob_catalog_find_blob(const blob_catalog_t *catalog,
-                           const uint8_t blob_id[BLOB_CATALOG_ID_SIZE],
-                           blob_entry_t *out_entry) {
-    if (!catalog || !blob_id) {
-        return BLOB_CATALOG_ERR_INVAL;
-    }
-
+static int find_blob_nolock(const blob_catalog_t *catalog,
+                            const uint8_t blob_id[BLOB_CATALOG_ID_SIZE],
+                            blob_entry_t *out_entry) {
     size_t idx = hash_blob_id(blob_id) % catalog->blob_table_size;
     for (size_t i = 0; i < catalog->blob_table_size; i++) {
         size_t pos = (idx + i) % catalog->blob_table_size;
@@ -226,17 +224,27 @@ int blob_catalog_find_blob(const blob_catalog_t *catalog,
     return BLOB_CATALOG_ERR_NOTFOUND;
 }
 
+int blob_catalog_find_blob(const blob_catalog_t *catalog,
+                           const uint8_t blob_id[BLOB_CATALOG_ID_SIZE],
+                           blob_entry_t *out_entry) {
+    if (!catalog || !blob_id) {
+        return BLOB_CATALOG_ERR_INVAL;
+    }
+
+    blob_catalog_t *c = (blob_catalog_t *)catalog;  /* 仅供加锁，cast away const */
+    mmdb_rwlock_rdlock(&c->lock);
+    int rc = find_blob_nolock(catalog, blob_id, out_entry);
+    mmdb_rwlock_unlock(&c->lock, 0);
+    return rc;
+}
+
 /* ========================================================================
  * Chunk 引用查找
  * ======================================================================== */
 
-int blob_catalog_find_chunk(const blob_catalog_t *catalog,
-                            const uint8_t chunk_id[BLOB_CATALOG_CHUNK_SIZE],
-                            blob_chunk_ref_t *out_ref) {
-    if (!catalog || !chunk_id) {
-        return BLOB_CATALOG_ERR_INVAL;
-    }
-
+static int find_chunk_nolock(const blob_catalog_t *catalog,
+                             const uint8_t chunk_id[BLOB_CATALOG_CHUNK_SIZE],
+                             blob_chunk_ref_t *out_ref) {
     size_t idx = hash_chunk_id(chunk_id) % catalog->chunk_table_size;
     for (size_t i = 0; i < catalog->chunk_table_size; i++) {
         size_t pos = (idx + i) % catalog->chunk_table_size;
@@ -251,6 +259,20 @@ int blob_catalog_find_chunk(const blob_catalog_t *catalog,
         }
     }
     return BLOB_CATALOG_ERR_NOTFOUND;
+}
+
+int blob_catalog_find_chunk(const blob_catalog_t *catalog,
+                            const uint8_t chunk_id[BLOB_CATALOG_CHUNK_SIZE],
+                            blob_chunk_ref_t *out_ref) {
+    if (!catalog || !chunk_id) {
+        return BLOB_CATALOG_ERR_INVAL;
+    }
+
+    blob_catalog_t *c = (blob_catalog_t *)catalog;  /* 仅供加锁，cast away const */
+    mmdb_rwlock_rdlock(&c->lock);
+    int rc = find_chunk_nolock(catalog, chunk_id, out_ref);
+    mmdb_rwlock_unlock(&c->lock, 0);
+    return rc;
 }
 
 /* ========================================================================
@@ -395,10 +417,9 @@ int blob_catalog_begin(blob_catalog_t *catalog) {
     if (!catalog) {
         return BLOB_CATALOG_ERR_INVAL;
     }
-    if (catalog->in_transaction) {
-        return BLOB_CATALOG_ERR_STATE;
-    }
-    catalog->in_transaction = true;
+    /* C9-2 Task 2：事务语义降级为 WAL 追加的批量提示。
+     * 不再维护共享 in_transaction 标志——并发上传下它是竞态源（多个线程
+     * 同时 begin 时除第一个外都会拿到 ERR_STATE）。真正的原子性由 mmdb_rwlock 保证。 */
     return BLOB_CATALOG_OK;
 }
 
@@ -406,24 +427,19 @@ int blob_catalog_end(blob_catalog_t *catalog) {
     if (!catalog) {
         return BLOB_CATALOG_ERR_INVAL;
     }
-    if (!catalog->in_transaction) {
-        return BLOB_CATALOG_ERR_STATE;
-    }
 
-    /* fflush + fsync WAL */
+    /* fflush + fsync WAL（持写锁，避免与并发写交错导致 WAL 撕裂） */
+    mmdb_rwlock_wrlock(&catalog->lock);
+    int rc = BLOB_CATALOG_OK;
     if (catalog->wal_fp) {
         if (fflush(catalog->wal_fp) != 0) {
-            catalog->in_transaction = false;
-            return BLOB_CATALOG_ERR_IO;
-        }
-        if (fsync_func(fileno(catalog->wal_fp)) != 0) {
-            catalog->in_transaction = false;
-            return BLOB_CATALOG_ERR_IO;
+            rc = BLOB_CATALOG_ERR_IO;
+        } else if (fsync_func(fileno(catalog->wal_fp)) != 0) {
+            rc = BLOB_CATALOG_ERR_IO;
         }
     }
-
-    catalog->in_transaction = false;
-    return BLOB_CATALOG_OK;
+    mmdb_rwlock_unlock(&catalog->lock, 1);
+    return rc;
 }
 
 /* ========================================================================
@@ -437,6 +453,20 @@ int blob_catalog_prepare(blob_catalog_t *catalog,
         return BLOB_CATALOG_ERR_INVAL;
     }
 
+    mmdb_rwlock_wrlock(&catalog->lock);
+
+    /* C9-2 Task 3：幂等检查。
+     * blob_id 是内容寻址（SHA-256），相同内容重复 prepare 时 blob 已存在。
+     * - PREPARED / COMMITTED：直接返回成功，不重复写 WAL，也不覆盖已提交
+     *   对象的状态与时间戳（原实现会把 COMMITTED 重置回 PREPARED）。
+     * - DELETED：需重新发布（delete 后 re-put），回退到正常 prepare 覆盖为 PREPARED。 */
+    blob_entry_t existing;
+    if (find_blob_nolock(catalog, blob_id, &existing) == BLOB_CATALOG_OK &&
+        (existing.state == BLOB_STATE_PREPARED || existing.state == BLOB_STATE_COMMITTED)) {
+        mmdb_rwlock_unlock(&catalog->lock, 1);
+        return BLOB_CATALOG_OK;
+    }
+
     /* 构造 payload */
     blob_catalog_blob_payload_t payload;
     memcpy(payload.blob_id, blob_id, BLOB_CATALOG_ID_SIZE);
@@ -446,6 +476,7 @@ int blob_catalog_prepare(blob_catalog_t *catalog,
     /* 写入 WAL */
     int rc = write_wal_record(catalog, BLOB_CATALOG_PREPARE, &payload, sizeof(payload));
     if (rc != BLOB_CATALOG_OK) {
+        mmdb_rwlock_unlock(&catalog->lock, 1);
         return rc;
     }
 
@@ -458,7 +489,9 @@ int blob_catalog_prepare(blob_catalog_t *catalog,
     entry.chunk_count = chunk_count;
     entry.created_at_ms = get_time_ms();
 
-    return upsert_blob_entry(catalog, &entry);
+    rc = upsert_blob_entry(catalog, &entry);
+    mmdb_rwlock_unlock(&catalog->lock, 1);
+    return rc;
 }
 
 int blob_catalog_commit(blob_catalog_t *catalog,
@@ -467,14 +500,25 @@ int blob_catalog_commit(blob_catalog_t *catalog,
         return BLOB_CATALOG_ERR_INVAL;
     }
 
+    mmdb_rwlock_wrlock(&catalog->lock);
+
     /* 查找现有条目 */
     blob_entry_t entry;
-    int rc = blob_catalog_find_blob(catalog, blob_id, &entry);
+    int rc = find_blob_nolock(catalog, blob_id, &entry);
     if (rc != BLOB_CATALOG_OK) {
+        mmdb_rwlock_unlock(&catalog->lock, 1);
         return rc;
     }
 
+    /* C9-2 Task 3：幂等提交——并发去重场景下，其他线程可能已把该 blob
+     * COMMITTED，此时重复 commit 直接成功，而非返回 ERR_STATE。 */
+    if (entry.state == BLOB_STATE_COMMITTED) {
+        mmdb_rwlock_unlock(&catalog->lock, 1);
+        return BLOB_CATALOG_OK;
+    }
+
     if (entry.state != BLOB_STATE_PREPARED) {
+        mmdb_rwlock_unlock(&catalog->lock, 1);
         return BLOB_CATALOG_ERR_STATE;
     }
 
@@ -486,12 +530,15 @@ int blob_catalog_commit(blob_catalog_t *catalog,
 
     rc = write_wal_record(catalog, BLOB_CATALOG_COMMIT, &payload, sizeof(payload));
     if (rc != BLOB_CATALOG_OK) {
+        mmdb_rwlock_unlock(&catalog->lock, 1);
         return rc;
     }
 
     /* 更新内存索引 */
     entry.state = BLOB_STATE_COMMITTED;
-    return upsert_blob_entry(catalog, &entry);
+    rc = upsert_blob_entry(catalog, &entry);
+    mmdb_rwlock_unlock(&catalog->lock, 1);
+    return rc;
 }
 
 int blob_catalog_delete(blob_catalog_t *catalog,
@@ -500,10 +547,13 @@ int blob_catalog_delete(blob_catalog_t *catalog,
         return BLOB_CATALOG_ERR_INVAL;
     }
 
+    mmdb_rwlock_wrlock(&catalog->lock);
+
     /* 查找现有条目 */
     blob_entry_t entry;
-    int rc = blob_catalog_find_blob(catalog, blob_id, &entry);
+    int rc = find_blob_nolock(catalog, blob_id, &entry);
     if (rc != BLOB_CATALOG_OK) {
+        mmdb_rwlock_unlock(&catalog->lock, 1);
         return rc;
     }
 
@@ -515,13 +565,16 @@ int blob_catalog_delete(blob_catalog_t *catalog,
 
     rc = write_wal_record(catalog, BLOB_CATALOG_DELETE, &payload, sizeof(payload));
     if (rc != BLOB_CATALOG_OK) {
+        mmdb_rwlock_unlock(&catalog->lock, 1);
         return rc;
     }
 
     /* 更新内存索引 */
     entry.state = BLOB_STATE_DELETED;
     entry.deleted_at_ms = get_time_ms();
-    return upsert_blob_entry(catalog, &entry);
+    rc = upsert_blob_entry(catalog, &entry);
+    mmdb_rwlock_unlock(&catalog->lock, 1);
+    return rc;
 }
 
 /* ========================================================================
@@ -534,18 +587,21 @@ int blob_catalog_ref_inc(blob_catalog_t *catalog,
         return BLOB_CATALOG_ERR_INVAL;
     }
 
+    mmdb_rwlock_wrlock(&catalog->lock);
+
     /* 写入 WAL */
     blob_catalog_chunk_payload_t payload;
     memcpy(payload.chunk_id, chunk_id, BLOB_CATALOG_CHUNK_SIZE);
 
     int rc = write_wal_record(catalog, BLOB_CATALOG_REF_INC, &payload, sizeof(payload));
     if (rc != BLOB_CATALOG_OK) {
+        mmdb_rwlock_unlock(&catalog->lock, 1);
         return rc;
     }
 
     /* 更新内存索引 */
     blob_chunk_ref_t ref;
-    if (blob_catalog_find_chunk(catalog, chunk_id, &ref) == BLOB_CATALOG_OK) {
+    if (find_chunk_nolock(catalog, chunk_id, &ref) == BLOB_CATALOG_OK) {
         ref.ref_count++;
         /* 引用计数 > 0 时清除 GC 标记 */
         ref.gc_after_ms = 0;
@@ -556,7 +612,9 @@ int blob_catalog_ref_inc(blob_catalog_t *catalog,
         ref.gc_after_ms = 0;
     }
 
-    return upsert_chunk_ref(catalog, &ref);
+    rc = upsert_chunk_ref(catalog, &ref);
+    mmdb_rwlock_unlock(&catalog->lock, 1);
+    return rc;
 }
 
 int blob_catalog_ref_dec(blob_catalog_t *catalog,
@@ -565,15 +623,19 @@ int blob_catalog_ref_dec(blob_catalog_t *catalog,
         return BLOB_CATALOG_ERR_INVAL;
     }
 
+    mmdb_rwlock_wrlock(&catalog->lock);
+
     /* 查找现有引用 */
     blob_chunk_ref_t ref;
-    int rc = blob_catalog_find_chunk(catalog, chunk_id, &ref);
+    int rc = find_chunk_nolock(catalog, chunk_id, &ref);
     if (rc != BLOB_CATALOG_OK) {
         /* 引用计数已经为 0 或不存在，忽略 */
+        mmdb_rwlock_unlock(&catalog->lock, 1);
         return BLOB_CATALOG_OK;
     }
 
     if (ref.ref_count == 0) {
+        mmdb_rwlock_unlock(&catalog->lock, 1);
         return BLOB_CATALOG_OK;  /* 已经是 0，不再减少 */
     }
 
@@ -583,6 +645,7 @@ int blob_catalog_ref_dec(blob_catalog_t *catalog,
 
     rc = write_wal_record(catalog, BLOB_CATALOG_REF_DEC, &payload, sizeof(payload));
     if (rc != BLOB_CATALOG_OK) {
+        mmdb_rwlock_unlock(&catalog->lock, 1);
         return rc;
     }
 
@@ -593,7 +656,9 @@ int blob_catalog_ref_dec(blob_catalog_t *catalog,
         ref.gc_after_ms = get_time_ms() + BLOB_CATALOG_GC_GRACE_MS;
     }
 
-    return upsert_chunk_ref(catalog, &ref);
+    rc = upsert_chunk_ref(catalog, &ref);
+    mmdb_rwlock_unlock(&catalog->lock, 1);
+    return rc;
 }
 
 /* ========================================================================
@@ -708,11 +773,7 @@ typedef struct blob_catalog_bin_header_s {
  * Checkpoint 写入
  * ======================================================================== */
 
-int blob_catalog_checkpoint(blob_catalog_t *catalog) {
-    if (!catalog) {
-        return BLOB_CATALOG_ERR_INVAL;
-    }
-
+static int checkpoint_nolock(blob_catalog_t *catalog) {
     /* 打开临时 checkpoint 文件 */
     FILE *fp = fopen(catalog->bin_tmp_path, "wb");
     if (!fp) {
@@ -898,6 +959,18 @@ int blob_catalog_checkpoint(blob_catalog_t *catalog) {
                   header.lsn, header.blob_count, header.chunk_count);
 
     return BLOB_CATALOG_OK;
+}
+
+/* 公共入口：持写锁做一致性快照（并发 checkpoint 与写互斥） */
+int blob_catalog_checkpoint(blob_catalog_t *catalog) {
+    if (!catalog) {
+        return BLOB_CATALOG_ERR_INVAL;
+    }
+
+    mmdb_rwlock_wrlock(&catalog->lock);
+    int rc = checkpoint_nolock(catalog);
+    mmdb_rwlock_unlock(&catalog->lock, 1);
+    return rc;
 }
 
 /* ========================================================================
@@ -1300,6 +1373,12 @@ blob_catalog_t *blob_catalog_open(const char *data_dir) {
         return NULL;
     }
 
+    /* 初始化读写锁（C9-2 Task 2） */
+    if (mmdb_rwlock_init(&catalog->lock) != 0) {
+        free(catalog);
+        return NULL;
+    }
+
     strncpy(catalog->data_dir, data_dir, sizeof(catalog->data_dir) - 1);
 
     /* 构造路径 */
@@ -1365,6 +1444,9 @@ void blob_catalog_close(blob_catalog_t *catalog) {
     /* 释放哈希表 */
     free(catalog->blob_table);
     free(catalog->chunk_table);
+
+    /* 销毁读写锁 */
+    mmdb_rwlock_destroy(&catalog->lock);
 
     /* 释放 Catalog 结构 */
     free(catalog);

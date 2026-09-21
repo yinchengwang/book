@@ -422,6 +422,11 @@ int blob_chunk_write_tmp(const char *dir,
 
     /* 12. 正式文件不存在，rename 临时文件为正式文件 */
     if (rename(tmp_path, final_path) != 0) {
+        /* 竞争：并发上传刚发布了同 content 的 chunk，复用之 */
+        if (stat(final_path, &st) == 0) {
+            remove(tmp_path);
+            return BLOB_OK;
+        }
         remove(tmp_path);
         return BLOB_ERR_IO;
     }
@@ -767,7 +772,21 @@ int blob_manifest_write_atomic(const char *dir,
         return rc;
     }
 
+    /* 幂等发布：manifest 按 blob_id（SHA-256）寻址，同 content 同路径。
+     * 重复 put / 并发 put 相同内容时，正式文件已存在则直接复用，避免
+     * rename 到已存在目标失败（Windows rename 不覆盖已存在文件）。 */
+    struct stat st;
+    if (stat(final_path, &st) == 0) {
+        remove(tmp_path);
+        return BLOB_OK;
+    }
+
     if (rename(tmp_path, final_path) != 0) {
+        /* 竞争：并发上传刚发布了同 content 的 manifest，复用之 */
+        if (stat(final_path, &st) == 0) {
+            remove(tmp_path);
+            return BLOB_OK;
+        }
         remove(tmp_path);
         return BLOB_ERR_IO;
     }

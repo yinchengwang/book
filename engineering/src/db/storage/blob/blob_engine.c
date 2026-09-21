@@ -149,6 +149,22 @@ void *blob_engine_get_reader_table(blob_engine_t *engine) {
 }
 
 /* ========================================================================
+ * C9-2：读取可见性检查（两阶段发布 + 逻辑删除）
+ * ======================================================================== */
+
+static int blob_is_visible(blob_engine_t *engine,
+                           const uint8_t blob_id[BLOB_SHA256_SIZE]) {
+    if (!engine->catalog) {
+        return 1;  /* 简化模式：无 Catalog 时仅依赖 Manifest */
+    }
+    blob_entry_t entry;
+    if (blob_catalog_find_blob(engine->catalog, blob_id, &entry) != BLOB_CATALOG_OK) {
+        return 0;
+    }
+    return entry.state == BLOB_STATE_COMMITTED;
+}
+
+/* ========================================================================
  * 活动读取者保护
  * ======================================================================== */
 
@@ -200,6 +216,11 @@ int blob_get(blob_engine_t *engine, const uint8_t blob_id[BLOB_SHA256_SIZE],
              void *out_buf, size_t buf_len, size_t *out_read) {
     if (!engine || !blob_id || !out_buf || !out_read) return -1;
     *out_read = 0;
+
+    /* C9-2 Task 4：仅 COMMITTED 可见（PREPARED 未发布、DELETED 已逻辑删除） */
+    if (!blob_is_visible(engine, blob_id)) {
+        return -1;
+    }
 
     /* 从 Manifest 读取 Blob */
     blob_manifest_t *manifest = NULL;
@@ -311,8 +332,8 @@ int blob_delete(blob_engine_t *engine, const uint8_t blob_id[BLOB_SHA256_SIZE]) 
         return -1;
     }
 
-    /* 7. 删除 Manifest 文件（原子操作） */
-    char manifest_path[1024];
+    /* 7. 逻辑删除：仅标记 DELETED，保留 Manifest 文件（活动读取者保护）。
+     *    物理回收延后到 GC（所有读取者退出后清理）。 */
     char hex[65];
     static const char hexc[] = "0123456789abcdef";
     for (int j = 0; j < 32; j++) {
@@ -323,13 +344,9 @@ int blob_delete(blob_engine_t *engine, const uint8_t blob_id[BLOB_SHA256_SIZE]) 
 
     uint32_t deleted_chunk_count = manifest->chunk_count;
 
-    snprintf(manifest_path, sizeof(manifest_path), "%s/%s.manifest",
-             engine->manifests_dir, hex);
-    remove(manifest_path);
-
     blob_manifest_free(manifest);
 
-    LOG_INFO("blob_delete: deleted blob_id=%s, chunks=%u",
+    LOG_INFO("blob_delete: deleted blob_id=%s, chunks=%u (manifest 保留，等待 GC)",
              hex, deleted_chunk_count);
 
     return 0;
@@ -338,6 +355,11 @@ int blob_delete(blob_engine_t *engine, const uint8_t blob_id[BLOB_SHA256_SIZE]) 
 int blob_stat(blob_engine_t *engine, const uint8_t blob_id[BLOB_SHA256_SIZE],
               size_t *out_len) {
     if (!engine || !blob_id || !out_len) return -1;
+
+    /* C9-2 Task 4：仅 COMMITTED 可见 */
+    if (!blob_is_visible(engine, blob_id)) {
+        return -1;
+    }
 
     /* 从 Manifest 读取头部 */
     blob_manifest_t *manifest = NULL;
@@ -356,6 +378,11 @@ int blob_range_get(blob_engine_t *engine, const uint8_t blob_id[BLOB_SHA256_SIZE
                    void *out_buf, size_t buf_len, size_t *out_read) {
     if (!engine || !blob_id || !out_buf || !out_read) return -1;
     *out_read = 0;
+
+    /* C9-2 Task 4：仅 COMMITTED 可见 */
+    if (!blob_is_visible(engine, blob_id)) {
+        return -1;
+    }
 
     /* 从 Manifest 读取头部 */
     blob_manifest_t *manifest = NULL;

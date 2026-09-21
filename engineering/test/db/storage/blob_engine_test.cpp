@@ -971,20 +971,25 @@ TEST_F(BlobEngineTest, DeleteMultiChunkObject) {
 }
 
 /* 测试两段发布：PREPARE 无 COMMIT 不可见 */
-TEST(BlobUploadTwoPhaseTest, PrepareNotVisible) {
-    /* 这个测试验证两段发布协议：
-     * - PREPARE 后 Manifest 存在但 Catalog 状态为 PREPARED
-     * - 读取时检查 Catalog 状态，只有 COMMITTED 才可见
-     *
-     * 注意：当前实现中，blob_get 直接从 Manifest 读取，
-     * 不检查 Catalog 状态。这是设计缺陷，需要修复。
-     *
-     * 但由于 Manifest 文件在 PREPARE 后已经写入，
-     * 这个测试无法在当前架构下实现。
-     *
-     * TODO: 修改 blob_get 检查 Catalog 状态
-     */
-    GTEST_SKIP() << "需要修改 blob_get 检查 Catalog 状态";
+TEST_F(BlobEngineTest, PrepareNotVisible) {
+    /* 通过 Catalog 直接 prepare（不 commit）构造两阶段发布的 PREPARED
+     * 空窗期，验证 blob_get 仅对 COMMITTED 对象可见。 */
+    const char *data = "two-phase-publish-content";
+    size_t len = strlen(data);
+
+    uint8_t blob_id[BLOB_SHA256_SIZE];
+    sha256_compute(data, len, blob_id);
+
+    blob_catalog_t *catalog = blob_engine_get_catalog(engine_);
+    ASSERT_NE(catalog, nullptr);
+
+    /* 仅 prepare（C1），不 commit（C3） */
+    ASSERT_EQ(blob_catalog_prepare(catalog, blob_id, len, 1), BLOB_CATALOG_OK);
+
+    /* PREPARED 状态不可见 */
+    uint8_t buf[256];
+    size_t read_len = 999;
+    EXPECT_NE(blob_get(engine_, blob_id, buf, sizeof(buf), &read_len), 0);
 }
 
 /* 测试 GC 统计 */
@@ -1027,21 +1032,22 @@ TEST_F(BlobEngineTest, ActiveReaderProtection) {
     int rc = blob_put(engine_, data.data(), data_size, blob_id);
     ASSERT_EQ(rc, 0);
 
-    /* 删除 Blob */
+    /* Manifest 路径（内容寻址命名） */
+    std::string manifest_path =
+        (test_dir_ / "manifests" / (to_hex(blob_id) + ".manifest")).string();
+    ASSERT_TRUE(fs::exists(manifest_path));
+
+    /* 删除：逻辑删除（标记 DELETED），保留 Manifest 供活动读取者使用 */
     rc = blob_delete(engine_, blob_id);
     ASSERT_EQ(rc, 0);
 
-    /* 注意：在当前实现中，删除后 Manifest 被删除，
-     * 所以 blob_get 会失败。这与 "活动读取者保护" 的设计有冲突。
-     *
-     * 正确的设计应该是：
-     * 1. 删除时只标记 DELETED，不删除 Manifest
-     * 2. blob_get 检查状态，DELETED 不可见
-     * 3. 所有读取者退出后，GC 才真正删除
-     *
-     * TODO: 修改 blob_delete 保留 Manifest
-     */
-    GTEST_SKIP() << "需要修改 blob_delete 保留 Manifest 以支持活动读取者保护";
+    /* 活动读取者保护：Manifest 物理保留，未被删除 */
+    EXPECT_TRUE(fs::exists(manifest_path));
+
+    /* 新读取者不可见（状态 DELETED） */
+    std::vector<uint8_t> read_buf(data_size);
+    size_t read_len = 0;
+    EXPECT_NE(blob_get(engine_, blob_id, read_buf.data(), read_buf.size(), &read_len), 0);
 }
 
 /* ========================================================================
@@ -1191,9 +1197,6 @@ TEST_F(BlobEngineTest, GetInsufficientBuffer) {
 
 /* 测试相同内容多次 put — 应当去重 Chunk */
 TEST_F(BlobEngineTest, DuplicateContentDedup) {
-    /* 已知限制：Catalog prepare 逻辑在已有相同 blob_id 时未做幂等保证。 */
-    GTEST_SKIP() << "Catalog prepare 幂等性未实现（Task 9 范围之外）";
-
     std::vector<uint8_t> data(8192, 0xAA);
 
     uint8_t id1[BLOB_SHA256_SIZE], id2[BLOB_SHA256_SIZE];
@@ -1206,10 +1209,6 @@ TEST_F(BlobEngineTest, DuplicateContentDedup) {
 
 /* 测试并发多线程上传不同内容 */
 TEST_F(BlobEngineTest, ConcurrentDifferentUploads) {
-    /* 已知限制：Catalog 当前未加锁，并发写会损坏哈希表。
-     * 该测试验证串行场景下逻辑正确，串行 put 已通过其他测试覆盖。 */
-    GTEST_SKIP() << "Catalog 并发锁尚未实现（Task 9 范围之外）";
-
     constexpr int kThreads = 4;
     constexpr int kPayloadSize = 64 * 1024;  /* 64 KB */
 
@@ -1245,9 +1244,6 @@ TEST_F(BlobEngineTest, ConcurrentDifferentUploads) {
 
 /* 测试并发上传相同内容 */
 TEST_F(BlobEngineTest, ConcurrentSameContentUpload) {
-    /* 已知限制：Catalog 当前未加锁，并发写会损坏哈希表。 */
-    GTEST_SKIP() << "Catalog 并发锁尚未实现（Task 9 范围之外）";
-
     constexpr int kThreads = 8;
     std::vector<uint8_t> data(16 * 1024, 0x77);
 

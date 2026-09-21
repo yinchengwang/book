@@ -22,6 +22,7 @@ add_library(db_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/sha256.c            # Blob SHA-256: 实现 Manifest 编解码与完整性校验（Task 3）)
     ${CMAKE_CURRENT_SOURCE_DIR}/mm_storage_blob.c   # C3-1 T10: mm_storage 接入 Blob 类型（Task 8）
     ${ENGINEERING_SOURCE_DIR}/src/db/common_rwlock.c # 读写锁：被 kv/vector/graph 引擎使用
+    ${ENGINEERING_SOURCE_DIR}/src/db/concurrency/mmdb_lock.c # canonical 读写锁（mmdb_rwlock_*）：graph/spatial/blob 引擎使用（C9-2）
 )
 target_include_directories(db_core PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include

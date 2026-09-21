@@ -7,12 +7,16 @@
 #include <db/api/vector_api.h>
 #include <db/core/vector_query.h>
 #include <db/storage/vector/vector_persist.h>
+#include <db/mmdb_lock.h>
 #include <db/log.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
 #include <stdarg.h>
+#ifdef _WIN32
+#include <direct.h>  /* _mkdir */
+#endif
 
 /* ========================================================================
  * 内部结构
@@ -38,6 +42,11 @@ typedef struct VectorCollectionImpl_s {
 
     /* 查询计划 */
     VectorQueryPlan *query_plan; /**< 查询计划 */
+
+    /* C9-2 Task 1：集合级读写锁 —— insert/delete 取写锁，search/size 取读锁。
+     * 无锁时并发 insert 的 coll->size++ 竞争与 collection_expand 的 racing
+     * realloc 会造成堆损坏（c0000374），search 同时读已释放缓冲。 */
+    mmdb_rwlock_t lock;
 } VectorCollectionImpl;
 
 /** API 内部结构 */
@@ -128,6 +137,16 @@ static VectorCollectionImpl *collection_create(const VectorCreateParams *params)
         return NULL;
     }
 
+    /* 初始化集合级读写锁（C9-2） */
+    if (mmdb_rwlock_init(&coll->lock) != 0) {
+        free(coll->ids);
+        free(coll->vectors);
+        free(coll->metadata);
+        free(coll->metadata_sizes);
+        free(coll);
+        return NULL;
+    }
+
     /* 创建查询计划 */
     coll->query_plan = vector_query_plan_create();
     if (coll->query_plan) {
@@ -169,6 +188,7 @@ static void collection_destroy(VectorCollectionImpl *coll) {
     if (coll->vectors) { free(coll->vectors); coll->vectors = NULL; }
     if (coll->metadata) { free(coll->metadata); coll->metadata = NULL; }
     if (coll->metadata_sizes) { free(coll->metadata_sizes); coll->metadata_sizes = NULL; }
+    mmdb_rwlock_destroy(&coll->lock);
     free(coll);
 }
 
@@ -195,6 +215,15 @@ static int collection_expand(VectorCollectionImpl *coll) {
         int32_t *new_sizes = (int32_t *)realloc(coll->metadata_sizes, new_capacity * sizeof(int32_t));
         if (!new_sizes) return -1;
         coll->metadata_sizes = new_sizes;
+
+        /* C9-2 Task 1 修复：realloc 不会清零新增区域。collection_destroy
+         * 会对 i < size 的每个 metadata[i] 调用 free()，新增区域若是未初始化
+         * 垃圾值（调试堆下为 0xBAADF00D）会导致 free(垃圾) 堆损坏。
+         * 这里把新区域清零，维持"metadata[i] 未设置即为 NULL"的不变式。 */
+        memset(coll->metadata + coll->capacity, 0,
+               (size_t)(new_capacity - coll->capacity) * sizeof(void *));
+        memset(coll->metadata_sizes + coll->capacity, 0,
+               (size_t)(new_capacity - coll->capacity) * sizeof(int32_t));
 
         coll->capacity = new_capacity;
     }
@@ -381,6 +410,7 @@ int vector_api_insert(VectorAPI *api, const VectorInsertParams *params, int64_t 
     }
 
     int32_t inserted = 0;
+    mmdb_rwlock_wrlock(&coll->lock);
     for (int32_t i = 0; i < params->n; i++) {
         if (collection_expand(coll) != 0) break;
 
@@ -398,6 +428,11 @@ int vector_api_insert(VectorAPI *api, const VectorInsertParams *params, int64_t 
             coll->metadata[coll->size] = malloc(params->metadata_sizes[i]);
             memcpy(coll->metadata[coll->size], params->metadata[i], params->metadata_sizes[i]);
             coll->metadata_sizes[coll->size] = params->metadata_sizes[i];
+        } else {
+            /* C9-2 Task 1 修复：无元数据时显式置 NULL。否则 delete 移位后
+             * 槽位残留的旧指针会被 collection_destroy 重复 free（double free）。 */
+            coll->metadata[coll->size] = NULL;
+            coll->metadata_sizes[coll->size] = 0;
         }
 
         coll->size++;
@@ -405,6 +440,7 @@ int vector_api_insert(VectorAPI *api, const VectorInsertParams *params, int64_t 
     }
 
     coll->updated_at = get_current_time_ms();
+    mmdb_rwlock_unlock(&coll->lock, 1);
     LOG_INFO("插入向量成功: collection=%s, count=%d", params->collection, inserted);
     return inserted;
 }
@@ -421,9 +457,12 @@ VectorSearchResults *vector_api_search(VectorAPI *api, const VectorSearchParams 
         return NULL;
     }
 
+    mmdb_rwlock_rdlock(&coll->lock);
+
     if (coll->size == 0) {
         /* 返回空结果 */
         VectorSearchResults *results = (VectorSearchResults *)calloc(1, sizeof(*results));
+        mmdb_rwlock_unlock(&coll->lock, 0);
         return results;
     }
 
@@ -451,8 +490,15 @@ VectorSearchResults *vector_api_search(VectorAPI *api, const VectorSearchParams 
             }
 
             if (pos < params->top_k) {
-                /* 移动元素 */
-                for (int32_t j = results->count; j > pos && j > 0; j--) {
+                /* C9-2 Task 1 修复：移动元素的上限取 min(count, top_k-1)。
+                 * 原实现从 j = count 开始写 results[count]，当结果集已满
+                 * （count == top_k == capacity）时写越界一个元素，造成堆
+                 * 元数据损坏 —— 多线程并发搜索时进而使 malloc/free 内部锁
+                 * 状态损坏，表现为"偶发挂起"（并非 SQLite/HNSW 锁竞争）。 */
+                int32_t end = results->count < params->top_k
+                                  ? results->count
+                                  : params->top_k - 1;
+                for (int32_t j = end; j > pos; j--) {
                     results->results[j] = results->results[j - 1];
                 }
                 results->results[pos].id = coll->ids[i];
@@ -468,6 +514,9 @@ VectorSearchResults *vector_api_search(VectorAPI *api, const VectorSearchParams 
         }
     }
 
+    /* 注：with_metadata=true 时 results 借用集合内 metadata 指针，
+     * 解锁后并发 delete 可能释放之 —— 调用方须在无并发删除的场景使用。 */
+    mmdb_rwlock_unlock(&coll->lock, 0);
     return results;
 }
 
@@ -501,6 +550,7 @@ int vector_api_delete(VectorAPI *api, const char *collection, const int64_t *ids
     }
 
     int32_t deleted = 0;
+    mmdb_rwlock_wrlock(&coll->lock);
     for (int32_t i = 0; i < n; i++) {
         for (int32_t j = 0; j < coll->size; j++) {
             if (coll->ids[j] == ids[i]) {
@@ -526,6 +576,7 @@ int vector_api_delete(VectorAPI *api, const char *collection, const int64_t *ids
     }
 
     coll->updated_at = get_current_time_ms();
+    mmdb_rwlock_unlock(&coll->lock, 1);
     LOG_INFO("删除向量成功: collection=%s, count=%d", collection, deleted);
     return deleted;
 }
@@ -542,7 +593,10 @@ int32_t vector_api_size(VectorAPI *api, const char *collection) {
         return VECTOR_API_ERR_NOT_FOUND;
     }
 
-    return coll->size;
+    mmdb_rwlock_rdlock(&coll->lock);
+    int32_t size = coll->size;
+    mmdb_rwlock_unlock(&coll->lock, 0);
+    return size;
 }
 
 /* ========================================================================
@@ -554,7 +608,7 @@ int vector_api_save(VectorAPI *api) {
 
     /* 确保数据目录存在 */
 #ifdef _WIN32
-    _mkdir(api->data_dir, 0755);
+    _mkdir(api->data_dir);
 #else
     mkdir(api->data_dir, 0755);
 #endif

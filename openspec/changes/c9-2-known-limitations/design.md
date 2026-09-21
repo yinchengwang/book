@@ -16,8 +16,14 @@
 ### Task 1: 诊断 ConcurrentSearch 挂起根因
 
 - 运行单测 + 加 stderr 日志定位挂起位置
-- 如 SQLite 问题 → 改用单连接
-- 如 HNSW 问题 → 加 HNSW 读锁
+- ~~如 SQLite 问题 → 改用单连接~~
+- ~~如 HNSW 问题 → 加 HNSW 读锁~~
+- **实际结论（实施时更新）**：根因不是 SQLite/HNSW，而是 `vector_api.c`
+  三处内存缺陷，已全部修复：
+  1. `vector_api_search` 插入排序 off-by-one 堆越界（并发下挂死的主因）
+  2. 集合级数据竞争（racing realloc）→ 加 `mmdb_rwlock_t` 集合锁
+  3. `collection_expand` 未清零 realloc 新增区域 + insert 残留元数据槽位
+     → `collection_destroy` free 垃圾指针
 
 ### Task 2: Blob Catalog 加 rwlock
 
@@ -28,8 +34,9 @@
 ### Task 3: Blob Catalog Prepare 幂等性
 
 - `blob_catalog_prepare` 入口检查状态
-- COMMITTED 返回错误
-- PREPARED 追加 WAL（幂等）
+- ~~COMMITTED 返回错误~~ → **实施时修正**：PREPARED/COMMITTED 幂等返回 OK
+  （验收标准要求"再次 put 相同数据成功"，幂等成功是内容寻址去重的正确语义）；
+  DELETED 不短路，走正常 prepare 以支持 delete-then-re-put
 
 ### Task 4: 启用跳过的测试
 

@@ -265,10 +265,10 @@ TEST_F(VDBStressTest, ConcurrentInsert) {
  * 测试 5.3：多线程并发查询
  */
 TEST_F(VDBStressTest, ConcurrentSearch) {
-    /* Known Limitation：历史上该测试偶发挂起（疑似 SQLite 内部锁竞争
-     * 或 mmdb_rwlock 在高频并发下的递归锁问题）。
-     * 归档前先 SKIP，详细诊断留待后续变更。 */
-    GTEST_SKIP() << "并发查询挂起问题待修复（p6-production-ready Known Limitation）";
+    /* C9-2 Task 1 已修复：历史上该测试偶发挂起，根因是 vector_api_search
+     * 暴力插入排序在结果集已满时写越界 results[top_k]（off-by-one 堆溢出），
+     * 并发下损坏堆元数据导致 malloc/free 内部锁挂死 —— 并非 SQLite 或 HNSW
+     * 锁竞争。修复后启用本测试。 */
 
     VectorCreateParams params = make_create_params(
         "test_concurrent_search", DEFAULT_DIM, VECTOR_INDEX_HNSW, VECTOR_METRIC_L2);
