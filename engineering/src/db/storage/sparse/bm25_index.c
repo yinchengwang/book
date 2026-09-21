@@ -21,7 +21,7 @@ extern char *strndup(const char *s, size_t n);
 #include <ctype.h>
 #include <math.h>
 #include <pthread.h>
-#include <uthash/uthash.h>
+#include <uthash.h>
 
 /* ========================================================================
  * 内部结构

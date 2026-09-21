@@ -10,8 +10,8 @@
 #include "db/graph/graph.h"
 #include "db/graph/types.h"
 #include "db/mm_pool.h"
-#include <uthash/uthash.h>
-#include <uthash/utlist.h>
+#include <uthash.h>
+#include <utlist.h>
 #include <stdbool.h>
 #include <stdint.h>
 

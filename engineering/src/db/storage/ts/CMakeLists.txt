@@ -9,5 +9,6 @@ if(TS_SOURCE_FILES)
         ${ENGINEERING_SOURCE_DIR}/include/db
         ${ENGINEERING_SOURCE_DIR}/include/db/storage
         ${ENGINEERING_SOURCE_DIR}/include/db/core
+        ${ENGINEERING_SOURCE_DIR}/third_part/uthash/src
     )
 endif()

@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <uthash/uthash.h>
+#include <uthash.h>
 
 /* ========================================================================
  * Tag 集合（已由 header 中的 typedef 提供，不需要重复定义）
