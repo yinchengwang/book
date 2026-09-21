@@ -1,23 +1,25 @@
 // src/pages/FiveYearPlan/index.tsx
 //
-// MVP-6.1 Five-Year Plan — yearly themes + today's daily-check tracker.
+// Five-Year Plan — yearly themes + 打卡日历系统。
 //
-// Data sources:
-//   - YEAR_CONFIG: hardcoded below (sourced from the legacy
-//     five-year-plan.html — the spec didn't expose this in a JSON).
-//     Each year has a name, core focus, and 3-4 actionable themes.
-//   - Daily checks: `user-data/state/five-year-plan-state.json`
-//     (read-only here — full editor lives in legacy page). Shown for
-//     the most recent date that has entries.
+// 日历/打卡能力自 five-year-plan-legacy.html 移植（Tech Debt 收口）：
+//   - 月历网格（完成度圆点 + 笔记标记 + 月份导航）
+//   - 今日快捷打卡 chips 与单日详细编辑弹窗
+//   - 今日/本月完成率、连续与累计打卡统计
+//   - 数据层与 legacy 页共用 localStorage（five_year_plan_state），
+//     可选经 Express /api/state/five-year-plan-state 多设备同步。
 //
-// Persisted state: localStorage key `five-year-plan-checks-mvp` for the
-// MVP-grade checkbox UI. Real per-day state is preserved on disk by the
-// legacy page; the MVP card just lets the user browse the schedule.
+// 原 MVP 复选卡与只读快照卡已被本系统取代（localStorage key
+// `five-year-plan-checks-mvp` 的旧数据不再读取；如需保留请手动迁移）。
 
 import { useMemo, useState } from 'react';
 import { Card } from '@shared/ui/Card';
-import { safeGet, safeSet } from '@shared/storage/safeStorage';
-import stateSource from '../../../user-data/state/five-year-plan-state.json?raw';
+import { CalendarGrid } from './CalendarGrid';
+import { DayEditor } from './DayEditor';
+import { StatsRow } from './StatsRow';
+import { TodayPanel } from './TodayPanel';
+import { computeStats, getDayData, parseDateKey } from './planData';
+import { usePlanState } from './usePlanState';
 
 interface YearConfig {
   year: number;
@@ -25,11 +27,6 @@ interface YearConfig {
   theme: string;
   emoji: string;
   actions: string[];
-}
-
-interface CheckEntry {
-  done: boolean;
-  label: string;
 }
 
 const YEAR_CONFIG: YearConfig[] = [
@@ -94,65 +91,37 @@ const YEAR_CONFIG: YearConfig[] = [
   },
 ];
 
-const CORE_CHECKS: CheckEntry[] = [
-  { done: false, label: '🏃 运动 30min+' },
-  { done: false, label: '📖 阅读 30min+' },
-  { done: false, label: '💻 深度工作 2h+' },
-  { done: false, label: '📓 每日复盘' },
-];
-
-const STORAGE_KEY = 'five-year-plan-checks-mvp';
-
-function parseState(raw: string): {
-  mostRecent?: { date: string; checks: number; total: number; note?: string };
-} {
-  try {
-    const data = JSON.parse(raw) as Record<
-      string,
-      Record<string, Record<string, { checks: Record<string, boolean>; note?: string }>>
-    >;
-    // Flatten and find the most recent date with entries.
-    let best: { date: string; checks: number; total: number; note?: string } | undefined;
-    for (const [year, months] of Object.entries(data)) {
-      for (const [month, days] of Object.entries(months)) {
-        for (const [day, entry] of Object.entries(days)) {
-          const checks = entry.checks ?? {};
-          const total = Object.keys(checks).length;
-          if (total === 0) continue;
-          const done = Object.values(checks).filter(Boolean).length;
-          const date = `${year}-${month}-${day}`;
-          if (!best || date > best.date) {
-            best = { date, checks: done, total, note: entry.note };
-          }
-        }
-      }
-    }
-    return { mostRecent: best };
-  } catch {
-    return {};
-  }
-}
-
-const parsed = parseState(stateSource);
-
 export function FiveYearPlan() {
+  const now = new Date();
+  const today = { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
+
   const [activeYear, setActiveYear] = useState<number>(YEAR_CONFIG[0]?.year ?? 2026);
-  const [checks, setChecks] = useState<CheckEntry[]>(() =>
-    safeGet(STORAGE_KEY, CORE_CHECKS)
-  );
+  const [calYear, setCalYear] = useState(today.year);
+  const [calMonth, setCalMonth] = useState(today.month);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+
+  const { state, updateDay, clearDay, toggleCheck } = usePlanState();
 
   const active = useMemo(
     () => YEAR_CONFIG.find((y) => y.year === activeYear) ?? YEAR_CONFIG[0],
     [activeYear]
   );
 
-  const doneCount = checks.filter((c) => c.done).length;
-  const pct = Math.round((doneCount / checks.length) * 100);
+  const stats = useMemo(() => computeStats(state, today), [state, today]);
 
-  const toggle = (idx: number) => {
-    const next = checks.map((c, i) => (i === idx ? { ...c, done: !c.done } : c));
-    setChecks(next);
-    safeSet(STORAGE_KEY, next);
+  const prevMonth = () => {
+    setCalMonth((m) => {
+      if (m > 1) return m - 1;
+      setCalYear((y) => y - 1);
+      return 12;
+    });
+  };
+  const nextMonth = () => {
+    setCalMonth((m) => {
+      if (m < 12) return m + 1;
+      setCalYear((y) => y + 1);
+      return 1;
+    });
   };
 
   return (
@@ -208,69 +177,42 @@ export function FiveYearPlan() {
         </Card>
       )}
 
-      {/* Today's checks (MVP-grade) */}
+      {/* 打卡统计 */}
+      <StatsRow stats={stats} />
+
+      {/* 今日快捷打卡 */}
       <Card className="p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100">
-            ✅ 今日核心打卡（MVP）
-          </h3>
-          <span className="text-xs text-gray-500 dark:text-gray-400">
-            {doneCount}/{checks.length} ({pct}%)
-          </span>
-        </div>
-        <div className="w-full h-2 bg-gray-100 dark:bg-gray-800 rounded mb-4 overflow-hidden">
-          <div
-            className="h-full bg-emerald-500 transition-all"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-        <div className="space-y-2">
-          {checks.map((c, i) => (
-            <label
-              key={i}
-              className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60 p-2 rounded"
-            >
-              <input
-                type="checkbox"
-                checked={c.done}
-                onChange={() => toggle(i)}
-                className="w-4 h-4 accent-emerald-500"
-              />
-              <span
-                className={`text-sm ${c.done ? 'line-through text-gray-400' : 'text-gray-700 dark:text-gray-200'}`}
-              >
-                {c.label}
-              </span>
-            </label>
-          ))}
-        </div>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
-          保存到 localStorage · {STORAGE_KEY}
-        </p>
+        <TodayPanel
+          state={state}
+          today={today}
+          onToggle={(itemId) => toggleCheck(today.year, today.month, today.day, itemId)}
+          onOpenEditor={() =>
+            setEditingKey(`${today.year}-${String(today.month).padStart(2, '0')}-${String(today.day).padStart(2, '0')}`)
+          }
+        />
       </Card>
 
-      {/* Most recent legacy snapshot */}
-      {parsed.mostRecent && (
-        <Card className="p-4">
-          <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100 mb-2">
-            📅 历史打卡快照（来自 user-data/state）
-          </h3>
-          <p className="text-sm text-gray-700 dark:text-gray-300">
-            <strong>{parsed.mostRecent.date}</strong> · 今日完成{' '}
-            <strong className="text-emerald-600 dark:text-emerald-400">
-              {parsed.mostRecent.checks}
-            </strong>{' '}
-            / {parsed.mostRecent.total} 项
-          </p>
-          {parsed.mostRecent.note && (
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 italic">
-              "{parsed.mostRecent.note}"
-            </p>
-          )}
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
-            详细每日打卡请使用原始 five-year-plan.html（带日历视图）
-          </p>
-        </Card>
+      {/* 打卡日历 */}
+      <Card className="p-5">
+        <CalendarGrid
+          year={calYear}
+          month={calMonth}
+          state={state}
+          onPrevMonth={prevMonth}
+          onNextMonth={nextMonth}
+          onSelectDay={setEditingKey}
+        />
+      </Card>
+
+      {/* 单日编辑弹窗 */}
+      {editingKey && (
+        <DayEditor
+          dateKeyStr={editingKey}
+          initial={getDayData(state, ...parseDateKey(editingKey))}
+          onSave={updateDay}
+          onClear={clearDay}
+          onClose={() => setEditingKey(null)}
+        />
       )}
     </div>
   );
