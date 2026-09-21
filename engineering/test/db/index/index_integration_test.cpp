@@ -496,7 +496,7 @@ TEST_F(IndexFrameworkIntegrationTest, IndexConfigDefaultAndValidation) {
     EXPECT_EQ(config.M, 16);
     EXPECT_EQ(config.ef_construction, 200);
     EXPECT_EQ(config.ef_search, 100);
-    EXPECT_EQ(config.metric, DISTANCE_L2);
+    EXPECT_EQ(config.metric, INDEX_DISTANCE_L2);
     EXPECT_EQ(config.quantization_type, QUANTIZATION_TYPE_NONE);
     EXPECT_FALSE(config.persist_enabled);
 
