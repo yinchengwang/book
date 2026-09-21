@@ -25,10 +25,13 @@ include_directories(
 set(LIB_SEARCH_PATHS
     ${BUILD_DIR}/lib
     ${BUILD_DIR}/src/db/index/vector_index
+    ${BUILD_DIR}/src/db/index/vector_index/faiss_hnsw
     ${BUILD_DIR}
 )
 
 find_library(VECTOR_INDEX_LIB NAMES vector_index PATHS ${LIB_SEARCH_PATHS} NO_DEFAULT_PATH)
+# faiss_hnsw 目标在 Gap02 后独立成库（不再并入 libvector_index.a），需单独链接
+find_library(FAISS_HNSW_LIB NAMES faiss_hnsw PATHS ${LIB_SEARCH_PATHS} NO_DEFAULT_PATH)
 find_library(ALGO_PROD_LIB NAMES algo-prod PATHS ${LIB_SEARCH_PATHS} NO_DEFAULT_PATH)
 
 if(NOT VECTOR_INDEX_LIB)
@@ -40,6 +43,9 @@ add_library(vector_index_c_api SHARED vector_index_c_api.c)
 
 if(VECTOR_INDEX_LIB)
     target_link_libraries(vector_index_c_api PRIVATE ${VECTOR_INDEX_LIB})
+endif()
+if(FAISS_HNSW_LIB)
+    target_link_libraries(vector_index_c_api PRIVATE ${FAISS_HNSW_LIB})
 endif()
 if(ALGO_PROD_LIB)
     target_link_libraries(vector_index_c_api PRIVATE ${ALGO_PROD_LIB})

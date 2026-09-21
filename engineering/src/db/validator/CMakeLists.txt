@@ -9,6 +9,7 @@ if(VALIDATOR_SOURCE_FILES)
         ${ENGINEERING_SOURCE_DIR}/include/db/validator
         ${ENGINEERING_SOURCE_DIR}/include/db/parser
     )
-    target_link_libraries(db_validator PRIVATE db_parser db_storage)
+    # 同 db_executor：db_parser 父目标不存在，链接 sql_simplified 变体
+    target_link_libraries(db_validator PRIVATE db_parser_sql_simplified db_storage)
     target_compile_options(db_validator PRIVATE -Wno-unused-parameter)
 endif()

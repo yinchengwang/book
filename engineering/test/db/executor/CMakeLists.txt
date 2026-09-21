@@ -3,7 +3,7 @@ add_executable(executor_framework_test
     framework_test.cpp
 )
 target_link_libraries(executor_framework_test
-    PRIVATE db_executor db_vectorized gtest
+    PRIVATE db_executor db_vectorized gtest gtest_main
 )
 target_include_directories(executor_framework_test PRIVATE
     ${CMAKE_SOURCE_DIR}/include
@@ -16,7 +16,7 @@ add_executable(executor_integration_test
     integration_test.cpp
 )
 target_link_libraries(executor_integration_test
-    PRIVATE db_executor db_vectorized gtest
+    PRIVATE db_executor db_vectorized gtest gtest_main
 )
 target_include_directories(executor_integration_test PRIVATE
     ${CMAKE_SOURCE_DIR}/include

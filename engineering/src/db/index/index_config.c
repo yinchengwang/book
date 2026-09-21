@@ -34,7 +34,7 @@ index_config_t index_config_default(void)
     config.ef_search = 100;
 
     /* 距离与量化：默认欧氏距离，无量化 */
-    config.metric = DISTANCE_L2;
+    config.metric = INDEX_DISTANCE_L2;
     config.quantization_type = QUANTIZATION_TYPE_NONE;
 
     return config;

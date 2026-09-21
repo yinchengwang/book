@@ -303,15 +303,18 @@ double analyze_compute_selectivity(const table_stats_t *stats,
 
 /**
  * 索引类型
+ *
+ * 注意：加 OPT_ 前缀以避免与 db/index/index_catalog.h 的 index_type_t
+ * 在同一编译单元中冲突（Gap03 统一执行器需要同时包含两者）。
  */
 typedef enum {
-    INDEX_TYPE_BTREE,     /* B+Tree 索引 */
-    INDEX_TYPE_HASH,      /* Hash 索引 */
-    INDEX_TYPE_BITMAP,    /* Bitmap 索引 */
-    INDEX_TYPE_GIN,       /* 倒排索引 */
-    INDEX_TYPE_GIST,      /* GiST 索引 */
-    INDEX_TYPE_FULLTEXT   /* 全文索引 */
-} index_type_t;
+    OPT_INDEX_TYPE_BTREE,     /* B+Tree 索引 */
+    OPT_INDEX_TYPE_HASH,      /* Hash 索引 */
+    OPT_INDEX_TYPE_BITMAP,    /* Bitmap 索引 */
+    OPT_INDEX_TYPE_GIN,       /* 倒排索引 */
+    OPT_INDEX_TYPE_GIST,      /* GiST 索引 */
+    OPT_INDEX_TYPE_FULLTEXT   /* 全文索引 */
+} opt_index_type_t;
 
 /**
  * 索引信息
@@ -320,7 +323,7 @@ typedef struct index_info {
     int index_id;             /* 索引 ID */
     char *index_name;         /* 索引名 */
     char *table_name;         /* 表名 */
-    index_type_t type;        /* 索引类型 */
+    opt_index_type_t type;    /* 索引类型 */
     int column_id;            /* 索引列 ID */
     int depth;                /* 索引深度（B+Tree） */
     double index_selectivity; /* 索引选择性 */
@@ -330,7 +333,7 @@ typedef struct index_info {
  * @brief 创建索引信息
  */
 index_info_t *index_info_create(int index_id, const char *name,
-                                 const char *table, index_type_t type,
+                                 const char *table, opt_index_type_t type,
                                  int column_id);
 
 /**

@@ -577,7 +577,7 @@ double analyze_compute_selectivity(const table_stats_t *stats,
  * ───────────────────────────────────────────────────────────────── */
 
 index_info_t *index_info_create(int index_id, const char *name,
-                                 const char *table, index_type_t type,
+                                 const char *table, opt_index_type_t type,
                                  int column_id)
 {
     index_info_t *info = (index_info_t *)malloc(sizeof(index_info_t));

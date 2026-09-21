@@ -420,6 +420,9 @@ static bool tokenizer(Parser *parser) {
         parser->error = FILTER_PARSE_ERR_OUT_OF_MEMORY;
         return false;
     }
+    /* 与主循环一致必须清零：token_list_add 返回的可能是 realloc 扩展区或
+     * 复用的堆块，lexeme 等指针含垃圾/悬垂值会被 token_list_free 误 free */
+    memset(eof, 0, sizeof(Token));
     eof->type = TOKEN_EOF;
     eof->pos = parser->pos;
 
@@ -663,7 +666,11 @@ static FilterNode *parse_comparison(Parser *parser) {
 
     advance_token(parser);
 
-    return create_comparison_node(field_name, op, &value);
+    /* create_comparison_node 内部会再 strdup 一份 field_name，
+     * 此处局部副本的所有权不转移，调用后必须释放 */
+    FilterNode *node = create_comparison_node(field_name, op, &value);
+    free(field_name);
+    return node;
 }
 
 /* ========================================================================

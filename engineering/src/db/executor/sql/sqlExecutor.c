@@ -66,8 +66,11 @@ int sql_executor_init(sql_executor_t *exec, const char *db_path, int buf_count) 
         return -1;
     }
 
-    /* 初始化 Buffer Pool */
-    if (buf_init(buf_count > 0 ? buf_count : BUF_DEFAULT_NBUFFERS) != 0) {
+    /* 初始化 Buffer Pool
+     * buf_init API 已漂移为按路径初始化（NULL/"" 表示纯内存）；
+     * buf_count 参数保留以维持 sql_executor_init 的既有签名，当前被忽略。 */
+    (void)buf_count;
+    if (buf_init(db_path) != 0) {
         sql_executor_set_error(exec, "Failed to init buffer pool");
         catalog_shutdown();
         return -1;
@@ -313,7 +316,7 @@ int sql_executor_insert(sql_executor_t *exec, const char *table_name,
     /* 插入数据 */
     int rows = 0;
     for (int i = 0; i < nvalues; i++) {
-        if (heap_insert(rel, values[i], strlen((const char*)values[i]), 0, 0, NULL) == 0) {
+        if (heap_insert(rel, values[i], strlen((const char*)values[i]), 0, 0, NULL, NULL) == 0) {
             rows++;
         }
     }

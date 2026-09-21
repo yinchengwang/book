@@ -21,7 +21,7 @@
 
 typedef struct modality_index {
     char name[64];
-    index_type_t type;
+    multimodal_index_type_t type;
     int dims;
     int n_vectors;
     /* 简化：不存储实际索引 */
@@ -49,7 +49,7 @@ multimodal_index_t *multimodal_create(void)
 }
 
 int multimodal_register_modality(multimodal_index_t *idx, const char *name,
-                               index_type_t index_type, int dims)
+                               multimodal_index_type_t index_type, int dims)
 {
     if (!idx || !name || idx->n_modalities >= MAX_MODALITIES) return -1;
     if (_find_modality(idx, name) >= 0) return -1;

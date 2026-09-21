@@ -9,6 +9,7 @@
 
 #include "vector_index_c_api.h"
 #include <db/index/vector_index/faiss_hnsw/faiss_hnsw.h>
+#include <db/index/vector_index/faiss_hnsw/faiss_hnsw_internal.h>
 #include <db/index/vector_index/delete/vector_delete_bitmap.h>
 
 #include <stdlib.h>
@@ -24,7 +25,7 @@ typedef struct hnsw_context {
 } hnsw_context_t;
 
 void* hnsw_create(int32_t dim, int32_t M, int32_t ef_construction, int32_t metric) {
-    distance_metric_t dist_metric = (metric == 0) ? DISTANCE_L2 : DISTANCE_IP;
+    distance_metric_t dist_metric = (metric == 0) ? DISTANCE_METRIC_L2_SQUARED : DISTANCE_METRIC_INNER_PRODUCT;
     faiss_hnsw_t *index = faiss_hnsw_index_create(M, dim, ef_construction, dist_metric, QUANTIZATION_TYPE_NONE);
     if (index == NULL) return NULL;
 
@@ -68,10 +69,13 @@ int64_t hnsw_get_size(void* ctx_ptr) {
     if (ctx_ptr == NULL) return 0;
     faiss_hnsw_t *index = ((hnsw_context_t*)ctx_ptr)->index;
     int64_t size = 0;
-    if (index->vectors && index->n_total > 0) size += index->n_total * index->dims * sizeof(float);
-    if (index->levels) size += index->levels_size * sizeof(int32_t);
-    if (index->nbs) size += index->nb_size * sizeof(int32_t);
-    if (index->offsets) size += index->offsets_size * sizeof(int32_t);
+    /* 结构体重构后的成员口径：capacity 为节点容量（vectors/levels/offsets/delete_bitmap），
+     * neighbors_capacity 为扁平化邻居数组容量 */
+    if (index->vectors && index->n_total > 0) size += (int64_t)index->n_total * index->dims * sizeof(float);
+    if (index->levels) size += (int64_t)index->capacity * sizeof(int32_t);
+    if (index->neighbors) size += (int64_t)index->neighbors_capacity * sizeof(int32_t);
+    if (index->offsets) size += (int64_t)index->capacity * sizeof(int32_t);
+    if (index->delete_bitmap) size += (index->capacity + 7) / 8;
     return size;
 }
 

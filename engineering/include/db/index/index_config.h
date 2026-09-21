@@ -26,12 +26,17 @@ extern "C" {
  * 枚举定义
  * ============================================================ */
 
-/** 距离度量类型 */
+/** 距离度量类型
+ *
+ * 注意：独立命名空间（INDEX_DISTANCE_* / index_distance_metric_t），
+ * 避免与 algo-prod/distance/distance.h 的 distance_metric_t 冲突
+ * （两者枚举值语义不同：此处 IP=1/COSINE=2，distance.h 恰好相反）。
+ */
 typedef enum {
-    DISTANCE_L2 = 0,          /**< 欧氏距离 */
-    DISTANCE_IP = 1,          /**< 内积 */
-    DISTANCE_COSINE = 2,      /**< 余弦相似度 */
-} distance_metric_t;
+    INDEX_DISTANCE_L2 = 0,          /**< 欧氏距离 */
+    INDEX_DISTANCE_IP = 1,          /**< 内积 */
+    INDEX_DISTANCE_COSINE = 2,      /**< 余弦相似度 */
+} index_distance_metric_t;
 
 /** 量化类型 */
 typedef enum {
@@ -70,7 +75,7 @@ typedef struct index_config {
     int32_t ef_search;                    /**< 搜索时搜索范围，必须 > 0 */
 
     /* ---------- 距离与量化 ---------- */
-    distance_metric_t    metric;             /**< 距离度量 */
+    index_distance_metric_t metric;        /**< 距离度量 */
     quantization_type_t  quantization_type;  /**< 量化类型 */
 } index_config_t;
 
@@ -88,7 +93,7 @@ typedef struct index_config {
  *   - 持久化开关：false
  *   - 向量维度：128
  *   - HNSW 参数：M=16, ef_construction=200, ef_search=100
- *   - 距离度量：DISTANCE_L2（欧氏距离）
+ *   - 距离度量：INDEX_DISTANCE_L2（欧氏距离）
  *   - 量化类型：QUANTIZATION_TYPE_NONE（无量化）
  *
  * @return 默认配置（按值返回，调用方直接修改字段即可）

@@ -45,13 +45,16 @@ extern "C" {
 /* ── 前向声明 ── */
 typedef struct multimodal_index multimodal_index_t;
 
-/* ── 索引类型 ── */
+/* ── 索引类型 ──
+ * 注意：类型名加 multimodal_ 前缀，避免与 db/index/index_catalog.h、
+ * db/optimizer/optimizer.h 的同名 index_type_t 冲突。
+ */
 typedef enum {
     INDEX_NONE = 0,
     INDEX_HNSW = 1,
     INDEX_FLAT = 2,
     INDEX_BM25 = 3,
-} index_type_t;
+} multimodal_index_type_t;
 
 /* ── 融合类型 ── */
 typedef enum {
@@ -76,7 +79,7 @@ multimodal_index_t *multimodal_create(void);
  * @return 0 成功，-1 失败
  */
 int multimodal_register_modality(multimodal_index_t *idx, const char *name,
-                               index_type_t index_type, int dims);
+                               multimodal_index_type_t index_type, int dims);
 
 /**
  * 添加向量
