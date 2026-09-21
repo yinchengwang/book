@@ -10,7 +10,27 @@ export function Sudoku() {
   const [difficulty, setDifficulty] = useState<Difficulty>(0);
   const [selected, setSelected] = useState<[number, number] | null>(null);
   const [noteMode, setNoteMode] = useState(false);
-  const { board, newGame, setCell, eraseCell, toggleNote } = useSudoku(difficulty);
+  const [candidates, setCandidates] = useState<number[]>([]);
+  const { board, newGame, setCell, eraseCell, toggleNote, hintCell, validCandidates } = useSudoku(difficulty);
+
+  const selectedCell = selected && board ? board.cells[selected[0]]?.[selected[1]] : null;
+  const hintable = !!selected && !!selectedCell && !selectedCell.given;
+
+  // 选中格变化时计算合法候选数（isValid 链路）
+  useEffect(() => {
+    if (!selected || !selectedCell || selectedCell.given) {
+      setCandidates([]);
+      return;
+    }
+    let cancelled = false;
+    validCandidates(selected[0], selected[1]).then((nums) => {
+      if (!cancelled) setCandidates(nums);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, board, validCandidates]);
 
   // 键盘输入
   useEffect(() => {
@@ -28,6 +48,9 @@ export function Sudoku() {
       } else if (e.key === '0' || e.key === 'Backspace' || e.key === 'Delete') {
         e.preventDefault();
         eraseCell(r, c);
+      } else if (e.key === 'h' || e.key === 'H') {
+        e.preventDefault();
+        if (!board.cells[r]?.[c]?.given) hintCell(r, c);
       } else if (e.key === 'Escape') {
         setSelected(null);
         setNoteMode(false);
@@ -35,7 +58,7 @@ export function Sudoku() {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [selected, board, noteMode, setCell, eraseCell, toggleNote]);
+  }, [selected, board, noteMode, setCell, eraseCell, toggleNote, hintCell]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-8 text-center">
@@ -66,7 +89,26 @@ export function Sudoku() {
         >
           📝 笔记
         </Button>
+        <Button
+          variant="ghost"
+          onClick={() => selected && hintCell(selected[0], selected[1])}
+          disabled={!hintable}
+          title="揭示选中格的正确答案（快捷键 H）"
+        >
+          💡 提示
+        </Button>
       </div>
+
+      {candidates.length > 0 && (
+        <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+          可选候选：
+          {candidates.map((n) => (
+            <span key={n} className="inline-block mx-0.5 px-1.5 py-0.5 rounded bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300 font-medium">
+              {n}
+            </span>
+          ))}
+        </p>
+      )}
 
       {board?.over && (
         <p className="text-green-500 text-xl mb-4">🎉 完成！</p>
@@ -136,7 +178,7 @@ export function Sudoku() {
       <p className="mt-4 text-sm text-gray-500">
         {noteMode
           ? '笔记模式：点击格子选中后按 1-9 切换候选数笔记，按 0/Backspace 清空，Esc 退出笔记模式'
-          : '点击格子选中，按 1-9 填数，按 0/Backspace 删除，Esc 取消选中'}
+          : '点击格子选中，按 1-9 填数，按 0/Backspace 删除，按 H 提示，Esc 取消选中'}
       </p>
     </div>
   );

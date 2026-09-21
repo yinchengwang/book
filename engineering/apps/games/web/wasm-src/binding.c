@@ -154,3 +154,13 @@ EMSCRIPTEN_KEEPALIVE
 int sudoku_notes_at_js(int r, int c) {
     return sudoku_notes_at(&sd_state, r, c);
 }
+
+EMSCRIPTEN_KEEPALIVE
+int sudoku_hint_js(int r, int c) {
+    return sudoku_hint(&sd_state, r, c);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int sudoku_is_valid_js(int r, int c, int n) {
+    return sudoku_is_valid(&sd_state, r, c, n) ? 1 : 0;
+}

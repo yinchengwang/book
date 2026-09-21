@@ -51,9 +51,30 @@ export function useSudoku(difficulty: 0 | 1 | 2 = 0) {
     [refresh]
   );
 
+  // 智能提示：揭示 (r,c) 处的正确答案（经 sudoku.set 填入，保持冲突/终局状态一致）
+  const hintCell = useCallback(
+    async (r: number, c: number) => {
+      const n = await sudoku.hint(r, c);
+      if (n >= 1 && n <= 9) {
+        await sudoku.set(r, c, n);
+        await refresh();
+      }
+    },
+    [refresh]
+  );
+
+  // 候选数：isValid 过滤 1-9（唯余法视角的合法候选）
+  const validCandidates = useCallback(async (r: number, c: number): Promise<number[]> => {
+    const out: number[] = [];
+    for (let n = 1; n <= 9; n++) {
+      if (await sudoku.isValid(r, c, n)) out.push(n);
+    }
+    return out;
+  }, []);
+
   useEffect(() => {
     newGame();
   }, [newGame]);
 
-  return { board, newGame, setCell, eraseCell, toggleNote };
+  return { board, newGame, setCell, eraseCell, toggleNote, hintCell, validCandidates };
 }

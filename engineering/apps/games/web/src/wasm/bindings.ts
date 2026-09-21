@@ -132,4 +132,12 @@ export const sudoku = {
     const m = await loadWasm();
     return m._sudoku_notes_at_js(r, c);
   },
+  async hint(r: number, c: number): Promise<number> {
+    const m = await loadWasm();
+    return m._sudoku_hint_js(r, c);
+  },
+  async isValid(r: number, c: number, n: number): Promise<boolean> {
+    const m = await loadWasm();
+    return m._sudoku_is_valid_js(r, c, n) === 1;
+  },
 };

@@ -37,6 +37,8 @@ export interface SudokuExports {
   _sudoku_over_js(): number;
   _sudoku_toggle_note_js(row: number, col: number, num: number): void;
   _sudoku_notes_at_js(row: number, col: number): number;
+  _sudoku_hint_js(row: number, col: number): number;
+  _sudoku_is_valid_js(row: number, col: number, num: number): number;
 }
 
 export interface GameExports extends G2048Exports, SnakeExports, SudokuExports {}
