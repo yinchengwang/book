@@ -32,7 +32,8 @@ typedef enum {
     PLAN_LIMIT,           /* 限制 */
     PLAN_HASH,            /* Hash 表构建 */
     PLAN_VALUES,          /* VALUES 子句 */
-    PLAN_RESULT           /* 结果 */
+    PLAN_RESULT,          /* 结果 */
+    PLAN_EXCHANGE         /* 并行交换（Gap#4） */
 } plan_node_type_t;
 
 /* ─────────────────────────────────────────────────────────────────
@@ -173,6 +174,24 @@ typedef struct sort_plan {
 } sort_plan_t;
 
 /**
+ * 交换模式（Gap#4）
+ */
+typedef enum {
+    EXCHANGE_LOCAL = 0,   /* 进程内并行 */
+    EXCHANGE_BROADCAST,   /* 小表广播 */
+    EXCHANGE_REPARTITION  /* 按 join key 哈希重分布 */
+} exchange_mode_t;
+
+/**
+ * 交换计划
+ */
+typedef struct exchange_plan {
+    exchange_mode_t mode; /* 交换模式 */
+    int dop;              /* 并行度 */
+    int key_col;          /* REPARTITION 的连接键列；其它模式为 -1 */
+} exchange_plan_t;
+
+/**
  * 通用计划节点
  */
 typedef struct plan_node {
@@ -197,6 +216,7 @@ typedef struct plan_node {
         join_plan_t join;
         aggregate_plan_t aggregate;
         sort_plan_t sort;
+        exchange_plan_t exchange;   /* PLAN_EXCHANGE */
     } data;
 
     /* 链表指针（用于列表管理） */

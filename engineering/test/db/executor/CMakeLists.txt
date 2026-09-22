@@ -40,3 +40,11 @@ target_include_directories(px_scheduler_test PRIVATE
     ${CMAKE_SOURCE_DIR}/engineering/include
 )
 gtest_discover_tests(px_scheduler_test)
+
+add_executable(exchange_exec_test exchange_exec_test.cpp)
+target_link_libraries(exchange_exec_test PRIVATE db_executor db_vectorized gtest gtest_main)
+target_include_directories(exchange_exec_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/engineering/include
+)
+gtest_discover_tests(exchange_exec_test)
