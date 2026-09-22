@@ -24,3 +24,11 @@ target_include_directories(executor_integration_test PRIVATE
 )
 gtest_discover_tests(executor_integration_test)
 add_test(NAME executor_integration_test COMMAND executor_integration_test)
+
+add_executable(px_queue_test px_queue_test.cpp)
+target_link_libraries(px_queue_test PRIVATE db_executor db_vectorized gtest gtest_main)
+target_include_directories(px_queue_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/engineering/include
+)
+gtest_discover_tests(px_queue_test)
