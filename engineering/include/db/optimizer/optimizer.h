@@ -401,6 +401,15 @@ int explain_plan(const plan_node_t *plan, char *buf, size_t buf_size);
  */
 char *explain_plan_text(const plan_node_t *plan);
 
+/**
+ * @brief 并行重写：在超过行数阈值的 scan/filter/project 链顶部插入 PLAN_EXCHANGE
+ * @param plan 原计划树（原地修改并返回新根；若根被包裹则返回 Exchange 节点）
+ * @param min_rows 并行阈值（估计行数）
+ * @param max_dop 最大并行度
+ * @return 重写后的计划树根
+ */
+plan_node_t *plan_parallelize(plan_node_t *plan, double min_rows, int max_dop);
+
 #ifdef __cplusplus
 }
 #endif

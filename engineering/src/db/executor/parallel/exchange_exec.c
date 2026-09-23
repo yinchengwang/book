@@ -10,6 +10,7 @@
 typedef struct {
     px_subtree_fn make_subtree;
     void *ctx;
+    void (*ctx_destroy)(void *);  /* close 末尾调用一次释放 ctx（可为 NULL） */
     int dop;
     px_queue_t *queue;        /* open 时创建 */
     volatile int cancel;      /* 协作式取消标志 */
@@ -23,11 +24,11 @@ typedef struct {
     int sync_init;            /* mu/done_cond 已初始化，close 时幂等销毁 */
 } ExchangeState;
 
+/* 子树在 open 内同步创建（每 worker 一棵），worker 不再持有工厂/ctx */
 typedef struct {
-    px_subtree_fn make_subtree;
-    void *ctx;
+    ExecNode *sub;
     px_queue_t *queue;
-    ExchangeState *st;        /* 完成计数所属 Exchange */
+    ExchangeState *st;        /* 取消读取与完成计数所属 Exchange */
 } PxWorkerArg;
 
 /* worker 退出前的最后一步：所有 queue 操作（abort/producer_done）必须
@@ -47,17 +48,17 @@ static void px_exchange_worker(void *varg, volatile int *cancel_flag) {
      * 参数恒为 NULL，禁止解引用；取消一律从 ExchangeState 读取 */
     (void)cancel_flag;
     volatile int *cancel = &arg->st->cancel;
+    ExecNode *sub = arg->sub;   /* open 内同步创建，归本 worker 所有 */
 
-    /* 快速路径：拾取时已取消，跳过 make_subtree，但仍须 producer_done
-     * 一次以维持 EOF 计数不变式 */
+    /* 快速路径：拾取时已取消，跳过 open/循环；子树从未 open，
+     * 只 exec_destroy（不可对未 open 的子树调 close），仍须
+     * producer_done 一次以维持 EOF 计数不变式 */
     if (*cancel) {
+        exec_destroy(sub);
         px_queue_producer_done(arg->queue);
         px_worker_done(arg);
         return;
     }
-
-    ExecNode *sub = arg->make_subtree(arg->ctx);
-    if (!sub) { px_queue_abort(arg->queue); px_worker_done(arg); return; }
 
     if (sub->open(sub) != 0) {
         px_queue_abort(arg->queue);
@@ -107,8 +108,13 @@ static int exchange_open(ExecNode *node) {
     for (int i = 0; i < st->dop; i++) {
         PxWorkerArg *arg = (PxWorkerArg *)calloc(1, sizeof(PxWorkerArg));
         if (!arg) goto submit_fail;
-        arg->make_subtree = st->make_subtree;
-        arg->ctx = st->ctx;
+        /* 同步创建子树（每 worker 一棵独立 ExecNode 树）：工厂只在 open
+         * 期间被调用，ctx 无需活到 worker 运行期，close 时可安全销毁 */
+        arg->sub = st->make_subtree(st->ctx);
+        if (!arg->sub) {
+            free(arg);
+            goto submit_fail;
+        }
         arg->queue = st->queue;
         arg->st = st;
         /* 计数先于 submit，防竞态；submit 队列满时会阻塞，绝不能持 st->mu
@@ -123,6 +129,7 @@ static int exchange_open(ExecNode *node) {
             pthread_mutex_lock(&st->mu);
             st->workers_outstanding--;
             pthread_mutex_unlock(&st->mu);
+            exec_destroy(arg->sub);   /* 从未 open，worker 未接管 */
             free(arg);
             goto submit_fail;
         }
@@ -177,14 +184,23 @@ static void exchange_close(ExecNode *node) {
         pthread_cond_destroy(&st->done_cond);
         st->sync_init = 0;
     }
+
+    /* 工厂 ctx 只在 open 内同步使用，close 时必然不再需要；
+     * 置 NULL 防双重 close 二次释放（并行与 dop<=1 直传分支殊途同归到此） */
+    if (st->ctx_destroy) {
+        st->ctx_destroy(st->ctx);
+        st->ctx_destroy = NULL;
+    }
 }
 
-ExecNode *exec_create_exchange(px_subtree_fn make_subtree, void *ctx, int dop) {
+ExecNode *exec_create_exchange_ex(px_subtree_fn make_subtree, void *ctx, int dop,
+                                  void (*ctx_destroy)(void *)) {
     if (!make_subtree) return NULL;
     ExchangeState *st = (ExchangeState *)calloc(1, sizeof(ExchangeState));
     if (!st) return NULL;
     st->make_subtree = make_subtree;
     st->ctx = ctx;
+    st->ctx_destroy = ctx_destroy;
     st->dop = dop < 1 ? 1 : dop;
     if (pthread_mutex_init(&st->mu, NULL) != 0) { free(st); return NULL; }
     if (pthread_cond_init(&st->done_cond, NULL) != 0) {
@@ -209,4 +225,8 @@ ExecNode *exec_create_exchange(px_subtree_fn make_subtree, void *ctx, int dop) {
     node->reset = exchange_reset;
     node->close = exchange_close;
     return node;
+}
+
+ExecNode *exec_create_exchange(px_subtree_fn make_subtree, void *ctx, int dop) {
+    return exec_create_exchange_ex(make_subtree, ctx, dop, NULL);
 }

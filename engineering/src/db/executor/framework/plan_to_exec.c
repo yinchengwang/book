@@ -3,11 +3,15 @@
 #include "db/executor/exec_node.h"
 #include "db/executor/exec_states.h"
 #include "db/executor/exec_operators.h"
+#include "db/executor/exec_exchange.h"
 #include "db/vectorized/vectorized.h"
 #include <stdlib.h>
 #include <string.h>
 
 static ExecNode *plan_to_exec_impl(const plan_node_t *plan);
+
+/* PLAN_EXCHANGE 适配器：把 plan 子树包装成 px_subtree_fn 工厂签名 */
+ExecNode *exec_create_exchange_px_plan(const plan_node_t *subplan, int dop);
 
 /**
  * @brief 递归转换单个 plan 节点
@@ -224,6 +228,13 @@ static ExecNode *plan_to_exec_impl(const plan_node_t *plan) {
             return convert_hashjoin_node(plan);
         case PLAN_AGGREGATE:
             return convert_hashagg_node(plan);
+        case PLAN_EXCHANGE: {
+            /* Exchange 的子树由 worker 侧工厂克隆（每 worker 一棵独立 ExecNode 树）。
+               闭包持有 plan->left；exec 树销毁不触碰 plan 树（plan 由调用方管理）。 */
+            const plan_node_t *subplan = plan->left;
+            int dop = plan->data.exchange.dop;
+            return exec_create_exchange_px_plan(subplan, dop);
+        }
         case PLAN_SORT:
             // TODO: 实现 Sort 算子
             return NULL;
@@ -234,4 +245,27 @@ static ExecNode *plan_to_exec_impl(const plan_node_t *plan) {
 
 ExecNode *exec_create(const plan_node_t *plan) {
     return plan_to_exec_impl(plan);
+}
+
+/* ── PLAN_EXCHANGE 适配器 ─────────────────────────────────────────── */
+
+typedef struct {
+    const plan_node_t *subplan;
+} PxPlanFactoryCtx;
+
+static ExecNode *px_plan_subtree_fn(void *ctx) {
+    PxPlanFactoryCtx *c = (PxPlanFactoryCtx *)ctx;
+    return plan_to_exec_impl(c->subplan);
+}
+
+/* 工厂在 exchange_open 内被同步调用（每 worker 一棵子树），ctx 只须活到
+ * open 结束；exchange_close 末尾经 ctx_destroy(=free) 释放一次。 */
+ExecNode *exec_create_exchange_px_plan(const plan_node_t *subplan, int dop) {
+    if (!subplan) return NULL;
+    PxPlanFactoryCtx *ctx = (PxPlanFactoryCtx *)calloc(1, sizeof(PxPlanFactoryCtx));
+    if (!ctx) return NULL;
+    ctx->subplan = subplan;
+    ExecNode *ex = exec_create_exchange_ex(px_plan_subtree_fn, ctx, dop, free);
+    if (!ex) { free(ctx); return NULL; }
+    return ex;
 }
