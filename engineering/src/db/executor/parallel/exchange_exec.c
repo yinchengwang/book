@@ -43,6 +43,18 @@ static void px_worker_done(PxWorkerArg *arg) {
 
 static void px_exchange_worker(void *varg, volatile int *cancel_flag) {
     PxWorkerArg *arg = (PxWorkerArg *)varg;
+    /* 提交时传 NULL 取消标志（px_scheduler 对 NULL 不做排队跳过，复审 C-1），
+     * 参数恒为 NULL，禁止解引用；取消一律从 ExchangeState 读取 */
+    (void)cancel_flag;
+    volatile int *cancel = &arg->st->cancel;
+
+    /* 快速路径：拾取时已取消，跳过 make_subtree，但仍须 producer_done
+     * 一次以维持 EOF 计数不变式 */
+    if (*cancel) {
+        px_queue_producer_done(arg->queue);
+        px_worker_done(arg);
+        return;
+    }
 
     ExecNode *sub = arg->make_subtree(arg->ctx);
     if (!sub) { px_queue_abort(arg->queue); px_worker_done(arg); return; }
@@ -55,7 +67,7 @@ static void px_exchange_worker(void *varg, volatile int *cancel_flag) {
     }
 
     VectorBlock *b;
-    while (!*cancel_flag && (b = sub->next(sub)) != NULL) {
+    while (!*cancel && (b = sub->next(sub)) != NULL) {
         if (px_queue_push(arg->queue, b) != 0) {
             vector_block_destroy(b);   /* abort：push 失败所有权未移交 */
             break;
@@ -99,12 +111,21 @@ static int exchange_open(ExecNode *node) {
         arg->ctx = st->ctx;
         arg->queue = st->queue;
         arg->st = st;
+        /* 计数先于 submit，防竞态；submit 队列满时会阻塞，绝不能持 st->mu
+         * 调用，否则与 worker 的计数递减互锁（复审 M-4）。
+         * cancel 标志传 NULL：调度器对 NULL 不做排队跳过，本 Exchange 的
+         * 任务必定执行，worker 从 st->cancel 读取消（复审 C-1） */
         pthread_mutex_lock(&st->mu);
-        st->workers_outstanding++;                 /* 先于 submit，防计数竞态 */
-        int rc = px_scheduler_submit(sched, px_exchange_worker, arg, &st->cancel);
-        if (rc != 0) st->workers_outstanding--;
+        st->workers_outstanding++;
         pthread_mutex_unlock(&st->mu);
-        if (rc != 0) { free(arg); goto submit_fail; }
+        int rc = px_scheduler_submit(sched, px_exchange_worker, arg, NULL);
+        if (rc != 0) {
+            pthread_mutex_lock(&st->mu);
+            st->workers_outstanding--;
+            pthread_mutex_unlock(&st->mu);
+            free(arg);
+            goto submit_fail;
+        }
     }
     st->opened = 1;
     return 0;
