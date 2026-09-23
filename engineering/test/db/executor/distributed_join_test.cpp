@@ -18,6 +18,7 @@
 #include <chrono>
 #include <cstring>
 #include <cstdlib>
+#include <mutex>
 
 extern "C" {
 #include "db/executor/exec_exchange.h"
@@ -34,6 +35,16 @@ extern "C" {
 static std::vector<void *> &dj_buffers() {
     static std::vector<void *> bufs;
     return bufs;
+}
+/* dj_buffers 会被 sender 线程（scan_fn → make_kv_scan）与主线程
+ * （baseline_join → make_kv_scan）并发 push_back，必须加锁 */
+static std::mutex &dj_buffers_mu() {
+    static std::mutex mu;
+    return mu;
+}
+static void dj_register(void *p) {
+    std::lock_guard<std::mutex> lk(dj_buffers_mu());
+    dj_buffers().push_back(p);
 }
 
 /* seqscan 原样保存列指针（见 seqscan_exec.c），列缓冲及
@@ -54,11 +65,11 @@ static ExecNode *make_kv_scan(const int32_t *keys, const int32_t *vals, int n, i
     int *elem = (int *)malloc(sizeof(int) * 2);
     elem[0] = (int)sizeof(int32_t);
     elem[1] = (int)sizeof(int32_t);
-    dj_buffers().push_back(k);
-    dj_buffers().push_back(v);
-    dj_buffers().push_back(col_types);
-    dj_buffers().push_back(col_data);
-    dj_buffers().push_back(elem);
+    dj_register(k);
+    dj_register(v);
+    dj_register(col_types);
+    dj_register(col_data);
+    dj_register(elem);
     return exec_create_seqscan(0, 2, col_types, col_data, elem, n, batch);
 }
 
@@ -106,6 +117,7 @@ static RowSet baseline_join(const std::vector<int32_t> &bk, const std::vector<in
 class DistributedJoinTest : public ::testing::Test {
 protected:
     void TearDown() override {
+        std::lock_guard<std::mutex> lk(dj_buffers_mu());
         for (void *p : dj_buffers()) free(p);
         dj_buffers().clear();
     }
