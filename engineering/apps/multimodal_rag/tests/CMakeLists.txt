@@ -11,6 +11,7 @@ add_executable(mmrag_intent_tests
     test_intent_gate.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/retrieval/query_classifier.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/retrieval/intent_gate.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/embed/minilm_embedder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/pipeline/pipeline.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/pipeline/pipeline_base.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/types.cpp

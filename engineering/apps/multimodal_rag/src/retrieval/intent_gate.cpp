@@ -31,7 +31,35 @@ void IntentGate::init_defaults() {
 }
 
 void IntentGate::init_exemplars() {
-    // 内置示例句；embedding 预编码在 Task 3 实现，本任务只留空
+    static const std::vector<std::string> kChat = {
+        "你好", "您好", "嗨", "哈喽", "早上好", "晚上好", "在吗", "在不在",
+        "谢谢", "谢谢你", "非常感谢", "再见", "拜拜", "你能做什么", "你是谁",
+        "hello", "hi", "good morning", "thanks", "goodbye", "how are you"
+    };
+    static const std::vector<std::string> kOos = {
+        "帮我写个周报", "帮我写一封邮件", "写一篇作文", "讲个笑话", "讲个故事",
+        "今天天气怎么样", "明天会下雨吗", "给我推荐几部电影", "股票会涨吗",
+        "陪我聊聊天", "我好无聊", "write an email for me", "tell me a joke",
+        "what's the weather today"
+    };
+
+    auto encode_all = [&](const std::vector<std::string>& texts,
+                          std::vector<std::vector<float>>& out) {
+        for (const auto& t : texts) {
+            auto v = embedder_->encode(t);
+            if (!v.empty()) out.push_back(std::move(v));
+        }
+    };
+
+    if (embedder_) {
+        encode_all(kChat, chat_exemplar_embs_);
+        encode_all(config_.extra_chat_exemplars, chat_exemplar_embs_);
+        encode_all(kOos, oos_exemplar_embs_);
+        encode_all(config_.extra_oos_exemplars, oos_exemplar_embs_);
+        RAG_INFO("IntentGate 示例句编码完成: chat=" +
+                 std::to_string(chat_exemplar_embs_.size()) +
+                 " oos=" + std::to_string(oos_exemplar_embs_.size()));
+    }
 }
 
 RouteDecision IntentGate::route(const std::string& query) {
@@ -102,10 +130,37 @@ std::string IntentGate::pick_chat_reply(const std::string& query) const {
     return get("greeting");
 }
 
-RouteDecision IntentGate::decide_by_embedding(const std::string& /*query*/) {
-    // Task 3 实现；当前直接放行
+RouteDecision IntentGate::decide_by_embedding(const std::string& query) {
     RouteDecision d;
     d.matched_by = "embedding";
+
+    auto q = embedder_->encode(query);
+    if (q.empty()) return d;  // encode 失败，放行
+
+    // encode() 返回 L2 归一化向量，点积即余弦相似度
+    auto best_sim = [&](const std::vector<std::vector<float>>& embs) {
+        float best = 0.0f;
+        for (const auto& e : embs) {
+            float dot = 0.0f;
+            for (size_t i = 0; i < q.size() && i < e.size(); ++i) dot += q[i] * e[i];
+            if (dot > best) best = dot;
+        }
+        return best;
+    };
+
+    float chat_sim = best_sim(chat_exemplar_embs_);
+    float oos_sim  = best_sim(oos_exemplar_embs_);
+    float thr = config_.embedding_threshold;
+
+    if (chat_sim >= thr && chat_sim >= oos_sim) {
+        d.action = RouteAction::CHAT_REPLY;
+        d.confidence = chat_sim;
+        d.reply = pick_chat_reply(query);
+    } else if (oos_sim >= thr) {
+        d.action = RouteAction::OUT_OF_SCOPE;
+        d.confidence = oos_sim;
+        d.reply = config_.out_of_scope_reply;
+    }
     return d;
 }
 
