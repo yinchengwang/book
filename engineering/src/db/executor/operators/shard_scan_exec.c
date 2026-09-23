@@ -1,171 +1,91 @@
-// engineering/src/db/executor/operators/shard_scan_exec.c
+/* shard_scan_exec.c - Gap#4 shard 裁剪 + 扇出（重写 gap06 骨架） */
 #include "db/executor/exec_shard.h"
-#include "db/executor/exec_node.h"
-#include "db/sharding/sharding.h"
-#include "db/vectorized/vectorized.h"
+#include "db/executor/exec_exchange.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
-/**
- * @brief ShardScan 状态
- */
+int px_shard_prune(const shard_router_t *router, const vecx_pred_t *pred,
+                   int *out_ids, int max) {
+    if (!router || !out_ids || max <= 0) return 0;
+
+    if (!pred) {
+        /* 无分片键谓词：全分片扇出 */
+        int total = shard_count(router);
+        shard_info_t *all = (shard_info_t *)calloc((size_t)total, sizeof(shard_info_t));
+        if (!all) return 0;
+        int n = shard_get_all(router, all, total);
+        int out = 0;
+        for (int i = 0; i < n && out < max; i++) out_ids[out++] = all[i].shard_id;
+        free(all);
+        return out;
+    }
+
+    int64_t key = pred->i64;
+    switch (pred->op) {
+        case CMP_EQ: {
+            int id = shard_route(router, &key, sizeof(key));
+            if (id < 0) return 0;
+            out_ids[0] = id;
+            return 1;
+        }
+        case CMP_LT:  /* (-inf, key) */
+        case CMP_LE: {
+            int64_t lo = INT64_MIN;
+            int64_t hi = (pred->op == CMP_LT) ? key - 1 : key;
+            return shard_route_range(router, &lo, &hi, out_ids, max);
+        }
+        case CMP_GT:  /* (key, +inf) */
+        case CMP_GE: {
+            int64_t lo = (pred->op == CMP_GT) ? key + 1 : key;
+            int64_t hi = INT64_MAX;
+            return shard_route_range(router, &lo, &hi, out_ids, max);
+        }
+        default:
+            /* NE 等无法裁剪：全分片 */
+            return px_shard_prune(router, NULL, out_ids, max);
+    }
+}
+
+/* ---- 扇出 ---- */
+
 typedef struct {
-    shard_coordinator_t *coordinator;
     shard_router_t *router;
-    void *key;
-    size_t key_len;
-    int selected_shard;
-    VectorBlock *cur_block;
-    int exhausted;
-} ShardScanState;
+    vecx_pred_t pred;             /* 拷贝；has_pred=0 表示全分片 */
+    int has_pred;
+    px_shard_scan_fn open_shard;
+    void *ctx;
+    int shard_ids[256];
+    int nshards;
+    int next_idx;                 /* 工厂调用序号（open 内同步，无竞争） */
+} ShardFanoutCtx;
 
-static int shard_scan_open(ExecNode *node) {
-    ShardScanState *state = (ShardScanState *)node->state;
-    if (!state || !state->coordinator || !state->key) return -1;
-
-    // 获取所有分片信息
-    int max_shards = shard_count(state->router);
-    if (max_shards <= 0) {
-        state->exhausted = 1;
-        return 0;
-    }
-
-    shard_info_t *all_shards = (shard_info_t *)malloc(sizeof(shard_info_t) * max_shards);
-    if (!all_shards) return -1;
-
-    int count = shard_get_all(state->router, all_shards, max_shards);
-    if (count <= 0) {
-        free(all_shards);
-        state->exhausted = 1;
-        return 0;
-    }
-
-    // 提取分片 ID 数组
-    int *shard_ids = (int *)malloc(sizeof(int) * count);
-    if (!shard_ids) {
-        free(all_shards);
-        return -1;
-    }
-    for (int i = 0; i < count; i++) {
-        shard_ids[i] = all_shards[i].shard_id;
-    }
-    free(all_shards);
-
-    // 使用协调器选择最小负载的分片
-    state->selected_shard = shard_coordinator_select_least_load(
-        state->coordinator, shard_ids, count);
-
-    free(shard_ids);
-
-    if (state->selected_shard < 0) {
-        state->exhausted = 1;
-        return 0;
-    }
-
-    state->exhausted = 0;
-    state->cur_block = NULL;
-    return 0;
+static ExecNode *shard_subtree_fn(void *vctx) {
+    ShardFanoutCtx *c = (ShardFanoutCtx *)vctx;
+    if (c->next_idx >= c->nshards) return NULL;
+    int shard_id = c->shard_ids[c->next_idx++];
+    return c->open_shard(shard_id, c->ctx);
 }
 
-static VectorBlock *shard_scan_next(ExecNode *node) {
-    ShardScanState *state = (ShardScanState *)node->state;
-    if (!state || state->exhausted) return NULL;
-
-    // TODO: 根据 selected_shard 获取对应分片数据
-    // 这里暂时返回 NULL 表示迭代结束，实际需要连接分片获取数据
-    state->exhausted = 1;
-    return NULL;
+static void shard_fanout_ctx_destroy(void *vctx) {
+    free(vctx);
 }
 
-static void shard_scan_reset(ExecNode *node) {
-    ShardScanState *state = (ShardScanState *)node->state;
-    if (!state) return;
+ExecNode *exec_create_shard_fanout(shard_router_t *router, const vecx_pred_t *pred,
+                                   px_shard_scan_fn open_shard, void *ctx) {
+    if (!router || !open_shard) return NULL;
 
-    state->cur_block = NULL;
-    state->exhausted = 0;
+    ShardFanoutCtx *c = (ShardFanoutCtx *)calloc(1, sizeof(ShardFanoutCtx));
+    if (!c) return NULL;
+    c->router = router;
+    c->open_shard = open_shard;
+    c->ctx = ctx;
+    if (pred) { c->pred = *pred; c->has_pred = 1; }
 
-    // 重新选择分片
-    int max_shards = shard_count(state->router);
-    if (max_shards <= 0) {
-        state->exhausted = 1;
-        return;
-    }
+    c->nshards = px_shard_prune(router, pred, c->shard_ids, 256);
+    if (c->nshards <= 0) { free(c); return NULL; }
 
-    shard_info_t *all_shards = (shard_info_t *)malloc(sizeof(shard_info_t) * max_shards);
-    if (!all_shards) {
-        state->exhausted = 1;
-        return;
-    }
-
-    int count = shard_get_all(state->router, all_shards, max_shards);
-    if (count <= 0) {
-        free(all_shards);
-        state->exhausted = 1;
-        return;
-    }
-
-    int *shard_ids = (int *)malloc(sizeof(int) * count);
-    if (!shard_ids) {
-        free(all_shards);
-        state->exhausted = 1;
-        return;
-    }
-    for (int i = 0; i < count; i++) {
-        shard_ids[i] = all_shards[i].shard_id;
-    }
-    free(all_shards);
-
-    state->selected_shard = shard_coordinator_select_least_load(
-        state->coordinator, shard_ids, count);
-
-    free(shard_ids);
-}
-
-static void shard_scan_close(ExecNode *node) {
-    ShardScanState *state = (ShardScanState *)node->state;
-    if (!state) return;
-
-    state->cur_block = NULL;
-    state->exhausted = 1;
-}
-
-ExecNode *exec_create_shard_scan(shard_coordinator_t *coord,
-                                  const void *key, size_t key_len) {
-    if (!coord || !key) return NULL;
-
-    // 获取 router 从 coordinator
-    shard_router_t *router = shard_coordinator_get_router(coord);
-    if (!router) return NULL;
-
-    ShardScanState *state = (ShardScanState *)calloc(1, sizeof(ShardScanState));
-    if (!state) return NULL;
-
-    state->coordinator = coord;
-    state->router = router;
-    state->key = malloc(key_len);
-    if (!state->key) {
-        free(state);
-        return NULL;
-    }
-    memcpy(state->key, key, key_len);
-    state->key_len = key_len;
-    state->selected_shard = -1;
-    state->cur_block = NULL;
-    state->exhausted = 0;
-
-    ExecNode *node = (ExecNode *)calloc(1, sizeof(ExecNode));
-    if (!node) {
-        free(state->key);
-        free(state);
-        return NULL;
-    }
-
-    node->node_type = PLAN_SCAN_SEQ;  // 使用 SeqScan 作为基类型
-    node->state = state;
-    node->open = shard_scan_open;
-    node->next = shard_scan_next;
-    node->reset = shard_scan_reset;
-    node->close = shard_scan_close;
-
-    return node;
+    /* dop = 候选分片数；ctx_destroy 释放本闭包（Task 4 的 _ex 语义） */
+    return exec_create_exchange_ex(shard_subtree_fn, c, c->nshards,
+                                   shard_fanout_ctx_destroy);
 }
