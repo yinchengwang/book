@@ -81,6 +81,14 @@ target_include_directories(px_wire_test PRIVATE
 )
 gtest_discover_tests(px_wire_test)
 
+add_executable(rpc_stream_test rpc_stream_test.cpp)
+target_link_libraries(rpc_stream_test PRIVATE db_executor db_vectorized db_rpc gtest gtest_main)
+target_include_directories(rpc_stream_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/engineering/include
+)
+gtest_discover_tests(rpc_stream_test)
+
 add_executable(px_benchmark_test px_benchmark_test.cpp)
 target_link_libraries(px_benchmark_test PRIVATE db_executor db_vectorized gtest gtest_main)
 target_include_directories(px_benchmark_test PRIVATE
