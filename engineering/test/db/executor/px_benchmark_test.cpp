@@ -1,5 +1,5 @@
 // engineering/test/db/executor/px_benchmark_test.cpp
-// gap04 Task 6 验收基准：8M 行 int64，filter(col > 25% 分位) + SUM 聚合。
+// gap04 Task 6 验收基准：32M 行 int64，filter(col > 25% 分位) + SUM 聚合。
 // 单线程基线 vs Exchange dop=4（每 worker 扫不相交切片、各自局部 filter，
 // 主线程合并部分和）。SUM 可结合，合并语义正确。
 #include <gtest/gtest.h>
@@ -79,63 +79,26 @@ static double run_serial(int64_t *sum_out) {
     return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
 }
 
-/* 并行 worker：scan -> 局部 filter，过滤后块推回 Exchange，主线程只做 SUM。
- *
- * 不用 exec_create_filter 包 scan 的原因（对计划的最小适配，已核实）：
- * Exchange worker 对子树根只调 sub->open(sub)（非递归，exchange_exec.c），
- * 而生产 filter_open 假设子节点已被 exec_open 递归打开——直接组合会让
- * scan 从未 open、静默产零行。另外生产 filter_next 对无匹配块直接返回
- * NULL，会被 Exchange 误判为流结束。故用测试本地的 FilterScan 复合节点：
- * open 用 exec_open 递归打开子树；next 循环跳过无匹配块直到有输出或 EOF。
+/* 并行 worker：scan -> 局部 filter（生产 exec_create_filter），过滤后块推回
+ * Exchange，主线程只做 SUM。#39 修复后生产 filter 的三个缺陷（空块误报 EOF、
+ * 输入块泄漏、worker open 非递归）均已消除，基准恢复覆盖生产路径。
  * 节点挂 left=scan，exec_destroy 会递归销毁子树并 free state。 */
 struct ParCtx { SliceCtx slice; int64_t threshold; };
-
-typedef struct { vecx_pred_t pred; } FilterScanState;
-
-static int fs_open(ExecNode *node) {
-    return exec_open(node->left);
-}
-
-static VectorBlock *fs_next(ExecNode *node) {
-    FilterScanState *st = (FilterScanState *)node->state;
-    for (;;) {
-        VectorBlock *in = exec_next(node->left);
-        if (!in) return nullptr;
-        VectorBlock *out = nullptr;
-        int n = vecx_filter_block(in, st->pred.col, st->pred.op,
-                                  &st->pred.i64, &out);
-        vector_block_destroy(in);
-        if (n > 0 && out) return out;
-        if (n < 0) return nullptr;
-        /* n==0：本块无匹配，继续拉下一块（返回 NULL 会被当作流结束） */
-    }
-}
-
-static void fs_reset(ExecNode *node) { exec_reset(node->left); }
-static void fs_close(ExecNode *node) { exec_close(node->left); }
 
 static ExecNode *make_filtered_slice(void *vctx) {
     ParCtx *ctx = (ParCtx *)vctx;
     ExecNode *scan = make_slice(&ctx->slice);
     if (!scan) return nullptr;
-    FilterScanState *st = (FilterScanState *)calloc(1, sizeof(FilterScanState));
-    ExecNode *node = (ExecNode *)calloc(1, sizeof(ExecNode));
-    if (!st || !node) {
-        free(st); free(node);
-        exec_destroy(scan);
-        return nullptr;
-    }
-    st->pred.col = 0;
-    st->pred.op = CMP_GT;
-    st->pred.i64 = ctx->threshold;
-    node->node_type = PLAN_FILTER;
-    node->state = st;
-    node->left = scan;
-    node->open = fs_open;
-    node->next = fs_next;
-    node->reset = fs_reset;
-    node->close = fs_close;
-    return node;
+    vecx_pred_t pred;
+    pred.col = 0;
+    pred.op = CMP_GT;
+    pred.i64 = ctx->threshold;
+    pred.f64 = 0.0;
+    pred.str = nullptr;
+    ExecNode *filter = exec_create_filter(&pred);
+    if (!filter) { exec_destroy(scan); return nullptr; }
+    filter->left = scan;
+    return filter;
 }
 
 static double run_parallel(int dop, int64_t *sum_out) {
