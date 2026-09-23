@@ -11,6 +11,7 @@
 #include "db/vectorized/vectorized.h"
 #include "db/optimizer/optimizer.h"
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 
 typedef struct {
@@ -21,7 +22,7 @@ typedef struct {
     int build_key_col, probe_key_col;
     vecx_hashjoin_t *hj;          /* open 建表；build 完成后只读 */
     px_queue_t *queue;
-    volatile int cancel;
+    _Atomic int cancel;       /* 协作式取消标志（release 写 / acquire 读） */
     int opened;
     /* per-节点完成计数：close 只等自己的 worker，不等全局调度器，
      * 避免嵌套/共存并行算子场景下 wait_idle 自死锁（Exchange 复审 I-2） */
@@ -54,13 +55,13 @@ static void hj_probe_worker(void *varg, volatile int *cancel_flag) {
     /* 提交时传 NULL 取消标志（px_scheduler 对 NULL 不做排队跳过，复审 C-1），
      * 参数恒为 NULL，禁止解引用；取消一律从 HashJoinPxState 读取 */
     (void)cancel_flag;
-    volatile int *cancel = &arg->st->cancel;
+    const _Atomic int *cancel = &arg->st->cancel;
     ExecNode *sub = arg->probe_sub;   /* open 内同步创建，归本 worker 所有 */
 
     /* 快速路径：拾取时已取消，跳过 open/循环；子树从未 open，
      * 只 exec_destroy（不可对未 open 的子树调 close），仍须
      * producer_done 一次以维持 EOF 计数不变式 */
-    if (*cancel) {
+    if (atomic_load_explicit(cancel, memory_order_acquire)) {
         exec_destroy(sub);
         px_queue_producer_done(arg->queue);
         hj_worker_done(arg);
@@ -78,7 +79,8 @@ static void hj_probe_worker(void *varg, volatile int *cancel_flag) {
     }
 
     VectorBlock *pb;
-    while (!*cancel && (pb = sub->next(sub)) != NULL) {
+    while (!atomic_load_explicit(cancel, memory_order_acquire) &&
+           (pb = sub->next(sub)) != NULL) {
         VectorBlock *out = NULL;
         int n = vecx_hashjoin_probe(arg->hj, pb, &out);   /* 只读共享 hj */
         vector_block_destroy(pb);
@@ -111,7 +113,7 @@ static void hjpx_wait_workers(HashJoinPxState *st) {
 static int hjpx_open(ExecNode *node) {
     HashJoinPxState *st = (HashJoinPxState *)node->state;
     if (!st || !st->build_child || !st->make_probe) return -1;
-    st->cancel = 0;
+    atomic_store_explicit(&st->cancel, 0, memory_order_release);
 
     st->hj = vecx_hashjoin_create(st->build_key_col, st->probe_key_col);
     if (!st->hj) return -1;
@@ -172,7 +174,7 @@ static int hjpx_open(ExecNode *node) {
 submit_fail:
     /* 已提交的 worker 会看到 abort、自清理并递减计数；
      * 等计数归零后销毁 queue，避免泄漏 queue 与缓冲块（Exchange 复审 I-1） */
-    st->cancel = 1;
+    atomic_store_explicit(&st->cancel, 1, memory_order_release);
     px_queue_abort(st->queue);
     hjpx_wait_workers(st);
     px_queue_destroy(st->queue);
@@ -192,7 +194,7 @@ static void hjpx_close(ExecNode *node) {
     HashJoinPxState *st = (HashJoinPxState *)node->state;
     if (!st) return;
     if (st->opened) {
-        st->cancel = 1;                        /* 协作式取消 */
+        atomic_store_explicit(&st->cancel, 1, memory_order_release); /* 协作式取消 */
         px_queue_abort(st->queue);             /* 唤醒阻塞的 push/pop */
         hjpx_wait_workers(st);                 /* 只等本节点的 worker */
         px_queue_destroy(st->queue);           /* 残余块在此释放 */

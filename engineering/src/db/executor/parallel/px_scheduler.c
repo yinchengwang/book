@@ -54,7 +54,7 @@ static void *px_worker_main(void *arg) {
         s->count--;
         pthread_mutex_unlock(&s->mu);
 
-        if (!t.cancel_flag || !*t.cancel_flag) {
+        if (!t.cancel_flag || !__atomic_load_n(t.cancel_flag, __ATOMIC_ACQUIRE)) {
             t.fn(t.arg, t.cancel_flag);
         }
 

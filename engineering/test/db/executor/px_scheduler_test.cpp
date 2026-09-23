@@ -11,11 +11,11 @@ struct Ctx { std::atomic<int> *counter; int sleep_ms; };
 
 static void bump_task(void *arg, volatile int *cancel_flag) {
     Ctx *c = (Ctx *)arg;
-    if (cancel_flag && *cancel_flag) return;
+    if (cancel_flag && __atomic_load_n(cancel_flag, __ATOMIC_ACQUIRE)) return;
     if (c->sleep_ms > 0) {
         /* 模拟分块工作：每 10ms 检查一次取消 */
         for (int i = 0; i < c->sleep_ms / 10; i++) {
-            if (cancel_flag && *cancel_flag) return;
+            if (cancel_flag && __atomic_load_n(cancel_flag, __ATOMIC_ACQUIRE)) return;
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     }
@@ -51,7 +51,7 @@ TEST(PxScheduler, CooperativeCancelStopsLongTask) {
     volatile int cancel = 0;
     ASSERT_EQ(px_scheduler_submit(s, bump_task, &ctx, &cancel), 0);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    cancel = 1;
+    __atomic_store_n(&cancel, 1, __ATOMIC_RELEASE);
     auto t0 = std::chrono::steady_clock::now();
     px_scheduler_wait_idle(s);
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(

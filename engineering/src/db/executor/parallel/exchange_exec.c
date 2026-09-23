@@ -5,6 +5,7 @@
 #include "db/executor/px_scheduler.h"
 #include "db/optimizer/optimizer.h"
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 
 typedef struct {
@@ -13,7 +14,7 @@ typedef struct {
     void (*ctx_destroy)(void *);  /* close 末尾调用一次释放 ctx（可为 NULL） */
     int dop;
     px_queue_t *queue;        /* open 时创建 */
-    volatile int cancel;      /* 协作式取消标志 */
+    _Atomic int cancel;       /* 协作式取消标志（release 写 / acquire 读） */
     int opened;
     ExecNode *single;         /* 直传模式（dop<=1） */
     /* per-Exchange 完成计数：close 只等自己的 worker，不等全局调度器，
@@ -47,13 +48,13 @@ static void px_exchange_worker(void *varg, volatile int *cancel_flag) {
     /* 提交时传 NULL 取消标志（px_scheduler 对 NULL 不做排队跳过，复审 C-1），
      * 参数恒为 NULL，禁止解引用；取消一律从 ExchangeState 读取 */
     (void)cancel_flag;
-    volatile int *cancel = &arg->st->cancel;
+    const _Atomic int *cancel = &arg->st->cancel;
     ExecNode *sub = arg->sub;   /* open 内同步创建，归本 worker 所有 */
 
     /* 快速路径：拾取时已取消，跳过 open/循环；子树从未 open，
      * 只 exec_destroy（不可对未 open 的子树调 close），仍须
      * producer_done 一次以维持 EOF 计数不变式 */
-    if (*cancel) {
+    if (atomic_load_explicit(cancel, memory_order_acquire)) {
         exec_destroy(sub);
         px_queue_producer_done(arg->queue);
         px_worker_done(arg);
@@ -70,7 +71,8 @@ static void px_exchange_worker(void *varg, volatile int *cancel_flag) {
     }
 
     VectorBlock *b;
-    while (!*cancel && (b = sub->next(sub)) != NULL) {
+    while (!atomic_load_explicit(cancel, memory_order_acquire) &&
+           (b = sub->next(sub)) != NULL) {
         if (px_queue_push(arg->queue, b) != 0) {
             vector_block_destroy(b);   /* abort：push 失败所有权未移交 */
             break;
@@ -94,7 +96,7 @@ static void exchange_wait_workers(ExchangeState *st) {
 static int exchange_open(ExecNode *node) {
     ExchangeState *st = (ExchangeState *)node->state;
     if (!st || !st->make_subtree) return -1;
-    st->cancel = 0;
+    atomic_store_explicit(&st->cancel, 0, memory_order_release);
 
     if (st->dop <= 1) {           /* 直传：不开线程 */
         st->single = st->make_subtree(st->ctx);
@@ -142,7 +144,7 @@ static int exchange_open(ExecNode *node) {
 submit_fail:
     /* 已提交的 worker 会看到 abort、自清理并递减计数；
      * 等计数归零后销毁 queue，避免泄漏 queue 与缓冲块（审查 I-1） */
-    st->cancel = 1;
+    atomic_store_explicit(&st->cancel, 1, memory_order_release);
     px_queue_abort(st->queue);
     exchange_wait_workers(st);
     px_queue_destroy(st->queue);
@@ -172,7 +174,7 @@ static void exchange_close(ExecNode *node) {
             exec_destroy(st->single);
             st->single = NULL;
         } else {
-            st->cancel = 1;                        /* 协作式取消 */
+            atomic_store_explicit(&st->cancel, 1, memory_order_release); /* 协作式取消 */
             px_queue_abort(st->queue);             /* 唤醒阻塞的 push/pop */
             exchange_wait_workers(st);             /* 只等本 Exchange 的 worker */
             px_queue_destroy(st->queue);           /* 残余块在此释放 */
