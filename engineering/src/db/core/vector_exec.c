@@ -6,6 +6,7 @@
 #include "db/core/vector_exec.h"
 #include <db/sql/sql_executor.h>  /* 需要完整类型定义 */
 #include "log.h"
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -891,17 +892,19 @@ static SimdExtension vexec_apply_env_downgrade(SimdExtension hw) {
     return (want < hw) ? want : hw;  /* 只降不升 */
 }
 
+/* 缓存首次解析结果：分派函数每次调用都会问一遍，CPUID + getenv 不宜重复做。
+   pthread_once 保证多线程首次并发进入时只初始化一次（TSan 惰性初始化竞态修复，
+   模式同 px_wire.c 的 CRC 表初始化）。 */
+static pthread_once_t simd_detect_once = PTHREAD_ONCE_INIT;
+static int simd_detect_cached;
+
+static void simd_detect_init(void) {
+    simd_detect_cached = (int)vexec_apply_env_downgrade(vexec_detect_hw());
+}
+
 SimdExtension simd_detect_extension(void) {
-    /* 缓存首次解析结果：分派函数每次调用都会问一遍，CPUID + getenv 不宜重复做。
-       多线程首次并发进入时会各算一遍再写同一个值，结果相同，属良性竞争。
-       -1 表示尚未初始化（SimdExtension 的合法值都 >= 0）。 */
-    static int cached = -1;
-    int c = cached;
-    if (c < 0) {
-        c = (int)vexec_apply_env_downgrade(vexec_detect_hw());
-        cached = c;
-    }
-    return (SimdExtension)c;
+    pthread_once(&simd_detect_once, simd_detect_init);
+    return (SimdExtension)simd_detect_cached;
 }
 
 SimdExtension simd_get_best_extension(void) {
