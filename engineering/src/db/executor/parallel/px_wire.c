@@ -9,6 +9,7 @@
  */
 #include "db/executor/px_wire.h"
 #include "db/core/columnar_store.h"
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -16,21 +17,23 @@
 #define PXW_VERSION 1u
 
 /* ---- 私有 CRC32（与 rpc.h 同多项式，避免反向依赖 db_distributed） ---- */
-static uint32_t pxw_crc32(const uint8_t *data, size_t size) {
-    static uint32_t table[256];
-    static int table_init = 0;
-    if (!table_init) {
-        for (uint32_t i = 0; i < 256; i++) {
-            uint32_t c = i;
-            for (int k = 0; k < 8; k++)
-                c = (c & 1) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
-            table[i] = c;
-        }
-        table_init = 1;
+static uint32_t pxw_crc_table[256];
+static pthread_once_t pxw_crc_once = PTHREAD_ONCE_INIT;
+
+static void pxw_crc_table_init(void) {
+    for (uint32_t i = 0; i < 256; i++) {
+        uint32_t c = i;
+        for (int k = 0; k < 8; k++)
+            c = (c & 1) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
+        pxw_crc_table[i] = c;
     }
+}
+
+static uint32_t pxw_crc32(const uint8_t *data, size_t size) {
+    pthread_once(&pxw_crc_once, pxw_crc_table_init);
     uint32_t crc = 0xFFFFFFFFu;
     for (size_t i = 0; i < size; i++)
-        crc = table[(crc ^ data[i]) & 0xFF] ^ (crc >> 8);
+        crc = pxw_crc_table[(crc ^ data[i]) & 0xFF] ^ (crc >> 8);
     return crc ^ 0xFFFFFFFFu;
 }
 
@@ -146,8 +149,9 @@ static int rget_u8 (rcur_t *r, uint8_t *v)  { return rget(r, v, 1); }
 
 VectorBlock *px_wire_deserialize(const uint8_t *buf, uint32_t size,
                                  uint32_t *seq_out, uint32_t *flags_out) {
-    if (!buf || size < 4 + 4 || !seq_out || !flags_out) return NULL;
+    if (!buf || !seq_out || !flags_out) return NULL;
     *flags_out = PXW_DESER_CRC_FAIL;
+    if (size < 4 + 4) return NULL;   /* 帧长不足以含头+CRC，按解析失败处理 */
 
     /* CRC 校验（尾部 4 字节） */
     uint32_t stored_crc;

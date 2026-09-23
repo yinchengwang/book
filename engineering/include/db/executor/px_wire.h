@@ -8,6 +8,8 @@
  * 字符串列（COLUMN_STRING，char**）：u32 串数 + 每串 u32 len + 原始字节。
  * 纯标记帧（b==NULL）：只含头+CRC，用于 LAST/ERR。
  * 错误帧（flags&PXW_FLAG_ERR）：err_msg 以 u32 len + bytes 附于头后。
+ * 反序列化返回的 VectorBlock 其 STRING 列串载荷为堆分配；
+ * vector_block_destroy 不释放串载荷，接收方销毁前须自行逐串 free。
  */
 #ifndef DB_EXECUTOR_PX_WIRE_H
 #define DB_EXECUTOR_PX_WIRE_H
