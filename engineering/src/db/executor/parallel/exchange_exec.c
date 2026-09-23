@@ -60,7 +60,9 @@ static void px_exchange_worker(void *varg, volatile int *cancel_flag) {
         return;
     }
 
-    if (sub->open(sub) != 0) {
+    /* 必须用 exec_open（框架递归 children-first）而非裸 vtable：
+     * 组合子树（filter→scan 等）的子节点只在 exec_open 时初始化 */
+    if (exec_open(sub) != 0) {
         px_queue_abort(arg->queue);
         exec_destroy(sub);
         px_worker_done(arg);
@@ -75,7 +77,7 @@ static void px_exchange_worker(void *varg, volatile int *cancel_flag) {
         }
     }
 
-    sub->close(sub);
+    exec_close(sub);   /* 与 exec_open 配对：框架递归关闭整棵子树 */
     exec_destroy(sub);
     px_queue_producer_done(arg->queue);
     px_worker_done(arg);
@@ -98,7 +100,7 @@ static int exchange_open(ExecNode *node) {
         st->single = st->make_subtree(st->ctx);
         if (!st->single) return -1;
         st->opened = 1;
-        return st->single->open(st->single);
+        return exec_open(st->single);   /* 框架递归打开组合子树 */
     }
 
     st->queue = px_queue_create(64, st->dop);
@@ -151,7 +153,7 @@ submit_fail:
 static VectorBlock *exchange_next(ExecNode *node) {
     ExchangeState *st = (ExchangeState *)node->state;
     if (!st || !st->opened) return NULL;
-    if (st->dop <= 1) return st->single->next(st->single);
+    if (st->dop <= 1) return exec_next(st->single);
     return px_queue_pop(st->queue);   /* NULL=EOF 或 abort */
 }
 
@@ -166,7 +168,7 @@ static void exchange_close(ExecNode *node) {
 
     if (st->opened) {
         if (st->dop <= 1) {
-            st->single->close(st->single);
+            exec_close(st->single);    /* 与 exec_open 配对 */
             exec_destroy(st->single);
             st->single = NULL;
         } else {

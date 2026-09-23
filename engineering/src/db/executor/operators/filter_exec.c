@@ -20,19 +20,24 @@ VectorBlock *filter_next(ExecNode *node) {
     FilterState *state = (FilterState *)node->state;
     if (!state || state->exhausted) return NULL;
 
-    // 从子节点获取数据并过滤
-    VectorBlock *input = exec_next(node->left);
-    if (!input) {
-        state->exhausted = 1;
-        return NULL;
+    /* 循环拉取：vecx_filter_block gather 出新块、不消费输入块，
+     * 零匹配时 *out=NULL 仅表示"本块全被过滤"而非 EOF，
+     * 必须销毁输入块后继续拉下一块，否则查询在首个全过滤块处截断 */
+    for (;;) {
+        VectorBlock *input = exec_next(node->left);
+        if (!input) {
+            state->exhausted = 1;
+            return NULL;
+        }
+
+        VectorBlock *output = NULL;
+        int n = vecx_filter_block(input, state->pred.col, state->pred.op,
+                                  &state->pred.i64, &output);
+        vector_block_destroy(input);   /* 输入块所有权在 vecx_filter_block 之后归本函数 */
+        if (n < 0) return NULL;        /* 错误：视为 EOF（exhausted 留给上层/reset） */
+        if (output) return output;     /* n>0：有匹配 */
+        /* n==0：本块零匹配，继续拉下一块 */
     }
-
-    VectorBlock *output = NULL;
-    int n = vecx_filter_block(input, state->pred.col, state->pred.op,
-                              &state->pred.i64, &output);
-    (void)n;  // 未使用
-
-    return output;
 }
 
 void filter_reset(ExecNode *node) {

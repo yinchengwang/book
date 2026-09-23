@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <cstring>
 #include <mutex>
 #include <set>
 #include <vector>
@@ -140,4 +141,82 @@ TEST_F(ExchangeExecTest, NestedExchangeClosesWithoutDeadlock) {
     outer->close(outer);                  /* 旧实现在此自死锁 */
     exec_destroy(outer);
     EXPECT_EQ(total, 2 * 2 * kRows);
+}
+
+/* gap04 三缺陷回归（D1 空块误报 EOF / D2 输入块泄漏 / D3 worker 裸 vtable）：
+ * 子树是组合算子 filter(GT threshold) → seqscan，每 worker 扫一段从 0 开始的
+ * 升序区间，threshold=500、batch=100 使前 5 个块全部零匹配：
+ * - 修复前 D3：子树 scan 从未 open（seqscan source=NULL），worker 零行产出；
+ * - 修复前 D1：即便 scan 已 open，首个全过滤块的 NULL 输出被误读为 EOF，
+ *   查询在第 0 块处截断，同样零行；
+ * - D2：输入块泄漏随本测试在重复运行下被覆盖（不崩溃/不截断即通过）。
+ * 断言并行收集的多重集与串行期望值完全一致（并行/单机结果一致）。 */
+struct FilterScanCtx {
+    int rows_per_worker;   /* 每 worker 都扫 [0, rows_per_worker) 升序区间 */
+    int batch;
+    int64_t threshold;
+};
+
+static ExecNode *make_filter_scan(void *vctx) {
+    FilterScanCtx *ctx = (FilterScanCtx *)vctx;
+    std::lock_guard<std::mutex> lk(test_mutex());
+
+    int n = ctx->rows_per_worker;
+    int32_t *col = (int32_t *)malloc(sizeof(int32_t) * n);
+    for (int i = 0; i < n; i++) col[i] = i;   /* 每 worker 区间从 0 开始：前若干块全被过滤 */
+    /* 与 make_scan 同理：seqscan 只保存指针，堆分配并集中回收 */
+    int *col_types = (int *)malloc(sizeof(int));
+    col_types[0] = COLUMN_INT32;
+    void **col_data = (void **)malloc(sizeof(void *));
+    col_data[0] = col;
+    int *elem = (int *)malloc(sizeof(int));
+    elem[0] = (int)sizeof(int32_t);
+    test_buffers().push_back(col);
+    test_buffers().push_back(col_types);
+    test_buffers().push_back(col_data);
+    test_buffers().push_back(elem);
+
+    ExecNode *scan = exec_create_seqscan(0, 1, col_types, col_data, elem,
+                                         n, ctx->batch);
+    if (!scan) return nullptr;
+
+    vecx_pred_t pred;
+    memset(&pred, 0, sizeof(pred));
+    pred.col = 0;
+    pred.op = CMP_GT;
+    pred.i64 = ctx->threshold;
+    ExecNode *filter = exec_create_filter(&pred);
+    if (!filter) {
+        exec_destroy(scan);
+        return nullptr;
+    }
+    filter->left = scan;   /* 组合子树：filter 为根，scan 为子节点 */
+    return filter;
+}
+
+TEST_F(ExchangeExecTest, ExchangeWrappedFilterChainMatchesSerial) {
+    const int kDop = 2, kRows = 1000, kBatch = 100;
+    const int64_t kThreshold = 500;
+    FilterScanCtx ctx{kRows, kBatch, kThreshold};
+
+    ExecNode *ex = exec_create_exchange(make_filter_scan, &ctx, kDop);
+    ASSERT_NE(ex, nullptr);
+    ASSERT_EQ(ex->open(ex), 0);
+
+    std::multiset<int> got;
+    VectorBlock *b;
+    while ((b = ex->next(ex)) != nullptr) {
+        int32_t *col = (int32_t *)b->columns[0];
+        for (int i = 0; i < b->num_rows; i++) got.insert(col[i]);
+        vector_block_destroy(b);
+    }
+    ex->close(ex);
+    exec_destroy(ex);
+
+    /* 串行期望：每 worker 产出 (threshold, kRows) 全部值 */
+    std::multiset<int> expected;
+    for (int w = 0; w < kDop; w++)
+        for (int v = (int)kThreshold + 1; v < kRows; v++)
+            expected.insert(v);
+    EXPECT_EQ(got, expected);
 }

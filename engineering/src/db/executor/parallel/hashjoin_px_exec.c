@@ -67,7 +67,9 @@ static void hj_probe_worker(void *varg, volatile int *cancel_flag) {
         return;
     }
 
-    if (sub->open(sub) != 0) {
+    /* 必须用 exec_open（框架递归 children-first）而非裸 vtable：
+     * 组合子树（filter→scan 等）的子节点只在 exec_open 时初始化 */
+    if (exec_open(sub) != 0) {
         /* abort 唤醒消费者；此路径不再 producer_done */
         px_queue_abort(arg->queue);
         exec_destroy(sub);
@@ -92,7 +94,7 @@ static void hj_probe_worker(void *varg, volatile int *cancel_flag) {
         }
     }
 
-    sub->close(sub);
+    exec_close(sub);   /* 与 exec_open 配对：框架递归关闭整棵子树 */
     exec_destroy(sub);
     px_queue_producer_done(arg->queue);
     hj_worker_done(arg);
@@ -114,16 +116,18 @@ static int hjpx_open(ExecNode *node) {
     st->hj = vecx_hashjoin_create(st->build_key_col, st->probe_key_col);
     if (!st->hj) return -1;
 
-    /* 第一阶段：串行排干 build 侧建表 */
+    /* 第一阶段：串行排干 build 侧建表；
+     * 与 worker 同理必须用 exec_open/exec_close（框架递归），
+     * 否则组合 build 子树（filter→scan 等）的子节点从未初始化 */
     ExecNode *bc = st->build_child;
-    if (bc->open(bc) != 0) return -1;
+    if (exec_open(bc) != 0) return -1;
     VectorBlock *bb;
-    while ((bb = bc->next(bc)) != NULL) {
+    while ((bb = exec_next(bc)) != NULL) {
         int rc = vecx_hashjoin_add_build(st->hj, bb);
         vector_block_destroy(bb);
-        if (rc != 0) { bc->close(bc); return -1; }
+        if (rc != 0) { exec_close(bc); return -1; }
     }
-    bc->close(bc);
+    exec_close(bc);
     exec_destroy(bc);
     st->build_child = NULL;
     /* 此后 st->hj 只读 */
