@@ -143,6 +143,15 @@ void rpc_stream_close(rpc_stream_t *s) {
     free(s);
 }
 
+/* A6：不发 END 直接断连（模拟节点崩溃）。对端 rpcs_serve_conn 检测
+ * 到无 END 退出后合成 RPCS_FRAME_ABORT 伪帧通知 cb（见 A5）。 */
+void rpc_stream_abort(rpc_stream_t *s) {
+    if (!s) return;
+    rpcs_close_fd(s->fd);
+    pthread_mutex_destroy(&s->send_mu);
+    free(s);
+}
+
 /* ---- 接收方 ---- */
 
 struct rpcs_listener {
@@ -164,6 +173,7 @@ static int recv_all(rpcs_fd_t fd, uint8_t *buf, size_t n) {
 }
 
 static void rpcs_serve_conn(rpcs_fd_t cfd, rpcs_frame_cb cb, void *ctx) {
+    int saw_end = 0;   /* A5：区分正常 END 收尾与对端异常断开 */
     for (;;) {
         uint8_t hdr[9];
         if (recv_all(cfd, hdr, 9) != 0) break;
@@ -184,8 +194,11 @@ static void rpcs_serve_conn(rpcs_fd_t cfd, rpcs_frame_cb cb, void *ctx) {
 
         cb(hdr[4], payload, size, ctx);
         free(payload);
-        if (hdr[4] == RPCS_FRAME_END) break;
+        if (hdr[4] == RPCS_FRAME_END) { saw_end = 1; break; }
     }
+    /* A5：对端未发 END 就断开（崩溃/rpc_stream_abort）时合成 ABORT 伪帧，
+     * 否则接收方队列永远等不到 producer_done/abort，next() 永久阻塞 */
+    if (!saw_end) cb(RPCS_FRAME_ABORT, NULL, 0, ctx);
     rpcs_close_fd(cfd);
 }
 

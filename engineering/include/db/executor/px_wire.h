@@ -9,7 +9,8 @@
  * 纯标记帧（b==NULL）：只含头+CRC，用于 LAST/ERR。
  * 错误帧（flags&PXW_FLAG_ERR）：err_msg 以 u32 len + bytes 附于头后。
  * 反序列化返回的 VectorBlock 其 STRING 列串载荷为堆分配；
- * vector_block_destroy 不释放串载荷，接收方销毁前须自行逐串 free。
+ * vector_block_destroy 不释放串载荷，接收方销毁前须自行逐串 free，
+ * 或直接用本头文件的 px_wire_block_destroy（深销毁）替代。
  */
 #ifndef DB_EXECUTOR_PX_WIRE_H
 #define DB_EXECUTOR_PX_WIRE_H
@@ -29,6 +30,11 @@ int px_wire_serialize(const VectorBlock *b, uint32_t seq, uint32_t flags,
                       const char *err_msg, uint8_t **out, uint32_t *out_size);
 VectorBlock *px_wire_deserialize(const uint8_t *buf, uint32_t size,
                                  uint32_t *seq_out, uint32_t *flags_out);
+
+/* 深销毁：先逐串释放各 STRING 列的堆分配串载荷，再 vector_block_destroy。
+ * 只对 px_wire_deserialize 产出的块（或同所有权语义的块）使用；
+ * 发送方自有子树产出的块仍用 vector_block_destroy。 */
+void px_wire_block_destroy(VectorBlock *b);
 
 #ifdef __cplusplus
 }

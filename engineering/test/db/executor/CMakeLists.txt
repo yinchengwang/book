@@ -89,6 +89,18 @@ target_include_directories(rpc_stream_test PRIVATE
 )
 gtest_discover_tests(rpc_stream_test)
 
+# A7：exchange_net_test 链接 db_rpc（Task 9）与 ws2_32（Windows），镜像 rpc_stream_test
+add_executable(exchange_net_test exchange_net_test.cpp)
+target_link_libraries(exchange_net_test PRIVATE db_executor db_vectorized db_rpc gtest gtest_main)
+target_include_directories(exchange_net_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/engineering/include
+)
+if(WIN32)
+    target_link_libraries(exchange_net_test PRIVATE ws2_32)
+endif()
+gtest_discover_tests(exchange_net_test)
+
 add_executable(px_benchmark_test px_benchmark_test.cpp)
 target_link_libraries(px_benchmark_test PRIVATE db_executor db_vectorized gtest gtest_main)
 target_include_directories(px_benchmark_test PRIVATE

@@ -16,6 +16,8 @@
 #define DB_EXECUTOR_EXEC_EXCHANGE_H
 
 #include "exec_node.h"
+#include <pthread.h>   /* rpc.h 的公开结构体内嵌 pthread_mutex_t/pthread_t，需先引入 */
+#include "db/distributed/rpc.h"   /* rpc_node_address_t（网络模式） */
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,6 +31,16 @@ ExecNode *exec_create_exchange(px_subtree_fn make_subtree, void *ctx, int dop);
  * （工厂在 open 内同步调用，ctx 无需活到 worker 运行期） */
 ExecNode *exec_create_exchange_ex(px_subtree_fn make_subtree, void *ctx, int dop,
                                   void (*ctx_destroy)(void *));
+
+/* 网络模式（Task 10） */
+
+/* sender：把子树产出序列化后经 rpc_stream 发向 addr；LAST 帧收尾。
+ * 对上层呈现为"无产出的 scan"（next 恒 NULL），驱动在 open/next 中发送。 */
+ExecNode *exec_create_exchange_sender(px_subtree_fn make_subtree, void *ctx,
+                                      const rpc_node_address_t *addr);
+/* receiver：绑定 bind_addr 收流，解包后投入内部队列；next() 拉块。
+ * LAST 帧=EOF；ERR 帧=is_aborted 置位。 */
+ExecNode *exec_create_exchange_receiver(const rpc_node_address_t *bind_addr);
 
 #ifdef __cplusplus
 }

@@ -239,3 +239,17 @@ fail:
     *flags_out = PXW_DESER_CRC_FAIL;
     return NULL;
 }
+
+/* A1（task-8 复审 I-2）：vector_block_destroy 只 free 列数组本体，
+ * 不 free STRING 列内逐行堆分配的串载荷；本深销毁先逐串 free，
+ * 串数组本体仍交给 vector_block_destroy 统一释放。 */
+void px_wire_block_destroy(VectorBlock *b) {
+    if (!b) return;
+    for (int32_t c = 0; c < b->num_columns; c++) {
+        if (vector_block_get_column_type(b, c) == COLUMN_STRING && b->columns[c]) {
+            char **strs = (char **)b->columns[c];
+            for (int i = 0; i < b->num_rows; i++) free(strs[i]);
+        }
+    }
+    vector_block_destroy(b);
+}

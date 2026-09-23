@@ -17,8 +17,11 @@
 extern "C" {
 #endif
 
-#define RPCS_FRAME_DATA 0x05u
-#define RPCS_FRAME_END  0x06u
+#define RPCS_FRAME_DATA  0x05u
+#define RPCS_FRAME_END   0x06u
+/* 对端异常断开（未发 END）时由监听线程合成投递的伪帧（A5）：
+ * 线上不会出现该类型，仅供 cb 区分"正常 END"与"崩溃/掉线" */
+#define RPCS_FRAME_ABORT 0x07u
 
 typedef struct rpc_stream rpc_stream_t;
 typedef struct rpcs_listener rpcs_listener_t;
@@ -30,6 +33,9 @@ rpc_stream_t    *rpc_stream_connect(const rpc_node_address_t *addr);
 int              rpc_stream_send(rpc_stream_t *s, uint8_t frame_type,
                                  const void *data, uint32_t size);
 void             rpc_stream_close(rpc_stream_t *s);
+/* 立即关 fd，不发 END 帧（模拟节点崩溃；对端监听线程将收到
+ * RPCS_FRAME_ABORT 伪帧） */
+void             rpc_stream_abort(rpc_stream_t *s);
 
 rpcs_listener_t *rpcs_listen(const rpc_node_address_t *bind_addr,
                              rpcs_frame_cb cb, void *ctx);
