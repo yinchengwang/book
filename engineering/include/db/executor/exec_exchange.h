@@ -7,8 +7,9 @@
  * 产出块推入 px_queue；next() 从队列拉块。
  *
  * 取消：close/destroy 时置 cancel_flag → px_queue_abort →
- * wait_idle 等 worker 退出；悬挂 worker 必被回收。
- * worker 子树由 worker 负责 open/next/close/exec_destroy。
+ * per-Exchange 完成计数（workers_outstanding + done_cond）等本 Exchange
+ * 自己的 worker 退出，不等全局调度器——嵌套/共存 Exchange 不会自死锁；
+ * 悬挂 worker 必被回收。worker 子树由 worker 负责 open/next/close/exec_destroy。
  */
 #ifndef DB_EXECUTOR_EXEC_EXCHANGE_H
 #define DB_EXECUTOR_EXEC_EXCHANGE_H

@@ -115,3 +115,29 @@ TEST_F(ExchangeExecTest, CloseWithoutFullDrainReclaimsWorkers) {
     exec_destroy(ex);
     SUCCEED();
 }
+
+/* 嵌套 Exchange 回归（审查 I-2）：外层 worker 的子树是内层 Exchange，
+ * 内层 close 若等全局调度器 wait_idle 会自等自死锁；
+ * per-Exchange 完成计数下必须正常完成。 */
+static ExecNode *make_inner_exchange(void *vctx) {
+    /* 内层 Exchange dop=2，叶子复用 make_scan（同一 ScanCtx，mutex 分配区间） */
+    return exec_create_exchange(make_scan, vctx, 2);
+}
+
+TEST_F(ExchangeExecTest, NestedExchangeClosesWithoutDeadlock) {
+    const int kRows = 50;
+    ScanCtx ctx{kRows, 64, 0};
+    ExecNode *outer = exec_create_exchange(make_inner_exchange, &ctx, 2);
+    ASSERT_NE(outer, nullptr);
+    ASSERT_EQ(outer->open(outer), 0);
+
+    int total = 0;
+    VectorBlock *b;
+    while ((b = outer->next(outer)) != nullptr) {
+        total += b->num_rows;
+        vector_block_destroy(b);
+    }
+    outer->close(outer);                  /* 旧实现在此自死锁 */
+    exec_destroy(outer);
+    EXPECT_EQ(total, 2 * 2 * kRows);
+}
