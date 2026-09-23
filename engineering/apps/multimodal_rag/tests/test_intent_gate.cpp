@@ -55,3 +55,14 @@ TEST(IntentGate, StatsAccumulate) {
     EXPECT_EQ(s.out_of_scope, 1u);
     EXPECT_EQ(s.proceed, 1u);
 }
+
+TEST(IntentGate, PartialChatRepliesDoesNotThrow) {
+    IntentGateConfig cfg;
+    cfg.chat_replies = {{"thanks", "自定义感谢"}};  // 缺 greeting/goodbye/capability
+    IntentGate gate(cfg, nullptr);
+    auto d = gate.route("你好");
+    EXPECT_EQ(d.action, RouteAction::CHAT_REPLY);
+    EXPECT_FALSE(d.reply.empty());               // 默认 greeting 被补齐
+    auto d2 = gate.route("谢谢你");
+    EXPECT_EQ(d2.reply, "自定义感谢");            // 用户覆盖生效
+}

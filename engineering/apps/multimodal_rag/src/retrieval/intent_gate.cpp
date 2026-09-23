@@ -16,13 +16,17 @@ IntentGate::IntentGate(const IntentGateConfig& config,
 }
 
 void IntentGate::init_defaults() {
-    if (config_.chat_replies.empty()) {
-        config_.chat_replies = {
-            {"greeting",  "你好！我是知识库问答助手，可以问我关于已上传文档的问题。"},
-            {"thanks",    "不客气！有问题随时问我。"},
-            {"goodbye",   "再见！有问题随时回来。"},
-            {"capability","我是知识库问答助手，可以基于你上传的文档回答问题。试试问我文档相关的问题吧。"}
-        };
+    static const std::unordered_map<std::string, std::string> kDefaults = {
+        {"greeting",  "你好！我是知识库问答助手，可以问我关于已上传文档的问题。"},
+        {"thanks",    "不客气！有问题随时问我。"},
+        {"goodbye",   "再见！有问题随时回来。"},
+        {"capability","我是知识库问答助手，可以基于你上传的文档回答问题。试试问我文档相关的问题吧。"}
+    };
+    // 用户部分覆盖时补齐缺失键，保证 pick_chat_reply 的 fallback 永不抛异常（fail-open）
+    for (const auto& [key, value] : kDefaults) {
+        if (config_.chat_replies.find(key) == config_.chat_replies.end()) {
+            config_.chat_replies[key] = value;
+        }
     }
 }
 
@@ -82,7 +86,8 @@ std::string IntentGate::pick_chat_reply(const std::string& query) const {
     const auto& replies = config_.chat_replies;
     auto get = [&](const char* key) -> std::string {
         auto it = replies.find(key);
-        return it != replies.end() ? it->second : replies.at("greeting");
+        return it != replies.end() ? it->second
+                                   : std::string("你好！我是知识库问答助手。");
     };
     if (query.find("谢谢") != std::string::npos ||
         query.find("感谢") != std::string::npos ||
