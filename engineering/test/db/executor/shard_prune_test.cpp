@@ -44,6 +44,17 @@ TEST(ShardPrune, EqualPredicateRoutesSingleShard) {
     shard_router_destroy(r);
 }
 
+TEST(ShardPrune, EqualOutOfDomainYieldsZeroShards) {
+    shard_router_t *r = make_router();
+    vecx_pred_t pred{};
+    pred.op = CMP_EQ;
+    pred.i64 = 99999;                     /* 超出全域 [0,1000)：不得回退 shard 0 */
+    int ids[4];
+    int n = px_shard_prune(r, &pred, ids, 4);
+    EXPECT_EQ(n, 0);
+    shard_router_destroy(r);
+}
+
 TEST(ShardPrune, RangePredicatePrunesUnrelated) {
     shard_router_t *r = make_router();
     vecx_pred_t pred{};

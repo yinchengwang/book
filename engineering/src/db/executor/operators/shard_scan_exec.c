@@ -26,6 +26,14 @@ int px_shard_prune(const shard_router_t *router, const vecx_pred_t *pred,
         case CMP_EQ: {
             int id = shard_route(router, &key, sizeof(key));
             if (id < 0) return 0;
+            /* 域校验：RANGE 路由的 shard_route 对不命中任何区间的键回退
+             * shard 0（sharding.c，gap06 与写路径共享，不可改），直接信任
+             * 会把域外等值键错扫到 shard 0。用 shard_route_range([key,key])
+             * 复判：RANGE 域外 → 0 命中；HASH 对任意键返回全分片（域内，
+             * 放行）。 */
+            int probe[1];
+            if (shard_route_range(router, &key, &key, probe, 1) == 0)
+                return 0;   /* 域外等值键：无候选分片 */
             out_ids[0] = id;
             return 1;
         }
@@ -85,7 +93,10 @@ ExecNode *exec_create_shard_fanout(shard_router_t *router, const vecx_pred_t *pr
     c->nshards = px_shard_prune(router, pred, c->shard_ids, 256);
     if (c->nshards <= 0) { free(c); return NULL; }
 
-    /* dop = 候选分片数；ctx_destroy 释放本闭包（Task 4 的 _ex 语义） */
-    return exec_create_exchange_ex(shard_subtree_fn, c, c->nshards,
-                                   shard_fanout_ctx_destroy);
+    /* dop = 候选分片数；ctx_destroy 释放本闭包（Task 4 的 _ex 语义）。
+     * exchange 创建失败时不会调 ctx_destroy，此处自行回收避免泄漏。 */
+    ExecNode *ex = exec_create_exchange_ex(shard_subtree_fn, c, c->nshards,
+                                           shard_fanout_ctx_destroy);
+    if (!ex) free(c);
+    return ex;
 }

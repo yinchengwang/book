@@ -21,7 +21,10 @@
 extern "C" {
 #endif
 
-/* 纯函数裁剪：按分片键谓词计算候选分片。pred==NULL → 全分片。返回数量。 */
+/* 纯函数裁剪：按分片键谓词计算候选分片。pred==NULL → 全分片。返回数量。
+ * 返回 0 = 无候选分片（含 RANGE 路由下的域外等值键——shard_route 对域外键
+ * 回退 shard 0，此处经 shard_route_range 复判后裁剪为空，调用方不得当成
+ * "扫描 shard 0"）。 */
 int px_shard_prune(const shard_router_t *router, const vecx_pred_t *pred,
                    int *out_ids, int max);
 
