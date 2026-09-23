@@ -56,3 +56,11 @@ target_include_directories(plan_parallel_test PRIVATE
     ${CMAKE_SOURCE_DIR}/engineering/include
 )
 gtest_discover_tests(plan_parallel_test)
+
+add_executable(hashjoin_px_test hashjoin_px_test.cpp)
+target_link_libraries(hashjoin_px_test PRIVATE db_executor db_vectorized gtest gtest_main)
+target_include_directories(hashjoin_px_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/engineering/include
+)
+gtest_discover_tests(hashjoin_px_test)
