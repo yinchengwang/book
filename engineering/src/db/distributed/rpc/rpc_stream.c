@@ -17,6 +17,7 @@
 #include <ws2tcpip.h>
 typedef int socklen_t;
 #define RPCS_INVALID INVALID_SOCKET
+#define SHUT_RDWR SD_BOTH
 typedef SOCKET rpcs_fd_t;
 static int rpcs_close_fd(rpcs_fd_t fd) { return closesocket(fd); }
 #else
@@ -241,6 +242,7 @@ rpcs_listener_t *rpcs_listen(const rpc_node_address_t *bind_addr,
 void rpcs_listener_stop(rpcs_listener_t *l) {
     if (!l) return;
     l->stop = 1;
+    shutdown(l->listen_fd, SHUT_RDWR);  /* 唤醒阻塞的 accept；Windows 监听 socket 上会失败，无害（closesocket 仍可唤醒） */
     rpcs_close_fd(l->listen_fd);           /* 唤醒阻塞的 accept */
     pthread_join(l->thread, NULL);
     free(l);
