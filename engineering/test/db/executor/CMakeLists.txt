@@ -64,3 +64,11 @@ target_include_directories(hashjoin_px_test PRIVATE
     ${CMAKE_SOURCE_DIR}/engineering/include
 )
 gtest_discover_tests(hashjoin_px_test)
+
+add_executable(px_benchmark_test px_benchmark_test.cpp)
+target_link_libraries(px_benchmark_test PRIVATE db_executor db_vectorized gtest gtest_main)
+target_include_directories(px_benchmark_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/engineering/include
+)
+gtest_discover_tests(px_benchmark_test)
