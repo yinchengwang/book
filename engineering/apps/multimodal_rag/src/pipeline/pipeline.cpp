@@ -280,6 +280,7 @@ std::string query_type_to_string(QueryType type) {
         case QueryType::SUMMARY: return "summary";
         case QueryType::CHAT: return "chat";
         case QueryType::MULTI_HOP: return "multi_hop";
+        case QueryType::OUT_OF_SCOPE: return "out_of_scope";
         default: return "unknown";
     }
 }
@@ -291,6 +292,7 @@ QueryType string_to_query_type(const std::string& str) {
     if (str == "summary") return QueryType::SUMMARY;
     if (str == "chat") return QueryType::CHAT;
     if (str == "multi_hop") return QueryType::MULTI_HOP;
+    if (str == "out_of_scope") return QueryType::OUT_OF_SCOPE;
     return QueryType::FACTUAL;
 }
 

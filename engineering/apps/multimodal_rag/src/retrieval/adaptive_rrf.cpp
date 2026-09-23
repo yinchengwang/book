@@ -62,6 +62,13 @@ RRFWeights AdaptiveRRF::get_weights(QueryType query_type) {
             weights.graph_weight = 0.0f;
             break;
 
+        case QueryType::OUT_OF_SCOPE:
+            // 与 FACTUAL 相同：实际不会走到（意图门已短路），防御性定义
+            weights.hnsw_weight = 0.4f;
+            weights.bm25_weight = 0.6f;
+            weights.graph_weight = 0.0f;
+            break;
+
         default:
             // 默认：平衡权重
             weights.hnsw_weight = 0.5f;

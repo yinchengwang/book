@@ -157,3 +157,5 @@ set_target_properties(multimodal_rag_server PROPERTIES
 )
 
 message(STATUS "Added multimodal_rag_server app")
+
+add_subdirectory(tests)

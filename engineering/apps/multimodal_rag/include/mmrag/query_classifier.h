@@ -10,6 +10,7 @@
 #pragma once
 
 #include "mmrag/pipeline.h"
+#include "mmrag/llm_service.h"
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -80,6 +81,9 @@ public:
     ClassifierStats get_stats() const;
 
 protected:
+    friend class LLMQueryClassifier;
+    friend class EnsembleQueryClassifier;
+
     virtual ClassificationResult do_classify(const std::string& query) = 0;
     virtual std::vector<std::string> do_extract_keywords(const std::string& query) = 0;
 
@@ -101,6 +105,8 @@ public:
     ~RuleBasedQueryClassifier() override = default;
 
 protected:
+    friend class LLMQueryClassifier;
+
     ClassificationResult do_classify(const std::string& query) override;
     std::vector<std::string> do_extract_keywords(const std::string& query) override;
 
