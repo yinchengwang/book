@@ -9,6 +9,7 @@
 #include <cctype>
 #include <regex>
 #include <sstream>
+#include <vector>
 
 namespace mmrag {
 
@@ -111,7 +112,7 @@ void RuleBasedQueryClassifier::init_rules() {
         R"(帮我写|写一封|写个|写一篇)",
         R"(讲个笑话|讲个故事|唱首歌)",
         R"(今天天气|明天天气|天气预报|会下雨吗)",
-        R"(陪我聊聊?天|我好无聊|睡不着)",
+        R"(陪我聊(聊)?天|我好无聊|睡不着)",
         R"(股票|股价|彩票|比分)"
     };
 
@@ -144,18 +145,15 @@ ClassificationResult RuleBasedQueryClassifier::match_patterns(const std::string&
     ClassificationResult result;
 
     float best_score = 0.0f;
-    QueryType best_type = QueryType::FACTUAL;
+    std::vector<QueryType> matched_types;
 
     for (const auto& [type, patterns] : patterns_) {
         for (const auto& pattern_str : patterns) {
             try {
                 std::regex pattern(pattern_str, std::regex_constants::icase);
                 if (std::regex_search(query, pattern)) {
-                    float score = 0.8f;
-                    if (score > best_score) {
-                        best_score = score;
-                        best_type = type;
-                    }
+                    best_score = 0.8f;
+                    matched_types.push_back(type);
                     break;
                 }
             } catch (const std::regex_error&) {
@@ -165,6 +163,13 @@ ClassificationResult RuleBasedQueryClassifier::match_patterns(const std::string&
     }
 
     if (best_score > 0.0f) {
+        // 平票时门控类型优先（不依赖 unordered_map 迭代序）：
+        // OUT_OF_SCOPE > CHAT > 其他（取首个匹配）
+        QueryType best_type = matched_types.front();
+        for (QueryType t : matched_types) {
+            if (t == QueryType::OUT_OF_SCOPE) { best_type = t; break; }
+            if (t == QueryType::CHAT) best_type = t;
+        }
         result.type = best_type;
         result.confidence = best_score;
         result.type_scores[query_type_to_string(best_type)] = best_score;

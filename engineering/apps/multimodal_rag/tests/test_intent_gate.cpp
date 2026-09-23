@@ -82,12 +82,13 @@ TEST(IntentGate, RoutingAccuracyTable) {
         {"thanks", RouteAction::CHAT_REPLY},
         {"再见", RouteAction::CHAT_REPLY},
         {"你能做什么", RouteAction::CHAT_REPLY},
-        // 越界 7 条
+        // 越界 8 条
         {"帮我写个工作总结", RouteAction::OUT_OF_SCOPE},
         {"帮我写一封请假邮件", RouteAction::OUT_OF_SCOPE},
         {"讲个笑话吧", RouteAction::OUT_OF_SCOPE},
         {"今天天气怎么样", RouteAction::OUT_OF_SCOPE},
         {"陪我聊聊天", RouteAction::OUT_OF_SCOPE},
+        {"陪我聊天", RouteAction::OUT_OF_SCOPE},
         {"推荐一下明天的股票", RouteAction::OUT_OF_SCOPE},
         {"昨晚比分多少", RouteAction::OUT_OF_SCOPE},
         // 知识库问题 5 条（不得误拦）
