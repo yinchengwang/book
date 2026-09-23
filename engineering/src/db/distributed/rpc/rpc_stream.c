@@ -160,6 +160,12 @@ struct rpcs_listener {
     void *ctx;
     pthread_t thread;
     volatile int stop;
+    /* A8：accept_loop 串行 serve 每条连接，stop 时仅关 listen_fd
+     * 唤不醒阻塞在 serve_conn->recv_all 里的活跃连接 → join 死锁。
+     * 记录当前活跃连接 fd，stop 时 shutdown 它以唤醒 recv_all。
+     * 不 close——cfd 的关闭权归 serve_conn（避免 double-close）。 */
+    rpcs_fd_t active_fd;
+    pthread_mutex_t fd_mu;
 };
 
 static int recv_all(rpcs_fd_t fd, uint8_t *buf, size_t n) {
@@ -207,7 +213,14 @@ static void *rpcs_accept_loop(void *varg) {
     while (!l->stop) {
         rpcs_fd_t cfd = accept(l->listen_fd, NULL, NULL);
         if (cfd == RPCS_INVALID) break;    /* stop 时 listen_fd 被关 */
+        /* A8：登记活跃连接，供 listener_stop shutdown 唤醒 */
+        pthread_mutex_lock(&l->fd_mu);
+        l->active_fd = cfd;
+        pthread_mutex_unlock(&l->fd_mu);
         rpcs_serve_conn(cfd, l->cb, l->ctx);
+        pthread_mutex_lock(&l->fd_mu);
+        l->active_fd = RPCS_INVALID;
+        pthread_mutex_unlock(&l->fd_mu);
     }
     return NULL;
 }
@@ -244,7 +257,14 @@ rpcs_listener_t *rpcs_listen(const rpc_node_address_t *bind_addr,
     l->cb = cb;
     l->ctx = ctx;
     l->stop = 0;
+    l->active_fd = RPCS_INVALID;   /* A8 */
+    if (pthread_mutex_init(&l->fd_mu, NULL) != 0) {
+        rpcs_close_fd(fd);
+        free(l);
+        return NULL;
+    }
     if (pthread_create(&l->thread, NULL, rpcs_accept_loop, l) != 0) {
+        pthread_mutex_destroy(&l->fd_mu);
         rpcs_close_fd(fd);
         free(l);
         return NULL;
@@ -257,6 +277,15 @@ void rpcs_listener_stop(rpcs_listener_t *l) {
     l->stop = 1;
     shutdown(l->listen_fd, SHUT_RDWR);  /* 唤醒阻塞的 accept；Windows 监听 socket 上会失败，无害（closesocket 仍可唤醒） */
     rpcs_close_fd(l->listen_fd);           /* 唤醒阻塞的 accept */
+    /* A8：若 accept_loop 正阻塞在 serve_conn 的 recv_all（连接空闲），
+     * shutdown 活跃连接 fd 让 recv 返回 0，循环 break → 合成 ABORT 帧
+     * → serve_conn 自行 close(cfd) → accept_loop 见 stop 退出。
+     * 只 shutdown 不 close：close 所有权在 serve_conn。 */
+    pthread_mutex_lock(&l->fd_mu);
+    if (l->active_fd != RPCS_INVALID)
+        shutdown(l->active_fd, SHUT_RDWR);
+    pthread_mutex_unlock(&l->fd_mu);
     pthread_join(l->thread, NULL);
+    pthread_mutex_destroy(&l->fd_mu);
     free(l);
 }

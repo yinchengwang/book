@@ -39,6 +39,10 @@ void             rpc_stream_abort(rpc_stream_t *s);
 
 rpcs_listener_t *rpcs_listen(const rpc_node_address_t *bind_addr,
                              rpcs_frame_cb cb, void *ctx);
+/* A8：stop 除关 listen_fd 外，还会 shutdown 当前活跃连接 fd，
+ * 唤醒阻塞在 serve_conn->recv_all 的 accept 线程（连接空闲时
+ * 仅关 listen_fd 唤不醒 → pthread_join 死锁）。cfd 的 close 仍归
+ * serve_conn，stop 只 shutdown 不 close。 */
 void             rpcs_listener_stop(rpcs_listener_t *l);
 
 #ifdef __cplusplus

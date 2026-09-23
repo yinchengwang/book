@@ -101,6 +101,18 @@ if(WIN32)
 endif()
 gtest_discover_tests(exchange_net_test)
 
+# A10：distributed_join_test 镜像 exchange_net_test 的链接（db_rpc + ws2_32）
+add_executable(distributed_join_test distributed_join_test.cpp)
+target_link_libraries(distributed_join_test PRIVATE db_executor db_vectorized db_rpc gtest gtest_main)
+target_include_directories(distributed_join_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/engineering/include
+)
+if(WIN32)
+    target_link_libraries(distributed_join_test PRIVATE ws2_32)
+endif()
+gtest_discover_tests(distributed_join_test)
+
 add_executable(px_benchmark_test px_benchmark_test.cpp)
 target_link_libraries(px_benchmark_test PRIVATE db_executor db_vectorized gtest gtest_main)
 target_include_directories(px_benchmark_test PRIVATE
