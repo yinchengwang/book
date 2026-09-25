@@ -1,78 +1,72 @@
 /**
  * @file pipeline_base.h
- * @brief Modular RAG Pipeline 基类
+ * @brief Modular RAG Pipeline 基类（模板方法：意图门 → do_query → 证据门）
  */
 #pragma once
 
 #include "mmrag/modular/types.h"
 #include "mmrag/modular/config.h"
+#include "mmrag/intent_gate.h"
 #include "mmrag/llm_service.h"
 #include "mmrag/retriever.h"
-#include <string>
 #include <memory>
+#include <mutex>
+#include <string>
 
 namespace mmrag::modular {
 
 /**
  * @brief Modular RAG Pipeline 基类
  *
- * 所有具体 Pipeline 实现都应继承此类
+ * query() 为模板方法：先过意图门（闲聊/越界短路），PROCEED 才调用
+ * 子类的 do_query()。子类在 do_query() 内、调 LLM 前用
+ * has_sufficient_evidence() 做证据门检查。
  */
 class ModularPipeline {
 public:
     virtual ~ModularPipeline() = default;
 
-    /**
-     * @brief 获取 Pipeline 类型
-     */
     virtual PipelineType type() const = 0;
-
-    /**
-     * @brief 获取 Pipeline 名称
-     */
     virtual std::string name() const = 0;
-
-    /**
-     * @brief 初始化 Pipeline
-     * @param config 配置信息
-     * @return 初始化是否成功
-     */
     virtual bool init(const ModularConfig& config) = 0;
 
     /**
-     * @brief 执行查询
-     * @param query 查询信息
-     * @return 查询结果
+     * @brief 执行查询（模板方法：意图门 → do_query）
      */
-    virtual ModularQueryResult query(const ModularQuery& query) = 0;
+    ModularQueryResult query(const ModularQuery& query);
 
-    /**
-     * @brief 检查 Pipeline 是否就绪
-     */
     virtual bool is_ready() const = 0;
 
 protected:
     /**
-     * @brief 从检索结果构建上下文字符串
-     * @param query 查询文本
-     * @param results 检索结果
-     * @return 格式化的上下文字符串
+     * @brief 子类实现：检索 + 生成（原 query() 逻辑）
      */
-    std::string build_context(const std::string& query,
-                              const std::vector<RetrievalResult>& results);
+    virtual ModularQueryResult do_query(const ModularQuery& query) = 0;
 
     /**
-     * @brief 使用 LLM 生成回答
-     * @param prompt 提示词
-     * @param options 生成选项
-     * @return 生成的文本
+     * @brief 证据门：检索结果为空或最高分 < evidence_threshold → false
      */
+    bool has_sufficient_evidence(const std::vector<RetrievalResult>& results) const;
+
+    /**
+     * @brief 构造"知识库未覆盖"结果（routed_by = "evidence_gate"）
+     */
+    ModularQueryResult make_no_evidence_result(const ModularQuery& query) const;
+
+    std::string build_context(const std::string& query,
+                              const std::vector<RetrievalResult>& results);
     std::string generate_with_llm(const std::string& prompt,
                                   const GenerateOptions& options = {});
 
-    std::shared_ptr<LLMService> llm_;           // LLM 服务
-    std::shared_ptr<Retriever> retriever_;      // 检索器
-    ModularConfig config_;                       // 配置信息
+    std::shared_ptr<LLMService> llm_;
+    std::shared_ptr<Retriever> retriever_;
+    ModularConfig config_;
+
+private:
+    void ensure_intent_gate();   // 惰性构造（std::call_once）
+
+    std::once_flag gate_once_flag_;
+    std::unique_ptr<mmrag::IntentGate> intent_gate_;
 };
 
 } // namespace mmrag::modular

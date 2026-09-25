@@ -54,6 +54,7 @@ struct ModularQueryResult {
     int64_t total_time_ms = 0;                       // 总耗时（毫秒）
     int total_tokens = 0;                            // 使用的 token 数
     std::string error_message;                       // 错误信息
+    std::string routed_by;                           // 路由来源: intent_gate_chat | intent_gate_oos | evidence_gate | normal
 };
 
 // ========== 工具函数 ==========

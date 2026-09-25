@@ -155,3 +155,102 @@ TEST(IntentGateConfig, InvalidFloatKeepsDefault) {
     Config cfg = ConfigLoader().load_from_string(yaml);
     EXPECT_FLOAT_EQ(cfg.intent_gate.embedding_threshold, 0.70f);  // 默认值
 }
+
+#include "mmrag/modular/pipeline/pipeline_base.h"
+#include "mmrag/modular/config.h"
+
+using namespace mmrag::modular;
+
+namespace {
+
+// 最小测试管线：记录 do_query 是否被调用
+class TestPipeline : public ModularPipeline {
+public:
+    PipelineType type() const override { return PipelineType::NAIVE; }
+    std::string name() const override { return "TestPipeline"; }
+    bool init(const ModularConfig& config) override { config_ = config; return true; }
+    bool is_ready() const override { return true; }
+    int do_query_calls = 0;
+
+    // 暴露基类 protected 成员用于测试
+    using ModularPipeline::has_sufficient_evidence;
+    using ModularPipeline::make_no_evidence_result;
+
+protected:
+    ModularQueryResult do_query(const ModularQuery& q) override {
+        do_query_calls++;
+        ModularQueryResult r;
+        r.success = true;
+        r.answer = "llm answer";
+        return r;
+    }
+};
+
+static ModularConfig test_config() {
+    ModularConfig c;  // intent_gate 全默认（enabled, rule 有效）
+    return c;
+}
+
+}  // namespace
+
+TEST(TemplateMethod, ChatShortCircuitsBeforeDoQuery) {
+    TestPipeline p;
+    p.init(test_config());
+    ModularQuery q; q.text = "你好";
+    auto r = p.query(q);
+    EXPECT_EQ(p.do_query_calls, 0);            // 核心断言：子类逻辑未执行
+    EXPECT_TRUE(r.success);
+    EXPECT_EQ(r.routed_by, "intent_gate_chat");
+    EXPECT_FALSE(r.answer.empty());
+}
+
+TEST(TemplateMethod, OutOfScopeShortCircuits) {
+    TestPipeline p;
+    p.init(test_config());
+    ModularQuery q; q.text = "帮我写个周报";
+    auto r = p.query(q);
+    EXPECT_EQ(p.do_query_calls, 0);
+    EXPECT_EQ(r.routed_by, "intent_gate_oos");
+}
+
+TEST(TemplateMethod, KnowledgeQuestionReachesDoQuery) {
+    TestPipeline p;
+    p.init(test_config());
+    ModularQuery q; q.text = "什么是HNSW索引";
+    auto r = p.query(q);
+    EXPECT_EQ(p.do_query_calls, 1);
+    EXPECT_EQ(r.routed_by, "normal");
+    EXPECT_EQ(r.answer, "llm answer");
+}
+
+TEST(TemplateMethod, GateDisabledPassesThrough) {
+    TestPipeline p;
+    auto cfg = test_config();
+    cfg.intent_gate.enabled = false;
+    p.init(cfg);
+    ModularQuery q; q.text = "你好";
+    auto r = p.query(q);
+    EXPECT_EQ(p.do_query_calls, 1);
+    EXPECT_EQ(r.routed_by, "normal");
+}
+
+TEST(EvidenceGate, ThresholdSemantics) {
+    TestPipeline p;
+    p.init(test_config());  // evidence_threshold = 0.35
+
+    std::vector<RetrievalResult> empty;
+    EXPECT_FALSE(p.has_sufficient_evidence(empty));
+
+    std::vector<RetrievalResult> low(1);
+    low[0].score = 0.34f;
+    EXPECT_FALSE(p.has_sufficient_evidence(low));
+
+    std::vector<RetrievalResult> at(1);
+    at[0].score = 0.35f;                      // 含等号 → 有证据
+    EXPECT_TRUE(p.has_sufficient_evidence(at));
+
+    auto r = p.make_no_evidence_result(ModularQuery{});
+    EXPECT_TRUE(r.success);
+    EXPECT_EQ(r.routed_by, "evidence_gate");
+    EXPECT_NE(r.answer.find("知识库"), std::string::npos);
+}
