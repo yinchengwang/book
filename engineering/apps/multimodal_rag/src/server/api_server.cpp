@@ -222,6 +222,7 @@ struct Server::Impl {
     std::mutex pipelines_mutex;
     std::unordered_map<mmrag::modular::PipelineType, std::shared_ptr<mmrag::modular::ModularPipeline>> pipelines;
     mmrag::modular::ModularConfig modular_config;
+    mmrag::IntentGateConfig intent_gate_config;
 
     // ========== Eval Store ==========
     std::unique_ptr<mmrag::eval::EvalRunStore> eval_store;
@@ -293,6 +294,10 @@ Server::~Server() {
 
 void Server::set_engine(std::shared_ptr<RAGEngine> engine) {
     engine_ = std::move(engine);
+}
+
+void Server::set_intent_gate_config(const mmrag::IntentGateConfig& config) {
+    impl_->intent_gate_config = config;
 }
 
 void Server::set_metrics(std::shared_ptr<MetricsCollector> metrics) {
@@ -373,6 +378,7 @@ bool Server::start(const ServerConfig& config) {
             m_config.llm.model_type = "qwen2.5:3b";
             m_config.llm.max_tokens = 1024;
             m_config.llm.temperature = 0.7f;
+            m_config.intent_gate = impl_->intent_gate_config;
 
             // Create all pipelines
             auto created_pipelines = mmrag::modular::PipelineFactory::create_all(m_config);
@@ -841,7 +847,8 @@ std::string Server::handle_query(const std::string& body) {
                 oss << "\"retrieval_time_ms\": " << m_result.retrieval_time_ms << ",";
                 oss << "\"generation_time_ms\": " << m_result.generation_time_ms << ",";
                 oss << "\"total_time_ms\": " << m_result.total_time_ms << ",";
-                oss << "\"total_tokens\": " << m_result.total_tokens;
+                oss << "\"total_tokens\": " << m_result.total_tokens << ",";
+                oss << "\"routed_by\": \"" << json_escape(m_result.routed_by) << "\"";
                 oss << "}";
                 return create_json_response(oss.str());
             }
