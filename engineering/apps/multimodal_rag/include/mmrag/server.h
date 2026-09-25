@@ -21,6 +21,7 @@ namespace mmrag {
 
 class MetricsCollector;
 class HealthChecker;
+class IntentGate;
 struct ServerConfig;
 
 namespace api {
@@ -147,6 +148,9 @@ private:
 
     // 连接处理
     void handle_connection(int client_socket);
+
+    // Server 级意图门（懒加载；配置禁用时返回 nullptr）
+    mmrag::IntentGate* get_intent_gate();
 
     ServerConfig config_;
     bool running_ = false;
