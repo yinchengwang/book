@@ -126,3 +126,32 @@ TEST(IntentGate, EmbeddingFallbackCatchesVariant) {
     EXPECT_EQ(d.action, RouteAction::CHAT_REPLY);
     EXPECT_EQ(d.matched_by, "embedding");
 }
+
+#include "mmrag/config.h"
+
+TEST(IntentGateConfig, YamlParsing) {
+    const char* yaml = R"(
+intent_gate.enabled: true
+intent_gate.strategy: "rule_only"
+intent_gate.embedding_threshold: 0.8
+intent_gate.evidence_threshold: 0.4
+intent_gate.embedder_model_dir: "/tmp/fp32"
+intent_gate.out_of_scope_reply: "超出范围"
+intent_gate.no_evidence_reply: "没找到"
+intent_gate.bad_float_key_should_not_exist: 1
+)";
+    Config cfg = ConfigLoader().load_from_string(yaml);
+    EXPECT_TRUE(cfg.intent_gate.enabled);
+    EXPECT_EQ(cfg.intent_gate.strategy, "rule_only");
+    EXPECT_FLOAT_EQ(cfg.intent_gate.embedding_threshold, 0.8f);
+    EXPECT_FLOAT_EQ(cfg.intent_gate.evidence_threshold, 0.4f);
+    EXPECT_EQ(cfg.intent_gate.embedder_model_dir, "/tmp/fp32");
+    EXPECT_EQ(cfg.intent_gate.out_of_scope_reply, "超出范围");
+    EXPECT_EQ(cfg.intent_gate.no_evidence_reply, "没找到");
+}
+
+TEST(IntentGateConfig, InvalidFloatKeepsDefault) {
+    const char* yaml = "intent_gate.embedding_threshold: not_a_number\n";
+    Config cfg = ConfigLoader().load_from_string(yaml);
+    EXPECT_FLOAT_EQ(cfg.intent_gate.embedding_threshold, 0.70f);  // 默认值
+}

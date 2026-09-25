@@ -30,3 +30,12 @@ logging:
   max_backups: 5
   console: true
 
+# 意图门控（非知识库问题短路，不走大模型）
+intent_gate.enabled: true
+intent_gate.strategy: "rule_then_embedding"
+intent_gate.embedding_threshold: 0.70
+intent_gate.evidence_threshold: 0.35
+intent_gate.embedder_model_dir: ""
+intent_gate.out_of_scope_reply: "我是知识库问答助手，这个问题不在知识库范围内。你可以问我关于已上传文档的问题。"
+intent_gate.no_evidence_reply: "知识库中未找到相关信息，请换个问法或先上传相关文档。"
+

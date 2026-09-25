@@ -5,6 +5,7 @@
 #pragma once
 
 #include "mmrag/config.h"
+#include "mmrag/intent_gate_config.h"
 #include "mmrag/modular/types.h"
 #include <string>
 
@@ -34,6 +35,7 @@ struct ModularConfig {
     EmbeddingConfig embedding;         // Embedding 配置
     RetrievalConfig retrieval;         // 检索配置
     AgentConfig agent;                 // Agent 配置
+    IntentGateConfig intent_gate;    // 意图门控配置
 
     std::string model_path;            // 模型路径
     std::string embedding_model_path;  // Embedding 模型路径

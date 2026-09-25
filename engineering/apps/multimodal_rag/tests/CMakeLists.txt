@@ -15,6 +15,8 @@ add_executable(mmrag_intent_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/pipeline/pipeline.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/pipeline/pipeline_base.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/types.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/config.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/util/error.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/observability/logger.cpp
 )
 
