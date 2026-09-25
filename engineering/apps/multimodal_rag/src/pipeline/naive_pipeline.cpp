@@ -41,7 +41,7 @@ bool NaivePipeline::is_ready() const {
     return initialized_ && llm_ && llm_->is_loaded() && hnsw_retriever_;
 }
 
-ModularQueryResult NaivePipeline::query(const ModularQuery& query) {
+ModularQueryResult NaivePipeline::do_query(const ModularQuery& query) {
     ModularQueryResult result;
     auto start_time = std::chrono::steady_clock::now();
 
@@ -59,13 +59,14 @@ ModularQueryResult NaivePipeline::query(const ModularQuery& query) {
     result.retrieval_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - retrieval_start).count();
 
-    if (retrieval_results.empty()) {
-        RAG_WARN("检索结果为空: " + query.text);
-        result.success = true;
-        result.answer = "抱歉，未找到与您查询相关的文档内容。";
-        result.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+    // 证据门：空结果或最高分低于阈值 → 不调 LLM
+    if (!has_sufficient_evidence(retrieval_results)) {
+        RAG_WARN("证据不足，跳过 LLM: " + query.text);
+        auto r = make_no_evidence_result(query);
+        r.retrieval_time_ms = result.retrieval_time_ms;
+        r.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - start_time).count();
-        return result;
+        return r;
     }
 
     // 保存检索结果
