@@ -60,13 +60,6 @@ public:
     bool init(const ModularConfig& config) override;
 
     /**
-     * @brief 执行查询
-     * @param query 查询信息
-     * @return 查询结果
-     */
-    ModularQueryResult query(const ModularQuery& query) override;
-
-    /**
      * @brief 检查 Pipeline 是否就绪
      */
     bool is_ready() const override;
@@ -101,6 +94,12 @@ public:
     std::shared_ptr<mmrag::HNSWRetriever> hnsw_retriever() const { return hnsw_retriever_; }
     std::shared_ptr<mmrag::BM25Retriever> bm25_retriever() const { return bm25_retriever_; }
     std::shared_ptr<mmrag::Reranker> reranker() const { return reranker_; }
+
+protected:
+    /**
+     * @brief 检索 + 生成（由基类模板方法 query() 调用）
+     */
+    ModularQueryResult do_query(const ModularQuery& query) override;
 
 private:
     /**

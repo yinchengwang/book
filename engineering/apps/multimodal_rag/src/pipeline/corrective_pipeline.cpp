@@ -70,7 +70,7 @@ bool CorrectivePipeline::is_ready() const {
            && (hnsw_retriever_ || bm25_retriever_);
 }
 
-ModularQueryResult CorrectivePipeline::query(const ModularQuery& query) {
+ModularQueryResult CorrectivePipeline::do_query(const ModularQuery& query) {
     ModularQueryResult result;
     auto start_time = std::chrono::steady_clock::now();
 
@@ -109,9 +109,10 @@ ModularQueryResult CorrectivePipeline::query(const ModularQuery& query) {
         }
 
         if (retrieval_results.empty() && iteration == 0) {
-            // 首次检索为空，直接返回
+            // 首次检索为空，直接返回（证据门：复用本管线自身的质量判定拒答分支）
             result.success = true;
             result.answer = "抱歉，未找到与您查询相关的文档内容。";
+            result.routed_by = "evidence_gate";
             result.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - start_time).count();
             return result;
@@ -175,8 +176,10 @@ ModularQueryResult CorrectivePipeline::query(const ModularQuery& query) {
     std::string context_str = build_context(query.text, result.context);
 
     if (context_str.empty()) {
+        // 纠正后仍无可用上下文（证据门：复用本管线自身的质量判定拒答分支）
         result.success = true;
         result.answer = "抱歉，未找到与您查询相关的文档内容。";
+        result.routed_by = "evidence_gate";
         result.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - start_time).count();
         return result;

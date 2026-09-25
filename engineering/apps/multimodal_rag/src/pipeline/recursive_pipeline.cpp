@@ -71,7 +71,7 @@ bool RecursivePipeline::is_ready() const {
            && (hnsw_retriever_ || bm25_retriever_);
 }
 
-ModularQueryResult RecursivePipeline::query(const ModularQuery& query) {
+ModularQueryResult RecursivePipeline::do_query(const ModularQuery& query) {
     ModularQueryResult result;
     auto start_time = std::chrono::steady_clock::now();
 
@@ -115,12 +115,13 @@ ModularQueryResult RecursivePipeline::query(const ModularQuery& query) {
         result.context = retrieve(query.text, top_k);
     }
 
-    if (result.context.empty()) {
-        result.success = true;
-        result.answer = "抱歉，未找到与您查询相关的文档内容。";
-        result.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+    // 证据门：最终回答生成前，空结果或最高分低于阈值 → 不调 LLM
+    if (!has_sufficient_evidence(result.context)) {
+        RAG_WARN("证据不足，跳过 LLM: " + query.text);
+        auto r = make_no_evidence_result(query);
+        r.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - start_time).count();
-        return result;
+        return r;
     }
 
     // Step 4: 构建上下文字符串并生成回答

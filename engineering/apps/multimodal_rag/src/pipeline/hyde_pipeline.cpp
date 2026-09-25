@@ -94,7 +94,7 @@ bool HyDEPipeline::is_ready() const {
     return initialized_ && llm_ && llm_->is_loaded() && hnsw_retriever_;
 }
 
-ModularQueryResult HyDEPipeline::query(const ModularQuery& query) {
+ModularQueryResult HyDEPipeline::do_query(const ModularQuery& query) {
     ModularQueryResult result;
     auto start_time = std::chrono::steady_clock::now();
 
@@ -127,13 +127,14 @@ ModularQueryResult HyDEPipeline::query(const ModularQuery& query) {
     result.retrieval_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - retrieval_start).count();
 
-    if (retrieval_results.empty()) {
-        RAG_WARN("假设答案检索结果为空");
-        result.success = true;
-        result.answer = "抱歉，未找到与您查询相关的文档内容。";
-        result.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+    // 证据门：检索完成后、最终回答生成前检查（不拦 HyDE 假设答案生成）
+    if (!has_sufficient_evidence(retrieval_results)) {
+        RAG_WARN("证据不足，跳过最终回答生成: " + query.text);
+        auto r = make_no_evidence_result(query);
+        r.retrieval_time_ms = result.retrieval_time_ms;
+        r.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - start_time).count();
-        return result;
+        return r;
     }
 
     // 保存检索结果

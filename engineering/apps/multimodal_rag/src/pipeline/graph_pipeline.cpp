@@ -53,7 +53,7 @@ bool GraphPipeline::is_ready() const {
            && graph_retriever_ && entity_extractor_;
 }
 
-ModularQueryResult GraphPipeline::query(const ModularQuery& query) {
+ModularQueryResult GraphPipeline::do_query(const ModularQuery& query) {
     ModularQueryResult result;
     auto start_time = std::chrono::steady_clock::now();
 
@@ -96,14 +96,24 @@ ModularQueryResult GraphPipeline::query(const ModularQuery& query) {
     int64_t retrieval_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - retrieval_start).count();
 
-    // Step 3: 检查是否有检索结果
-    if (graph_result.chunks.empty() && vector_results.empty()) {
-        RAG_WARN("图检索和向量检索结果都为空");
-        result.success = true;
-        result.answer = "抱歉，未找到与您查询相关的文档内容。";
-        result.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+    // Step 3: 汇总证据（混合模式向量结果 + 图检索 chunks）
+    std::vector<mmrag::RetrievalResult> evidence = vector_results;
+    for (const auto& chunk : graph_result.chunks) {
+        mmrag::RetrievalResult r;
+        r.chunk = chunk.chunk;
+        r.score = chunk.score;
+        r.source = "graph:" + chunk.source;
+        evidence.push_back(r);
+    }
+
+    // 证据门：空结果或最高分低于阈值 → 不调 LLM
+    if (!has_sufficient_evidence(evidence)) {
+        RAG_WARN("证据不足，跳过 LLM: " + query.text);
+        auto r = make_no_evidence_result(query);
+        r.retrieval_time_ms = extraction_time_ms + retrieval_time_ms;
+        r.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - start_time).count();
-        return result;
+        return r;
     }
 
     // Step 4: 构建上下文字符串
@@ -113,17 +123,10 @@ ModularQueryResult GraphPipeline::query(const ModularQuery& query) {
     if (!vector_results.empty()) {
         context_str += "\n\n【向量检索结果】\n";
         context_str += build_context(query.text, vector_results);
-        result.context = vector_results;
     }
 
-    // 保存图检索的 chunks 到 context
-    for (const auto& chunk : graph_result.chunks) {
-        mmrag::RetrievalResult r;
-        r.chunk = chunk.chunk;
-        r.score = chunk.score;
-        r.source = "graph:" + chunk.source;
-        result.context.push_back(r);
-    }
+    // 保存检索结果（向量结果 + 图检索 chunks）
+    result.context = evidence;
 
     // Step 5: 构建提示词并生成回答
     std::string prompt = "请根据以下上下文信息回答问题。如果上下文中没有相关信息，请说明无法回答。\n\n"

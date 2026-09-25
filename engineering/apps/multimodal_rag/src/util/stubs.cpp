@@ -329,13 +329,13 @@ namespace mmrag::modular {
 CorrectivePipeline::CorrectivePipeline() = default;
 CorrectivePipeline::~CorrectivePipeline() = default;
 bool CorrectivePipeline::init(const ModularConfig&) { return false; }
-ModularQueryResult CorrectivePipeline::query(const ModularQuery&) { return {}; }
+ModularQueryResult CorrectivePipeline::do_query(const ModularQuery&) { return {}; }
 bool CorrectivePipeline::is_ready() const { return false; }
 
 ReActPipeline::ReActPipeline() = default;
 ReActPipeline::~ReActPipeline() = default;
 bool ReActPipeline::init(const ModularConfig&) { return false; }
-ModularQueryResult ReActPipeline::query(const ModularQuery&) { return {}; }
+ModularQueryResult ReActPipeline::do_query(const ModularQuery&) { return {}; }
 bool ReActPipeline::is_ready() const { return false; }
 
 // HybridPipeline / HyDEPipeline / GraphPipeline — pipeline_factory.cpp 引用它们
@@ -344,19 +344,19 @@ bool ReActPipeline::is_ready() const { return false; }
 HybridPipeline::HybridPipeline() = default;
 HybridPipeline::~HybridPipeline() = default;
 bool HybridPipeline::init(const ModularConfig&) { return false; }
-ModularQueryResult HybridPipeline::query(const ModularQuery&) { return {}; }
+ModularQueryResult HybridPipeline::do_query(const ModularQuery&) { return {}; }
 bool HybridPipeline::is_ready() const { return false; }
 
 HyDEPipeline::HyDEPipeline() = default;
 HyDEPipeline::~HyDEPipeline() = default;
 bool HyDEPipeline::init(const ModularConfig&) { return false; }
-ModularQueryResult HyDEPipeline::query(const ModularQuery&) { return {}; }
+ModularQueryResult HyDEPipeline::do_query(const ModularQuery&) { return {}; }
 bool HyDEPipeline::is_ready() const { return false; }
 
 GraphPipeline::GraphPipeline() = default;
 GraphPipeline::~GraphPipeline() = default;
 bool GraphPipeline::init(const ModularConfig&) { return false; }
-ModularQueryResult GraphPipeline::query(const ModularQuery&) { return {}; }
+ModularQueryResult GraphPipeline::do_query(const ModularQuery&) { return {}; }
 bool GraphPipeline::is_ready() const { return false; }
 
 // NaivePipeline / AdvancedPipeline / IterativePipeline / RecursivePipeline
