@@ -10,13 +10,15 @@ option(MMDB_ENABLE_RELATIONAL "Enable Relational Model" ON)
 option(MMDB_ENABLE_KV "Enable KV Model" ON)
 option(MMDB_ENABLE_GRAPH "Enable Graph Model" ON)
 option(MMDB_ENABLE_VECTOR "Enable Vector Model" ON)
-option(MMDB_ENABLE_TIMESERIES "Enable Timeseries Model" ON)
-option(MMDB_ENABLE_DOCUMENT "Enable Document Model" ON)
+option(MMDB_ENABLE_TIMESERIES "Enable Timeseries Model (not ready)" OFF)
+option(MMDB_ENABLE_DOCUMENT "Enable Document Model (not ready)" OFF)
 option(MMDB_ENABLE_SPATIAL "Enable Spatial Model" ON)
 option(MMDB_ENABLE_TREE "Enable Tree Model" ON)
 option(MMDB_ENABLE_STREAM "Enable Stream Model" OFF)  # 新增，默认关闭
 option(MMDB_ENABLE_COLUMNAR "Enable Columnar Model" OFF)  # 新增，默认关闭
 option(MMDB_ENABLE_SPARSE "Enable Sparse Vector + BM25 Hybrid Retrieval" ON)
+option(MMDB_ENABLE_ST "Enable Spatio-Temporal Model" OFF)  # 未就绪，默认关闭
+option(MMDB_ENABLE_RDF "Enable RDF Knowledge Graph Model" OFF)  # 未就绪，默认关闭
 
 # ========================================================================
 # 分布式能力开关

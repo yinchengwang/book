@@ -16,5 +16,7 @@
 #cmakedefine MMDB_ENABLE_DISTRIBUTED_RAFT
 #cmakedefine MMDB_ENABLE_DISTRIBUTED_SHARD
 #cmakedefine MMDB_ENABLE_SPARSE
+#cmakedefine MMDB_ENABLE_ST
+#cmakedefine MMDB_ENABLE_RDF
 
 #endif
