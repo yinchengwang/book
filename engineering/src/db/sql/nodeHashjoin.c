@@ -1,22 +1,21 @@
 /**
  * @file nodeHashjoin.c
- * @brief HashJoin 执行器节点实现
+ * @brief HashJoin 等值连接执行器节点实现（T9）
  *
- * 实现 Task 2.3 的 HashJoin 连接节点：
- *   - ExecInitHashJoin: 初始化 HashJoinState
- *   - ExecHashJoin: 执行连接（两阶段：构建 + 探测）
- *   - ExecEndHashJoin: 释放资源
- *   - ExecReScanHashJoin: 重置节点
+ * Volcano 两阶段：
+ *   1. 构建阶段（hj_built=false）：拉空内表（righttree），按 inner_key 哈希
+ *      到 bucket 链（深拷贝 slot 值）。本实现取 clauses[0] 作为唯一连接键
+ *      （满足 T9 测试场景：ON a.id = b.id）。
+ *   2. 探测阶段（hj_built=true）：拉取外表（lefttree）一行，逐桶链比较，
+ *      命中则把 outer cols ++ inner cols 填入 ps_ResultTupleSlot 返回。
+ *      多匹配：外表行缓存于 hj_CurOuterSlot，probe_chain_idx 记录当前
+ *      bucket 位置，匹配耗尽后丢弃外表行继续拉下一行。
  *
- * HashJoin 算法：
- *   1. 构建阶段：扫描右子树（内表），构建哈希表
- *   2. 探测阶段：扫描左子树（外表），查找哈希表，输出匹配行
- *
- * 本文件是 SQL 执行引擎 Phase 2 核心算子层的第三个任务（Task 2.3）。
+ * 算子不依赖 TupleDescData 布局：连接键类型由 HJClause.key_type 提供，
+ * 输出描述符由驱动在 plan.out_desc 中填好（仅赋值指针，不解引属性）。
  */
 
 #include "db/sql/nodeHashjoin.h"
-#include "db/sql/nodeHash.h"
 #include "db/sql/executor.h"
 #include "db/sql/memctx.h"
 
@@ -24,508 +23,412 @@
 #include <string.h>
 #include <assert.h>
 
-/* ========================================================================
- * HashJoin 状态枚举
- * ======================================================================== */
+/* 驱动层 OID 复制（与 sql_driver.c / nodeAgg.c 同步） */
+#define HJ_OID_INT2    21
+#define HJ_OID_INT4    23
+#define HJ_OID_INT8    20
+#define HJ_OID_TEXT    25
+#define HJ_OID_CHAR    1042
+#define HJ_OID_VARCHAR 1043
 
-/**
- * @brief HashJoin 执行阶段
- */
-typedef enum {
-    HJ_BUILD_EARLY,      /**< 早期构建阶段（先读取所有外表） */
-    HJ_BUILD,            /**< 构建阶段 */
-    HJ_PROBE,            /**< 探测阶段 */
-    HJ_NEED_NEW_OUTER,   /**< 需要新的外表元组 */
-    HJ_DONE              /**< 完成 */
-} HashJoinPhase;
+static inline bool hj_oid_is_text(Oid t) {
+    return t == HJ_OID_TEXT || t == HJ_OID_CHAR || t == HJ_OID_VARCHAR;
+}
 
 /* ========================================================================
- * HashJoin 辅助数据结构
+ * 内部数据结构
  * ======================================================================== */
 
-/**
- * @brief 哈希桶条目
- *
- * 存储一个哈希桶中的所有元组。
- */
+/** 单条内表行（按 inner_key 哈希落入桶链）。深拷贝 slot 值。 */
 typedef struct HashJoinBucket {
-    void *tuples;             /**< 元组数据（简化版：使用 Datum 数组） */
-    int count;                /**< 桶中元组数量 */
-    int capacity;             /**< 桶容量 */
-    struct HashJoinBucket *next; /**< 下一个桶（链地址法） */
+    struct HashJoinBucket *next;     /**< 同桶链下一项（冲突链） */
+    Datum                  key;       /**< inner 键值 */
+    bool                   key_null;
+    /* 整行 inner slot 内容（仅 tts_values/tts_isnull，按 nvalid 大小） */
+    Datum                 *values;
+    bool                  *isnull;
+    int                    nvalid;
 } HashJoinBucket;
 
-/**
- * @brief HashJoin 哈希表
- *
- * 使用链地址法实现的哈希表。
- */
 typedef struct HashJoinHashTable {
-    HashJoinBucket **buckets; /**< 哈希桶数组 */
-    int nbuckets;             /**< 桶数量 */
-    int tuple_count;          /**< 总元组数 */
+    HashJoinBucket **buckets;
+    int              nbuckets;
+    int              ninner;         /**< 内表总行数 */
 } HashJoinHashTable;
 
 /* ========================================================================
- * 辅助函数
+ * 辅助：Datum 类型感知哈希与等值
  * ======================================================================== */
 
-/**
- * @brief 计算哈希值
- *
- * @param datum 待哈希的值
- * @param nbuckets 桶数量
- *
- * @return 哈希值
- */
-static inline int hash_join_hash(Datum datum, int nbuckets) {
-    /* 简化的哈希函数：使用 Datum 的低几位 */
-    return (int)((uint64_t)datum % (uint64_t)nbuckets);
-}
-
-/**
- * @brief 创建哈希表
- *
- * @param nbuckets 初始桶数量
- *
- * @return 新创建的哈希表；失败返回 NULL
- */
-static HashJoinHashTable *create_hash_table(int nbuckets) {
-    HashJoinHashTable *ht;
-
-    if (nbuckets <= 0) {
-        nbuckets = 1024;
-    }
-
-    ht = (HashJoinHashTable *)calloc(1, sizeof(HashJoinHashTable));
-    if (ht == NULL) {
-        return NULL;
-    }
-
-    ht->buckets = (HashJoinBucket **)calloc(nbuckets, sizeof(HashJoinBucket *));
-    if (ht->buckets == NULL) {
-        free(ht);
-        return NULL;
-    }
-
-    ht->nbuckets = nbuckets;
-    ht->tuple_count = 0;
-
-    return ht;
-}
-
-/**
- * @brief 释放哈希表
- *
- * @param ht 哈希表
- */
-static void free_hash_table(HashJoinHashTable *ht) {
-    if (ht == NULL) {
-        return;
-    }
-
-    if (ht->buckets != NULL) {
-        /* 释放每个桶 */
-        for (int i = 0; i < ht->nbuckets; i++) {
-            HashJoinBucket *bucket = ht->buckets[i];
-            while (bucket != NULL) {
-                HashJoinBucket *next = bucket->next;
-                free(bucket);
-                bucket = next;
+static uint64_t hj_hash(Datum v, bool isnull, Oid type) {
+    uint64_t h = 1469598103934665603ULL;
+    h ^= isnull ? 0xdeadbeefcafe : 0x1234567890ab;
+    h *= 1099511628211ULL;
+    if (!isnull) {
+        if (hj_oid_is_text(type)) {
+            const char *s = (const char *)(uintptr_t)v;
+            while (*s) {
+                h ^= (uint8_t)*s++;
+                h *= 1099511628211ULL;
+            }
+        } else {
+            uint64_t v64 = (uint64_t)(int64_t)v;
+            for (int i = 0; i < 8; i++) {
+                h ^= (v64 >> (i * 8)) & 0xff;
+                h *= 1099511628211ULL;
             }
         }
-        free(ht->buckets);
     }
-
-    free(ht);
+    return h;
 }
 
-/**
- * @brief 向哈希表插入元组
- *
- * @param ht 哈希表
- * @param hashvalue 哈希值
- * @param tuple 元组数据
- *
- * @return 0 成功；-1 失败
- */
-static int hash_table_insert(HashJoinHashTable *ht, int hashvalue, void *tuple) {
-    int bucket_idx;
-    HashJoinBucket *bucket;
-
-    if (ht == NULL || tuple == NULL) {
-        return -1;
+static bool hj_eq(Datum a, Datum b, bool na, bool nb, Oid type) {
+    if (na != nb) return false;
+    if (na) return true;  /* 双 NULL → 等值 */
+    if (hj_oid_is_text(type)) {
+        const char *sa = (const char *)(uintptr_t)a;
+        const char *sb = (const char *)(uintptr_t)b;
+        return strcmp(sa, sb) == 0;
     }
-
-    bucket_idx = hashvalue % ht->nbuckets;
-    bucket = ht->buckets[bucket_idx];
-
-    /* 查找或创建桶 */
-    if (bucket == NULL) {
-        bucket = (HashJoinBucket *)calloc(1, sizeof(HashJoinBucket));
-        if (bucket == NULL) {
-            return -1;
-        }
-        ht->buckets[bucket_idx] = bucket;
-    }
-
-    /* 在桶中追加元组（简化实现） */
-    /* 注意：实际实现需要存储元组指针和元组数据 */
-    bucket->count++;
-    bucket->tuples = tuple;  /* 简化：直接保存元组指针 */
-    ht->tuple_count++;
-
-    return 0;
+    return (int64_t)a == (int64_t)b;
 }
 
-/**
- * @brief 在哈希表中查找匹配的元组
- *
- * @param ht 哈希表
- * @param hashvalue 哈希值
- * @param key 键值
- *
- * @return 匹配的元组；未找到返回 NULL
- */
-static void *hash_table_lookup(HashJoinHashTable *ht, int hashvalue, Datum key) {
-    int bucket_idx;
-    HashJoinBucket *bucket;
-
-    (void)key;  /* 简化版本不使用 key 比较 */
-
-    if (ht == NULL) {
-        return NULL;
+/* 取 slot 上指定列的 Datum + isnull。安全护栏。 */
+static Datum hj_slot_get(TupleTableSlot *slot, int attno,
+                         bool *out_isnull) {
+    if (slot == NULL || slot->tts_values == NULL ||
+        slot->tts_isnull == NULL || attno >= slot->tts_nvalid) {
+        if (out_isnull) *out_isnull = true;
+        return (Datum)0;
     }
-
-    bucket_idx = hashvalue % ht->nbuckets;
-    bucket = ht->buckets[bucket_idx];
-
-    /* 简化实现：返回第一个非空桶的元组 */
-    if (bucket != NULL && bucket->count > 0) {
-        return bucket->tuples;
-    }
-
-    return NULL;
+    if (out_isnull) *out_isnull = slot->tts_isnull[attno];
+    return slot->tts_isnull[attno] ? (Datum)0 : slot->tts_values[attno];
 }
 
 /* ========================================================================
- * HashJoin 节点执行函数
+ * 构建阶段
  * ======================================================================== */
 
-/**
- * @brief 构建阶段：填充哈希表
- *
- * @param node HashJoinState
- *
- * @return 0 成功；-1 失败
- */
-static int exec_hashjoin_build(HashJoinState *node) {
-    PlanState *inner;
+static void hj_build_phase(HashJoinState *node, EState *estate) {
+    MemoryContext ctx = estate->es_query_cxt;
+    PlanState *inner = node->js.ps.righttree;
+    HJClause *cl = node->nclauses > 0 ? &node->clauses[0] : NULL;
+
+    HashJoinHashTable *ht = (HashJoinHashTable *)palloc0(ctx,
+                                                       sizeof(HashJoinHashTable));
+    ht->nbuckets = 256;
+    ht->buckets = (HashJoinBucket **)palloc0(ctx,
+                            sizeof(HashJoinBucket *) * ht->nbuckets);
+    ht->ninner = 0;
+    node->hashtable = ht;
+
+    if (inner == NULL || cl == NULL) {
+        node->hj_built = true;
+        return;
+    }
+
+    Oid key_type = cl->key_type;
+    int  inner_attno = cl->inner_attno;
+
     TupleTableSlot *slot;
-
-    if (node == NULL) {
-        return -1;
-    }
-
-    inner = node->js.ps.righttree;
-    if (inner == NULL) {
-        return 0;
-    }
-
-    /* 从右子树读取所有元组，构建哈希表 */
     while ((slot = ExecProcNode(inner)) != NULL) {
-        /* 获取哈希键值（简化：使用第一个字段） */
-        Datum hashkey = 0;
-        if (slot->tts_nvalid > 0 && slot->tts_values != NULL) {
-            hashkey = slot->tts_values[0];
-        }
+        bool isnull;
+        Datum key = hj_slot_get(slot, inner_attno, &isnull);
+        uint64_t h = hj_hash(key, isnull, key_type);
+        int b = (int)(h % (uint64_t)ht->nbuckets);
 
-        /* 计算哈希值并插入 */
-        int hashvalue = hash_join_hash(hashkey, 1024);
-        hash_table_insert((HashJoinHashTable *)node->hashtable, hashvalue, slot->tts_tuple);
-
-        /* 清空槽以复用 */
+        HashJoinBucket *bk = (HashJoinBucket *)palloc0(ctx,
+                                                     sizeof(HashJoinBucket));
+        bk->next = ht->buckets[b];
+        bk->key = key;
+        bk->key_null = isnull;
+        int nv = slot->tts_nvalid > 0 ? slot->tts_nvalid : 0;
+        bk->nvalid = nv;
+        bk->values = (Datum *)palloc(ctx, sizeof(Datum) * nv);
+        bk->isnull = (bool *)palloc(ctx, sizeof(bool) * nv);
+        if (slot->tts_values != NULL && nv > 0) memcpy(bk->values, slot->tts_values,
+                                             sizeof(Datum) * nv);
+        if (slot->tts_isnull != NULL && nv > 0) memcpy(bk->isnull, slot->tts_isnull,
+                                             sizeof(bool) * nv);
+        ht->buckets[b] = bk;
+        ht->ninner++;
         ExecClearTuple(slot);
     }
 
-    return 0;
+    node->hj_built = true;
 }
 
-/**
- * @brief HashJoin 节点执行函数
- *
- * HashJoin 算法分两阶段：
- *   1. 构建阶段：扫描右子树，构建哈希表
- *   2. 探测阶段：扫描左子树，查找哈希表，输出匹配行
- *
- * @param pstate PlanState（实际类型为 HashJoinState）
- *
- * @return 结果元组槽；无更多元组时返回 NULL
- */
+/* ========================================================================
+ * exec_hashjoin_impl
+ * ======================================================================== */
+
 static TupleTableSlot *exec_hashjoin_impl(PlanState *pstate) {
     HashJoinState *node = (HashJoinState *)pstate;
-    HashJoinHashTable *hashtable;
-    PlanState *outer;
-    TupleTableSlot *outerslot;
-    Datum hashkey;
-    int hashvalue;
-    void *matched_tuple;
+    if (node == NULL) return NULL;
 
-    /* 参数检查 */
-    if (node == NULL) {
-        return NULL;
+    EState *estate = (EState *)node->js.ps.state;
+    MemoryContext ctx = estate->es_query_cxt;
+    TupleTableSlot *out = node->js.ps.ps_ResultTupleSlot;
+    if (out == NULL || out->tts_values == NULL) return NULL;
+
+    /* Build phase（一次性） */
+    if (!node->hj_built) {
+        hj_build_phase(node, estate);
     }
 
-    /* 获取哈希表和外表 */
-    hashtable = (HashJoinHashTable *)node->hashtable;
-    outer = node->js.ps.lefttree;
+    HJClause *cl = node->nclauses > 0 ? &node->clauses[0] : NULL;
+    HashJoinHashTable *ht = (HashJoinHashTable *)node->hashtable;
 
-    /* 如果没有哈希表，创建一个 */
-    if (hashtable == NULL) {
-        hashtable = create_hash_table(1024);
-        if (hashtable == NULL) {
+    /* 探测循环：每次返回一行 */
+    while (true) {
+        /* 若当前已有外表行（多匹配模式），在同桶链上继续推进 */
+        if (node->hj_outer_active && cl != NULL && ht != NULL) {
+            HashJoinBucket *b = node->probe_chain;
+            int idx = node->probe_chain_idx;
+            for (int i = 0; i < idx && b != NULL; i++) {
+                b = b->next;
+            }
+            if (b == NULL) {
+                /* 链耗尽，进入下一行 */
+                node->hj_outer_active = false;
+                node->probe_chain = NULL;
+                node->probe_chain_idx = 0;
+                continue;
+            }
+            /* 检查类型感知相等 */
+            bool match = hj_eq(node->hj_CurOuterSlot
+                                ? node->hj_CurOuterSlot->tts_values[cl->outer_attno]
+                                : (Datum)0,
+                               b->key,
+                               node->hj_CurOuterSlot
+                                ? node->hj_CurOuterSlot->tts_isnull[cl->outer_attno]
+                                : true,
+                               b->key_null,
+                               cl->key_type);
+            node->probe_chain_idx++;
+            if (!match) {
+                continue;  /* 同一外表行试下一桶 */
+            }
+            /* 命中 → 组装 outer ++ inner 到 out */
+            TupleTableSlot *outer = node->hj_CurOuterSlot;
+            int on = node->outer_natts;
+            memset(out->tts_isnull, 0, sizeof(bool) * node->out_natts);
+            for (int i = 0; i < on; i++) {
+                if (outer == NULL || outer->tts_values == NULL ||
+                    outer->tts_isnull == NULL || i >= outer->tts_nvalid) {
+                    out->tts_isnull[i] = true;
+                    out->tts_values[i] = (Datum)0;
+                } else {
+                    out->tts_isnull[i] = outer->tts_isnull[i];
+                    out->tts_values[i] = outer->tts_values[i];
+                }
+            }
+            for (int i = 0; i < b->nvalid; i++) {
+                int col = on + i;
+                if (col >= node->out_natts) break;
+                out->tts_isnull[col] = b->isnull[i];
+                out->tts_values[col] = b->values[i];
+            }
+            out->tts_nvalid = node->out_natts;
+            return out;
+        }
+
+        /* 没有活跃外表行：拉新行 */
+        PlanState *outer_ps = node->js.ps.lefttree;
+        if (outer_ps == NULL || cl == NULL || ht == NULL) {
             return NULL;
         }
-        node->hashtable = hashtable;
-    }
-
-    /* 如果没有外表，直接返回 NULL */
-    if (outer == NULL) {
-        return NULL;
-    }
-
-    /* 探测阶段：从外表读取元组，查找哈希表 */
-    while ((outerslot = ExecProcNode(outer)) != NULL) {
-        /* 获取哈希键值（简化：使用第一个字段） */
-        hashkey = 0;
-        if (outerslot->tts_nvalid > 0 && outerslot->tts_values != NULL) {
-            hashkey = outerslot->tts_values[0];
+        TupleTableSlot *outer = ExecProcNode(outer_ps);
+        if (outer == NULL) {
+            return NULL;  /* 外表耗尽 */
         }
+        bool o_isnull;
+        Datum o_key = hj_slot_get(outer, cl->outer_attno, &o_isnull);
+        uint64_t h = hj_hash(o_key, o_isnull, cl->key_type);
+        int b = (int)(h % (uint64_t)ht->nbuckets);
 
-        /* 计算哈希值并查找 */
-        hashvalue = hash_join_hash(hashkey, hashtable->nbuckets);
-        matched_tuple = hash_table_lookup(hashtable, hashvalue, hashkey);
-
-        /* 如果找到匹配，组合并返回结果 */
-        if (matched_tuple != NULL) {
-            /* 设置表达式上下文中的外表和内表元组 */
-            ExprContext *econtext = node->js.ps.ps_ExprContext;
-            if (econtext != NULL) {
-                econtext->ecxt_outertuple = outerslot;
-                econtext->ecxt_innertuple = (TupleTableSlot *)matched_tuple;
+        /* 缓存外表行（深拷贝以保证后续多匹配期间 outer slot 不被覆盖） */
+        if (node->hj_CurOuterSlot == NULL) {
+            node->hj_CurOuterSlot = MakeTupleTableSlotWithMCxt(ctx);
+        }
+        TupleTableSlot *cs = node->hj_CurOuterSlot;
+        int on = node->outer_natts;
+        if (cs->tts_values == NULL || cs->tts_nvalid < on) {
+            cs->tts_values = (Datum *)palloc(ctx, sizeof(Datum) * on);
+            cs->tts_isnull = (bool *)palloc(ctx, sizeof(bool) * on);
+            cs->tts_nvalid = on;
+        }
+        for (int i = 0; i < on; i++) {
+            if (outer->tts_values == NULL || outer->tts_isnull == NULL ||
+                i >= outer->tts_nvalid) {
+                cs->tts_isnull[i] = true;
+                cs->tts_values[i] = (Datum)0;
+            } else {
+                cs->tts_isnull[i] = outer->tts_isnull[i];
+                cs->tts_values[i] = outer->tts_values[i];
             }
-
-            /* 返回外表槽（简化版本） */
-            return outerslot;
         }
+        cs->tts_tupleDescriptor = outer->tts_tupleDescriptor;
+        ExecClearTuple(outer);
 
-        /* 没有匹配，继续下一个外表元组 */
-        ExecClearTuple(outerslot);
+        node->hj_CurOuterSlot = cs;
+        node->hj_outer_active = true;
+        node->probe_chain = ht->buckets[b];
+        node->probe_chain_idx = 0;
+        /* 循环回顶部，从 hj_outer_active 分支处理第一个匹配 */
     }
-
-    /* 所有外表元组已处理完 */
-    return NULL;
 }
 
 /* ========================================================================
  * 公共 API
  * ======================================================================== */
 
-/**
- * @brief 初始化 HashJoin 节点
- *
- * 分配 HashJoinState 并初始化字段。
- * 同时初始化子节点和 Hash 辅助节点。
- *
- * @param plan   计划节点（实际类型为 HashJoin*）
- * @param estate 执行器状态
- * @param eflags 执行器标志
- *
- * @return 初始化后的 HashJoinState（作为 PlanState*）；失败返回 NULL
- */
 PlanState *ExecInitHashJoin(Plan *plan, EState *estate, int eflags) {
     HashJoin *node;
     HashJoinState *state;
+    MemoryContext ctx;
 
-    /* 参数检查 */
-    if (plan == NULL || estate == NULL) {
-        return NULL;
-    }
-
+    if (plan == NULL || estate == NULL) return NULL;
     node = (HashJoin *)plan;
+    ctx = estate->es_query_cxt;
 
-    /* 在查询上下文中分配 HashJoinState */
-    state = (HashJoinState *)palloc0(estate->es_query_cxt, sizeof(HashJoinState));
-    if (state == NULL) {
-        return NULL;
-    }
+    state = (HashJoinState *)palloc0(ctx, sizeof(HashJoinState));
+    if (state == NULL) return NULL;
 
-    /* 初始化基类 */
     state->js.ps.type = T_HashJoinState;
     state->js.ps.plan = plan;
     state->js.ps.state = estate;
     state->js.ps.ExecProcNode = exec_hashjoin_impl;
     state->js.ps.ExecProcNodeReal = exec_hashjoin_impl;
 
-    /* 初始化子节点 */
+    /* lefttree = outer, righttree = inner */
     if (node->join.plan.lefttree != NULL) {
-        state->js.ps.lefttree = ExecInitNode(node->join.plan.lefttree, estate, eflags);
+        state->js.ps.lefttree = ExecInitNode(node->join.plan.lefttree,
+                                             estate, eflags);
     } else {
         state->js.ps.lefttree = NULL;
     }
-
-    /* 初始化右子树（通常是 Hash 节点） */
     if (node->join.plan.righttree != NULL) {
-        state->js.ps.righttree = ExecInitNode(node->join.plan.righttree, estate, eflags);
+        state->js.ps.righttree = ExecInitNode(node->join.plan.righttree,
+                                              estate, eflags);
     } else {
         state->js.ps.righttree = NULL;
     }
 
-    /* HashJoin 有自己的哈希表，由本节点管理 */
-    state->hashtable = NULL;
-
-    /* 初始化表达式上下文 */
+    state->js.joinqual = NULL;
     state->js.ps.ps_ExprContext = CreateExprContext(estate);
-    if (state->js.ps.ps_ExprContext == NULL) {
-        return NULL;
+    if (state->js.ps.ps_ExprContext == NULL) return NULL;
+
+    state->js.ps.ps_ResultTupleSlot = MakeTupleTableSlotWithMCxt(ctx);
+    if (state->js.ps.ps_ResultTupleSlot == NULL) return NULL;
+
+    /* 复制 HJClause 列表（List 元素按 (HJClause*) 装入） */
+    int nc = (node->hashclauses != NULL)
+             ? (int)list_length(node->hashclauses) : 0;
+    state->clauses = NULL;
+    state->nclauses = 0;
+    if (nc > 0) {
+        state->clauses = (HJClause *)palloc(ctx, sizeof(HJClause) * nc);
+        ListCell *lc;
+        int i = 0;
+        foreach (lc, node->hashclauses) {
+            HJClause *src = (HJClause *)lfirst(lc);
+            state->clauses[i] = *src;
+            i++;
+        }
+        state->nclauses = nc;
     }
 
-    /* 创建结果槽 */
-    state->js.ps.ps_ResultTupleSlot = MakeTupleTableSlotWithMCxt(estate->es_query_cxt);
-    if (state->js.ps.ps_ResultTupleSlot == NULL) {
-        return NULL;
+    state->out_desc = node->out_desc;
+    state->out_natts = node->out_natts;
+    state->outer_natts = node->outer_natts;
+    state->inner_natts = node->inner_natts;
+
+    /* 分配结果槽 values/isnull 数组 */
+    if (state->out_natts > 0) {
+        state->js.ps.ps_ResultTupleSlot->tts_values =
+            (Datum *)palloc0(ctx, sizeof(Datum) * state->out_natts);
+        state->js.ps.ps_ResultTupleSlot->tts_isnull =
+            (bool *)palloc0(ctx, sizeof(bool) * state->out_natts);
+        state->js.ps.ps_ResultTupleSlot->tts_tupleDescriptor = state->out_desc;
     }
 
-    /* 编译连接条件（框架版本：跳过） */
-    if (node->hashclauses != NULL) {
-        /* TODO: 实现表达式编译 */
-        state->hashclauses = NULL;
-    } else {
-        state->hashclauses = NULL;
-    }
-
-    if (node->join.joinqual != NULL) {
-        /* TODO: 实现表达式编译 */
-        state->js.joinqual = NULL;
-    } else {
-        state->js.joinqual = NULL;
-    }
-
-    /* 创建外表和内表槽 */
-    state->hj_OuterTupleSlot = MakeTupleTableSlotWithMCxt(estate->es_query_cxt);
-    if (state->hj_OuterTupleSlot == NULL) {
-        return NULL;
-    }
-
-    state->hj_InnerTupleSlot = MakeTupleTableSlotWithMCxt(estate->es_query_cxt);
-    if (state->hj_InnerTupleSlot == NULL) {
-        return NULL;
-    }
-
-    state->hj_NullInnerTupleSlot = NULL;  /* LEFT JOIN 时创建 */
-
-    /* 初始化 HashJoin 特定字段 */
-    state->hj_FirstOuterTupleSlot = true;
+    state->hashtable = NULL;
+    state->hj_OuterTupleSlot = NULL;
+    state->hj_InnerTupleSlot = NULL;
+    state->hj_NullInnerTupleSlot = NULL;
+    state->hj_FirstOuterTupleSlot = false;
     state->hj_CurOuterNoMatch = 0;
+    state->probe_chain = NULL;
+    state->probe_chain_idx = 0;
+    state->hj_CurOuterSlot = NULL;
+    state->hj_built = false;
+    state->hj_outer_active = false;
 
+    state->js.ps.qual = NULL;
+    state->js.ps.recheck = NULL;
+    state->js.ps.ps_ProjInfo = NULL;
+    state->js.ps.ps_ResultTupleDesc = NULL;
+    state->js.ps.instrument = NULL;
+    state->js.ps.needs_to_scan_queue = false;
+    state->js.ps.chgParam = NULL;
+
+    (void)eflags;
     return (PlanState *)state;
 }
 
-/**
- * @brief HashJoin 节点执行函数（公共接口）
- *
- * @param pstate PlanState（实际类型为 HashJoinState）
- *
- * @return 结果元组槽；无更多元组时返回 NULL
- */
 TupleTableSlot *ExecHashJoin(PlanState *pstate) {
     return exec_hashjoin_impl(pstate);
 }
 
-/**
- * @brief 结束 HashJoin 节点
- *
- * 释放 HashJoinState 关联的资源。
- *
- * @param node HashJoinState（可为 NULL）
- */
 void ExecEndHashJoin(HashJoinState *node) {
-    if (node == NULL) {
-        return;
-    }
-
-    /* 释放子节点 */
+    if (node == NULL) return;
     if (node->js.ps.lefttree != NULL) {
         ExecEndNode(node->js.ps.lefttree);
         node->js.ps.lefttree = NULL;
     }
-
     if (node->js.ps.righttree != NULL) {
         ExecEndNode(node->js.ps.righttree);
         node->js.ps.righttree = NULL;
     }
-
-    /* 释放哈希表 */
-    free_hash_table((HashJoinHashTable *)node->hashtable);
-    node->hashtable = NULL;
-
-    /* 释放表达式上下文 */
-    if (node->js.ps.ps_ExprContext != NULL) {
-        FreeExprContext(node->js.ps.ps_ExprContext, true);
-        node->js.ps.ps_ExprContext = NULL;
-    }
-
-    /* 释放结果槽 */
-    if (node->js.ps.ps_ResultTupleSlot != NULL) {
-        FreeTupleTableSlot(node->js.ps.ps_ResultTupleSlot);
-        node->js.ps.ps_ResultTupleSlot = NULL;
-    }
-
-    /* 释放外表和内表槽 */
     if (node->hj_OuterTupleSlot != NULL) {
         FreeTupleTableSlot(node->hj_OuterTupleSlot);
         node->hj_OuterTupleSlot = NULL;
     }
-
     if (node->hj_InnerTupleSlot != NULL) {
         FreeTupleTableSlot(node->hj_InnerTupleSlot);
         node->hj_InnerTupleSlot = NULL;
     }
-
     if (node->hj_NullInnerTupleSlot != NULL) {
         FreeTupleTableSlot(node->hj_NullInnerTupleSlot);
         node->hj_NullInnerTupleSlot = NULL;
     }
-
-    /* 注意：HashJoinState 本身由 EState 的查询上下文管理，不单独释放 */
+    if (node->hj_CurOuterSlot != NULL) {
+        FreeTupleTableSlot(node->hj_CurOuterSlot);
+        node->hj_CurOuterSlot = NULL;
+    }
+    if (node->js.ps.ps_ExprContext != NULL) {
+        FreeExprContext(node->js.ps.ps_ExprContext, true);
+        node->js.ps.ps_ExprContext = NULL;
+    }
+    if (node->js.ps.ps_ResultTupleSlot != NULL) {
+        FreeTupleTableSlot(node->js.ps.ps_ResultTupleSlot);
+        node->js.ps.ps_ResultTupleSlot = NULL;
+    }
+    /* hashtable / clauses / out_desc：均在 es_query_cxt 分配 */
 }
 
-/**
- * @brief 重置 HashJoin 节点（用于重新扫描）
- *
- * 重置哈希表状态，允许重新构建和探测。
- *
- * @param node HashJoinState
- */
 void ExecReScanHashJoin(HashJoinState *node) {
-    if (node == NULL) {
-        return;
-    }
-
-    /* 重置子节点 */
+    if (node == NULL) return;
     if (node->js.ps.lefttree != NULL) {
         ExecReScan(node->js.ps.lefttree);
     }
-
     if (node->js.ps.righttree != NULL) {
         ExecReScan(node->js.ps.righttree);
     }
-
-    /* 释放旧哈希表并重置 */
-    free_hash_table((HashJoinHashTable *)node->hashtable);
     node->hashtable = NULL;
-
-    /* 重置 HashJoin 特定状态 */
-    node->hj_FirstOuterTupleSlot = true;
-    node->hj_CurOuterNoMatch = 0;
+    node->hj_built = false;
+    node->hj_outer_active = false;
+    node->probe_chain = NULL;
+    node->probe_chain_idx = 0;
 }

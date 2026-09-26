@@ -2,15 +2,21 @@
  * @file nodeSort.c
  * @brief Sort 排序执行器节点实现
  *
- * 实现 Task 2.5 的 Sort 排序节点：
- *   - ExecInitSort: 初始化 SortState
- *   - ExecSort: 执行排序计算
- *   - ExecEndSort: 释放资源
- *   - ExecReScanSort: 重置节点
+ * 实现 Sort 排序节点（两阶段 Volcano）：
+ *   1. 收集阶段：从子节点拉取所有元组，复制到内部缓冲
+ *   2. 输出阶段：对元组按 sortColIdx / sortColTypes / sortDesc 排序，逐个返回
  *
- * 实现两阶段排序：
- *   1. 收集阶段：从子节点拉取所有元组
- *   2. 输出阶段：对元组排序并逐个输出
+ * T9 修订要点：
+ *   - exec_sort_impl 重写：qsort 比较器修正（元素为 TupleTableSlot**，
+ *     比较器接收的是 (TupleTableSlot**)*），按 sortColTypes 类型感知比较
+ *     （int 家族按 int64_t；text 家族按 strcmp），按 sortDesc 翻转方向。
+ *   - copy_tuple_slot 简化：共享描述符指针（避开放位/真身布局不一致——
+ *     见 T8 报告 §1.3），Datum/isnull 数组按 tts_nvalid 复制（适配 SeqScan
+ *     等设置 nvalid=natts 的算子）。
+ *   - ExecInitSort 复制 sortDesc/sortColTypes 到 SortState，并显式设置
+ *     ps.lefttree 使 ExecEndNode 递归能走到子节点（避免 SeqScanState 泄漏）。
+ *   - 排序输出槽 ps_ResultTupleSlot 仍由框架分配（passthrough，不填充
+ *     值；驱动只使用子节点拉取到的真实 slot）。
  */
 
 #include "db/sql/nodeSort.h"
@@ -22,276 +28,195 @@
 #include <assert.h>
 
 /* ========================================================================
+ * 驱动层 OID（与 sql_driver.c 一致；避免跨 TU 互相 include）
+ * ======================================================================== */
+
+#define SORT_OID_INT2    21
+#define SORT_OID_INT4    23
+#define SORT_OID_INT8    20
+#define SORT_OID_TEXT    25
+#define SORT_OID_CHAR    1042
+#define SORT_OID_VARCHAR 1043
+
+static inline bool sort_oid_is_text(Oid t) {
+    return t == SORT_OID_TEXT || t == SORT_OID_CHAR || t == SORT_OID_VARCHAR;
+}
+
+/* ========================================================================
  * Sort 扩展状态（内部使用）
  * ======================================================================== */
 
-/**
- * @brief Sort 扩展执行状态
- *
- * 维护排序所需的运行时状态，包括：
- *   - 元组数组（收集阶段）
- *   - 排序状态（输出阶段）
- */
 typedef struct SortExtState {
-    /* 子节点 */
-    PlanState *sort_child;           /**< 子计划节点 */
-
-    /* 排序缓冲 */
-    void **sort_tuples;              /**< 元组数组 */
-    int sort_tupleCount;            /**< 元组数量 */
-    int sort_tupleCapacity;         /**< 元组数组容量 */
-    int sort_current;                /**< 当前输出位置 */
-
-    /* 排序信息 */
-    int numSortCols;                /**< 排序列数 */
-    int *sortColIdx;                /**< 排序列索引 */
-    Oid *sortOperators;             /**< 排序操作符 */
-    bool *nullsFirst;               /**< NULL 值排序位置 */
-
-    /* 元组描述符 */
-    struct TupleDescData *sort_tupDesc; /**< 元组描述符 */
-
-    /* 状态标志 */
-    bool sort_finished;             /**< 是否已完成排序 */
-    bool sort_begun;                /**< 是否已开始 */
+    SortState *sort_state;          /**< 回指 SortState（qsort 比较器取列元数据） */
+    void    **sort_tuples;            /**< TupleTableSlot* 数组 */
+    int       sort_tupleCount;
+    int       sort_tupleCapacity;
+    int       sort_current;           /**< 当前输出位置 */
+    bool      sort_finished;
+    bool      sort_begun;
 } SortExtState;
 
-/* 全局变量用于 qsort 比较函数（避免传递用户数据） */
+/* qsort 比较函数用：避免向 qsort 传用户数据 */
 static SortExtState *g_sort_ext_for_compare = NULL;
 
 /* ========================================================================
- * 辅助函数
+ * 比较与复制
  * ======================================================================== */
 
-/**
- * @brief 获取 Sort 扩展状态
- */
-static SortExtState *GetSortExtState(SortState *node) {
-    if (node == NULL) return NULL;
-    /* 扩展状态存储在 ps.ps_ExprContext->ecxt_per_tuple_memory 的句柄中 */
-    return (SortExtState *)node->ps.plan;  /* 临时方案：使用 plan 字段存储 */
-}
-
-/**
- * @brief 设置 Sort 扩展状态
- */
-static void SetSortExtState(SortState *node, SortExtState *ext) {
-    if (node == NULL) return;
-    node->ps.plan = (Plan *)ext;  /* 临时方案 */
-}
-
-/**
- * @brief 比较两个元组（用于 qsort）
- *
- * 按照 numSortCols 指定的列进行排序。
- *
- * @param a 第一个元组（TupleTableSlot*）
- * @param b 第二个元组（TupleTableSlot*）
- * @return 比较结果（<0, 0, >0）
- */
 static int sort_compare(const void *a, const void *b) {
-    TupleTableSlot *slot_a = (TupleTableSlot *)a;
-    TupleTableSlot *slot_b = (TupleTableSlot *)b;
+    /* a, b 指向 sort_tuples[] 元素；元素类型为 TupleTableSlot* */
+    TupleTableSlot *sa = *(TupleTableSlot *const *)a;
+    TupleTableSlot *sb = *(TupleTableSlot *const *)b;
     SortExtState *ext = g_sort_ext_for_compare;
-
-    if (ext == NULL) {
+    if (sa == NULL || sb == NULL || ext == NULL || ext->sort_state == NULL) {
         return 0;
     }
 
-    /* 比较每列 */
-    for (int i = 0; i < ext->numSortCols; i++) {
-        int col_idx = ext->sortColIdx[i];
-        Datum val_a, val_b;
-        bool isnull_a, isnull_b;
+    SortState *st = ext->sort_state;
+    int n = st->numCols;
+    int *idx = st->sortColIdx;
+    Oid *types = st->sortColTypes;
+    bool *desc = st->sortDesc;
+    bool *nf = st->ps.plan ? NULL : NULL;  /* 暂未使用 nullsFirst */
 
-        /* 获取元组值 */
-        if (slot_a->tts_values && col_idx < slot_a->tts_nvalid) {
-            val_a = slot_a->tts_values[col_idx];
-            isnull_a = slot_a->tts_isnull ? slot_a->tts_isnull[col_idx] : false;
-        } else {
-            val_a = 0;
-            isnull_a = true;
-        }
-
-        if (slot_b->tts_values && col_idx < slot_b->tts_nvalid) {
-            val_b = slot_b->tts_values[col_idx];
-            isnull_b = slot_b->tts_isnull ? slot_b->tts_isnull[col_idx] : false;
-        } else {
-            val_b = 0;
-            isnull_b = true;
-        }
-
-        /* NULL 处理 */
-        if (isnull_a && isnull_b) {
+    for (int i = 0; i < n; i++) {
+        int c = idx[i];
+        if (sa->tts_values == NULL || sb->tts_values == NULL ||
+            c >= sa->tts_nvalid || c >= sb->tts_nvalid) {
             continue;
         }
-        if (isnull_a) {
-            return ext->nullsFirst[i] ? -1 : 1;
-        }
-        if (isnull_b) {
-            return ext->nullsFirst[i] ? 1 : -1;
-        }
+        Datum va = sa->tts_values[c];
+        Datum vb = sb->tts_values[c];
+        bool na = sa->tts_isnull ? sa->tts_isnull[c] : false;
+        bool nb = sb->tts_isnull ? sb->tts_isnull[c] : false;
 
-        /* 数值比较（假设为整数类型） */
-        if (val_a < val_b) {
-            return -1;
-        } else if (val_a > val_b) {
-            return 1;
+        int cmp;
+        if (na && nb) {
+            continue;  /* 双 NULL → 视为相等，下一列 */
         }
-        /* 相等，继续下一列 */
+        if (na) {
+            cmp = (nf && nf[i]) ? -1 : 1;
+        } else if (nb) {
+            cmp = (nf && nf[i]) ? 1 : -1;
+        } else if (types != NULL && sort_oid_is_text(types[i])) {
+            const char *sa_s = va ? (const char *)(uintptr_t)va : "";
+            const char *sb_s = vb ? (const char *)(uintptr_t)vb : "";
+            cmp = strcmp(sa_s, sb_s);
+        } else {
+            int64_t la = (int64_t)va;
+            int64_t lb = (int64_t)vb;
+            if (la < lb) cmp = -1;
+            else if (la > lb) cmp = 1;
+            else cmp = 0;
+        }
+        if (desc != NULL && desc[i]) {
+            cmp = -cmp;
+        }
+        if (cmp != 0) {
+            return cmp;
+        }
     }
-
     return 0;
 }
 
 /**
- * @brief 复制元组槽数据
+ * @brief 深拷贝一个元组槽（共享描述符；复制值/空位数组）
+ *
+ * 描述符在查询周期内由 storage/catalog 维护，共享即可；
+ * Datum 数组按 tts_nvalid 大小复制，文本类 Datum 指向 es_query_cxt 内
+ * 已分配内存（随 EState 整体回收，无需单独处理）。
  */
 static TupleTableSlot *copy_tuple_slot(TupleTableSlot *src, MemoryContext ctx) {
     if (src == NULL) return NULL;
-
     TupleTableSlot *dst = (TupleTableSlot *)palloc(ctx, sizeof(TupleTableSlot));
     if (dst == NULL) return NULL;
-
     memset(dst, 0, sizeof(TupleTableSlot));
     dst->type = T_TupleTableSlot;
 
-    /* 复制元组描述符 */
-    if (src->tts_tupleDescriptor) {
-        dst->tts_tupleDescriptor = (struct TupleDescData *)palloc(ctx, sizeof(struct TupleDescData));
-        memcpy(dst->tts_tupleDescriptor, src->tts_tupleDescriptor, sizeof(struct TupleDescData));
-    }
+    /* 共享描述符指针（不拷贝结构体——避开放位/真身布局差异） */
+    dst->tts_tupleDescriptor = src->tts_tupleDescriptor;
+    dst->tts_ops = src->tts_ops;
 
-    /* 复制值数组 */
-    int natts = src->tts_tupleDescriptor ? src->tts_tupleDescriptor->natts : 0;
-    if (natts > 0) {
-        dst->tts_values = (Datum *)palloc(ctx, sizeof(Datum) * natts);
-        dst->tts_isnull = (bool *)palloc(ctx, sizeof(bool) * natts);
-        memcpy(dst->tts_values, src->tts_values, sizeof(Datum) * natts);
-        memcpy(dst->tts_isnull, src->tts_isnull, sizeof(bool) * natts);
+    int nvalid = src->tts_nvalid > 0 ? src->tts_nvalid : 0;
+    if (nvalid > 0) {
+        dst->tts_values = (Datum *)palloc(ctx, sizeof(Datum) * nvalid);
+        dst->tts_isnull = (bool *)palloc(ctx, sizeof(bool) * nvalid);
+        if (src->tts_values != NULL) {
+            memcpy(dst->tts_values, src->tts_values, sizeof(Datum) * nvalid);
+        }
+        if (src->tts_isnull != NULL) {
+            memcpy(dst->tts_isnull, src->tts_isnull, sizeof(bool) * nvalid);
+        }
+        dst->tts_nvalid = nvalid;
     }
-
-    dst->tts_nvalid = src->tts_nvalid;
     dst->tts_shouldFree = false;
-    dst->tts_tuple = src->tts_tuple;
-
+    dst->tts_shouldFreeMin = false;
     return dst;
 }
 
-/**
- * @brief 分配元组数组
- */
-static void **alloc_tuple_array(int capacity, MemoryContext ctx) {
-    return (void **)palloc(ctx, sizeof(void *) * capacity);
-}
-
-/**
- * @brief 扩展元组数组容量
- */
-static void **realloc_tuple_array(void **arr, int old_cap, int new_cap, MemoryContext ctx) {
-    void **new_arr = (void **)palloc(ctx, sizeof(void *) * new_cap);
-    if (arr && old_cap > 0) {
-        memcpy(new_arr, arr, sizeof(void *) * old_cap);
-        pfree(ctx, arr);
-    }
-    return new_arr;
+static void **realloc_tuple_array(void **arr, int new_cap, MemoryContext ctx) {
+    return (void **)palloc(ctx, sizeof(void *) * new_cap);
 }
 
 /* ========================================================================
  * Sort 节点执行函数
  * ======================================================================== */
 
-/**
- * @brief Sort 节点执行函数（内部实现）
- *
- * Sort 算法（两阶段）：
- *   1. 收集阶段：从子节点拉取所有元组，存入数组
- *   2. 输出阶段：对数组排序，逐个输出
- *
- * @param pstate PlanState（实际类型为 SortState）
- *
- * @return 结果元组槽；无更多元组时返回 NULL
- */
 static TupleTableSlot *exec_sort_impl(PlanState *pstate) {
     SortState *node = (SortState *)pstate;
-    SortExtState *ext;
+    SortExtState *ext = (SortExtState *)node->ps.plan;  /* ext 借存 ps.plan */
     TupleTableSlot *slot;
 
-    if (node == NULL) {
+    if (node == NULL || ext == NULL) {
         return NULL;
     }
 
-    ext = GetSortExtState(node);
-    if (ext == NULL) {
-        return NULL;
-    }
-
-    /* 如果还未开始，进入收集阶段 */
     if (!ext->sort_begun) {
         MemoryContext ctx;
-
-        /* 获取内存上下文 */
         if (node->ps.state && ((EState *)node->ps.state)->es_query_cxt) {
             ctx = ((EState *)node->ps.state)->es_query_cxt;
         } else {
-            /* 使用 per_tuple 上下文 */
-            ctx = node->ps.ps_ExprContext->ecxt_per_tuple_memory;
+            ctx = node->ps.ps_ExprContext
+                ? node->ps.ps_ExprContext->ecxt_per_tuple_memory
+                : MemoryContextCurrent();
         }
 
-        /* 初始化元组数组 */
-        ext->sort_tupleCapacity = 1024;  /* 初始容量 */
-        ext->sort_tuples = alloc_tuple_array(ext->sort_tupleCapacity, ctx);
+        ext->sort_tupleCapacity = 64;
+        ext->sort_tuples = realloc_tuple_array(NULL, ext->sort_tupleCapacity, ctx);
         ext->sort_tupleCount = 0;
         ext->sort_current = 0;
+        ext->sort_finished = false;
 
-        /* 收集阶段：从子节点拉取所有元组 */
-        if (ext->sort_child != NULL) {
-            PlanState *child = ext->sort_child;
-            while (true) {
-                slot = ExecProcNode(child);
-                if (slot == NULL) {
-                    break;
-                }
-
-                /* 扩展数组容量（如果需要） */
+        /* 收集阶段：从子节点拉取所有元组并深拷贝 */
+        PlanState *child = node->ps.lefttree;
+        if (child != NULL) {
+            while ((slot = ExecProcNode(child)) != NULL) {
                 if (ext->sort_tupleCount >= ext->sort_tupleCapacity) {
                     ext->sort_tupleCapacity *= 2;
                     ext->sort_tuples = realloc_tuple_array(
-                        ext->sort_tuples,
-                        ext->sort_tupleCount,
-                        ext->sort_tupleCapacity,
-                        ctx
-                    );
+                        ext->sort_tuples, ext->sort_tupleCapacity, ctx);
                 }
-
-                /* 复制元组槽 */
-                ext->sort_tuples[ext->sort_tupleCount] = copy_tuple_slot(slot, ctx);
-                ext->sort_tupleCount++;
+                ext->sort_tuples[ext->sort_tupleCount++] = copy_tuple_slot(slot, ctx);
+                ExecClearTuple(slot);
             }
         }
 
-        /* 排序阶段：对元组数组排序 */
-        if (ext->sort_tupleCount > 0) {
-            /* 设置全局变量供比较函数使用 */
+        /* 排序阶段 */
+        if (ext->sort_tupleCount > 1) {
             g_sort_ext_for_compare = ext;
-            qsort(ext->sort_tuples, ext->sort_tupleCount, sizeof(void *), sort_compare);
-            /* 清除全局变量 */
+            qsort(ext->sort_tuples, (size_t)ext->sort_tupleCount,
+                  sizeof(void *), sort_compare);
             g_sort_ext_for_compare = NULL;
         }
-
         ext->sort_begun = true;
     }
 
-    /* 输出阶段：逐个输出排序后的元组 */
     if (ext->sort_current >= ext->sort_tupleCount) {
         ext->sort_finished = true;
-        return NULL;
+        return NULL;  /* 本节点语义完成：必须返回 NULL（绝不返回空 slot） */
     }
 
-    /* 返回当前元组槽 */
-    slot = (TupleTableSlot *)ext->sort_tuples[ext->sort_current];
-    ext->sort_current++;
-
+    slot = (TupleTableSlot *)ext->sort_tuples[ext->sort_current++];
     return slot;
 }
 
@@ -299,108 +224,67 @@ static TupleTableSlot *exec_sort_impl(PlanState *pstate) {
  * 公共 API
  * ======================================================================== */
 
-/**
- * @brief 初始化 Sort 节点
- *
- * 分配 SortState 并初始化字段。
- * 同时初始化子节点。
- *
- * @param plan   计划节点（实际类型为 Sort*）
- * @param estate 执行器状态
- * @param eflags 执行器标志
- *
- * @return 初始化后的 SortState（作为 PlanState*）；失败返回 NULL
- */
 PlanState *ExecInitSort(Plan *plan, EState *estate, int eflags) {
     Sort *node;
     SortState *state;
     SortExtState *ext;
     MemoryContext ctx;
 
-    /* 参数检查 */
     if (plan == NULL || estate == NULL) {
         return NULL;
     }
-
     node = (Sort *)plan;
-
-    /* 获取查询上下文 */
     ctx = estate->es_query_cxt;
 
-    /* 在查询上下文中分配 SortState */
     state = (SortState *)palloc0(ctx, sizeof(SortState));
-    if (state == NULL) {
-        return NULL;
-    }
+    if (state == NULL) return NULL;
 
-    /* 分配扩展状态 */
     ext = (SortExtState *)palloc0(ctx, sizeof(SortExtState));
-    if (ext == NULL) {
-        return NULL;
-    }
+    if (ext == NULL) return NULL;
 
-    /* 初始化基类 */
     state->ps.type = T_SortState;
     state->ps.plan = plan;
     state->ps.state = estate;
     state->ps.ExecProcNode = exec_sort_impl;
     state->ps.ExecProcNodeReal = exec_sort_impl;
 
-    /* 保存扩展状态（临时方案） */
-    SetSortExtState(state, ext);
+    /* ext 借存于 ps.plan 字段——执行期通过该字段取回 */
+    state->ps.plan = (Plan *)ext;
 
-    /* 初始化子节点 */
-    if (node->plan.lefttree != NULL) {
-        ext->sort_child = ExecInitNode(node->plan.lefttree, estate, eflags);
-    } else {
-        ext->sort_child = NULL;
-    }
-
-    /* Sort 节点无右子树 */
-    state->ps.righttree = NULL;
-
-    /* 初始化表达式上下文 */
-    state->ps.ps_ExprContext = CreateExprContext(estate);
-    if (state->ps.ps_ExprContext == NULL) {
-        return NULL;
-    }
-
-    /* 创建结果槽 */
-    state->ps.ps_ResultTupleSlot = MakeTupleTableSlotWithMCxt(ctx);
-    if (state->ps.ps_ResultTupleSlot == NULL) {
-        return NULL;
-    }
-
-    /* 初始化 Sort 特定字段 */
     state->numCols = node->numCols;
     state->sort_Done = false;
     state->tuplesortstate = NULL;
 
-    /* 初始化扩展状态 */
-    ext->numSortCols = node->numCols;
-    if (node->numCols > 0 && node->sortColIdx != NULL) {
-        ext->sortColIdx = (int *)palloc(ctx, sizeof(int) * node->numCols);
-        memcpy(ext->sortColIdx, node->sortColIdx, sizeof(int) * node->numCols);
-
-        ext->sortOperators = (Oid *)palloc(ctx, sizeof(Oid) * node->numCols);
-        if (node->sortOperators) {
-            memcpy(ext->sortOperators, node->sortOperators, sizeof(Oid) * node->numCols);
+    if (node->numCols > 0) {
+        if (node->sortColIdx != NULL) {
+            state->sortColIdx = (int *)palloc(ctx, sizeof(int) * node->numCols);
+            memcpy(state->sortColIdx, node->sortColIdx, sizeof(int) * node->numCols);
         }
-
-        ext->nullsFirst = (bool *)palloc(ctx, sizeof(bool) * node->numCols);
-        if (node->nullsFirst) {
-            memcpy(ext->nullsFirst, node->nullsFirst, sizeof(bool) * node->numCols);
+        if (node->sortDesc != NULL) {
+            state->sortDesc = (bool *)palloc(ctx, sizeof(bool) * node->numCols);
+            memcpy(state->sortDesc, node->sortDesc, sizeof(bool) * node->numCols);
+        }
+        if (node->sortColTypes != NULL) {
+            state->sortColTypes = (Oid *)palloc(ctx, sizeof(Oid) * node->numCols);
+            memcpy(state->sortColTypes, node->sortColTypes,
+                   sizeof(Oid) * node->numCols);
         }
     }
 
-    ext->sort_tuples = NULL;
-    ext->sort_tupleCount = 0;
-    ext->sort_tupleCapacity = 0;
-    ext->sort_current = 0;
-    ext->sort_finished = false;
-    ext->sort_begun = false;
+    /* 初始化子节点；T9：同时设置 ps.lefttree，使 ExecEndNode 递归能到达 */
+    if (node->plan.lefttree != NULL) {
+        state->ps.lefttree = ExecInitNode(node->plan.lefttree, estate, eflags);
+    } else {
+        state->ps.lefttree = NULL;
+    }
+    state->ps.righttree = NULL;
 
-    /* 初始化其他字段 */
+    state->ps.ps_ExprContext = CreateExprContext(estate);
+    if (state->ps.ps_ExprContext == NULL) return NULL;
+
+    state->ps.ps_ResultTupleSlot = MakeTupleTableSlotWithMCxt(ctx);
+    if (state->ps.ps_ResultTupleSlot == NULL) return NULL;
+
     state->ps.qual = NULL;
     state->ps.recheck = NULL;
     state->ps.ps_ProjInfo = NULL;
@@ -409,77 +293,44 @@ PlanState *ExecInitSort(Plan *plan, EState *estate, int eflags) {
     state->ps.needs_to_scan_queue = false;
     state->ps.chgParam = NULL;
 
-    (void)eflags;
+    ext->sort_tuples = NULL;
+    ext->sort_tupleCount = 0;
+    ext->sort_tupleCapacity = 0;
+    ext->sort_current = 0;
+    ext->sort_finished = false;
+    ext->sort_begun = false;
+    ext->sort_state = state;  /* 回指供 qsort 比较器使用 */
 
+    (void)eflags;
     return (PlanState *)state;
 }
 
-/**
- * @brief Sort 节点执行函数（公共接口）
- *
- * @param pstate PlanState（实际类型为 SortState）
- *
- * @return 结果元组槽；无更多元组时返回 NULL
- */
 TupleTableSlot *ExecSort(PlanState *pstate) {
     return exec_sort_impl(pstate);
 }
 
-/**
- * @brief 结束 Sort 节点
- *
- * 释放 SortState 关联的资源。
- *
- * @param node SortState（可为 NULL）
- */
 void ExecEndSort(SortState *node) {
-    if (node == NULL) {
-        return;
-    }
-
-    /* 释放子节点 */
+    if (node == NULL) return;
+    /* 释放子节点（generic 递归将经 T_SeqScanState 分派关闭 SeqScan 资源） */
     if (node->ps.lefttree != NULL) {
         ExecEndNode(node->ps.lefttree);
         node->ps.lefttree = NULL;
     }
-
-    /* 释放元组排序状态 */
-    if (node->tuplesortstate != NULL) {
-        free(node->tuplesortstate);
-        node->tuplesortstate = NULL;
-    }
-
-    /* 释放表达式上下文 */
+    /* tuplesortstate / ext / 元组缓冲：均在 es_query_cxt 分配，由 EState 回收 */
     if (node->ps.ps_ExprContext != NULL) {
         FreeExprContext(node->ps.ps_ExprContext, true);
         node->ps.ps_ExprContext = NULL;
     }
-
-    /* 释放结果槽 */
     if (node->ps.ps_ResultTupleSlot != NULL) {
         FreeTupleTableSlot(node->ps.ps_ResultTupleSlot);
         node->ps.ps_ResultTupleSlot = NULL;
     }
-
-    /* 注意：SortState 本身由 EState 的查询上下文管理，不单独释放 */
-    (void)node;
 }
 
-/**
- * @brief 重置 Sort 节点（用于重新扫描）
- *
- * 重置排序状态，允许重新排序。
- *
- * @param node SortState
- */
 void ExecReScanSort(SortState *node) {
-    if (node == NULL) {
-        return;
-    }
-
-    SortExtState *ext = GetSortExtState(node);
+    if (node == NULL) return;
+    SortExtState *ext = (SortExtState *)node->ps.plan;
     if (ext != NULL) {
-        /* 重置扩展状态 */
         ext->sort_tuples = NULL;
         ext->sort_tupleCount = 0;
         ext->sort_tupleCapacity = 0;
@@ -487,12 +338,8 @@ void ExecReScanSort(SortState *node) {
         ext->sort_finished = false;
         ext->sort_begun = false;
     }
-
-    /* 重置子节点 */
     if (node->ps.lefttree != NULL) {
         ExecReScan(node->ps.lefttree);
     }
-
-    /* 重置排序状态 */
     node->sort_Done = false;
 }

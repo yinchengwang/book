@@ -168,6 +168,16 @@ static Relation create_table_relation(table_info_t *table_info, int mode) {
     int ncols = 0;
     column_info_t *columns = catalog_get_columns(table_info->oid, &ncols);
     if (columns) {
+        /* catalog_get_columns 按 hash 桶链返回（与注册顺序相反）；
+         * 按 attnum 升序排序，使 td->attrs[] 顺序与声明顺序一致，
+         * 驱动层 / SQL 算子可直接用 attno = 列下标。 */
+        for (int i = 1; i < ncols; i++) {
+            for (int j = i; j > 0 && columns[j - 1].attnum > columns[j].attnum; j--) {
+                column_info_t tmp = columns[j - 1];
+                columns[j - 1] = columns[j];
+                columns[j] = tmp;
+            }
+        }
         rel->rd_att = CreateTupleDesc(ncols);
         if (rel->rd_att) {
             rel->rd_att->natts = ncols;

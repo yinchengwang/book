@@ -43,6 +43,20 @@ extern "C" {
 #endif
 
 /* ========================================================================
+ * HashJoin 等值条件（驱动 → 算子契约）
+ *
+ * 驱动解析 ON A_Expr '=' ColumnRef.ColumnRef 后构造 HJClause 列表挂到
+ * HashJoin.plan.hashclauses；算子按 outer_attno/inner_attno 直接做 Datums
+ * 哈希与等值比较，类型 key_type 用于区分文本 vs 整数（文本需 strcmp/字节哈希）。
+ * ======================================================================== */
+
+typedef struct HJClause_s {
+    int           outer_attno;  /**< 外表（lefttree）输出槽 attno */
+    int           inner_attno;  /**< 内表（righttree）输出槽 attno */
+    Oid           key_type;     /**< 连接键类型（INT2/INT4/INT8/TEXT 家族） */
+} HJClause;
+
+/* ========================================================================
  * Join 计划基类
  * ======================================================================== */
 
@@ -70,9 +84,14 @@ typedef struct Join {
  */
 typedef struct HashJoin {
     Join         join;               /**< 基类：连接节点（必须作为第一个字段） */
-    List        *hashclauses;        /**< 哈希连接条件（等值条件） */
-    List        *hashoperators;      /**< 哈希操作符列表 */
-    bool         hashnullrecheck;    /**< NULL 重检查（用于 nullable 连接键） */
+    List        *hashclauses;        /**< HJClause 列表（哈希连接条件） */
+    List        *hashoperators;      /**< 哈希操作符列表（T9 未使用） */
+    bool         hashnullrecheck;    /**< NULL 重检查（T9 未使用） */
+    /* T9 新增：与算子合约的纯数据字段（无 TupleDescData 布局依赖） */
+    struct TupleDescData *out_desc;  /**< 连接结果描述符（outer cols ++ inner cols） */
+    int          out_natts;          /**< 结果列数 = 外表列数 + 内表列数 */
+    int          outer_natts;        /**< 外表列数（驱动构造时由 catalog 确定） */
+    int          inner_natts;        /**< 内表列数（驱动构造时由 catalog 确定） */
 } HashJoin;
 
 /* ========================================================================
@@ -100,13 +119,25 @@ typedef struct JoinState {
  */
 typedef struct HashJoinState {
     JoinState    js;                 /**< 基类：连接状态 */
-    ExprState   *hashclauses;        /**< 编译后的哈希连接条件 */
-    void        *hashtable;          /**< 哈希表（内部使用 HashJoinHashTable） */
+    ExprState   *hashclauses;        /**< 编译后的哈希连接条件（未使用） */
+    void        *hashtable;          /**< HashJoinHashTable（build 阶段构造） */
     TupleTableSlot *hj_OuterTupleSlot;  /**< 外表元组槽 */
     TupleTableSlot *hj_InnerTupleSlot;  /**< 内表元组槽 */
     TupleTableSlot *hj_NullInnerTupleSlot; /**< NULL 内表槽（LEFT JOIN 用） */
     bool         hj_FirstOuterTupleSlot;  /**< 首次探测标志 */
     int          hj_CurOuterNoMatch;  /**< 当前未匹配行计数 */
+    /* T9 新增：HJClause 数组缓存、输出描述与维度；执行期探测游标 */
+    HJClause    *clauses;            /**< 由 plan.hashclauses 解析出的数组（palloc） */
+    int          nclauses;           /**< clauses 元素数 */
+    struct TupleDescData *out_desc;  /**< 同 plan.out_desc */
+    int          out_natts;
+    int          outer_natts;        /**< 外表输出列数（用于结果槽列切分） */
+    int          inner_natts;        /**< 内表输出列数 */
+    int          probe_chain_idx;    /**< 当前外表元组在 bucket 链上的位置 */
+    void        *probe_chain;        /**< 当前桶链头（HashJoinBucket*，见实现） */
+    TupleTableSlot *hj_CurOuterSlot; /**< 当前探测中的外表元组（深拷贝值） */
+    bool         hj_built;           /**< 构建阶段已完成 */
+    bool         hj_outer_active;    /**< 是否持有有效外表元组 */
 } HashJoinState;
 
 /* ========================================================================

@@ -179,42 +179,10 @@ stmt:
  * SELECT 语句
  * ============================================================ */
 
+/* T9：五个子句均可独立缺省（各规则含空产生式），
+ * ORDER BY/GROUP BY/LIMIT/OFFSET 不再以 WHERE 为前置条件。 */
 select_stmt:
-      SELECT target_list FROM from_clause
-        {
-            SelectStmt *n = makeSelectStmt();
-            n->targetList = $2;
-            n->fromClause = $4;
-            $$ = (Node *)n;
-        }
-    | SELECT target_list FROM from_clause where_clause
-        {
-            SelectStmt *n = makeSelectStmt();
-            n->targetList = $2;
-            n->fromClause = $4;
-            n->whereClause = $5;
-            $$ = (Node *)n;
-        }
-    | SELECT target_list FROM from_clause where_clause group_clause
-        {
-            SelectStmt *n = makeSelectStmt();
-            n->targetList = $2;
-            n->fromClause = $4;
-            n->whereClause = $5;
-            n->groupClause = $6;
-            $$ = (Node *)n;
-        }
-    | SELECT target_list FROM from_clause where_clause group_clause having_clause
-        {
-            SelectStmt *n = makeSelectStmt();
-            n->targetList = $2;
-            n->fromClause = $4;
-            n->whereClause = $5;
-            n->groupClause = $6;
-            n->havingClause = $7;
-            $$ = (Node *)n;
-        }
-    | SELECT target_list FROM from_clause where_clause group_clause having_clause order_clause
+      SELECT target_list FROM from_clause where_clause group_clause having_clause order_clause limit_clause
         {
             SelectStmt *n = makeSelectStmt();
             n->targetList = $2;
@@ -223,23 +191,19 @@ select_stmt:
             n->groupClause = $6;
             n->havingClause = $7;
             n->sortClause = $8;
-            $$ = (Node *)n;
-        }
-    | SELECT target_list FROM from_clause where_clause group_clause having_clause order_clause limit_clause
-        {
-            SelectStmt *n = makeSelectStmt();
-            n->targetList = $2;
-            n->fromClause = $4;
-            n->whereClause = $5;
-            n->groupClause = $6;
-            n->havingClause = $7;
-            n->sortClause = $8;
-            n->limitCount = $9;
+            if ($9 != NULL) {
+                /* limit_clause 语义值为双元素 List：(count, offset) */
+                List *lim = (List *)$9;
+                n->limitCount = (Node *)lfirst(lim->head);
+                n->limitOffset = (lim->head->next != NULL)
+                               ? (Node *)lfirst(lim->head->next) : NULL;
+            }
             $$ = (Node *)n;
         }
     ;
 
-/* 目标列列表（T6：允许函数调用，如 COUNT(*)） */
+/* 目标列列表（T6：允许函数调用，如 COUNT(*)；
+ * T9：允许 `column_ref AS IDENT` / `func_call AS IDENT` 形成 ResTarget 别名。） */
 target_list:
       '*'
         {
@@ -248,19 +212,56 @@ target_list:
         }
     | target_list ',' column_ref
         {
-            $$ = lappend($1, $3);
+            /* T9：列引用 → ResTarget（name=NULL, val=ColumnRef） */
+            ResTarget *r = (ResTarget *)makeNode(T_ResTarget);
+            r->name = NULL;
+            r->val = (Node *)$3;
+            $$ = lappend($1, (Node *)r);
+        }
+    | target_list ',' column_ref AS IDENT
+        {
+            /* T9：列别名 → ResTarget 包装（name=$5, val=$3） */
+            ResTarget *r = makeResTarget($5, $3);
+            $$ = lappend($1, (Node *)r);
         }
     | target_list ',' func_call
         {
-            $$ = lappend($1, $3);
+            /* T9：函数调用 → ResTarget（name=NULL, val=FuncCall） */
+            ResTarget *r = (ResTarget *)makeNode(T_ResTarget);
+            r->name = NULL;
+            r->val = (Node *)$3;
+            $$ = lappend($1, (Node *)r);
+        }
+    | target_list ',' func_call AS IDENT
+        {
+            ResTarget *r = makeResTarget($5, $3);
+            $$ = lappend($1, (Node *)r);
         }
     | column_ref
         {
-            $$ = list_make1($1);
+            /* T9：列引用 → ResTarget（name=NULL, val=ColumnRef） */
+            ResTarget *r = (ResTarget *)makeNode(T_ResTarget);
+            r->name = NULL;
+            r->val = (Node *)$1;
+            $$ = list_make1((Node *)r);
+        }
+    | column_ref AS IDENT
+        {
+            ResTarget *r = makeResTarget($3, $1);
+            $$ = list_make1((Node *)r);
         }
     | func_call
         {
-            $$ = list_make1($1);
+            /* T9：函数调用 → ResTarget（name=NULL, val=FuncCall） */
+            ResTarget *r = (ResTarget *)makeNode(T_ResTarget);
+            r->name = NULL;
+            r->val = (Node *)$1;
+            $$ = list_make1((Node *)r);
+        }
+    | func_call AS IDENT
+        {
+            ResTarget *r = makeResTarget($3, $1);
+            $$ = list_make1((Node *)r);
         }
     ;
 
@@ -327,6 +328,14 @@ table_ref:
             n->alias = strdup($5);
             $$ = (Node *)n;
         }
+    | '(' select_stmt ')' IDENT
+        {
+            /* T9：FROM 子查询允许省略 AS（与 PG 兼容） */
+            RangeSubselect *n = (RangeSubselect *)makeNode(T_RangeSubselect);
+            n->subquery = $2;
+            n->alias = strdup($4);
+            $$ = (Node *)n;
+        }
     ;
 
 /* 连接子句 */
@@ -336,35 +345,51 @@ join_clause:
     | OUTER JOIN
     ;
 
-/* WHERE 子句 */
+/* WHERE 子句（T9：可缺省） */
 where_clause:
       WHERE expr
         {
             $$ = $2;
         }
+    | /* empty */
+        {
+            $$ = NULL;
+        }
     ;
 
-/* GROUP BY 子句 */
+/* GROUP BY 子句（T9：可缺省） */
 group_clause:
       GROUP BY expr_list
         {
             $$ = $3;
         }
+    | /* empty */
+        {
+            $$ = NULL;
+        }
     ;
 
-/* HAVING 子句 */
+/* HAVING 子句（T9：可缺省） */
 having_clause:
       HAVING expr
         {
             $$ = $2;
         }
+    | /* empty */
+        {
+            $$ = NULL;
+        }
     ;
 
-/* ORDER BY 子句 */
+/* ORDER BY 子句（T9：可缺省） */
 order_clause:
       ORDER BY sort_list
         {
             $$ = $3;
+        }
+    | /* empty */
+        {
+            $$ = NULL;
         }
     ;
 
@@ -396,16 +421,26 @@ sort_item:
         }
     ;
 
-/* LIMIT 子句 */
+/* LIMIT 子句（T9：可缺省；保留 OFFSET。
+ * 语义值为双元素 List：(count A_Const 或 NULL, offset A_Const 或 NULL)，
+ * 由 select_stmt 动作拆入 SelectStmt.limitCount/limitOffset。） */
 limit_clause:
       LIMIT ICONST
         {
-            $$ = (Node *)makeIntConst($2);
+            $$ = (Node *)list_make2((Node *)makeIntConst($2), NULL);
         }
     | LIMIT ICONST OFFSET ICONST
         {
-            /* 简化处理：只返回 limit 值 */
-            $$ = (Node *)makeIntConst($2);
+            $$ = (Node *)list_make2((Node *)makeIntConst($2),
+                                    (Node *)makeIntConst($4));
+        }
+    | OFFSET ICONST
+        {
+            $$ = (Node *)list_make2(NULL, (Node *)makeIntConst($2));
+        }
+    | /* empty */
+        {
+            $$ = NULL;
         }
     ;
 
@@ -460,15 +495,9 @@ value_list:
  * ============================================================ */
 
 update_stmt:
-      UPDATE table_name SET set_clause_list
+      UPDATE table_name SET set_clause_list where_clause
         {
-            UpdateStmt *n = makeUpdateStmt();
-            n->relation = makeRangeVar(NULL, $2);
-            n->targetList = $4;
-            $$ = (Node *)n;
-        }
-    | UPDATE table_name SET set_clause_list where_clause
-        {
+            /* T9：where_clause 可空，合并原两个候选式 */
             UpdateStmt *n = makeUpdateStmt();
             n->relation = makeRangeVar(NULL, $2);
             n->targetList = $4;
@@ -494,14 +523,9 @@ set_clause_list:
  * ============================================================ */
 
 delete_stmt:
-      DELETE FROM table_name
+      DELETE FROM table_name where_clause
         {
-            DeleteStmt *n = makeDeleteStmt();
-            n->relation = makeRangeVar(NULL, $3);
-            $$ = (Node *)n;
-        }
-    | DELETE FROM table_name where_clause
-        {
+            /* T9：where_clause 可空，合并原两个候选式 */
             DeleteStmt *n = makeDeleteStmt();
             n->relation = makeRangeVar(NULL, $3);
             n->whereClause = $4;
