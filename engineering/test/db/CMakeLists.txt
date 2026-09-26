@@ -8,6 +8,7 @@ add_subdirectory(storage)
 add_subdirectory(concurrency)
 # constraints 模块源代码已迁移到 validator，测试暂时跳过
 # add_subdirectory(constraints)
+add_subdirectory(validator)  # validator（语义分析）测试
 # add_subdirectory(optimizer)  # 优化器测试在 sql/ 目录下
 add_subdirectory(replication)
 add_subdirectory(cli)
