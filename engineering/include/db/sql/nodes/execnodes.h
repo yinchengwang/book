@@ -162,6 +162,14 @@ struct TupleTableSlot {
  *
  * 描述字段数、类型、约束等信息。本任务仅占位，详细字段由 catalog 任务补充。
  */
+/* T8：struct TupleDescData 的"真身"在 db/rel.h（存储层行描述符，
+ * 含 attrs[].attname/atttypid）。执行器节点需要直接访问存储时
+ * （nodeSeqscan.c、sql_driver.c），rel.h 必须先于本头引入，此处检测到
+ * DB_REL_H 已定义则跳过占位定义，让 rel.h 的版本生效；
+ * 未引入 rel.h 的纯框架 TU（executor.c、nodeSort.c 等）继续使用占位定义，
+ * 行为不变。两种定义布局不同，跨 TU 传递 TupleDescData* 时两端必须看到
+ * 同一定义（当前仅上述两个 TU 经 rel.h 使用，二者一致）。 */
+#ifndef DB_REL_H
 typedef struct AttrNumber {
     int     attnum;
     const char *attname;
@@ -178,6 +186,7 @@ struct TupleDescData {
     AttrNumber     *attrs;      /**< 字段元数据数组 */
     Size            tds_mcxt;   /**< 关联内存上下文（占位） */
 };
+#endif /* DB_REL_H */
 
 /**
  * @brief ProjectionInfo - 投影表达式求值信息

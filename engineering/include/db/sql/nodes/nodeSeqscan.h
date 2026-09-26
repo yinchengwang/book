@@ -8,8 +8,8 @@
  * 注意：SeqScanState 已在 sql_executor.h 中定义，
  * 此处扩展其功能实现。
  */
-#ifndef DB_SQL_NODE_SEQSCAN_H
-#define DB_SQL_NODE_SEQSCAN_H
+#ifndef DB_SQL_NODES_SEQSCAN_H
+#define DB_SQL_NODES_SEQSCAN_H
 
 #include "db/sql/sql_executor.h"
 #include <stdbool.h>
@@ -142,4 +142,4 @@ ExecTupleDesc *ExecGetSeqScanTupleDesc(SeqScanState *node);
 }
 #endif
 
-#endif /* DB_SQL_NODE_SEQSCAN_H */
+#endif /* DB_SQL_NODES_SEQSCAN_H */

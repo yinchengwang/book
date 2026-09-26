@@ -86,8 +86,8 @@ void executor_register_nodes(void) {
     /* 注册 Result 节点 */
     executor_register_node(T_Result, (ExecInitNodeFn)ExecInitResult);
 
-    /* 注册 SeqScan 节点 */
-    executor_register_node(T_SeqScan, (ExecInitNodeFn)ExecInitSeqScan);
+    /* 注册 SeqScan 节点（T8：签名已统一为 (Plan*, EState*, int)，不再需要强转） */
+    executor_register_node(T_SeqScan, ExecInitSeqScan);
 
     /* 注册 HashJoin 节点 */
     executor_register_node(T_HashJoin, (ExecInitNodeFn)ExecInitHashJoin);
@@ -776,6 +776,15 @@ PlanState *ExecInitNode(Plan *plan, EState *estate, int eflags) {
  */
 void ExecEndNode(PlanState *node) {
     if (node == NULL) {
+        return;
+    }
+
+    /* T8：SeqScanState 持有存储层资源（扫描描述符、Relation 引用），
+     * 通用递归清理不认识它们，必须先走类型化收尾。
+     * SeqScan 无子节点、无 ps_ResultTupleSlot/ps_ExprContext，
+     * 收尾后直接返回，跳过下面的通用清理。 */
+    if (node->type == T_SeqScanState) {
+        ExecEndSeqScan((SeqScanState *)node);
         return;
     }
 

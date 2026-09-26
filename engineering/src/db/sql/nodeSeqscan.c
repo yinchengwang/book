@@ -1,385 +1,362 @@
 /**
  * @file nodeSeqscan.c
- * @brief SeqScan 执行器节点实现
+ * @brief SeqScan 执行器节点实现（新 Volcano 阵营，T8 阵营统一）
  *
- * 实现顺序扫描执行器节点，基于 Volcano 迭代器模型。
- * 参考 PostgreSQL 的 nodeSeqscan.c 实现。
+ * T8 变更要点：
+ *   - ExecInitSeqScan 签名统一为新阵营的 (Plan *, EState *, int)——
+ *     这是 executor.c 节点注册表（ExecInitNodeFn）实际消费的签名，
+ *     消除了旧阵营 (SeqScanPlan *, void *, int) 的跨 TU 签名不一致 UB。
+ *   - 旧阵营的 EStatePrefixShim 布局镜像删除：本实现直接使用真实
+ *     EState（es_query_cxt），不再依赖"前缀布局恰好一致"的假设。
+ *   - 行解码走 sql_row_decode（自描述行格式，见 nodeSeqscan.h），
+ *     替代旧实现的固定 2 列 exec_make_tuple_desc 占位。
  *
- * 注意：SeqScanState 在 sql_executor.h 中已定义，
- * 此处使用 SeqScanExtState 存储扩展状态。
+ * 头文件顺序约定：db/rel.h 必须先于 db/sql/nodeSeqscan.h 引入——
+ * rel.h 提供 struct TupleDescData 的真身（attrs[].attname/atttypid），
+ * execnodes.h 检测到 DB_REL_H 后跳过占位定义（见 execnodes.h 注释）。
  */
 
-#include "db/sql/nodes/nodeSeqscan.h"
-#include "db/sql/memctx.h"  /* C0-3：per-query MemoryContext */
+#include <stdio.h>
+#include <string.h>
 
-/* T7 最小修复：引入真实声明替代本地前向声明/extern 副本。
- * rel.h 提供 Relation/TableScanDescData（含 rs_curr_blk/rs_curr_off）/
- * relation_open/table_beginscan 等；mvcc_session.h 提供 mvcc_current_xid。
- * rel.h 的 Relation/TupleDesc/Oid typedef 与 nodeSeqscan.h 的完全一致，
- * C11 允许相同 typedef 重复。 */
-#include "db/rel.h"
-#include "db/mvcc_session.h"
+#include "db/rel.h"                 /* 必须先于 executor 头：TupleDescData 真身 */
+#include "db/sql/nodeSeqscan.h"     /* -> execnodes.h（检测到 DB_REL_H 跳过占位） */
+#include "db/sql/executor.h"        /* MakeTupleTableSlotWithMCxt */
 
-/* OidIsValid 宏定义 */
+/* 与 nodeModifyTable.h 同款本地保护：parse_node.h 已定义时不重复 */
 #ifndef OidIsValid
 #define OidIsValid(oid) ((oid) != 0)
 #endif
 
-/* T7：EState 布局前缀镜像。本文件处于 sql_executor.h 类型阵营
- * （TupleTableSlot/PlanState 均为 _s 后缀版本），无法直接 include
- * execnodes.h（类型冲突）。调用方（executor.c）传入的 estate 实为
- * execnodes.h 的 struct EState，其前两个字段为
- * { NodeTag type; MemoryContext es_query_cxt; }，此处镜像该前缀以取
- * per-query 内存上下文。 */
-typedef struct EStatePrefixShim {
-    NodeTag         type;
-    MemoryContext   es_query_cxt;
-} EStatePrefixShim;
+/* PG 类型 OID（行编解码仅支持以下类型，其余显式失败） */
+#define SQL_OID_INT2    21
+#define SQL_OID_INT4    23
+#define SQL_OID_INT8    20
+#define SQL_OID_TEXT    25
+#define SQL_OID_CHAR    1042
+#define SQL_OID_VARCHAR 1043
 
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
-
-/* ============================================================
- * 辅助函数
- * ============================================================ */
-
-/**
- * @brief 检查元组是否满足过滤条件
- *
- * @param slot 元组槽
- * @param qual 过滤条件列表
- * @param econtext 表达式上下文
- * @return true 满足条件，false 不满足
- */
-static bool ExecQual(TupleTableSlot *slot, List *qual, ExprContext *econtext)
-{
-    /* 桩实现：暂时无条件通过 */
-    (void)slot;
-    (void)qual;
-    (void)econtext;
-    return true;
+static bool sql_row_type_supported(Oid t) {
+    return t == SQL_OID_INT2 || t == SQL_OID_INT4 || t == SQL_OID_INT8 ||
+           t == SQL_OID_TEXT || t == SQL_OID_CHAR || t == SQL_OID_VARCHAR;
 }
 
-/**
- * @brief 将元组数据复制到元组槽
- *
- * @param slot 目标元组槽
- * @param tuple 源元组数据
- * @param desc 元组描述符
- */
-static void ExecCopyTupleToSlot(TupleTableSlot *slot, void *tuple, TupleDesc desc)
-{
-    if (!slot || !tuple) return;
+/* ========================================================================
+ * 行编解码
+ * 格式：[u32 total_len][per col: u8 isnull + payload]（小端）
+ * ======================================================================== */
 
-    /* 清空现有数据 */
-    exec_clear_tuple_slot(slot);
-
-    /* 设置元组数据指针（不复制，直接引用） */
-    slot->tts_tuple.data = tuple;
-    slot->tts_tuple.len = 0;  /* 由描述符决定长度 */
-    slot->tts_type = TTS_PHYSICAL;
-
-    /* 标记所有列为有效 */
-    if (slot->tts_tupleDescriptor) {
-        slot->tts_nvalid = slot->tts_tupleDescriptor->natts;
-    }
-
-    (void)desc;  /* 未使用 */
+static void put_u32le(unsigned char *p, uint32_t v) {
+    p[0] = (unsigned char)(v & 0xff);
+    p[1] = (unsigned char)((v >> 8) & 0xff);
+    p[2] = (unsigned char)((v >> 16) & 0xff);
+    p[3] = (unsigned char)((v >> 24) & 0xff);
 }
 
-/* ============================================================
- * SeqScan 执行器节点实现
- * ============================================================ */
-
-/**
- * @brief 初始化 SeqScan 执行状态
- */
-SeqScanState *ExecInitSeqScan(SeqScanPlan *node, void *estate, int eflags)
-{
-    SeqScanState *scanstate;
-    SeqScanExtState *ext_state;
-
-    /* C0-3：从 per-query MemoryContext 分配（FreeEState 一次 Reset 替代手工 free 链） */
-    EStatePrefixShim *estate_p = (EStatePrefixShim *)estate;
-    MemoryContext ctx = estate_p ? estate_p->es_query_cxt : NULL;
-    if (ctx == NULL) ctx = CurrentMemoryContext;  /* 退化路径 */
-    (void)eflags;
-
-    /* 分配状态结构 */
-    scanstate = (SeqScanState *)palloc0(ctx, sizeof(SeqScanState));
-    if (!scanstate) {
-        return NULL;
-    }
-
-    /* 分配扩展状态结构 */
-    ext_state = (SeqScanExtState *)palloc0(ctx, sizeof(SeqScanExtState));
-    if (!ext_state) {
-        pfree(ctx, scanstate);
-        return NULL;
-    }
-
-    /* 初始化基类 */
-    scanstate->ss.ps.type = EXEC_SEQ_SCAN;
-    scanstate->ss.ps.left = NULL;
-    scanstate->ss.ps.right = NULL;
-    scanstate->ss.ps.state = ext_state;  /* 通过 state 指针关联扩展状态 */
-
-    /* 设置执行函数指针 */
-    scanstate->ss.ps.exec_proc = ExecSeqScan;
-
-    /* 复制计划和目标列表 */
-    ext_state->ss_targetlist = node->targetlist;
-    ext_state->ss_qual = node->qual;
-
-    /* 初始化扫描信息 */
-    ext_state->ss_currentRelation = NULL;
-    ext_state->ss_currentScanDesc = NULL;
-
-    /* 初始化统计信息 */
-    ext_state->ss_tuples_scanned = 0;
-    ext_state->ss_tuples_returned = 0;
-
-    /* 初始化状态标志 */
-    ext_state->ss_scan_started = false;
-    ext_state->ss_scan_ended = false;
-
-    /* 创建元组描述符（从目标列表推断） */
-    /* 暂时使用固定 2 列作为测试 */
-    scanstate->ss.ps.ps_TupDesc = exec_make_tuple_desc(2);
-    if (!scanstate->ss.ps.ps_TupDesc) {
-        /* scanstate/ext_state 由 MemoryContext 管理，FreeEState Reset 回收 */
-        return NULL;
-    }
-
-    /* 创建表达式上下文 */
-    scanstate->ss.ps.expr_context = exec_create_expr_context();
-    if (!scanstate->ss.ps.expr_context) {
-        exec_drop_tuple_desc(scanstate->ss.ps.ps_TupDesc);
-        return NULL;
-    }
-
-    /* 创建元组槽 */
-    scanstate->ss.ps.expr_context->slot = exec_make_tuple_slot(scanstate->ss.ps.ps_TupDesc);
-    if (!scanstate->ss.ps.expr_context->slot) {
-        exec_destroy_expr_context(scanstate->ss.ps.expr_context);
-        exec_drop_tuple_desc(scanstate->ss.ps.ps_TupDesc);
-        return NULL;
-    }
-
-    /* 如果提供了 scanrelid，初始化 Relation */
-    if (OidIsValid(node->scanrelid)) {
-        if (ExecInitSeqScanRelation(scanstate, ext_state, node->scanrelid) != 0) {
-            exec_drop_tuple_slot(scanstate->ss.ps.expr_context->slot);
-            exec_destroy_expr_context(scanstate->ss.ps.expr_context);
-            exec_drop_tuple_desc(scanstate->ss.ps.ps_TupDesc);
-            return NULL;
-        }
-    }
-
-    return scanstate;
+static uint32_t get_u32le(const unsigned char *p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
-/**
- * @brief 执行 SeqScan 迭代
- */
-TupleTableSlot *ExecSeqScan(PlanState *pstate)
-{
-    SeqScanState *node = (SeqScanState *)pstate;
-    SeqScanExtState *ext_state;
-    TupleTableSlot *slot;
-    void *tuple;
-    ExprContext *econtext;
-
-    /* 检查参数 */
-    if (!node) return NULL;
-
-    /* 获取扩展状态 */
-    ext_state = (SeqScanExtState *)node->ss.ps.state;
-    if (!ext_state) return NULL;
-
-    /* 获取表达式上下文 */
-    econtext = node->ss.ps.expr_context;
-    slot = econtext ? econtext->slot : NULL;
-    if (!slot) return NULL;
-
-    /* 检查是否已结束扫描 */
-    if (ext_state->ss_scan_ended) {
-        return NULL;
+size_t sql_row_encoded_size(int ncols, const Oid *coltypes,
+                            const Datum *values, const bool *isnull) {
+    size_t total = 4;  /* total_len 前缀 */
+    for (int i = 0; i < ncols; i++) {
+        if (!sql_row_type_supported(coltypes[i])) {
+            return 0;
+        }
+        total += 1;  /* isnull 标志 */
+        if (isnull != NULL && isnull[i]) {
+            continue;
+        }
+        switch (coltypes[i]) {
+        case SQL_OID_INT2: total += 2; break;
+        case SQL_OID_INT4: total += 4; break;
+        case SQL_OID_INT8: total += 8; break;
+        default: {  /* text 家族：u32 长度 + 字节 */
+            const char *s = (const char *)(uintptr_t)values[i];
+            total += 4 + (s != NULL ? strlen(s) : 0);
+            break;
+        }
+        }
     }
-
-    /* 如果还没有开始扫描，初始化扫描 */
-    if (!ext_state->ss_scan_started) {
-        if (ext_state->ss_currentRelation && !ext_state->ss_currentScanDesc) {
-            /* 开始表扫描 */
-            ext_state->ss_currentScanDesc = table_beginscan(
-                ext_state->ss_currentRelation,
-                0,  /* nkeys */
-                NULL /* scankey */
-            );
-        }
-        ext_state->ss_scan_started = true;
-    }
-
-    /* Volcano 模型：迭代拉取元组 */
-    while (true) {
-        /* 获取下一个元组 */
-        if (ext_state->ss_currentScanDesc) {
-            tuple = table_getnext(ext_state->ss_currentScanDesc);
-        } else {
-            /* 没有 Relation，返回 NULL */
-            tuple = NULL;
-        }
-
-        /* 检查是否到达末尾 */
-        if (!tuple) {
-            ext_state->ss_scan_ended = true;
-            return NULL;
-        }
-
-        /* 更新统计信息 */
-        ext_state->ss_tuples_scanned++;
-
-        /* C1-1：从 scan descriptor 读取真实 TID 填入 slot */
-        slot->tts_tid.ip_blkid = ext_state->ss_currentScanDesc->rs_curr_blk;
-        slot->tts_tid.ip_posid = ext_state->ss_currentScanDesc->rs_curr_off;
-        slot->tts_tid.valid = true;
-
-        /* 将元组复制到槽中（不使用 Relation 内部字段） */
-        ExecCopyTupleToSlot(slot, tuple, NULL);
-
-        /* 设置表达式上下文 */
-        if (econtext) {
-            econtext->slot = slot;
-        }
-
-        /* C2-1 T3：可见性过滤骨架——查询 ReadView 检查 xmin/xmax。
-         * 当前 kv_record_t 布局无 xmin 字段，filter 退化为"全部可见"；
-         * 完整实现需 tuple 布局扩展（后续变更）。
-         */
-        int64_t current_xid = mvcc_current_xid();
-        if (current_xid != 0) {
-            /* 有活跃事务：完整可见性检查需 tuple.header.xmin 支持 */
-            /* 占位：当前直接视为可见 */
-        }
-        ext_state->ss_tuples_returned++;
-        return slot;
-
-        /* 不满足条件，继续下一个元组 */
-    }
+    return total;
 }
 
-/**
- * @brief 结束 SeqScan 执行
- */
-void ExecEndSeqScan(SeqScanState *node)
-{
-    SeqScanExtState *ext_state;
-
-    if (!node) return;
-
-    ext_state = (SeqScanExtState *)node->ss.ps.state;
-
-    /* 结束表扫描 */
-    if (ext_state && ext_state->ss_currentScanDesc) {
-        table_endscan(ext_state->ss_currentScanDesc);
-        ext_state->ss_currentScanDesc = NULL;
-    }
-
-    /* 关闭 Relation */
-    if (ext_state && ext_state->ss_currentRelation) {
-        relation_close(ext_state->ss_currentRelation, RELMODE_READ);
-        ext_state->ss_currentRelation = NULL;
-    }
-
-    /* 释放表达式上下文 */
-    if (node->ss.ps.expr_context) {
-        if (node->ss.ps.expr_context->slot) {
-            exec_drop_tuple_slot(node->ss.ps.expr_context->slot);
-        }
-        exec_destroy_expr_context(node->ss.ps.expr_context);
-        node->ss.ps.expr_context = NULL;
-    }
-
-    /* 释放元组描述符 */
-    if (node->ss.ps.ps_TupDesc) {
-        exec_drop_tuple_desc(node->ss.ps.ps_TupDesc);
-        node->ss.ps.ps_TupDesc = NULL;
-    }
-
-    /* 释放扩展状态 */
-    if (ext_state) {
-        free(ext_state);
-        node->ss.ps.state = NULL;
-    }
-}
-
-/**
- * @brief 重置 SeqScan 执行状态
- */
-void ExecReScanSeqScan(SeqScanState *node)
-{
-    SeqScanExtState *ext_state;
-
-    if (!node) return;
-
-    ext_state = (SeqScanExtState *)node->ss.ps.state;
-    if (!ext_state) return;
-
-    /* 重置统计信息 */
-    ext_state->ss_tuples_scanned = 0;
-    ext_state->ss_tuples_returned = 0;
-
-    /* 重置状态标志 */
-    ext_state->ss_scan_started = false;
-    ext_state->ss_scan_ended = false;
-
-    /* 如果已有扫描描述符，重置它 */
-    if (ext_state->ss_currentScanDesc) {
-        table_endscan(ext_state->ss_currentScanDesc);
-        ext_state->ss_currentScanDesc = NULL;
-    }
-}
-
-/**
- * @brief 初始化 SeqScan 的 Relation
- */
-int ExecInitSeqScanRelation(SeqScanState *node, SeqScanExtState *ext_state, Oid relid)
-{
-    Relation rel;
-
-    if (!node || !ext_state || !OidIsValid(relid)) {
+int sql_row_encode(int ncols, const Oid *coltypes,
+                   const Datum *values, const bool *isnull,
+                   void *buf, size_t cap, size_t *out_len) {
+    size_t need = sql_row_encoded_size(ncols, coltypes, values, isnull);
+    if (need == 0 || buf == NULL || cap < need) {
         return -1;
     }
 
-    /* 打开 Relation */
-    rel = relation_open(relid, RELMODE_READ);
-    if (!rel) {
-        return -1;
+    unsigned char *p = (unsigned char *)buf;
+    put_u32le(p, (uint32_t)need);
+    size_t off = 4;
+
+    for (int i = 0; i < ncols; i++) {
+        bool isn = (isnull != NULL && isnull[i]);
+        p[off++] = isn ? 1 : 0;
+        if (isn) {
+            continue;
+        }
+        switch (coltypes[i]) {
+        case SQL_OID_INT2: {
+            uint16_t v = (uint16_t)(int64_t)values[i];
+            p[off++] = (unsigned char)(v & 0xff);
+            p[off++] = (unsigned char)((v >> 8) & 0xff);
+            break;
+        }
+        case SQL_OID_INT4: {
+            put_u32le(p + off, (uint32_t)(int64_t)values[i]);
+            off += 4;
+            break;
+        }
+        case SQL_OID_INT8: {
+            uint64_t v = (uint64_t)values[i];
+            for (int b = 0; b < 8; b++) {
+                p[off++] = (unsigned char)((v >> (8 * b)) & 0xff);
+            }
+            break;
+        }
+        default: {  /* text 家族 */
+            const char *s = (const char *)(uintptr_t)values[i];
+            size_t len = (s != NULL) ? strlen(s) : 0;
+            put_u32le(p + off, (uint32_t)len);
+            off += 4;
+            if (len > 0) {
+                memcpy(p + off, s, len);
+                off += len;
+            }
+            break;
+        }
+        }
     }
 
-    ext_state->ss_currentRelation = rel;
-
-    /* 更新元组描述符 */
-    /* 注：不直接访问 rel->rd_att 以避免未完整定义的类型问题 */
-
+    if (out_len != NULL) {
+        *out_len = off;
+    }
     return 0;
 }
 
-/**
- * @brief 获取 SeqScan 的扩展状态
- */
-SeqScanExtState *ExecGetSeqScanExtState(SeqScanState *node)
-{
-    if (!node) return NULL;
-    return (SeqScanExtState *)node->ss.ps.state;
+int sql_row_decode(int ncols, const Oid *coltypes,
+                   const void *blob,
+                   Datum *values, bool *isnull, MemoryContext mcxt) {
+    if (blob == NULL || values == NULL || isnull == NULL) {
+        return -1;
+    }
+
+    const unsigned char *p = (const unsigned char *)blob;
+    uint32_t total = get_u32le(p);
+    if (total < 4 + (uint32_t)ncols) {
+        return -1;  /* 连 isnull 标志位都放不下，必然非法 */
+    }
+
+    size_t off = 4;
+    for (int i = 0; i < ncols; i++) {
+        if (!sql_row_type_supported(coltypes[i])) {
+            return -1;
+        }
+        bool isn = p[off++] != 0;
+        isnull[i] = isn;
+        values[i] = (Datum)0;
+        if (isn) {
+            continue;
+        }
+        switch (coltypes[i]) {
+        case SQL_OID_INT2: {
+            if (off + 2 > total) return -1;
+            int16_t v = (int16_t)((uint16_t)p[off] | ((uint16_t)p[off + 1] << 8));
+            values[i] = (Datum)(uint64_t)(int64_t)v;  /* 符号扩展 */
+            off += 2;
+            break;
+        }
+        case SQL_OID_INT4: {
+            if (off + 4 > total) return -1;
+            int32_t v = (int32_t)get_u32le(p + off);
+            values[i] = (Datum)(uint64_t)(int64_t)v;
+            off += 4;
+            break;
+        }
+        case SQL_OID_INT8: {
+            if (off + 8 > total) return -1;
+            uint64_t v = 0;
+            for (int b = 0; b < 8; b++) {
+                v |= ((uint64_t)p[off + b]) << (8 * b);
+            }
+            values[i] = (Datum)v;
+            off += 8;
+            break;
+        }
+        default: {  /* text 家族：u32 长度 + 字节，mcxt 中分配 NUL 结尾副本 */
+            if (off + 4 > total) return -1;
+            uint32_t len = get_u32le(p + off);
+            off += 4;
+            if (off + len > total) return -1;
+            char *s = (char *)palloc(mcxt, (Size)len + 1);
+            if (s == NULL) return -1;
+            if (len > 0) {
+                memcpy(s, p + off, len);
+            }
+            s[len] = '\0';
+            values[i] = (Datum)(uintptr_t)s;
+            off += len;
+            break;
+        }
+        }
+    }
+    return 0;
 }
 
-/**
- * @brief 获取 SeqScan 的元组描述符
- */
-ExecTupleDesc *ExecGetSeqScanTupleDesc(SeqScanState *node)
-{
-    if (!node) return NULL;
-    return node->ss.ps.ps_TupDesc;
+/* ========================================================================
+ * SeqScan 节点
+ * ======================================================================== */
+
+PlanState *ExecInitSeqScan(Plan *plan, EState *estate, int eflags) {
+    (void)eflags;
+
+    if (plan == NULL || plan->type != T_SeqScan || estate == NULL) {
+        return NULL;
+    }
+
+    MemoryContext ctx = estate->es_query_cxt;
+    if (ctx == NULL) {
+        ctx = MemoryContextCurrent();
+    }
+    if (ctx == NULL) {
+        fprintf(stderr, "ExecInitSeqScan: no memory context available\n");
+        return NULL;
+    }
+
+    SeqScanState *ss = (SeqScanState *)palloc0(ctx, sizeof(SeqScanState));
+    if (ss == NULL) {
+        return NULL;
+    }
+
+    ss->ps.type = T_SeqScanState;
+    ss->ps.plan = plan;
+    ss->ps.state = estate;
+    PlanStateSetExecProc(&ss->ps, ExecSeqScan);
+
+    Oid relid = ((SeqScan *)plan)->scanrelid;
+    if (!OidIsValid(relid)) {
+        /* scanrelid 无效：无表占位节点。保持 relation 为空，
+         * ExecSeqScan 直接返回 NULL（0 行）。 */
+        return &ss->ps;
+    }
+
+    Relation rel = relation_open(relid, REL_OPEN_READONLY);
+    if (rel == NULL) {
+        fprintf(stderr, "ExecInitSeqScan: relation_open failed for relid %u\n",
+                (unsigned)relid);
+        return NULL;  /* ss 在查询上下文中，由 FreeEState 统一回收 */
+    }
+    ss->ss_currentRelation = rel;
+
+    TupleDesc td = relation_getdesc(rel);
+    int natts = (td != NULL) ? td->natts : 0;
+    if (td == NULL || natts <= 0) {
+        fprintf(stderr, "ExecInitSeqScan: relation %u has no tuple descriptor\n",
+                (unsigned)relid);
+        relation_close(rel, REL_OPEN_READONLY);
+        ss->ss_currentRelation = NULL;
+        return NULL;
+    }
+    ss->ss_natts = natts;
+
+    ss->ss_coltypes = (Oid *)palloc0(ctx, (Size)natts * sizeof(Oid));
+    if (ss->ss_coltypes == NULL) {
+        relation_close(rel, REL_OPEN_READONLY);
+        ss->ss_currentRelation = NULL;
+        return NULL;
+    }
+    for (int i = 0; i < natts; i++) {
+        ss->ss_coltypes[i] = td->attrs[i].atttypid;
+    }
+
+    TupleTableSlot *slot = MakeTupleTableSlotWithMCxt(ctx);
+    if (slot == NULL) {
+        relation_close(rel, REL_OPEN_READONLY);
+        ss->ss_currentRelation = NULL;
+        return NULL;
+    }
+    slot->tts_tupleDescriptor = td;
+    slot->tts_values = (Datum *)palloc0(ctx, (Size)natts * sizeof(Datum));
+    slot->tts_isnull = (bool *)palloc0(ctx, (Size)natts * sizeof(bool));
+    if (slot->tts_values == NULL || slot->tts_isnull == NULL) {
+        relation_close(rel, REL_OPEN_READONLY);
+        ss->ss_currentRelation = NULL;
+        return NULL;
+    }
+    slot->tts_nvalid = 0;
+    ss->ss_ScanTupleSlot = slot;
+
+    return &ss->ps;
+}
+
+TupleTableSlot *ExecSeqScan(PlanState *pstate) {
+    if (pstate == NULL || pstate->type != T_SeqScanState) {
+        return NULL;
+    }
+    SeqScanState *ss = (SeqScanState *)pstate;
+
+    if (ss->ss_currentRelation == NULL || ss->ss_ScanTupleSlot == NULL) {
+        return NULL;
+    }
+
+    /* 惰性开始扫描（Init 时不建描述符，避免 0 行场景白开游标） */
+    if (ss->ss_currentScanDesc == NULL) {
+        ss->ss_currentScanDesc = table_beginscan(ss->ss_currentRelation, 0, NULL);
+        if (ss->ss_currentScanDesc == NULL) {
+            fprintf(stderr, "ExecSeqScan: table_beginscan failed\n");
+            return NULL;
+        }
+    }
+
+    void *blob = table_getnext(ss->ss_currentScanDesc);
+    if (blob == NULL) {
+        return NULL;  /* 扫描结束 */
+    }
+
+    MemoryContext ctx = (ss->ps.state != NULL) ? ss->ps.state->es_query_cxt : NULL;
+    TupleTableSlot *slot = ss->ss_ScanTupleSlot;
+    if (sql_row_decode(ss->ss_natts, ss->ss_coltypes, blob,
+                       slot->tts_values, slot->tts_isnull, ctx) != 0) {
+        /* 解码失败：显式报告并终止扫描，不静默跳过（行格式由驱动层
+         * 独家写入，解码失败即数据损坏或类型越界，"缺行但看似成功"
+         * 比显式失败更难排查）。 */
+        fprintf(stderr,
+                "ExecSeqScan: row decode failed (unsupported type or corrupt row)\n");
+        return NULL;
+    }
+    slot->tts_nvalid = ss->ss_natts;
+    return slot;
+}
+
+void ExecEndSeqScan(SeqScanState *node) {
+    if (node == NULL) {
+        return;
+    }
+    /* 只释放存储层资源；状态结构体内存属于 EState 查询上下文，
+     * 由 FreeEState 统一回收（AllocSet 语义，pfree 为空操作）。 */
+    if (node->ss_currentScanDesc != NULL) {
+        table_endscan(node->ss_currentScanDesc);
+        node->ss_currentScanDesc = NULL;
+    }
+    if (node->ss_currentRelation != NULL) {
+        relation_close(node->ss_currentRelation, REL_OPEN_READONLY);
+        node->ss_currentRelation = NULL;
+    }
+}
+
+void ExecReScanSeqScan(SeqScanState *node) {
+    if (node == NULL) {
+        return;
+    }
+    if (node->ss_currentScanDesc != NULL) {
+        table_endscan(node->ss_currentScanDesc);
+        node->ss_currentScanDesc = NULL;
+    }
+    /* 下次 ExecSeqScan 重新 beginscan */
 }

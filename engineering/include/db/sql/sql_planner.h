@@ -162,35 +162,9 @@ typedef enum PhysicalOpType_e {
 /* 使用共享的 SqlExprType 定义（避免与 expr.h 冲突） */
 #include "db/sql/sql_types.h"
 
-/** 表达式（planner 版本，与 expr.h 的 Expr 结构保持字段名一致） */
-typedef struct Expr_s {
-    NodeTag         type;           /**< 节点类型标签 T_Expr */
-    SqlExprType     expr_type;      /**< 表达式类型 */
-    Oid             result_type;    /**< 结果类型 OID */
-    int             result_len;     /**< 结果长度 */
-    int             result_by_val;  /**< 是否按值传递 */
-    union {
-        struct {
-            int value;      /**< 常量值 */
-            int isnull;     /**< 是否为 NULL */
-        } const_val;
-        struct {
-            int varattno;  /**< 属性编号 */
-            int varno;     /**< 变量编号 */
-        } var;
-        int paramno;       /**< 参数编号 */
-        struct {
-            int opno;      /**< 操作符 OID */
-            struct Expr_s *lexpr;
-            struct Expr_s *rexpr;
-        } op;
-        struct {
-            int funcid;    /**< 函数 OID */
-            struct Expr_s **args;
-            int nargs;
-        } func;
-    } val;
-} Expr;
+/* T8：canonical Expr（struct Expr_s）已迁入 sql_types.h（本头上方已包含），
+ * 此处不再重复定义。迁入原因：cost.c 等 TU 因 CostParams typedef 名冲突
+ * 无法引入本头，导致无法对 Expr 做 expr_type 判断（T7 遗留 I-3）。 */
 
 /** 目标列表达式 */
 typedef struct TargetEntry_s {

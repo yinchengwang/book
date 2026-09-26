@@ -53,6 +53,14 @@
 #include <string.h>
 #include <stdio.h>
 
+/* T8：LP 删除标记位（8-bit）。
+ * 头文件的 HEAP_XMAX_INVALID=0x200 是 PG 16-bit infomask 词汇，而
+ * HeapLinePointerData.t_flags 只有 uint8_t——`t_flags |= 0x200` 截断后
+ * 是 no-op，heap_delete 因此永远无法让删除对扫描可见（T8 接入真实
+ * DELETE/UPDATE 时发现）。t_flags 全仓只有 heap_page_add_tuple(=0)
+ * 与 heap_delete(|=) 两处写入、heap_getnext 一处读取，0x01 位无冲突。 */
+#define HEAP_LP_DELETED 0x01
+
 /* ============================================================
  * 全局状态
  * ============================================================ */
@@ -474,7 +482,7 @@ int heap_delete(Relation rel, const void *tid, uint32_t cid,
 
     /* 设置 t_xmax 标记删除（简化：使用 1 表示已删除） */
     lp->t_xmax = 1;
-    lp->t_flags |= HEAP_XMAX_INVALID;  /* 标记为无效/已删除 */
+    lp->t_flags |= HEAP_LP_DELETED;  /* 标记为无效/已删除（8-bit LP 位，见文件头注释） */
 
     /* 标记页面为脏 */
     buf_dirty(buf);
@@ -616,7 +624,7 @@ void *heap_getnext(TableScanDesc scan, ScanDirection direction) {
             /* 检查元组是否有效 */
             if (lp->t_off > 0 && lp->t_off < HEAP_PAGE_SIZE) {
                 /* 检查元组是否被删除（t_xmax 非0且标记为无效） */
-                bool is_deleted = (lp->t_xmax != 0) && (lp->t_flags & HEAP_XMAX_INVALID);
+                bool is_deleted = (lp->t_xmax != 0) && (lp->t_flags & HEAP_LP_DELETED);
 
                 if (!is_deleted) {
                     /* 获取元组数据 */

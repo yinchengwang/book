@@ -6,7 +6,8 @@
 #include <gtest/gtest.h>
 extern "C" {
 #include "db/sql/nodes/nodeNestloop.h"
-#include "db/sql/nodes/nodeSeqscan.h"
+/* T8：nodes/nodeSeqscan.h（旧阵营 SeqScanPlan 头）不再引入——SeqScan
+ * 已切换新阵营，本 TU 不再需要其类型。 */
 #include "db/sql/sql_executor.h"
 }
 
@@ -267,6 +268,11 @@ TEST(NestLoopTest, MakePlan) {
 
 /**
  * @brief 测试类型区分
+ *
+ * T8：SeqScan 部分移除——ExecInitSeqScan 已统一为新 Volcano 阵营
+ * （(Plan*, EState*, int)，要求 plan->type == T_SeqScan NodeTag），
+ * 与本 TU 的旧阵营（sql_executor.h 的 SeqScanPlan/EXEC_SEQ_SCAN）
+ * 不可在同一 TU 混引。新阵营 SeqScan 覆盖见 test_seqscan.cpp。
  */
 TEST(NestLoopTest, TypeDistinction) {
     /* 创建 NestLoop 计划 */
@@ -274,31 +280,16 @@ TEST(NestLoopTest, TypeDistinction) {
     memset(&nl_plan, 0, sizeof(nl_plan));
     nl_plan.type = EXEC_NESTLOOP;
 
-    /* 创建 SeqScan 计划用于对比 */
-    SeqScanPlan ss_plan;
-    memset(&ss_plan, 0, sizeof(ss_plan));
-    ss_plan.type = EXEC_SEQ_SCAN;
-
     /* 初始化状态 */
     NestLoopState *nl_state = ExecInitNestLoop(&nl_plan, NULL, 0);
     ASSERT_NE(nl_state, nullptr);
 
-    SeqScanState *ss_state = ExecInitSeqScan(&ss_plan, NULL, 0);
-    ASSERT_NE(ss_state, nullptr);
-
-    /* 检查类型区分 */
+    /* 检查类型标记与执行函数指针 */
     EXPECT_EQ(nl_state->js.ps.type, EXEC_NESTLOOP);
-    EXPECT_EQ(ss_state->ss.ps.type, EXEC_SEQ_SCAN);
-    EXPECT_NE(nl_state->js.ps.type, ss_state->ss.ps.type);
-
-    /* 检查执行函数指针不同 */
     EXPECT_EQ(nl_state->js.ps.exec_proc, ExecNestLoop);
-    EXPECT_EQ(ss_state->ss.ps.exec_proc, ExecSeqScan);
-    EXPECT_NE(nl_state->js.ps.exec_proc, ss_state->ss.ps.exec_proc);
 
     /* 清理 */
     ExecEndNestLoop(nl_state);
-    ExecEndSeqScan(ss_state);
 }
 
 /**

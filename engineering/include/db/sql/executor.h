@@ -22,8 +22,8 @@
  * 本文件是 SQL 执行引擎 Phase 1 基础设施层的第四个任务（Task 1.4）。
  */
 
-#ifndef DB_SQL_EXECUTOR_H
-#define DB_SQL_EXECUTOR_H
+#ifndef DB_SQL_EXECUTOR_FRAMEWORK_H
+#define DB_SQL_EXECUTOR_FRAMEWORK_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -452,4 +452,4 @@ bool TupIsNull(TupleTableSlot *slot);
 }
 #endif
 
-#endif /* DB_SQL_EXECUTOR_H */
+#endif /* DB_SQL_EXECUTOR_FRAMEWORK_H */
