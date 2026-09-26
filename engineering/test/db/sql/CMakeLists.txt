@@ -113,6 +113,20 @@ add_executable(test_sql_storage_integration test_sql_storage_integration.cpp)
 target_include_directories(test_sql_storage_integration PRIVATE ${GTEST_INCLUDE_DIRS})
 target_link_libraries(test_sql_storage_integration sql_engine db_storage project_includes gtest gtest_main)
 
+# SQL Driver 端到端烟测（T7：sql_driver.c 复活于 canonical AST）
+add_executable(test_driver_smoke test_driver_smoke.cpp)
+target_include_directories(test_driver_smoke PRIVATE ${GTEST_INCLUDE_DIRS})
+target_link_libraries(test_driver_smoke sql_engine db_storage project_includes gtest gtest_main)
+set_target_properties(test_driver_smoke PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    FOLDER "Tests"
+)
+include(GoogleTest)
+gtest_discover_tests(test_driver_smoke
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    PROPERTIES LABELS "test_driver_smoke"
+)
+
 # 存储引擎集成测试（Task 5.1）
 add_executable(test_storage_integration test_storage_integration.cpp)
 target_include_directories(test_storage_integration PRIVATE ${GTEST_INCLUDE_DIRS})

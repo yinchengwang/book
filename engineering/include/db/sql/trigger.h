@@ -139,7 +139,7 @@ typedef enum TriggerEvent {
 
 #ifndef Oid_defined
 #define Oid_defined
-typedef uint64_t Oid;    /**< 对象标识符 */
+typedef uint32_t Oid;    /**< 对象标识符（T7：全仓统一 uint32_t） */
 #endif
 
 /* ========================================================================

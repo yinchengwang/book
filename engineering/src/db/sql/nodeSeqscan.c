@@ -12,27 +12,29 @@
 #include "db/sql/nodes/nodeSeqscan.h"
 #include "db/sql/memctx.h"  /* C0-3：per-query MemoryContext */
 
-/* 前向声明，避免引入冲突的头文件 */
-typedef struct RelationData *Relation;
-typedef struct TableScanDescData *TableScanDesc;
-
-/* 从 catalog.h 引入 Oid 类型 */
-typedef uint32_t Oid;
+/* T7 最小修复：引入真实声明替代本地前向声明/extern 副本。
+ * rel.h 提供 Relation/TableScanDescData（含 rs_curr_blk/rs_curr_off）/
+ * relation_open/table_beginscan 等；mvcc_session.h 提供 mvcc_current_xid。
+ * rel.h 的 Relation/TupleDesc/Oid typedef 与 nodeSeqscan.h 的完全一致，
+ * C11 允许相同 typedef 重复。 */
+#include "db/rel.h"
+#include "db/mvcc_session.h"
 
 /* OidIsValid 宏定义 */
 #ifndef OidIsValid
 #define OidIsValid(oid) ((oid) != 0)
 #endif
 
-/* 函数声明（从 rel.h） */
-extern Relation relation_open(Oid relid, int mode);
-extern void relation_close(Relation rel, int mode);
-extern TableScanDesc table_beginscan(Relation rel, int nkeys, void *key);
-extern void table_endscan(TableScanDesc scan);
-extern void *table_getnext(TableScanDesc scan);
-
-/* RelOpenMode 常量 */
-#define RELMODE_READ 0
+/* T7：EState 布局前缀镜像。本文件处于 sql_executor.h 类型阵营
+ * （TupleTableSlot/PlanState 均为 _s 后缀版本），无法直接 include
+ * execnodes.h（类型冲突）。调用方（executor.c）传入的 estate 实为
+ * execnodes.h 的 struct EState，其前两个字段为
+ * { NodeTag type; MemoryContext es_query_cxt; }，此处镜像该前缀以取
+ * per-query 内存上下文。 */
+typedef struct EStatePrefixShim {
+    NodeTag         type;
+    MemoryContext   es_query_cxt;
+} EStatePrefixShim;
 
 #include <stdlib.h>
 #include <string.h>
@@ -99,7 +101,7 @@ SeqScanState *ExecInitSeqScan(SeqScanPlan *node, void *estate, int eflags)
     SeqScanExtState *ext_state;
 
     /* C0-3：从 per-query MemoryContext 分配（FreeEState 一次 Reset 替代手工 free 链） */
-    EState *estate_p = (EState *)estate;
+    EStatePrefixShim *estate_p = (EStatePrefixShim *)estate;
     MemoryContext ctx = estate_p ? estate_p->es_query_cxt : NULL;
     if (ctx == NULL) ctx = CurrentMemoryContext;  /* 退化路径 */
     (void)eflags;
@@ -260,9 +262,8 @@ TupleTableSlot *ExecSeqScan(PlanState *pstate)
             /* 有活跃事务：完整可见性检查需 tuple.header.xmin 支持 */
             /* 占位：当前直接视为可见 */
         }
-            ext_state->ss_tuples_returned++;
-            return slot;
-        }
+        ext_state->ss_tuples_returned++;
+        return slot;
 
         /* 不满足条件，继续下一个元组 */
     }

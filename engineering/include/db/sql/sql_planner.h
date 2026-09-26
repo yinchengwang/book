@@ -622,7 +622,14 @@ LogicalPlan *planner_add_vector_index_scan(PlannerContext *ctx, LogicalPlan *pla
  * PlanState 桥接函数
  * ======================================================================== */
 
-/* 使用 execnodes.h 中的 PlanState 定义 */
+/* 使用 execnodes.h 中的 PlanState 定义。
+ * T7 说明：此 guard 与 execnodes.h 的 PLANSTATE_DEFINED 同名是历史设计——
+ * include 顺序决定 PlanState 指向新框架（struct PlanState，execnodes.h）
+ * 还是旧框架（struct PlanState_s，sql_executor.h）：expr.c 走前者，
+ * planner.c/sql_executor.c 走后者。两阵营的合并（tag 统一）涉及
+ * planner.c 对 PlanState_s 字段的解引用与 executor.c 的新框架桥接，
+ * 属于 T8+ 的统一执行器工作；T7 的 sql_driver.c 通过不混引两阵营头文件
+ * 规避该冲突（见 sql_driver.c 头部注释）。 */
 #ifndef PLANSTATE_DEFINED
 #define PLANSTATE_DEFINED
 struct PlanState_s;

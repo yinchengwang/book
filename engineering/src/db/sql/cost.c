@@ -200,7 +200,7 @@ Cost compute_sort_cost(double num_tuples) {
  * - 范围（<,>,<=,>=）：histogram 线性插值
  * - 其他：默认 0.5
  */
-double estimate_selectivity(AttStats *stats, struct Expr *clause) {
+double estimate_selectivity(AttStats *stats, Expr *clause) {
     if (stats == NULL || clause == NULL) {
         return 0.5;  /* 默认选择率 */
     }
@@ -208,8 +208,13 @@ double estimate_selectivity(AttStats *stats, struct Expr *clause) {
     /* 等值条件选择率（含 MCV 修正） */
     if (stats->ndistinct > 0) {
         double base = 1.0 / stats->ndistinct;
-        /* MCV 修正：若某值在 MCV 列表中，使用 MCV 频率 */
-        if (stats->mcv_freq && stats->mcv_nitems > 0 && clause->val.const_val) {
+        /* MCV 修正：若某值在 MCV 列表中，使用 MCV 频率。
+         * T7：原代码第三项为 clause->val.const_val，按"常量指针"形状书写，
+         * 与 canonical struct Expr_s（const_val 为内嵌 struct，不可作标量）
+         * 不符，且 cost.h 的 CostParams 与 sql_planner.h 的 CostParams_s
+         * 冲突使本文件无法引入完整 Expr 定义。clause 非 NULL 已在上文保证，
+         * 此处不再解引用子句内部。 */
+        if (stats->mcv_freq && stats->mcv_nitems > 0) {
             /* 简化：MCV 列表若非空，等值条件选择率 ≤ 平均 MCV 频率 */
             double avg_mcv = 0.0;
             for (int i = 0; i < stats->mcv_nitems; ++i) {

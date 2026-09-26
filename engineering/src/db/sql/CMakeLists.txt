@@ -7,8 +7,7 @@
 add_library(sql_engine STATIC
     planner.c
     sql_executor.c
-# 暂时排除 sql_driver.c（有预先存在的 Expr 类型冲突）
-#   sql_driver.c
+    sql_driver.c
     nodeSeqscan.c
     nodeIndexscan.c
     memctx.c
@@ -44,8 +43,11 @@ target_include_directories(sql_engine PUBLIC
 )
 
 # 链接依赖库
-# T4：db_parser_sql_simplified 已归档移除，canonical 目标名由 T6 补回。
+# T4：db_parser_sql_simplified 已归档移除；T6 落地 canonical 目标 db_parser_sql。
+# T7：sql_engine 链接 db_parser_sql——sql_driver.c 调 sql_parse()，
+# planner.c 调 makefuncs.c 的 list_free 等，均由 db_parser_sql 提供。
 target_link_libraries(sql_engine PRIVATE
+    db_parser_sql
     db_storage
 )
 

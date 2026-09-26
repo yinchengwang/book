@@ -15,7 +15,9 @@ extern "C" {
 #endif
 
 /* 解析期基本类型 */
-typedef uint64_t Oid;        /**< 对象标识符类型 */
+/* T7：Oid 全仓统一为 uint32_t（与 catalog.h/parse_node.h 一致），消除
+ * parse_node.h(uint32_t) vs sql_types.h(uint64_t) 的 ABI 级冲突。 */
+typedef uint32_t Oid;        /**< 对象标识符类型 */
 typedef uint32_t CommandId;  /**< 命令标识符 */
 
 /* ========================================================================

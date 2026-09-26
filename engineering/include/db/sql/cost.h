@@ -25,7 +25,7 @@ extern "C" {
  * ======================================================================== */
 
 typedef double Cost;            /**< 代价类型 */
-typedef uint64_t Oid;           /**< 对象标识符（与 execnodes.h 一致） */
+typedef uint32_t Oid;           /**< 对象标识符（T7：全仓统一 uint32_t） */
 
 /* ========================================================================
  * 代价参数
@@ -95,7 +95,13 @@ typedef struct AttStats {
  * ======================================================================== */
 
 struct Plan;
-struct Expr;
+/* T7：Expr 统一为 sql_planner.h 的 struct Expr_s（estimate_selectivity
+ * 访问 clause->val.const_val，该形状只存在于 struct Expr_s）。
+ * 与 expr.h 的 EXPR_DEFINED guard 保持一致，避免重复 typedef 告警。 */
+#ifndef EXPR_DEFINED
+#define EXPR_DEFINED
+typedef struct Expr_s Expr;
+#endif
 
 /* ========================================================================
  * 代价计算 API
@@ -186,7 +192,7 @@ Cost compute_sort_cost(double num_tuples);
  *
  * @return 选择率（0.0 ~ 1.0）
  */
-double estimate_selectivity(AttStats *stats, struct Expr *clause);
+double estimate_selectivity(AttStats *stats, Expr *clause);
 double estimate_range_selectivity(AttStats *stats, double const_value);
 double estimate_join_selectivity(AttStats *a, AttStats *b);
 double optimize_join_order_dp(const double *costs, int n_tables);

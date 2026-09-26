@@ -17,7 +17,9 @@ if(EXECUTOR_SOURCE_FILES)
         ${ENGINEERING_SOURCE_DIR}/include/db/core
     )
     # db_parser 父目标在 sql/ 子模块存在时不会创建（见 parser/CMakeLists.txt）。
-    # T4：db_parser_sql_simplified 已归档移除，canonical 目标名由 T6 补回。
+    # T4：db_parser_sql_simplified 已归档移除；T6 落地 canonical 目标 db_parser_sql。
+    # db_executor 当前不直接引用解析器符号，无需链接 db_parser_sql；
+    # 若后续 TU 调用 sql_parse()/makefuncs，请在此追加 db_parser_sql。
     target_link_libraries(db_executor PRIVATE db_optimizer db_storage db_validator)
     target_compile_options(db_executor PRIVATE -Wno-unused-parameter)
 endif()
