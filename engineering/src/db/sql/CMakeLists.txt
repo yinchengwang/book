@@ -44,8 +44,8 @@ target_include_directories(sql_engine PUBLIC
 )
 
 # 链接依赖库
+# T4：db_parser_sql_simplified 已归档移除，canonical 目标名由 T6 补回。
 target_link_libraries(sql_engine PRIVATE
-    db_parser_sql_simplified
     db_storage
 )
 

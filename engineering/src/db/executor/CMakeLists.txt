@@ -16,9 +16,9 @@ if(EXECUTOR_SOURCE_FILES)
         ${ENGINEERING_SOURCE_DIR}/include/db/validator
         ${ENGINEERING_SOURCE_DIR}/include/db/core
     )
-    # db_parser 父目标在 sql/ 子模块存在时不会创建（见 parser/CMakeLists.txt），
-    # 实际可用的是 db_parser_sql_simplified
-    target_link_libraries(db_executor PRIVATE db_parser_sql_simplified db_optimizer db_storage db_validator)
+    # db_parser 父目标在 sql/ 子模块存在时不会创建（见 parser/CMakeLists.txt）。
+    # T4：db_parser_sql_simplified 已归档移除，canonical 目标名由 T6 补回。
+    target_link_libraries(db_executor PRIVATE db_optimizer db_storage db_validator)
     target_compile_options(db_executor PRIVATE -Wno-unused-parameter)
 endif()
 

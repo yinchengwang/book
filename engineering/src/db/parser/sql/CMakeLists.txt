@@ -1,25 +1,9 @@
 # parser/sql 子模块：SQL 解析器
 #
-# 包含两个版本：
-# 1. 简化版（sql_lexer.c, sql_parser.c）- 手写解析器
-# 2. 完整版（Flex/Bison 生成）- 生产级解析器
-
-# 简化版源文件
-set(SQL_PARSER_SIMPLIFIED_SOURCES
-    sql_lexer.c
-    sql_parser.c
-    makefuncs.c
-    parse_node.c
-    parse_analyze.c
-    parse_expr.c
-)
-
-# 创建简化版解析器库
-add_library(db_parser_sql_simplified STATIC ${SQL_PARSER_SIMPLIFIED_SOURCES})
-target_include_directories(db_parser_sql_simplified PUBLIC
-    ${ENGINEERING_SOURCE_DIR}/include
-)
-target_link_libraries(db_parser_sql_simplified PRIVATE project_includes)
+# T4：简化版（sql_lexer.c, sql_parser.c 手写解析器）已随 SQL-over-KV 路径归档至
+# archive/db-sql-over-kv/，db_parser_sql_simplified 目标一并移除。
+# makefuncs.c / parse_node.c / parse_analyze.c / parse_expr.c 保留在源码树，
+# 是 canonical Bison parser 的依赖，将在 T6 编入 canonical 目标。
 
 # 查找 Flex（可选）
 find_program(FLEX_EXECUTABLE flex)

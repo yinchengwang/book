@@ -17,10 +17,10 @@ target_include_directories(sql_benchmark
 )
 
 # 链接库
+# T4：db_parser_sql_simplified 已归档移除，canonical 目标名由 T6 补回。
 target_link_libraries(sql_benchmark
     PRIVATE
         sql_engine
-        db_parser_sql_simplified
         db_storage
         vector_index
         hnsw
