@@ -75,16 +75,6 @@ typedef struct SeqScanExtState {
  * ============================================================ */
 
 /**
- * @brief 初始化 SeqScan 执行状态
- *
- * @param node SeqScan 计划节点
- * @param estate 执行器状态（EState）
- * @param eflags 执行标志
- * @return SeqScanState 指针，失败返回 NULL
- */
-SeqScanState *ExecInitSeqScan(SeqScanPlan *node, void *estate, int eflags);
-
-/**
  * @brief 执行 SeqScan 迭代
  *
  * Volcano 模型：每次调用返回一个元组
