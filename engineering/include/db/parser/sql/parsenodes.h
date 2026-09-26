@@ -62,148 +62,54 @@
 #endif
 
 /* ============================================================
- * Token 类型定义（Bison 生成）
- * ============================================================ */
-
-/* 操作符常量 */
-#define NE  1   /* != 或 <> */
-#define LE  2   /* <= */
-#define GE  3   /* >= */
-#define CONCAT 4    /* || */
-#define JSON_OP 5   /* -> */
-#define JSON_TEXT_OP 6  /* ->> */
-
-/* ============================================================
- * Token 声明（供 Bison 使用）
- * ============================================================ */
-
-/* 关键字 */
-#define SELECT       270
-#define FROM         271
-#define WHERE        272
-#define INSERT       273
-#define INTO         274
-#define VALUES       275
-#define UPDATE       276
-#define SET          277
-#define DELETE       278
-#define CREATE       279
-#define DROP         280
-#define ALTER        281
-#define TABLE        282
-#define INDEX        283
-#define VIEW         284
-#define DATABASE     285
-#define SCHEMA       286
-#define AND          287
-#define OR           288
-#define NOT          289
-#define NULL_P       290
-#define TRUE_P       291
-#define FALSE_P      292
-#define IS           293
-#define IN           294
-#define LIKE         295
-#define BETWEEN      296
-#define CASE         297
-#define WHEN         298
-#define THEN         299
-#define ELSE         300
-#define END          301
-#define GROUP        302
-#define BY           303
-#define HAVING       304
-#define ORDER        305
-#define ASC          306
-#define DESC         307
-#define LIMIT        308
-#define OFFSET       309
-#define JOIN         310
-#define LEFT         311
-#define RIGHT        312
-#define FULL         313
-#define INNER        314
-#define OUTER        315
-#define CROSS        316
-#define ON           317
-#define AS           318
-#define DISTINCT     319
-#define ALL          320
-#define UNION        321
-#define INTERSECT    322
-#define EXCEPT       323
-#define WITH         324
-#define RECURSIVE    325
-#define PRIMARY      326
-#define KEY          327
-#define FOREIGN      328
-#define REFERENCES   329
-#define UNIQUE       330
-#define CHECK        331
-#define CONSTRAINT   332
-#define INT_P        333
-#define BIGINT       334
-#define SMALLINT     335
-#define TINYINT      336
-#define REAL         337
-#define DOUBLE_P     338
-#define FLOAT_P      339
-#define DECIMAL_P    340
-#define NUMERIC      341
-#define VARCHAR      342
-#define CHAR_P       343
-#define CHARACTER    344
-#define TEXT_P       345
-#define BOOLEAN_P    346
-#define DATE         347
-#define TIME         348
-#define TIMESTAMP    349
-#define BLOB         350
-#define DEFAULT      351
-#define USING        352
-#define CASCADE      353
-#define RESTRICT     354
-
-/* 字面量类型 */
-#define IDENT        400
-#define ICONST       401
-#define FCONST       402
-#define SCONST       403
-#define XCONST       404
-
-/* 操作符 */
-#define Op           410
-
-/* 特殊 */
-#define YYEOF        0
+ * Token 常量
+ * ============================================================
+ * T6 起：token 编号由 Bison 生成的 gram.h（enum yytokentype）统一提供。
+ * 本文件历史上手写了一份 token 宏（供已随 stack A 归档的手写 lexer 使用），
+ * 会与 gram.h 的枚举定义冲突，故移除。
+ * Op 语义值常量（NE/LE/GE/JSON_OP/JSON_TEXT_OP）仅供 scan.l 设置
+ * yylval.ival，已移至 scan.l 序言。
+ */
 
 /* ============================================================
  * 语义值类型
  * ============================================================ */
 
-/* YYSTYPE 定义 - 供 Bison 生成的解析器使用 */
+/* YYSTYPE 定义 - 与 gram.y 的语义值成员标签（<node>/<list>/<str>/<ival>/<fval>/<boolval>）一致。
+ * 唯一定义点在此；gram.y 通过 %define api.value.type {union YYSTYPE} 引用，
+ * YYSTYPE_IS_DECLARED 阻止 bison 重复定义。 */
 #ifndef YYSTYPE_DEFINED
 #define YYSTYPE_DEFINED
 typedef union YYSTYPE {
+    struct Node *node;  /* 通用节点（struct Node 在下方定义） */
+    struct List *list;  /* 列表（struct List 在下方定义） */
+    char   *str;        /* 字符串值 */
     int     ival;       /* 整数值 */
     double  fval;       /* 浮点数值 */
-    char   *str;        /* 字符串值 */
+    bool    boolval;    /* 布尔值 */
 } YYSTYPE;
+#define YYSTYPE_IS_DECLARED 1
+#define YYSTYPE_IS_TRIVIAL 1
 #endif
-
-/* 全局语义值 */
-extern YYSTYPE yylval;
 
 /* ============================================================
  * 位置信息
  * ============================================================ */
 
+/* 与 bison 默认位置结构布局一致（first/last line/column），
+ * gram.y 通过 %define api.location.type {YYLTYPE} 引用，
+ * 保证 gram.c/scan.c/调用方共享单一位置类型。 */
 typedef struct YYLTYPE {
-    int line;
-    int column;
+    int first_line;
+    int first_column;
+    int last_line;
+    int last_column;
 } YYLTYPE;
+#define YYLTYPE_IS_DECLARED 1
+#define YYLTYPE_IS_TRIVIAL 1
 
-extern YYLTYPE yylloc;
+/* yylval/yylloc 全局变量由 bison 生成的 gram.c 定义（sql_yy 前缀），
+ * gram.h 提供 extern 声明。 */
 
 /* ============================================================
  * AST 节点标签

@@ -12,7 +12,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#ifdef _WIN32
+#define strcasecmp _stricmp  /* MSVC/MinGW 无 <strings.h>，msvcrt 提供 _stricmp */
+#else
 #include <strings.h>  /* strcasecmp */
+#endif
 
 /* NIL 常量（空列表） */
 #define NIL ((List *)NULL)
@@ -741,17 +745,5 @@ OpExpr *makeOpExpr(Oid opno, Oid opresulttype, List *args, int location) {
     return op;
 }
 
-/**
- * @brief 创建 BoolExpr 节点
- */
-BoolExpr *makeBoolExpr(BoolType boolop, List *args) {
-    BoolExpr *bexpr = (BoolExpr *)calloc(1, sizeof(BoolExpr));
-
-    if (bexpr) {
-        bexpr->type = T_BoolExpr;
-        bexpr->boolop = boolop;
-        bexpr->args = args;
-    }
-
-    return bexpr;
-}
+/* T6：makeBoolExpr 的重复副本已移除——唯一定义在 makefuncs.c
+ * （db_parser_sql 将四个 helper 编入同一目标，重复定义无法链接）。 */

@@ -572,15 +572,5 @@ List *transformWindowClause(ParseState *pstate, List *windowlist) {
     return windowlist;
 }
 
-/**
- * @brief 转换表达式（占位实现）
- */
-Node *transformExpr(ParseState *pstate, Node *expr, ParseExprKind exprKind) {
-    if (!expr) {
-        return NULL;
-    }
-
-    /* 简化处理：返回原始节点 */
-    /* TODO: 实现完整的表达式转换 */
-    return expr;
-}
+/* T6：transformExpr 的占位副本已移除——真正实现统一由 parse_expr.c 提供
+ * （db_parser_sql 将四个 helper 编入同一目标，重复定义无法链接）。 */

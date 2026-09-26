@@ -25,10 +25,25 @@ extern char *sql_yytext;
 /* 解析结果 */
 static Node *parsetree;
 
-/* 错误处理 */
-void yyerror(const char *msg) {
-    fprintf(stderr, "SQL 语法错误: %s (位置: %d:%d)\n",
-            msg, sql_yylloc.line, sql_yylloc.column);
+/* 解析结果与错误的对外访问器（供 sql_parse.c 使用） */
+static char yy_error_buf[512];
+Node *sql_yy_get_parsetree(void) { return parsetree; }
+const char *sql_yy_get_error(void) { return yy_error_buf; }
+void sql_yy_reset_state(void) {
+    parsetree = NULL;
+    yy_error_buf[0] = '\0';
+    sql_yylloc.first_line = 1;
+    sql_yylloc.first_column = 1;
+    sql_yylloc.last_line = 1;
+    sql_yylloc.last_column = 1;
+}
+
+/* 错误处理：写入缓冲（经 sql_parse_last_error() 读取），不再打 stderr。
+ * 显式使用 sql_yy 前缀名（bison 通过 #define yyerror sql_yyerror 调用）。 */
+void sql_yyerror(const char *msg) {
+    snprintf(yy_error_buf, sizeof(yy_error_buf),
+             "%s (line %d, column %d)", msg,
+             sql_yylloc.first_line, sql_yylloc.first_column);
 }
 
 /* NIL 常量（空列表） */
@@ -37,24 +52,15 @@ void yyerror(const char *msg) {
 %}
 
 /* Bison 配置 */
-%name-prefix="sql_yy"
-%pure-parser
+/* T6：移除 %pure-parser —— scan.l 是非重入 Flex 词法器（全局 yylval/yylloc、
+ * yylex(void) 签名），与 pure-parser 的 yylex(&yylval,&yylloc) 调用约定不兼容。
+ * YYSTYPE 的唯一定义在 parsenodes.h（%union 会与之重复定义）。 */
+%define api.prefix {sql_yy}
+%define api.value.type {union YYSTYPE}
+%define api.location.type {YYLTYPE}
 %locations
 %defines
-%error-verbose
-
-/* ============================================================
- * 语义值类型
- * ============================================================ */
-
-%union {
-    Node *node;               /* 通用节点 */
-    List *list;               /* 列表 */
-    char *str;                /* 字符串 */
-    int ival;                 /* 整数 */
-    double fval;              /* 浮点数 */
-    bool boolval;             /* 布尔值 */
-}
+%define parse.error verbose
 
 /* ============================================================
  * Token 声明
@@ -101,12 +107,14 @@ void yyerror(const char *msg) {
 /* 其他 */
 %token DEFAULT USING CASCADE RESTRICT IF EXISTS
 
+/* 词法器识别但语法暂未使用的关键字（T6：scan.l 会返回它们，必须先声明） */
+%token DATABASE SCHEMA
+
 /* ============================================================
  * 操作符优先级（从低到高）
  * ============================================================ */
 
-/* 赋值和比较 */
-%right '='
+/* 赋值和比较（'=' 只在 %left 组声明一次；T6 修复重复声明导致的 bison 错误） */
 %left '<' '>' '=' Op
 
 /* 逻辑操作符 */
@@ -128,14 +136,15 @@ void yyerror(const char *msg) {
 %type <node> stmt select_stmt insert_stmt update_stmt delete_stmt
 %type <node> create_stmt drop_stmt
 
-/* 子句 */
-%type <list> target_list from_clause where_clause group_clause
-%type <list> having_clause order_clause limit_clause
+/* 子句（where/having/limit 语义值为节点；from/group/order/target 为列表——
+ * T6 修正：与规则动作及 SelectStmt 字段类型对齐） */
+%type <list> target_list from_clause group_clause order_clause
+%type <node> where_clause having_clause limit_clause
 %type <list> column_list value_list set_clause_list
 %type <list> column_def_list
 
-/* 表引用 */
-%type <node> table_ref join_clause
+/* 表引用（join_clause 无语义值——其规则无动作，仅作语法占位） */
+%type <node> table_ref
 
 /* 表达式 */
 %type <node> expr column_ref const_val func_call case_expr
@@ -230,7 +239,7 @@ select_stmt:
         }
     ;
 
-/* 目标列列表 */
+/* 目标列列表（T6：允许函数调用，如 COUNT(*)） */
 target_list:
       '*'
         {
@@ -241,7 +250,15 @@ target_list:
         {
             $$ = lappend($1, $3);
         }
+    | target_list ',' func_call
+        {
+            $$ = lappend($1, $3);
+        }
     | column_ref
+        {
+            $$ = list_make1($1);
+        }
+    | func_call
         {
             $$ = list_make1($1);
         }
@@ -367,15 +384,15 @@ sort_list:
 sort_item:
       column_ref
         {
-            $$ = makeSortBy($1, SORTBY_DEFAULT);
+            $$ = (Node *)makeSortBy($1, SORTBY_DEFAULT);
         }
     | column_ref ASC
         {
-            $$ = makeSortBy($1, SORTBY_ASC);
+            $$ = (Node *)makeSortBy($1, SORTBY_ASC);
         }
     | column_ref DESC
         {
-            $$ = makeSortBy($1, SORTBY_DESC);
+            $$ = (Node *)makeSortBy($1, SORTBY_DESC);
         }
     ;
 
@@ -383,12 +400,12 @@ sort_item:
 limit_clause:
       LIMIT ICONST
         {
-            $$ = makeIntConst($2);
+            $$ = (Node *)makeIntConst($2);
         }
     | LIMIT ICONST OFFSET ICONST
         {
             /* 简化处理：只返回 limit 值 */
-            $$ = makeIntConst($2);
+            $$ = (Node *)makeIntConst($2);
         }
     ;
 
@@ -522,17 +539,17 @@ column_def_list:
 column_def:
       column_name data_type
         {
-            $$ = makeColumnDef($1, $2);
+            $$ = (Node *)makeColumnDef($1, (TypeName *)$2);
         }
     | column_name data_type NOT NULL_P
         {
-            ColumnDef *n = makeColumnDef($1, $2);
+            ColumnDef *n = makeColumnDef($1, (TypeName *)$2);
             n->is_not_null = true;
             $$ = (Node *)n;
         }
     | column_name data_type PRIMARY KEY
         {
-            ColumnDef *n = makeColumnDef($1, $2);
+            ColumnDef *n = makeColumnDef($1, (TypeName *)$2);
             n->is_not_null = true;
             n->is_primary_key = true;
             $$ = (Node *)n;
@@ -543,55 +560,55 @@ column_def:
 data_type:
       INT_P
         {
-            $$ = makeTypeName("int4");
+            $$ = (Node *)makeTypeName("int4");
         }
     | BIGINT
         {
-            $$ = makeTypeName("int8");
+            $$ = (Node *)makeTypeName("int8");
         }
     | SMALLINT
         {
-            $$ = makeTypeName("int2");
+            $$ = (Node *)makeTypeName("int2");
         }
     | REAL
         {
-            $$ = makeTypeName("float4");
+            $$ = (Node *)makeTypeName("float4");
         }
     | DOUBLE_P
         {
-            $$ = makeTypeName("float8");
+            $$ = (Node *)makeTypeName("float8");
         }
     | FLOAT_P
         {
-            $$ = makeTypeName("float4");
+            $$ = (Node *)makeTypeName("float4");
         }
     | VARCHAR
         {
-            $$ = makeTypeName("varchar");
+            $$ = (Node *)makeTypeName("varchar");
         }
     | CHAR_P
         {
-            $$ = makeTypeName("char");
+            $$ = (Node *)makeTypeName("char");
         }
     | TEXT_P
         {
-            $$ = makeTypeName("text");
+            $$ = (Node *)makeTypeName("text");
         }
     | BOOLEAN_P
         {
-            $$ = makeTypeName("bool");
+            $$ = (Node *)makeTypeName("bool");
         }
     | DATE
         {
-            $$ = makeTypeName("date");
+            $$ = (Node *)makeTypeName("date");
         }
     | TIME
         {
-            $$ = makeTypeName("time");
+            $$ = (Node *)makeTypeName("time");
         }
     | TIMESTAMP
         {
-            $$ = makeTypeName("timestamp");
+            $$ = (Node *)makeTypeName("timestamp");
         }
     ;
 
