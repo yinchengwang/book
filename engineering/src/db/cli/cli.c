@@ -1,5 +1,12 @@
 /*
  * cli.c - 数据库 CLI 交互界面实现
+ *
+ * T10 重接线：
+ *   - 启动序列改为 canonical bootstrap（catalog/buf/heapam/btreeam/rel）
+ *   - SQL 执行走 sql_driver.h 的 execute_sql(sql, NULL) → QueryResult*
+ *   - 移除 vector_api / sql_exec_t 依赖
+ *   - MMDB_ENABLE_RELATIONAL / MMDB_ENABLE_KV 模态守卫
+ *   - KV 子命令（.kvput/.kvget/.kvdel/.kvstats）在 MMDB_ENABLE_KV 下懒打开
  */
 
 #include <stdio.h>
@@ -9,9 +16,18 @@
 #include <ctype.h>
 
 #include <db/cli/cli.h>
+#include <db/multimodal_config.h>
+#ifdef MMDB_ENABLE_RELATIONAL
+#include <db/sql/sql_driver.h>
+#include <db/catalog.h>
+#include <db/buf.h>
+#include <db/heapam.h>
+#include <db/btreeam.h>
+#include <db/rel.h>
+#endif
+#ifdef MMDB_ENABLE_KV
 #include <db/kv.h>
-#include <db/parser/sql/sql.h>
-#include <db/executor/sql/sql_exec.h>
+#endif
 
 /* ─────────────────────────────────────────────────────────────────
  * 行缓冲区
@@ -64,29 +80,28 @@ static void line_buffer_trim(line_buffer_t *buf)
 
 struct db_cli_s {
     db_cli_config_t config;
-    kv_t *db;                      /* KV 数据库句柄 */
-    sql_exec_t *exec;              /* SQL 执行器 */
-    line_buffer_t multi_line;      /* 多行输入缓冲 */
-    bool in_multiline;             /* 是否在多行模式 */
+#ifdef MMDB_ENABLE_KV
+    kv_t *kv;                     /* KV 数据库句柄（懒打开） */
+#endif
+    line_buffer_t multi_line;     /* 多行输入缓冲 */
+    bool in_multiline;            /* 是否在多行模式 */
 };
 
 /* ─────────────────────────────────────────────────────────────────
- * SQL 执行
+ * QueryResult 打印辅助
  * ───────────────────────────────────────────────────────────────── */
 
 /**
- * 打印一行结果
+ * 打印一行结果（QueryResult 接口）
  */
-static void print_row(const sql_result_t *result, size_t row_idx)
+static void print_qr_row(const QueryResult *r, int row_idx)
 {
-    size_t num_cols = sql_result_num_columns(result);
+    if (!r || !r->rows || row_idx < 0 || row_idx >= r->nrows) return;
     printf("| ");
-    for (size_t col = 0; col < num_cols; col++) {
-        void *values = NULL;
-        sql_result_get_row(result, row_idx, &values);
-        if (values) {
-            printf("%s", (char *)values);
-            free(values);
+    for (int col = 0; col < r->ncols; col++) {
+        const char *val = r->rows[row_idx][col];
+        if (val) {
+            printf("%s", val);
         } else {
             printf("NULL");
         }
@@ -98,17 +113,17 @@ static void print_row(const sql_result_t *result, size_t row_idx)
 /**
  * 打印表头
  */
-static void print_header(const sql_result_t *result)
+static void print_qr_header(const QueryResult *r)
 {
-    size_t num_cols = sql_result_num_columns(result);
+    if (!r) return;
     printf("+");
-    for (size_t col = 0; col < num_cols; col++) {
+    for (int col = 0; col < r->ncols; col++) {
         printf("--------------+");
     }
     printf("\n|");
-    for (size_t col = 0; col < num_cols; col++) {
-        const char *name = sql_result_column_name(result, col);
-        printf(" %-12s |", name ? name : "?");
+    for (int col = 0; col < r->ncols; col++) {
+        const char *name = (r->col_names && r->col_names[col]) ? r->col_names[col] : "?";
+        printf(" %-12s |", name);
     }
     printf("\n");
 }
@@ -118,6 +133,7 @@ static void print_header(const sql_result_t *result)
  */
 static void json_escape(const char *str, FILE *fp)
 {
+    if (!str) return;
     for (const char *p = str; *p; p++) {
         switch (*p) {
             case '"':  fprintf(fp, "\\\""); break;
@@ -131,126 +147,101 @@ static void json_escape(const char *str, FILE *fp)
 }
 
 /**
- * 打印 JSON 格式结果（不包含外层大括号和success字段）
+ * 打印 JSON 格式结果（不包含外层 success 字段）
  */
-static void print_json_result(const sql_result_t *result, size_t num_rows)
+static void print_qr_json(const QueryResult *r)
 {
-    size_t num_cols = sql_result_num_columns(result);
+    if (!r) return;
     printf("\"columns\":[");
-    for (size_t col = 0; col < num_cols; col++) {
-        const char *name = sql_result_column_name(result, col);
+    for (int col = 0; col < r->ncols; col++) {
+        const char *name = (r->col_names && r->col_names[col]) ? r->col_names[col] : "";
         if (col > 0) printf(",");
-        printf("\"%s\"", name ? name : "");
+        printf("\"%s\"", name);
     }
     printf("],\"rows\":[");
-    for (size_t i = 0; i < num_rows; i++) {
+    for (int i = 0; i < r->nrows; i++) {
         if (i > 0) printf(",");
         printf("[");
-        for (size_t col = 0; col < num_cols; col++) {
-            void *values = NULL;
-            sql_result_get_row(result, i, &values);
+        for (int col = 0; col < r->ncols; col++) {
+            const char *val = r->rows[i][col];
             if (col > 0) printf(",");
-            if (values) {
+            if (val) {
                 printf("\"");
-                json_escape((char *)values, stdout);
+                json_escape(val, stdout);
                 printf("\"");
-                free(values);
             } else {
                 printf("null");
             }
         }
         printf("]");
     }
-    printf("],\"row_count\":%zu}", num_rows);
+    printf("],\"row_count\":%d}", r->nrows);
 }
 
+/* ─────────────────────────────────────────────────────────────────
+ * SQL 执行（canonical execute_sql 包装）
+ * ───────────────────────────────────────────────────────────────── */
+
 /**
- * 执行 SQL 并打印结果
+ * 执行 SQL 并打印结果（cli 内部包装，避开与 sql_driver.h 同名）
+ *
  * @return 0 成功，-1 解析错误，1 执行错误
  */
-static int execute_sql(db_cli_t *cli, const char *sql)
+static int cli_run_sql(db_cli_t *cli, const char *sql)
 {
-    clock_t start, end;
+    clock_t start = 0, end = 0;
     double elapsed = 0;
     int ret = 0;  /* 默认成功 */
 
+#ifdef MMDB_ENABLE_RELATIONAL
     if (cli->config.echo) {
         printf("%s\n", sql);
     }
 
     start = clock();
 
-    /* 解析 SQL */
-    sql_node_t *node = sql_parse_one(sql);
-    if (!node) {
-        const char *err = sql_get_last_parse_error();
-        printf("SQL解析失败: %s\n", err && err[0] ? err : "未知错误");
-        return -1;
+    QueryResult *r = execute_sql(sql, NULL);
+    if (!r) {
+        printf("执行错误: 内部错误（QueryResult 为 NULL）\n");
+        return 1;
+    }
+
+    /* 错误优先 */
+    if (r->error_msg) {
+        printf("SQL解析/执行失败: %s\n", r->error_msg);
+        ret = (r->nrows > 0 || r->ncols > 0) ? 1 : -1;
+        FreeQueryResult(r);
+        end = clock();
+        if (cli->config.show_timing) {
+            elapsed = (double)(end - start) / CLOCKS_PER_SEC * 1000;
+            printf("执行时间: %.2f ms\n", elapsed);
+        }
+        return ret;
     }
 
     /* JSON 输出模式 */
     if (cli->config.json_output) {
-        if (node->type == SQL_NODE_CREATE_TABLE || node->type == SQL_NODE_DROP_TABLE) {
-            sql_exec_result_t exec_ret = sql_exec_ddl(cli->exec, node);
-            if (exec_ret == SQL_EXEC_OK) {
-                printf("{\"success\":true,\"affected_rows\":1}\n");
-            } else {
-                printf("{\"success\":false,\"error\":\"%s\"}\n", sql_exec_errmsg(cli->exec));
-                ret = 1;
-            }
-        } else {
-            sql_result_t *result = sql_exec(cli->exec, node);
-            if (!result) {
-                printf("{\"success\":false,\"error\":\"%s\"}\n", sql_exec_errmsg(cli->exec));
-                ret = 1;
-            } else {
-                size_t num_rows = sql_result_num_rows(result);
-                printf("{\"success\":true,");
-                print_json_result(result, num_rows);
-                sql_result_free(result);
-            }
-        }
-        sql_node_free(node);
-        return ret;
+        printf("{\"success\":true,");
+        print_qr_json(r);
+        printf("}\n");
+        FreeQueryResult(r);
+        return 0;
     }
 
     /* 普通模式 */
-    if (node->type == SQL_NODE_CREATE_TABLE || node->type == SQL_NODE_DROP_TABLE) {
-        /* DDL */
-        sql_exec_result_t exec_ret = sql_exec_ddl(cli->exec, node);
-        if (exec_ret == SQL_EXEC_OK) {
-            printf("操作成功。\n");
-        } else {
-            printf("执行错误: %s\n", sql_exec_errmsg(cli->exec));
-            ret = 1;
+    if (r->ncols > 0 && r->nrows > 0) {
+        /* SELECT 类查询 */
+        print_qr_header(r);
+        for (int i = 0; i < r->nrows; i++) {
+            print_qr_row(r, i);
         }
+        printf("(%d 行)\n", r->nrows);
     } else {
-        /* DML */
-        sql_result_t *result = sql_exec(cli->exec, node);
-        if (!result) {
-            printf("执行错误: %s\n", sql_exec_errmsg(cli->exec));
-            ret = 1;
-        } else {
-            size_t num_cols = sql_result_num_columns(result);
-            size_t num_rows = sql_result_num_rows(result);
-
-            if (num_cols > 0) {
-                /* SELECT 查询 */
-                print_header(result);
-                for (size_t i = 0; i < num_rows; i++) {
-                    print_row(result, i);
-                }
-                printf("(%zu 行)\n", num_rows);
-            } else {
-                /* INSERT/UPDATE/DELETE */
-                printf("操作成功，影响 %zu 行。\n", num_rows);
-            }
-
-            sql_result_free(result);
-        }
+        /* DDL / INSERT / UPDATE / DELETE（无结果集） */
+        printf("操作成功。\n");
     }
 
-    sql_node_free(node);
+    FreeQueryResult(r);
 
     end = clock();
     if (cli->config.show_timing) {
@@ -259,6 +250,12 @@ static int execute_sql(db_cli_t *cli, const char *sql)
     }
 
     return ret;
+#else
+    (void)cli;
+    (void)sql;
+    printf("relational modality not enabled in this build\n");
+    return 1;
+#endif
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -312,6 +309,67 @@ static char *read_line(const char *prompt)
 }
 
 /* ─────────────────────────────────────────────────────────────────
+ * KV 子命令（懒打开）
+ * ───────────────────────────────────────────────────────────────── */
+
+#ifdef MMDB_ENABLE_KV
+/**
+ * 懒打开 KV 句柄
+ */
+static kv_t *cli_kv_ensure_open(db_cli_t *cli)
+{
+    if (!cli) return NULL;
+    if (cli->kv) return cli->kv;
+    if (!cli->config.db_path) {
+        fprintf(stderr, "错误: 未配置数据库路径\n");
+        return NULL;
+    }
+    cli->kv = kv_open(cli->config.db_path);
+    if (!cli->kv) {
+        fprintf(stderr, "错误: 打开 KV 数据库失败 (%s)\n", cli->config.db_path);
+    }
+    return cli->kv;
+}
+
+/**
+ * 分割 ".kvput KEY VALUE" / ".kvget KEY" 等指令参数
+ * 返回 -1 错误；out_key/out_value 由调用方负责释放（free）
+ */
+static int split_kv_args(const char *input, char **out_key, char **out_value)
+{
+    if (!input || !out_key || !out_value) return -1;
+    *out_key = NULL;
+    *out_value = NULL;
+
+    /* 跳过指令名 + 1 个空格 */
+    const char *p = strchr(input, ' ');
+    if (!p) return -1;
+    while (*p == ' ') p++;
+    if (*p == '\0') return -1;
+
+    *out_key = strdup(p);
+    if (!*out_key) return -1;
+
+    /* 在 key 内部找第一个空格分隔 key 与 value */
+    char *sp = strchr(*out_key, ' ');
+    if (sp) {
+        *sp = '\0';
+        const char *vp = sp + 1;
+        while (*vp == ' ') vp++;
+        if (*vp) {
+            *out_value = strdup(vp);
+            if (!*out_value) {
+                free(*out_key);
+                *out_key = NULL;
+                return -1;
+            }
+        }
+    }
+    return 0;
+}
+#endif /* MMDB_ENABLE_KV */
+
+/* ─────────────────────────────────────────────────────────────────
  * 命令处理
  * ───────────────────────────────────────────────────────────────── */
 
@@ -321,7 +379,6 @@ static char *read_line(const char *prompt)
  */
 static int handle_command(db_cli_t *cli, const char *input)
 {
-    (void)cli;
     if (input[0] != '.') return 1;
 
     if (strcmp(input, ".quit") == 0 || strcmp(input, ".exit") == 0) {
@@ -343,6 +400,96 @@ static int handle_command(db_cli_t *cli, const char *input)
         printf("(表结构功能待实现)\n");
         return 0;
     }
+
+#ifdef MMDB_ENABLE_KV
+    /* KV dot-commands */
+    if (strncmp(input, ".kvput ", 7) == 0) {
+        char *key = NULL, *value = NULL;
+        if (split_kv_args(input, &key, &value) != 0 || !key) {
+            printf("用法: .kvput <key> <value>\n");
+            free(key); free(value);
+            return 0;
+        }
+        kv_t *kvh = cli_kv_ensure_open(cli);
+        if (!kvh) { free(key); free(value); return 0; }
+        kv_result_t rc = kv_put(kvh, key, strlen(key), value ? value : "",
+                                value ? strlen(value) : 0);
+        if (rc == KV_OK) {
+            printf("OK\n");
+        } else {
+            printf("错误: kv_put 失败 (%s)\n", kv_errmsg(kvh));
+        }
+        free(key); free(value);
+        return 0;
+    }
+
+    if (strncmp(input, ".kvget ", 7) == 0) {
+        char *key = NULL, *value = NULL;
+        if (split_kv_args(input, &key, &value) != 0 || !key) {
+            printf("用法: .kvget <key>\n");
+            free(key); free(value);
+            return 0;
+        }
+        (void)value;
+        kv_t *kvh = cli_kv_ensure_open(cli);
+        if (!kvh) { free(key); free(value); return 0; }
+        void *out = NULL;
+        size_t out_len = 0;
+        kv_result_t rc = kv_get(kvh, key, strlen(key), &out, &out_len);
+        if (rc == KV_OK) {
+            /* 不可打印字节用 '.' 替代 */
+            printf("\"");
+            for (size_t i = 0; i < out_len; i++) {
+                unsigned char c = ((unsigned char *)out)[i];
+                putchar((c >= 0x20 && c < 0x7f) ? c : '.');
+            }
+            printf("\"\n");
+            free(out);
+        } else if (rc == KV_NOT_FOUND) {
+            printf("(nil)\n");
+        } else {
+            printf("错误: kv_get 失败 (%s)\n", kv_errmsg(kvh));
+        }
+        free(key); free(value);
+        return 0;
+    }
+
+    if (strncmp(input, ".kvdel ", 7) == 0) {
+        char *key = NULL, *value = NULL;
+        if (split_kv_args(input, &key, &value) != 0 || !key) {
+            printf("用法: .kvdel <key>\n");
+            free(key); free(value);
+            return 0;
+        }
+        (void)value;
+        kv_t *kvh = cli_kv_ensure_open(cli);
+        if (!kvh) { free(key); free(value); return 0; }
+        kv_result_t rc = kv_delete(kvh, key, strlen(key));
+        if (rc == KV_OK) {
+            printf("OK（已删除）\n");
+        } else if (rc == KV_NOT_FOUND) {
+            printf("(nil)\n");
+        } else {
+            printf("错误: kv_delete 失败 (%s)\n", kv_errmsg(kvh));
+        }
+        free(key); free(value);
+        return 0;
+    }
+
+    if (strcmp(input, ".kvstats") == 0) {
+        kv_t *kvh = cli_kv_ensure_open(cli);
+        if (!kvh) return 0;
+        kv_stats_t st;
+        kv_result_t rc = kv_stats(kvh, &st);
+        if (rc == KV_OK) {
+            printf("keys=%zu  size=%zu  pages=%zu  hit_rate=%.2f\n",
+                   st.num_keys, st.total_size, st.page_count, st.cache_hit_rate);
+        } else {
+            printf("错误: kv_stats 失败 (%s)\n", kv_errmsg(kvh));
+        }
+        return 0;
+    }
+#endif /* MMDB_ENABLE_KV */
 
     if (strncmp(input, ".open ", 6) == 0) {
         printf("切换数据库暂不支持。\n");
@@ -389,10 +536,10 @@ int db_cli_run(db_cli_t *cli)
 
             if (!needs_more_input(input)) {
                 /* 多行输入结束 */
-                execute_sql(cli, cli->multi_line.data);
+                cli_run_sql(cli, cli->multi_line.data);
                 cli->in_multiline = false;
                 cli->multi_line.length = 0;
-                cli->multi_line.data[0] = '\0';
+                if (cli->multi_line.data) cli->multi_line.data[0] = '\0';
             }
         } else {
             if (needs_more_input(input)) {
@@ -403,7 +550,7 @@ int db_cli_run(db_cli_t *cli)
                 line_buffer_append(&cli->multi_line, " ", 1);
             } else {
                 /* 单行执行 */
-                execute_sql(cli, input);
+                cli_run_sql(cli, input);
             }
         }
     }
@@ -418,7 +565,7 @@ int db_cli_run(db_cli_t *cli)
 
 int db_cli_exec(db_cli_t *cli, const char *sql)
 {
-    return execute_sql(cli, sql);
+    return cli_run_sql(cli, sql);
 }
 
 /* ─────────────────────────────────────────────────────────────────
@@ -440,20 +587,46 @@ db_cli_t *db_cli_create(const db_cli_config_t *config)
         cli->config.show_timing = true;
     }
 
-    /* 打开数据库（kv_open 会自动创建） */
-    cli->db = kv_open(cli->config.db_path);
-    if (!cli->db) {
+#ifdef MMDB_ENABLE_RELATIONAL
+    /* canonical bootstrap: catalog → buf → heapam → btreeam → rel */
+    if (catalog_init() != 0) {
+        fprintf(stderr, "存储引擎初始化失败: catalog_init\n");
         free(cli);
         return NULL;
     }
-
-    /* 创建执行器 */
-    cli->exec = sql_exec_create(cli->db);
-    if (!cli->exec) {
-        kv_close(cli->db);
+    /* buf_init("") = 内存 buffer pool（无磁盘文件） */
+    if (buf_init("") != 0) {
+        fprintf(stderr, "存储引擎初始化失败: buf_init\n");
+        catalog_shutdown();
         free(cli);
         return NULL;
     }
+    if (heapam_init() != 0) {
+        fprintf(stderr, "存储引擎初始化失败: heapam_init\n");
+        buf_shutdown();
+        catalog_shutdown();
+        free(cli);
+        return NULL;
+    }
+    if (btreeam_init() != 0) {
+        fprintf(stderr, "存储引擎初始化失败: btreeam_init\n");
+        heapam_shutdown();
+        buf_shutdown();
+        catalog_shutdown();
+        free(cli);
+        return NULL;
+    }
+    if (rel_init() != 0) {
+        fprintf(stderr, "存储引擎初始化失败: rel_init\n");
+        btreeam_shutdown();
+        heapam_shutdown();
+        buf_shutdown();
+        catalog_shutdown();
+        free(cli);
+        return NULL;
+    }
+    /* KV 句柄懒打开；不预打开 */
+#endif
 
     return cli;
 }
@@ -461,8 +634,20 @@ db_cli_t *db_cli_create(const db_cli_config_t *config)
 void db_cli_destroy(db_cli_t *cli)
 {
     if (!cli) return;
-    if (cli->exec) sql_exec_destroy(cli->exec);
-    if (cli->db) kv_close(cli->db);
+#ifdef MMDB_ENABLE_KV
+    if (cli->kv) {
+        kv_close(cli->kv);
+        cli->kv = NULL;
+    }
+#endif
+#ifdef MMDB_ENABLE_RELATIONAL
+    /* canonical teardown: rel → btreeam → heapam → buf → catalog */
+    rel_shutdown();
+    btreeam_shutdown();
+    heapam_shutdown();
+    buf_shutdown();
+    catalog_shutdown();
+#endif
     free(cli);
 }
 
@@ -487,8 +672,14 @@ void db_cli_print_help(void)
     printf("  .exit      退出\n");
     printf("  .tables    列出所有表\n");
     printf("  .schema    显示表结构\n");
-    printf("  .open FILE 打开指定数据库\n\n");
-    printf("SQL 示例:\n");
+    printf("  .open FILE 打开指定数据库\n");
+#ifdef MMDB_ENABLE_KV
+    printf("  .kvput KEY VALUE  写入 KV\n");
+    printf("  .kvget KEY        读取 KV\n");
+    printf("  .kvdel KEY        删除 KV\n");
+    printf("  .kvstats          显示 KV 统计\n");
+#endif
+    printf("\nSQL 示例:\n");
     printf("  CREATE TABLE users (id INT, name VARCHAR(100));\n");
     printf("  INSERT INTO users VALUES (1, 'Alice');\n");
     printf("  SELECT * FROM users WHERE id = 1;\n");
@@ -499,5 +690,5 @@ void db_cli_print_help(void)
 
 void db_cli_print_error(const char *msg)
 {
-    printf("错误: %s\n", msg);
+    printf("错误: %s\n", msg ? msg : "(null)");
 }

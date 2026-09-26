@@ -4,7 +4,7 @@
  */
 #include <stdio.h>
 #include <string.h>
-#include "cli.h"
+#include <db/cli/cli.h>
 
 int main(int argc, char *argv[])
 {
