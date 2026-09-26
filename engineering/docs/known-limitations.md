@@ -35,6 +35,7 @@
 | `EdgeCase_LargeNumbers` | 依赖 REAL 列 DML 写入 | S1 |
 | `Stress_ManyInserts` | 依赖 WHERE（验证步骤） | S1 |
 | `Stress_ComplexQueries` | 依赖 WHERE | S1 |
+| `Error_InvalidOperator` | WHERE 子句解析未稳定（Filter 节点未实现） | S1 |
 | `Persistence_DataSurvivesClose` | heapam 持久化路径 WAL/reopen 在 S5 深化前不保证跨 `db_cli_destroy/recreate` | S5 |
 
 ## 主路径覆盖（DoD-3 验收 — 全部通过）
@@ -53,3 +54,14 @@
 - 能力兑现：spec §6.2 DoD-3（5 capability + 27 SQL smoke 全绿）
 - 测试迁移说明：见 `archive/db-sql-over-kv/tests/{test_planner.cpp,sql_parser.cpp}` 文件头归档原因
 - 主路径无静默桩：spec §5.3；DoD-4 grep 验证（见 task-12 报告）
+
+## WSL Linux build（DoD-5）
+
+DoD-5 的 WSL 子项在 T12 验收时**延后到用户执行**：
+
+- 当前 WSL Ubuntu 实例检测到 Windows 主机 localhost 代理未镜像到 WSL（NAT 模式下不支持），导致 `wsl -e bash -lc ...` 直接被宿主拦截至 `wsl:` 错误信息，连 bash 都进不去。
+- 用户可在 WSL 端手工跑 `scripts/check_wsl_build.sh`（仓库内已就位、LF + executable）以补完 DoD-5。命令：
+  ```
+  ! wsl -e bash -lc "bash /mnt/d/code/book/engineering/scripts/check_wsl_build.sh"
+  ```
+- 验收补完后请回填本节状态（`WSL-DOD5-OK` / 失败尾部摘要）。
