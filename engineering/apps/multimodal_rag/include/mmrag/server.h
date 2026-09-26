@@ -13,7 +13,6 @@
 // Forward declarations
 // Note: We include engine.h to get full RAGEngine definition for shared_ptr usage
 #include "mmrag/engine.h"
-#include "mmrag/intent_gate_config.h"
 
 namespace mmrag {
 
@@ -21,7 +20,6 @@ namespace mmrag {
 
 class MetricsCollector;
 class HealthChecker;
-class IntentGate;
 struct ServerConfig;
 
 namespace api {
@@ -79,11 +77,6 @@ public:
 
     // 设置引擎
     void set_engine(std::shared_ptr<RAGEngine> engine);
-
-    /**
-     * @brief 设置意图门配置（注入 modular pipeline 系统）
-     */
-    void set_intent_gate_config(const mmrag::IntentGateConfig& config);
 
     // 设置指标收集器
     void set_metrics(std::shared_ptr<MetricsCollector> metrics);
@@ -148,9 +141,6 @@ private:
 
     // 连接处理
     void handle_connection(int client_socket);
-
-    // Server 级意图门（懒加载；配置禁用时返回 nullptr）
-    mmrag::IntentGate* get_intent_gate();
 
     ServerConfig config_;
     bool running_ = false;

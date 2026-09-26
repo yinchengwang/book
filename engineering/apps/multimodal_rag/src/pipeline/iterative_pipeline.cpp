@@ -68,7 +68,7 @@ bool IterativePipeline::is_ready() const {
            && (hnsw_retriever_ || bm25_retriever_);
 }
 
-ModularQueryResult IterativePipeline::do_query(const ModularQuery& query) {
+ModularQueryResult IterativePipeline::query(const ModularQuery& query) {
     ModularQueryResult result;
     auto start_time = std::chrono::steady_clock::now();
 
@@ -102,10 +102,9 @@ ModularQueryResult IterativePipeline::do_query(const ModularQuery& query) {
         total_retrieval_time += retrieval_time;
 
         if (retrieval_results.empty() && iteration == 0) {
-            // 首次检索为空，直接返回（证据门拒答分支）
+            // 首次检索为空，直接返回
             result.success = true;
             result.answer = "抱歉，未找到与您查询相关的文档内容。";
-            result.routed_by = "evidence_gate";
             result.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - start_time).count();
             return result;
@@ -157,18 +156,16 @@ ModularQueryResult IterativePipeline::do_query(const ModularQuery& query) {
         }
     }
 
-    // 证据门：最终回答生成前，空结果或最高分低于阈值 → 不调 LLM
-    if (!has_sufficient_evidence(result.context)) {
-        RAG_WARN("证据不足，跳过 LLM: " + query.text);
-        auto r = make_no_evidence_result(query);
-        r.retrieval_time_ms = total_retrieval_time;
-        r.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - start_time).count();
-        return r;
-    }
-
     // 构建最终回答
     std::string context_str = build_context(query.text, result.context);
+
+    if (context_str.empty()) {
+        result.success = true;
+        result.answer = "抱歉，未找到与您查询相关的文档内容。";
+        result.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start_time).count();
+        return result;
+    }
 
     // 生成回答
     std::string prompt = "请根据以下上下文信息回答问题。如果上下文中没有相关信息，请说明无法回答。\n\n"

@@ -241,28 +241,6 @@ Config ConfigLoader::load_from_string(const std::string& yaml_content) {
             config.chunking.chunk_overlap = std::stoi(value);
         } else if (key == "top_k") {
             config.retrieval.top_k = std::stoi(value);
-        } else if (key == "intent_gate.enabled") {
-            config.intent_gate.enabled = (value == "true" || value == "1");
-        } else if (key == "intent_gate.strategy") {
-            config.intent_gate.strategy = value;
-        } else if (key == "intent_gate.embedding_threshold") {
-            try {
-                config.intent_gate.embedding_threshold = std::stof(value);
-            } catch (const std::exception&) {
-                RAG_WARN("intent_gate.embedding_threshold 非法，使用默认值: " + value);
-            }
-        } else if (key == "intent_gate.evidence_threshold") {
-            try {
-                config.intent_gate.evidence_threshold = std::stof(value);
-            } catch (const std::exception&) {
-                RAG_WARN("intent_gate.evidence_threshold 非法，使用默认值: " + value);
-            }
-        } else if (key == "intent_gate.embedder_model_dir") {
-            config.intent_gate.embedder_model_dir = value;
-        } else if (key == "intent_gate.out_of_scope_reply") {
-            config.intent_gate.out_of_scope_reply = value;
-        } else if (key == "intent_gate.no_evidence_reply") {
-            config.intent_gate.no_evidence_reply = value;
         } else if (key == "hnsw_dim" || key == "hnsw.dim") {
             config.hnsw.dim = std::stoi(value);
         }

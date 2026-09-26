@@ -9,7 +9,6 @@
 #include <cctype>
 #include <regex>
 #include <sstream>
-#include <vector>
 
 namespace mmrag {
 
@@ -98,22 +97,13 @@ void RuleBasedQueryClassifier::init_rules() {
         R"(张三.*李四|.*and.*)"  // 人名模式
     };
 
-    // CHAT: 闲聊（收窄：只匹配明确闲聊句式，不误伤疑问句）
+    // CHAT: 闲聊
     patterns_[QueryType::CHAT] = {
-        R"(你好|您好|hello|hi|hey)",
-        R"(谢谢|感谢|thank you|thanks)",
-        R"(再见|拜拜|goodbye|bye)",
-        R"(^在吗|^在不在|最近如何|how are you)",
-        R"(你能做什么|你会什么|介绍一下你自己|who are you)"
-    };
-
-    // OUT_OF_SCOPE: 知识库外/非提问型指令
-    patterns_[QueryType::OUT_OF_SCOPE] = {
-        R"(帮我写|写一封|写个|写一篇)",
-        R"(讲个笑话|讲个故事|唱首歌)",
-        R"(今天天气|明天天气|天气预报|会下雨吗)",
-        R"(陪我聊(聊)?天|我好无聊|睡不着)",
-        R"(股票|股价|彩票|比分)"
+        R"(你好|hello|hi|hey)",
+        R"(谢谢|thank you|thanks)",
+        R"(再见|goodbye|bye)",
+        R"(.*吗$|.*吗？)",  // 简单判断
+        R"(最近如何|how are you)"
     };
 
     // 停用词
@@ -145,15 +135,18 @@ ClassificationResult RuleBasedQueryClassifier::match_patterns(const std::string&
     ClassificationResult result;
 
     float best_score = 0.0f;
-    std::vector<QueryType> matched_types;
+    QueryType best_type = QueryType::FACTUAL;
 
     for (const auto& [type, patterns] : patterns_) {
         for (const auto& pattern_str : patterns) {
             try {
                 std::regex pattern(pattern_str, std::regex_constants::icase);
                 if (std::regex_search(query, pattern)) {
-                    best_score = 0.8f;
-                    matched_types.push_back(type);
+                    float score = 0.8f;
+                    if (score > best_score) {
+                        best_score = score;
+                        best_type = type;
+                    }
                     break;
                 }
             } catch (const std::regex_error&) {
@@ -163,13 +156,6 @@ ClassificationResult RuleBasedQueryClassifier::match_patterns(const std::string&
     }
 
     if (best_score > 0.0f) {
-        // 平票时门控类型优先（不依赖 unordered_map 迭代序）：
-        // OUT_OF_SCOPE > CHAT > 其他（取首个匹配）
-        QueryType best_type = matched_types.front();
-        for (QueryType t : matched_types) {
-            if (t == QueryType::OUT_OF_SCOPE) { best_type = t; break; }
-            if (t == QueryType::CHAT) best_type = t;
-        }
         result.type = best_type;
         result.confidence = best_score;
         result.type_scores[query_type_to_string(best_type)] = best_score;
@@ -211,12 +197,6 @@ ClassificationResult RuleBasedQueryClassifier::analyze_keywords(const std::strin
         else if (keyword == "你好" || keyword == "谢谢" || keyword == "再见" ||
                  keyword == "hello" || keyword == "thanks" || keyword == "bye") {
             type_scores[QueryType::CHAT] += 1.0f;
-        }
-        // OUT_OF_SCOPE 关键词
-        else if (keyword == "帮我写" || keyword == "笑话" || keyword == "天气" ||
-                 keyword == "无聊" || keyword == "write" || keyword == "joke" ||
-                 keyword == "weather") {
-            type_scores[QueryType::OUT_OF_SCOPE] += 1.0f;
         }
 
         total_score += 1.0f;
@@ -395,7 +375,7 @@ ClassificationResult LLMQueryClassifier::do_classify(const std::string& query) {
         auto prompt = build_classification_prompt(query);
         auto response = llm_service_->generate(prompt);
 
-        auto type = parse_llm_response(response.text);
+        auto type = parse_llm_response(response);
 
         ClassificationResult result;
         result.type = type;
@@ -410,10 +390,10 @@ ClassificationResult LLMQueryClassifier::do_classify(const std::string& query) {
     }
 }
 
-std::vector<std::string> LLMQueryClassifier::do_extract_keywords(const std::string& query) {
+ClassificationResult LLMQueryClassifier::do_extract_keywords(const std::string& query) {
     // 使用关键词提取
     KeywordQueryClassifier kw_classifier;
-    return kw_classifier.extract_keywords(query);
+    return kw_classifier.do_classify(query);
 }
 
 std::string LLMQueryClassifier::build_classification_prompt(const std::string& query) {

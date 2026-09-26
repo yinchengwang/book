@@ -106,7 +106,7 @@ bool ReActPipeline::is_ready() const {
            && (hnsw_retriever_ || bm25_retriever_);
 }
 
-ModularQueryResult ReActPipeline::do_query(const ModularQuery& query) {
+ModularQueryResult ReActPipeline::query(const ModularQuery& query) {
     ModularQueryResult result;
     auto start_time = std::chrono::steady_clock::now();
 
@@ -165,23 +165,16 @@ ModularQueryResult ReActPipeline::do_query(const ModularQuery& query) {
             result.error_message = agent_response.error;
             result.success = false;
         }
-    } else
-#endif
-    {
-        // 使用占位符实现（或 Agent 未初始化时回退）
+    } else {
+        // Agent 未初始化，回退到占位符实现
         run_react_loop();
-
-        // 证据门：最终回答生成前，证据不足 → 不调 LLM
-        if (!has_sufficient_evidence(state_.all_results)) {
-            RAG_WARN("证据不足，跳过最终回答生成: " + query.text);
-            auto r = make_no_evidence_result(query);
-            r.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - start_time).count();
-            return r;
-        }
-
         result.answer = build_final_answer();
     }
+#else
+    // 使用占位符实现
+    run_react_loop();
+    result.answer = build_final_answer();
+#endif
 
     result.context = state_.all_results;
 

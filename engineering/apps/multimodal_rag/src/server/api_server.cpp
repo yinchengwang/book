@@ -12,7 +12,6 @@
 #include "mmrag/logger.h"
 #include "mmrag/metrics.h"
 #include "mmrag/eval/eval_store.h"
-#include "mmrag/intent_gate.h"  // IntentGate + MiniLMEmbedder（Server 级意图门短路）
 
 // Modular Pipeline
 #include "mmrag/modular/pipeline/pipeline_factory.h"
@@ -223,12 +222,6 @@ struct Server::Impl {
     std::mutex pipelines_mutex;
     std::unordered_map<mmrag::modular::PipelineType, std::shared_ptr<mmrag::modular::ModularPipeline>> pipelines;
     mmrag::modular::ModularConfig modular_config;
-    mmrag::IntentGateConfig intent_gate_config;
-
-    // Server 级意图门（懒加载）：闲聊/越界短路不依赖检索器，
-    // 在 pipeline/engine 分支之前执行（见 handle_query）。
-    std::unique_ptr<mmrag::IntentGate> intent_gate;
-    std::once_flag intent_gate_once;
 
     // ========== Eval Store ==========
     std::unique_ptr<mmrag::eval::EvalRunStore> eval_store;
@@ -300,32 +293,6 @@ Server::~Server() {
 
 void Server::set_engine(std::shared_ptr<RAGEngine> engine) {
     engine_ = std::move(engine);
-}
-
-void Server::set_intent_gate_config(const mmrag::IntentGateConfig& config) {
-    impl_->intent_gate_config = config;
-}
-
-// 懒加载 Server 级意图门。逻辑镜像 pipeline_base.cpp 的 ensure_intent_gate()：
-// embedder 加载失败只告警、降级为纯规则，不抛异常；配置禁用时返回 nullptr。
-mmrag::IntentGate* Server::get_intent_gate() {
-    std::call_once(impl_->intent_gate_once, [this]() {
-        const auto& cfg = impl_->intent_gate_config;
-        if (!cfg.enabled) return;
-        std::shared_ptr<mmrag::MiniLMEmbedder> embedder;
-        if (cfg.strategy == "rule_then_embedding" && !cfg.embedder_model_dir.empty()) {
-            auto e = std::make_shared<mmrag::MiniLMEmbedder>(
-                cfg.embedder_model_dir, cfg.embedder_dim);
-            if (e->is_ready()) {
-                embedder = std::move(e);
-            } else {
-                RAG_WARN("IntentGate embedder 加载失败，降级为 rule_only: " +
-                         cfg.embedder_model_dir);
-            }
-        }
-        impl_->intent_gate = std::make_unique<mmrag::IntentGate>(cfg, embedder);
-    });
-    return impl_->intent_gate.get();
 }
 
 void Server::set_metrics(std::shared_ptr<MetricsCollector> metrics) {
@@ -406,7 +373,6 @@ bool Server::start(const ServerConfig& config) {
             m_config.llm.model_type = "qwen2.5:3b";
             m_config.llm.max_tokens = 1024;
             m_config.llm.temperature = 0.7f;
-            m_config.intent_gate = impl_->intent_gate_config;
 
             // Create all pipelines
             auto created_pipelines = mmrag::modular::PipelineFactory::create_all(m_config);
@@ -762,11 +728,6 @@ void Server::handle_connection(int client_socket) {
 
     } catch (const std::exception& e) {
         RAG_ERROR("Request handling error: " + std::string(e.what()));
-        try {
-            std::string err = create_error_response(
-                "Internal Server Error: " + json_escape(e.what()), 500);
-            send(client_socket, err.c_str(), err.size(), 0);
-        } catch (...) {}
     } catch (...) {
         RAG_ERROR("Request handling error: unknown exception");
         try {
@@ -819,27 +780,6 @@ std::string Server::handle_query(const std::string& body) {
 
     if (query.empty()) {
         return create_error_response("Missing query parameter", 400);
-    }
-
-    // 意图门短路（Server 级）：闲聊/越界无需检索器，先于 pipeline/engine 分支。
-    // 注意：PROCEED 的查询会在 pipeline->query() 内被第二次 route（幂等，成本可忽略）。
-    if (mmrag::IntentGate* gate = get_intent_gate()) {
-        auto decision = gate->route(query);
-        if (decision.action != mmrag::RouteAction::PROCEED) {
-            std::ostringstream oss;
-            oss << "{\"answer\": \"" << json_escape(decision.reply) << "\",";
-            oss << "\"context\": [],";
-            oss << "\"retrieval_time_ms\": 0,";
-            oss << "\"generation_time_ms\": 0,";
-            oss << "\"total_time_ms\": 0,";
-            oss << "\"total_tokens\": 0,";
-            oss << "\"routed_by\": \""
-                << (decision.action == mmrag::RouteAction::CHAT_REPLY
-                        ? "intent_gate_chat" : "intent_gate_oos")
-                << "\"}";
-            RAG_INFO("意图门短路(Server级): " + query);
-            return create_json_response(oss.str());
-        }
     }
 
     // 如果请求了非 naive 的 pipeline，尝试使用 modular pipeline 系统
@@ -901,8 +841,7 @@ std::string Server::handle_query(const std::string& body) {
                 oss << "\"retrieval_time_ms\": " << m_result.retrieval_time_ms << ",";
                 oss << "\"generation_time_ms\": " << m_result.generation_time_ms << ",";
                 oss << "\"total_time_ms\": " << m_result.total_time_ms << ",";
-                oss << "\"total_tokens\": " << m_result.total_tokens << ",";
-                oss << "\"routed_by\": \"" << json_escape(m_result.routed_by) << "\"";
+                oss << "\"total_tokens\": " << m_result.total_tokens;
                 oss << "}";
                 return create_json_response(oss.str());
             }

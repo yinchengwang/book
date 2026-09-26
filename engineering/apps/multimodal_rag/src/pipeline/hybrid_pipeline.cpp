@@ -47,7 +47,7 @@ bool HybridPipeline::is_ready() const {
            && hnsw_retriever_ && bm25_retriever_ && graph_retriever_;
 }
 
-ModularQueryResult HybridPipeline::do_query(const ModularQuery& query) {
+ModularQueryResult HybridPipeline::query(const ModularQuery& query) {
     ModularQueryResult result;
     auto start_time = std::chrono::steady_clock::now();
 
@@ -79,17 +79,24 @@ ModularQueryResult HybridPipeline::do_query(const ModularQuery& query) {
                 ", BM25: " + std::to_string(bm25_results.size()) +
                 ", Graph: " + std::to_string(graph_results.size()));
 
+    if (hnsw_results.empty() && bm25_results.empty() && graph_results.empty()) {
+        RAG_WARN("所有检索结果为空");
+        result.success = true;
+        result.answer = "抱歉，未找到与您查询相关的文档内容。";
+        result.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start_time).count();
+        return result;
+    }
+
     // Step 2: 三路 RRF 融合
     auto fused_results = fuse_with_rrf(hnsw_results, bm25_results, graph_results, top_k);
 
-    // 证据门：空结果或最高分低于阈值 → 不调 LLM（只在主回答生成前拦一次）
-    if (!has_sufficient_evidence(fused_results)) {
-        RAG_WARN("证据不足，跳过 LLM: " + query.text);
-        auto r = make_no_evidence_result(query);
-        r.retrieval_time_ms = result.retrieval_time_ms;
-        r.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+    if (fused_results.empty()) {
+        result.success = true;
+        result.answer = "抱歉，未找到与您查询相关的文档内容。";
+        result.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - start_time).count();
-        return r;
+        return result;
     }
 
     // 保存检索结果

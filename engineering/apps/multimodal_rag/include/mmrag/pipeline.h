@@ -52,8 +52,7 @@ enum class QueryType {
     COMPARATIVE,    // 比较型问题 - 需要对比分析
     SUMMARY,        // 总结型问题 - 需要摘要生成
     CHAT,           // 闲聊型 - 可能不需要检索
-    MULTI_HOP,      // 多跳问题 - 需要 Graph 检索
-    OUT_OF_SCOPE    // 知识库外/非提问型 - 短路拒答
+    MULTI_HOP       // 多跳问题 - 需要 Graph 检索
 };
 
 // ========== Stage Input/Output ==========
@@ -250,7 +249,7 @@ public:
 
     // 检测是否需要检索
     virtual bool needs_retrieval(QueryType type) const {
-        return type != QueryType::CHAT && type != QueryType::OUT_OF_SCOPE;
+        return type != QueryType::CHAT;
     }
 };
 

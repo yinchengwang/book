@@ -153,7 +153,6 @@ int main(int argc, char* argv[]) {
     // 启动完整 API 服务器（含 /api/v1/* 路由）
     auto server = mmrag::api::create_server();
     server->set_engine(engine);
-    server->set_intent_gate_config(config.intent_gate);
 
     mmrag::ServerConfig server_cfg = config.server;
     server_cfg.port = port;

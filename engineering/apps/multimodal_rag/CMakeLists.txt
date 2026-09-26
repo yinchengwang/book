@@ -77,8 +77,7 @@ list(FILTER MMRAG_SOURCES_PIPELINE EXCLUDE REGEX ".*(corrective|graph|hybrid|hyd
 
 # Retrieval: glob the subdir, then exclude files that depend on excluded modules
 # or have signature mismatches.
-# query_classifier 已接线（IntentGate 依赖），从排除列表移除 —— 2026-09 intent-gate
-list(FILTER MMRAG_SOURCES_RETRIEVAL EXCLUDE REGEX ".*(bge_reranker|crossmodal_retriever|enhanced_retriever|kbase_retriever|lru_cache|metadata_filter|query_decomposer|query_expander|reranker|semantic_cache|synonym_expander|hyde_expander|retrieval_cache)\.cpp$")
+list(FILTER MMRAG_SOURCES_RETRIEVAL EXCLUDE REGEX ".*(bge_reranker|crossmodal_retriever|enhanced_retriever|kbase_retriever|lru_cache|metadata_filter|query_classifier|query_decomposer|query_expander|reranker|semantic_cache|synonym_expander|hyde_expander|retrieval_cache)\.cpp$")
 
 # Server: api_server.cpp is the canonical entry point (82 KB raw-socket impl
 # wired into main() via mmrag::api::create_server()). server.cpp is a 30-line
@@ -158,5 +157,3 @@ set_target_properties(multimodal_rag_server PROPERTIES
 )
 
 message(STATUS "Added multimodal_rag_server app")
-
-add_subdirectory(tests)

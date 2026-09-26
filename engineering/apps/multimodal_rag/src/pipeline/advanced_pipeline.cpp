@@ -51,7 +51,7 @@ bool AdvancedPipeline::is_ready() const {
            && hnsw_retriever_ && bm25_retriever_;
 }
 
-ModularQueryResult AdvancedPipeline::do_query(const ModularQuery& query) {
+ModularQueryResult AdvancedPipeline::query(const ModularQuery& query) {
     ModularQueryResult result;
     auto start_time = std::chrono::steady_clock::now();
 
@@ -92,23 +92,30 @@ ModularQueryResult AdvancedPipeline::do_query(const ModularQuery& query) {
     result.retrieval_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - retrieval_start).count();
 
+    if (all_hnsw_results.empty() && all_bm25_results.empty()) {
+        RAG_WARN("所有检索结果为空");
+        result.success = true;
+        result.answer = "抱歉，未找到与您查询相关的文档内容。";
+        result.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start_time).count();
+        return result;
+    }
+
     // Step 3: RRF 融合
     auto fused_results = fuse_with_rrf(all_hnsw_results, all_bm25_results, top_k);
 
-    // Step 4: 重排序 (如果有重排序器)
-    auto reranked_results = fused_results;
-    if (reranker_ && !fused_results.empty()) {
-        reranked_results = rerank_results(query.text, fused_results, top_k);
+    if (fused_results.empty()) {
+        result.success = true;
+        result.answer = "抱歉，未找到与您查询相关的文档内容。";
+        result.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start_time).count();
+        return result;
     }
 
-    // 证据门：空结果或最高分低于阈值 → 不调 LLM
-    if (!has_sufficient_evidence(reranked_results)) {
-        RAG_WARN("证据不足，跳过 LLM: " + query.text);
-        auto r = make_no_evidence_result(query);
-        r.retrieval_time_ms = result.retrieval_time_ms;
-        r.total_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - start_time).count();
-        return r;
+    // Step 4: 重排序 (如果有重排序器)
+    auto reranked_results = fused_results;
+    if (reranker_) {
+        reranked_results = rerank_results(query.text, fused_results, top_k);
     }
 
     // 保存检索结果

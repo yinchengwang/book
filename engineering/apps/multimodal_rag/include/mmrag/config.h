@@ -5,7 +5,6 @@
 #pragma once
 
 #include "mmrag/error.h"
-#include "mmrag/intent_gate_config.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -188,9 +187,6 @@ public:
 
     // 检索
     RetrievalConfig retrieval;
-
-    // 意图门控
-    IntentGateConfig intent_gate;
 
     // 分块
     ChunkingConfig chunking;
