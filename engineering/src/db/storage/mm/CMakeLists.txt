@@ -10,4 +10,6 @@ if(MM_SOURCE_FILES)
         ${ENGINEERING_SOURCE_DIR}/include/db/storage
         ${ENGINEERING_SOURCE_DIR}/include/db/core
     )
+    # mm_storage.c 经 engine_registry.h 包含 db/multimodal_config.h（build 树生成版）
+    target_link_libraries(storage_mm PRIVATE multimodal_config_gen)
 endif()

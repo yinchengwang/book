@@ -30,5 +30,17 @@ target_link_libraries(multimodal_test
     gtest_main
 )
 
+# 生成配置头测试（验证 multimodal_config.h 来自 build 树生成版）
+# 注意：故意只链接 project_includes，不直接链接 multimodal_config_gen ——
+# 本测试的目的就是证明生成头经由 project_includes 全局可达。
+add_executable(test_multimodal_config test_multimodal_config.cpp)
+target_link_libraries(test_multimodal_config
+    PRIVATE
+    project_includes
+    gtest
+    gtest_main
+)
+add_test(NAME MultimodalConfig COMMAND test_multimodal_config)
+
 # 链接 db_core 库
 target_link_libraries(guc PRIVATE db_core)

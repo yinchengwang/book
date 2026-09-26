@@ -133,6 +133,9 @@ target_include_directories(project_includes
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
+# 生成配置头全局可见（模态开关宏的唯一来源）
+target_link_libraries(project_includes INTERFACE multimodal_config_gen)
+
 add_subdirectory(src)
 
 # tools 工具（VectorBench benchmark 等）

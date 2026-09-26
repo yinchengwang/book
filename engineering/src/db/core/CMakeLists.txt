@@ -29,6 +29,8 @@ target_include_directories(db_core PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include/db
     ${ENGINEERING_SOURCE_DIR}/include/db/core
 )
+# engine_registry.h 公开包含 db/multimodal_config.h，生成头必须随 db_core 传递
+target_link_libraries(db_core PUBLIC multimodal_config_gen)
 target_compile_options(db_core PRIVATE -Wno-unused-parameter)
 
 # Windows 需要链接 ws2_32
