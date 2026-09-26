@@ -22,4 +22,9 @@ add_subdirectory(todo-app)
 # add_subdirectory(kbase)
 
 # 多模态 RAG 服务（迁移自 rag/ + kbase/，统一后端）
-add_subdirectory(multimodal_rag)
+# T11：multimodal_rag_server 链接 db_storage（依赖 KV 引擎）+ vector_persist，
+# KV 关闭时该 app 必须不构建。apps/multimodal_rag/CMakeLists.txt 的 EXCLUDE 规则
+# 保持原样（T2 记忆），仅加外层 if(MMDB_ENABLE_KV) 开关。
+if(MMDB_ENABLE_KV)
+    add_subdirectory(multimodal_rag)
+endif()

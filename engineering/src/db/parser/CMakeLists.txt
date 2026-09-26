@@ -2,11 +2,17 @@
 # 依赖 core
 
 # 子模块（如果存在 CMakeLists.txt，则添加子目录）
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sql/CMakeLists.txt")
-    add_subdirectory(sql)
+# T11：sql/ 子模块受 MMDB_ENABLE_RELATIONAL 守卫（canonical Bison 解析器），
+# graph/ 子模块（GQL）受 MMDB_ENABLE_GRAPH 守卫——独立于 SQL 模态。
+if(MMDB_ENABLE_RELATIONAL)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sql/CMakeLists.txt")
+        add_subdirectory(sql)
+    endif()
 endif()
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/graph/CMakeLists.txt")
-    add_subdirectory(graph)
+if(MMDB_ENABLE_GRAPH)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/graph/CMakeLists.txt")
+        add_subdirectory(graph)
+    endif()
 endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/framework/CMakeLists.txt")
     add_subdirectory(framework)

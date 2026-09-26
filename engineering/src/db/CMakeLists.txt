@@ -33,12 +33,16 @@ add_subdirectory(index)
 # ========================================================================
 # 解析层（SQL, GQL 语法解析）
 # ========================================================================
+# parser/CMakeLists.txt 内部按 sql/ 与 graph/ 子目录分别 add_subdirectory。
+# 仅 sql 子模块受 MMDB_ENABLE_RELATIONAL 守卫；graph/GQL 留在 RELATIONAL 之外。
 add_subdirectory(parser)
 
 # ========================================================================
 # SQL 引擎层（解析器 + 计划器 + 执行器）
 # ========================================================================
-add_subdirectory(sql)
+if(MMDB_ENABLE_RELATIONAL)
+    add_subdirectory(sql)
+endif()
 
 # ========================================================================
 # 优化层（规则优化, 代价估算, 执行计划生成）
@@ -53,7 +57,9 @@ add_subdirectory(rewrite)
 # ========================================================================
 # 校验层（约束检查, 语义分析）
 # ========================================================================
-add_subdirectory(validator)
+if(MMDB_ENABLE_RELATIONAL)
+    add_subdirectory(validator)
+endif()
 
 # ========================================================================
 # 执行层（SQL/Graph 执行器）
@@ -85,7 +91,11 @@ add_subdirectory(vectorized)
 add_subdirectory(replication)
 
 # 分片支持（Hash/Range 分片、路由层）
-add_subdirectory(sharding)
+# T11：migrate_manager.c 直接依赖 db/storage/kv/kv.h，整个 sharding/ 目录
+# 必须随 KV 一起关闭，避免 KV 关闭时链接失败。
+if(MMDB_ENABLE_KV)
+    add_subdirectory(sharding)
+endif()
 
 # 订阅模块（CDC 变更数据捕获）
 add_subdirectory(subscription)
@@ -109,7 +119,11 @@ add_subdirectory(bgworker)
 add_subdirectory(performance)
 
 # CLI 交互界面（SQL Shell + 向量 CLI）
-add_subdirectory(cli)
+# T11：canonical CLI（T10 落地）链接 sql_engine + db_parser_sql，
+# 仅 RELATIONAL 模态下有意义；RELATIONAL 关闭时整个 cli/ 不构建。
+if(MMDB_ENABLE_RELATIONAL)
+    add_subdirectory(cli)
+endif()
 
 # API 层（REST API + 向量 API）
 add_subdirectory(api)
@@ -133,7 +147,10 @@ add_subdirectory(tools)
 # ========================================================================
 # 列族存储引擎（基于 KV，支持动态列、宽行）
 # ========================================================================
-add_subdirectory(cf)
+# T11：cf_engine.c 内部使用 kv_t，整个 cf/ 目录随 KV 一起关闭。
+if(MMDB_ENABLE_KV)
+    add_subdirectory(cf)
+endif()
 
 # ========================================================================
 # 生态系统模块（REST API 服务器）

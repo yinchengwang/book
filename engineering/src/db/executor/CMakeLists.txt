@@ -4,6 +4,12 @@ add_subdirectory(operators)
 add_subdirectory(framework)
 file(GLOB_RECURSE EXECUTOR_SOURCE_FILES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.c")
 
+# sql/ 子目录仅含 canonical sqlExecutor.c（sqlExec.c 已归档）；
+# RELATIONAL 关闭时整个 sql/ 子目录不编译
+if(NOT MMDB_ENABLE_RELATIONAL)
+    list(FILTER EXECUTOR_SOURCE_FILES EXCLUDE REGEX ".*/sql/.*\\.c$")
+endif()
+
 if(EXECUTOR_SOURCE_FILES)
     add_library(db_executor STATIC ${EXECUTOR_SOURCE_FILES})
     target_include_directories(db_executor PUBLIC
@@ -20,6 +26,10 @@ if(EXECUTOR_SOURCE_FILES)
     # T4：db_parser_sql_simplified 已归档移除；T6 落地 canonical 目标 db_parser_sql。
     # db_executor 当前不直接引用解析器符号，无需链接 db_parser_sql；
     # 若后续 TU 调用 sql_parse()/makefuncs，请在此追加 db_parser_sql。
+    # T11：RELATIONAL 关闭时 db_parser_sql 不存在，需 if(TARGET) 守卫。
+    if(TARGET db_parser_sql)
+        target_link_libraries(db_executor PRIVATE db_parser_sql)
+    endif()
     target_link_libraries(db_executor PRIVATE db_optimizer db_storage db_validator)
     target_compile_options(db_executor PRIVATE -Wno-unused-parameter)
 endif()
