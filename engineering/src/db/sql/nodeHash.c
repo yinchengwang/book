@@ -1,21 +1,22 @@
 /**
  * @file nodeHash.c
- * @brief Hash 辅助执行器节点实现
+ * @brief Hash 辅助执行器节点实现（辅助节点 — 主路径不使用）
  *
- * 实现 Task 2.3 的 Hash 辅助节点：
+ * 实现 Hash 辅助节点：
  *   - ExecInitHash: 初始化 HashState
  *   - ExecEndHash: 释放资源
  *
- * 当前为框架版本：
- *   - 哈希表使用简化实现（void* hashtable = NULL）
- *   - 重点验证节点初始化和生命周期管理
- *   - 实际哈希表构建逻辑后续完善
+ * Hash 节点仅为 HashJoin 的辅助占位；HashJoin 走独立哈希表路径
+ * （nodeHashjoin.c 的 hashtable 字段），主路径不调用本节点的
+ * ExecProcNode。规范 §5.3 要求禁静默桩，因此 exec_hash_impl
+ * 改为显式硬报错（stderr + abort）。
  */
 
 #include "db/sql/nodeHash.h"
 #include "db/sql/executor.h"
 #include "db/sql/memctx.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -25,18 +26,20 @@
  * ======================================================================== */
 
 /**
- * @brief Hash 节点执行函数（占位）
+ * @brief Hash 节点执行函数（辅助占位，主路径不调用）
  *
- * Hash 节点不产生输出元组，仅构建哈希表。
- * 框架版本返回 NULL。
+ * 显式硬报错：spec §5.3 禁止静默桩；任何走到本节点 ExecProcNode 的调用
+ * 都属主路径未涵盖，进程级失败优于返回错误结果集。
  *
  * @param pstate PlanState（实际类型为 HashState）
- *
- * @return NULL（Hash 节点不产生输出）
  */
 static TupleTableSlot *exec_hash_impl(PlanState *pstate) {
     (void)pstate;
-    /* 框架版本：Hash 节点不产生输出 */
+    fprintf(stderr,
+        "FATAL: Hash 节点 ExecProcNode 被调用 — 主路径不使用此节点，"
+        "HashJoin 走独立 hashtable 路径（nodeHashjoin.c）。\n");
+    abort();
+    /* unreachable */
     return NULL;
 }
 
@@ -143,9 +146,9 @@ void ExecEndHash(HashState *node) {
         node->ps.ps_ResultTupleSlot = NULL;
     }
 
-    /* 释放哈希表（框架版本：hashtable 为 NULL，无需释放） */
+    /* 释放哈希表 */
     if (node->hashtable != NULL) {
-        /* TODO: 后续实现哈希表释放 */
+        /* 主路径无 hashtable；防御性兜底 */
         node->hashtable = NULL;
     }
 

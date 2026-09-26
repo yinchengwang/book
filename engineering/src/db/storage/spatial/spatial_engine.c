@@ -12,6 +12,16 @@
 #include <stdio.h>
 #include <math.h>
 
+#ifdef _WIN32
+#include <direct.h>   /* _mkdir, _rmdir */
+#define mkdir(path, mode) _mkdir(path)
+#define rmdir(path)      _rmdir(path)
+#else
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+#endif
+
 /* Windows/macOS/Linux 跨平台兼容 */
 
 #define SPATIAL_ENGINE_NAME "spatial_engine"

@@ -21,6 +21,20 @@
  * 平台相关头文件与类型
  * ============================================================ */
 
+#ifdef _WIN32
+#include <windows.h>
+#include <direct.h>   /* _mkdir */
+/* Windows 下 _mkdir 单参数版本；POSIX mkdir 需要 mode */
+#define MMAP_MKDIR(p) _mkdir((p))
+#else
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <fcntl.h>
+#define MMAP_MKDIR(p) mkdir((p), 0755)
+#endif
+
 
 /* ============================================================
  * 常量

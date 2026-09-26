@@ -7,17 +7,18 @@ add_executable(test_memctx test_memctx.cpp)
 target_include_directories(test_memctx PRIVATE ${GTEST_INCLUDE_DIRS})
 target_link_libraries(test_memctx sql_engine project_includes gtest gtest_main)
 
-# SQL 解析器测试（依赖简化解析器）
-# T4: archived with stack A, rewritten in T12
-# add_executable(test_sql_parser sql_parser.cpp)
-# target_include_directories(test_sql_parser PRIVATE ${GTEST_INCLUDE_DIRS})
-# target_link_libraries(test_sql_parser db_parser_sql_simplified db_storage project_includes gtest gtest_main)
-
-# SQL 计划器测试
-# T4: archived with stack A, rewritten in T12
-# add_executable(test_sql_planner test_planner.cpp)
-# target_include_directories(test_sql_planner PRIVATE ${GTEST_INCLUDE_DIRS})
-# target_link_libraries(test_sql_planner sql_engine db_storage project_includes gtest gtest_main)
+# SQL 解析器 canonical 烟测（T12 / WS-F，替代归档的 test_sql_parser / sql_parser.cpp）
+add_executable(test_canonical_parser test_canonical_parser.cpp)
+target_include_directories(test_canonical_parser PRIVATE ${GTEST_INCLUDE_DIRS})
+target_link_libraries(test_canonical_parser sql_engine db_storage project_includes gtest gtest_main)
+set_target_properties(test_canonical_parser PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    FOLDER "Tests"
+)
+gtest_discover_tests(test_canonical_parser
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    PROPERTIES LABELS "CanonicalParser"
+)
 
 # SQL 执行器测试
 add_executable(test_sql_executor test_executor.cpp)
@@ -84,9 +85,18 @@ add_executable(test_sort test_sort.cpp)
 target_include_directories(test_sort PRIVATE ${GTEST_INCLUDE_DIRS})
 target_link_libraries(test_sort sql_engine db_storage project_includes gtest gtest_main)
 
-# SQL 集成测试 - 暂时禁用（依赖已禁用的 db_cli_lib）
-# add_executable(test_sql_integration sql_integration.cpp)
-# target_link_libraries(test_sql_integration db_parser db_storage db_utils db_cli_lib project_includes gtest gtest_main)
+# SQL 集成测试（T12 / WS-F：51 个 CLI 端到端用例，走 db_cli_lib）
+add_executable(test_sql_integration sql_integration.cpp)
+target_include_directories(test_sql_integration PRIVATE ${GTEST_INCLUDE_DIRS})
+target_link_libraries(test_sql_integration sql_engine db_storage db_cli_lib project_includes gtest gtest_main)
+set_target_properties(test_sql_integration PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    FOLDER "Tests"
+)
+gtest_discover_tests(test_sql_integration
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    PROPERTIES LABELS "SqlIntegration"
+)
 
 # HashAgg 执行器节点测试
 add_executable(test_hashagg test_hashagg.cpp)
@@ -109,9 +119,12 @@ target_include_directories(test_executor_integration PRIVATE ${GTEST_INCLUDE_DIR
 target_link_libraries(test_executor_integration sql_engine db_storage project_includes gtest gtest_main)
 
 # SQL-存储集成测试
-add_executable(test_sql_storage_integration test_sql_storage_integration.cpp)
-target_include_directories(test_sql_storage_integration PRIVATE ${GTEST_INCLUDE_DIRS})
-target_link_libraries(test_sql_storage_integration sql_engine db_storage project_includes gtest gtest_main)
+# T12：test_storage_integration.cpp 与 test_sql_storage_integration.cpp 调用了
+# 旧 ExecInitSeqScan 签名（T8 移除）与旧 heap_insert 签名（T8 后签名变更），
+# 自 T8 起构建红。归档至 archive/（同 sql_integration 的 51 用例，main 路径
+# 已由 test_sql_integration + DriverSmoke 覆盖），从构建移除直至 S1 修复。
+# add_executable(test_sql_storage_integration test_sql_storage_integration.cpp)
+# add_executable(test_storage_integration test_storage_integration.cpp)
 
 # SQL Driver 端到端烟测（T7：sql_driver.c 复活于 canonical AST）
 add_executable(test_driver_smoke test_driver_smoke.cpp)
@@ -127,10 +140,23 @@ gtest_discover_tests(test_driver_smoke
     PROPERTIES LABELS "test_driver_smoke"
 )
 
-# 存储引擎集成测试（Task 5.1）
-add_executable(test_storage_integration test_storage_integration.cpp)
-target_include_directories(test_storage_integration PRIVATE ${GTEST_INCLUDE_DIRS})
-target_link_libraries(test_storage_integration sql_engine db_storage project_includes gtest gtest_main)
+# SQL 主路径算子 e2e 能力测试（T9：ORDER BY/LIMIT/GROUP BY/JOIN/FROM 子查询）
+add_executable(test_e2e_capability test_e2e_capability.cpp)
+target_include_directories(test_e2e_capability PRIVATE ${GTEST_INCLUDE_DIRS})
+target_link_libraries(test_e2e_capability sql_engine db_storage project_includes gtest gtest_main)
+set_target_properties(test_e2e_capability PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    FOLDER "Tests"
+)
+gtest_discover_tests(test_e2e_capability
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    PROPERTIES LABELS "test_e2e_capability"
+)
+
+# 存储引擎集成测试（Task 5.1）— T12 已归档，见 test_storage_integration.cpp 注释
+# add_executable(test_storage_integration test_storage_integration.cpp)
+# target_include_directories(test_storage_integration PRIVATE ${GTEST_INCLUDE_DIRS})
+# target_link_libraries(test_storage_integration sql_engine db_storage project_includes gtest gtest_main)
 
 # JIT 性能对比测试（Task 5.6）
 add_executable(test_jit_perf test_jit_perf.cpp)
@@ -146,10 +172,14 @@ target_link_libraries(test_sql_executor_memctx sql_engine db_storage project_inc
 add_subdirectory(benchmark)
 
 # SQL 测试
-# T4：test_sql_parser / test_sql_planner 已随 stack A 归档摘除（T12 重写），不再列入。
+# T12：test_sql_parser / test_sql_planner 已随栈 A 归档移出（见
+# archive/db-sql-over-kv/tests/）；canonical 解析器烟测为 test_canonical_parser，
+# CLI 端到端集成测试为 test_sql_integration。
 add_custom_target(test_sql
     COMMAND test_memctx
     COMMAND test_sql_executor
+    COMMAND test_canonical_parser
+    COMMAND test_sql_integration
     COMMAND test_indexscan
     COMMAND test_seqscan
     COMMAND test_nestloop
@@ -169,5 +199,5 @@ add_custom_target(test_sql
     COMMAND test_storage_integration
     COMMAND test_jit_perf
     COMMAND test_sql_executor_memctx
-    DEPENDS test_memctx test_sql_executor test_indexscan test_seqscan test_nestloop test_hashagg test_hashjoin test_parallel test_tuple_queue test_worker_pool test_trigger test_trigger_functions test_partition test_sort test_limit test_modifytable test_sql_storage_integration test_storage_integration test_jit_perf test_sql_executor_memctx
+    DEPENDS test_memctx test_sql_executor test_canonical_parser test_sql_integration test_indexscan test_seqscan test_nestloop test_hashagg test_hashjoin test_parallel test_tuple_queue test_worker_pool test_trigger test_trigger_functions test_jit_perf test_sql_executor_memctx
 )

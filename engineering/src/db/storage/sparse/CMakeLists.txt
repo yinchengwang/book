@@ -16,5 +16,12 @@ target_include_directories(storage_sparse PUBLIC
     ${ENGINEERING_SOURCE_DIR}/third_part/uthash/src
 )
 
+# T12：bm25_index.c 使用 POSIX strndup；MinGW 无原生实现。加 -D_GNU_SOURCE 不够，
+# 需提供静态回退（Windows 下 _strdup 截断版本）。
+if(WIN32)
+    target_compile_definitions(storage_sparse PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_sources(storage_sparse PRIVATE strndup_win32.c)
+endif()
+
 # db_utils 可能为空，改为可选链接
 # target_link_libraries(storage_sparse PUBLIC db_utils)

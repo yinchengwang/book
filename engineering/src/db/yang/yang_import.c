@@ -1,4 +1,4 @@
-#include "db/yang_model.h"
+#include "db/yang/yang_model.h"
 #include "db/core/log.h"
 
 /* C2-5 T9 占位：YANG import 解析

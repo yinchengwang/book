@@ -149,6 +149,12 @@ target_link_libraries(multimodal_rag_server
 
 if(WIN32)
     target_link_libraries(multimodal_rag_server PRIVATE ws2_32 crypt32)
+    # T12：MinGW 下 http_embedding.cpp / minimax_llm.cpp 模板密集触发 COFF
+    # "too many sections" 错误（33000+ sections，超 COFF 65535 上限）；
+    # -Wa,-mbig-obj 切到 BIG_OBJ 格式突破限制。不动 EXCLUDE 规则。
+    if(MINGW)
+        target_compile_options(multimodal_rag_server PRIVATE -Wa,-mbig-obj)
+    endif()
 endif()
 
 set_target_properties(multimodal_rag_server PROPERTIES

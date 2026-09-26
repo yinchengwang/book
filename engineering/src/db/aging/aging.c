@@ -12,6 +12,14 @@
 #include <time.h>
 #include <math.h>
 
+#ifdef _WIN32
+#include <direct.h>   /* _mkdir */
+#define mkdir(path, mode) _mkdir(path)
+#else
+#include <sys/stat.h>
+#include <sys/types.h>
+#endif
+
 
 /* ========================================================================
  * 内部数据结构

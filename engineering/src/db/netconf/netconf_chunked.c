@@ -1,5 +1,6 @@
-#include "db/netconf_server.h"
+#include "db/netconf/netconf_server.h"
 #include "db/core/log.h"
+#include <string.h>
 
 /* C2-5 T10 占位：RFC 6242 chunked framing 解析器
  * 真实实现：识别 "\n#<size>\n" 分隔符 + 终止 "\n##\n"

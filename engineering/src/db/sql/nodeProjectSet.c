@@ -1,23 +1,23 @@
 /**
  * @file nodeProjectSet.c
- * @brief ProjectSet SRF 展开执行器节点实现
+ * @brief ProjectSet SRF 展开执行器节点实现（主路径不使用）
  *
- * 实现 Task 2.8 的 ProjectSet SRF 展开节点：
+ * 实现 ProjectSet SRF 展开节点：
  *   - ExecInitProjectSet: 初始化 ProjectSetState
  *   - ExecProjectSet: 执行 SRF 展开
  *   - ExecEndProjectSet: 释放资源
  *   - ExecReScanProjectSet: 重置节点
  *
- * 当前为框架版本：
- *   - SRF 展开逻辑简化
- *   - 重点验证节点初始化和生命周期管理
- *   - 实际 SRF 展开逻辑后续完善
+ * SRF 展开属后续子项目（S1）范畴，主路径不调用本节点。
+ * 规范 §5.3 要求禁静默桩，exec_projectset_impl 改为显式硬报错
+ * （stderr + abort）。
  */
 
 #include "db/sql/nodeProjectSet.h"
 #include "db/sql/executor.h"
 #include "db/sql/memctx.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -27,31 +27,21 @@
  * ======================================================================== */
 
 /**
- * @brief ProjectSet 节点执行函数（框架实现）
+ * @brief ProjectSet 节点执行函数（主路径不使用）
  *
- * ProjectSet 算法：
- *   1. 从子节点拉取元组
- *   2. 对每个元组计算 SRF
- *   3. SRF 返回多行时，输出多行
- *   4. SRF 返回 NULL 时，跳过该行
- *
- * 框架版本返回 NULL。
+ * 显式硬报错：spec §5.3 禁止静默桩；任何走到本节点 ExecProcNode 的调用
+ * 都属主路径未涵盖，进程级失败优于返回错误结果集。
  *
  * @param pstate PlanState（实际类型为 ProjectSetState）
- *
- * @return 结果元组槽；无更多元组时返回 NULL
  */
 static TupleTableSlot *exec_projectset_impl(PlanState *pstate) {
     ProjectSetState *node = (ProjectSetState *)pstate;
-
-    /* 框架版本：简化实现 */
-    /* TODO: 实现 SRF 展开逻辑 */
-    /* 1. 从子节点拉取元组 */
-    /* 2. 计算 SRF 表达式 */
-    /* 3. 展开 SRF 结果为多行 */
-    /* 4. 处理多 SRF 笛卡尔积 */
-
     (void)node;
+    fprintf(stderr,
+        "FATAL: ProjectSet 节点 ExecProcNode 被调用 — SRF 展开未实现，"
+        "主路径不调用此节点，留待 S1 实装。\n");
+    abort();
+    /* unreachable */
     return NULL;
 }
 

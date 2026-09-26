@@ -1,11 +1,13 @@
 # SQL 执行引擎和向量索引性能基准测试
 
 # 添加基准测试可执行文件
+# T12：benchmark_aggregate.cpp / benchmark_scan.cpp 调用旧 heap_insert 与
+# ExecInitSeqScan 签名（T8 后变更），自 T8 起构建红。暂时排除，待 S1 重写。
 add_executable(sql_benchmark
     benchmark_main.cpp
-    benchmark_scan.cpp
+    # benchmark_scan.cpp — T12 排除（旧 API）
+    # benchmark_aggregate.cpp — T12 排除（旧 API）
     # benchmark_join.cpp — 暂时排除，Oid/TupleDescData 头文件冲突待修复
-    benchmark_aggregate.cpp
     benchmark_vector.cpp
 )
 
@@ -23,7 +25,7 @@ target_link_libraries(sql_benchmark
         sql_engine
         db_storage
         vector_index
-        hnsw
+        faiss_hnsw
         algo-prod
         project_includes
         gtest
