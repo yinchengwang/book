@@ -233,10 +233,7 @@ git commit -m "feat(db): wire generated multimodal_config.h as single source; re
 ```cmake
 option(MMDB_ENABLE_ST "Enable Spatio-Temporal Model" OFF)  # 未就绪，默认关闭
 option(MMDB_ENABLE_RDF "Enable RDF Knowledge Graph Model" OFF)  # 未就绪，默认关闭
-option(MMDB_MODEL_COUNT_UNUSED "" OFF)  # placeholder-free: 不留
 ```
-
-（只加前两个；第三行不要。）
 
 同时在 `multimodal_config.h.in` 末尾 `#endif` 前追加：
 
