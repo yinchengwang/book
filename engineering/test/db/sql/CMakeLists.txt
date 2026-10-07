@@ -158,6 +158,10 @@ gtest_discover_tests(test_e2e_capability
 # target_include_directories(test_storage_integration PRIVATE ${GTEST_INCLUDE_DIRS})
 # target_link_libraries(test_storage_integration sql_engine db_storage project_includes gtest gtest_main)
 
+# MemoryContext 测试（Task 3: Allocation Header 与统计）
+add_executable(test_memctx test_memctx.cpp)
+target_link_libraries(test_memctx db_sql_memctx project_includes GTest::gtest_main)
+
 # JIT 性能对比测试（Task 5.6）
 add_executable(test_jit_perf test_jit_perf.cpp)
 target_include_directories(test_jit_perf PRIVATE ${GTEST_INCLUDE_DIRS})
@@ -197,6 +201,7 @@ add_custom_target(test_sql
     COMMAND test_modifytable
     COMMAND test_sql_storage_integration
     COMMAND test_storage_integration
+    COMMAND test_memctx
     COMMAND test_jit_perf
     COMMAND test_sql_executor_memctx
     DEPENDS test_memctx test_sql_executor test_canonical_parser test_sql_integration test_indexscan test_seqscan test_nestloop test_hashagg test_hashjoin test_parallel test_tuple_queue test_worker_pool test_trigger test_trigger_functions test_jit_perf test_sql_executor_memctx

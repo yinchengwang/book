@@ -96,9 +96,9 @@ TEST(MemoryContextTest, ResetFreesChildBlocks) {
     /* 初始只有预分配的首块 */
     EXPECT_EQ(CountBlocks(child), 1);
 
-    /* 连续分配多次 512 字节，1024 的块放不下两个 512+对齐，必然触发额外块 */
+    /* 连续分配多次 512 字节，总开销约 560/次，4096 块放不下 7 次，必然触发额外块 */
     std::vector<void *> ptrs;
-    for (int i = 0; i < 8; ++i) {
+    for (int i = 0; i < 12; ++i) {
         void *p = palloc(child, 512);
         ASSERT_NE(p, nullptr);
         memset(p, 0xAA, 512);

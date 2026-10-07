@@ -17,6 +17,10 @@
 
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdint.h>
+
+/* 前向声明 */
+typedef struct MemoryContextData *MemoryContext;
 
 /* 复用 parser 层的公共 NodeTag（其中已扩展 T_MemoryContext / T_AllocSetContext），
  * 避免另建独立枚举值域造成契约偏离与潜在冲突。 */
@@ -297,6 +301,7 @@ typedef struct AllocSetBlock {
 typedef struct AllocSetContext {
     MemoryContextData   header;     /**< 公共头 */
     AllocSetBlock      *blocks;     /**< 块链表（首块） */
+    AllocSetBlock      *large_blocks; /**< 大对象块链表（独立分配） */
     Size                initBlockSize; /**< 初始块大小 */
     Size                maxBlockSize;  /**< 最大块大小 */
 } AllocSetContext;
@@ -352,7 +357,7 @@ void *palloc0(MemoryContext ctx, Size size);
 /**
  * @brief 释放内存
  *
- * AllocSet 实现为空操作；实际释放由 reset/delete 完成。
+ * AllocSet 实现逻辑释放（含校验）；实际释放由 reset/delete 完成。
  * 保留接口以兼容 PostgreSQL 风格 API。
  *
  * @param ctx 内存上下文
