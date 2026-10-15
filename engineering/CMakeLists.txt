@@ -5,6 +5,9 @@
 
 cmake_minimum_required(VERSION 3.20)
 
+# GNUInstallDirs 提供 CMAKE_INSTALL_INCLUDEDIR / CMAKE_INSTALL_BINDIR 等默认路径
+include(GNUInstallDirs)
+
 project(AlgorithmPractice
     VERSION 1.0.0
     DESCRIPTION "Algorithm and Data Structure Practice Project (Engineering Track)"
