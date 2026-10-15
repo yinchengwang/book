@@ -225,3 +225,75 @@
 [submodule "engineering/third_part/uthash"]
 	path = engineering/third_part/uthash
 	url = https://gitee.com/mirrors/uthash.git
+[submodule "reference/ai/rag/langchain"]
+	path = reference/ai/rag/langchain
+	url = https://github.com/langchain-ai/langchain.git
+[submodule "reference/ai/rag/llama-index"]
+	path = reference/ai/rag/llama-index
+	url = https://github.com/run-llama/llama_index.git
+[submodule "reference/ai/rag/haystack-ai"]
+	path = reference/ai/rag/haystack-ai
+	url = https://github.com/deepset-ai/haystack.git
+[submodule "reference/ai/rag/txtai"]
+	path = reference/ai/rag/txtai
+	url = https://github.com/neuml/txtai.git
+[submodule "reference/ai/rag/embedchain"]
+	path = reference/ai/rag/embedchain
+	url = https://github.com/embedchain/embedchain.git
+[submodule "reference/ai/rag/verba"]
+	path = reference/ai/rag/verba
+	url = https://github.com/weaviate/verba.git
+[submodule "reference/ai/rag/cognita"]
+	path = reference/ai/rag/cognita
+	url = https://github.com/truefoundry/cognita.git
+[submodule "reference/ai/rag/r2r"]
+	path = reference/ai/rag/r2r
+	url = https://github.com/SciPhi-AI/R2R.git
+[submodule "reference/ai/rag/quivr"]
+	path = reference/ai/rag/quivr
+	url = https://github.com/QuivrHQ/quivr.git
+[submodule "reference/ai/rag/private-gpt"]
+	path = reference/ai/rag/private-gpt
+	url = https://github.com/zylon-ai/private-gpt.git
+[submodule "reference/ai/rag/qanything"]
+	path = reference/ai/rag/qanything
+	url = https://github.com/netease-youdao/QAnything.git
+[submodule "reference/ai/agent/langgraph"]
+	path = reference/ai/agent/langgraph
+	url = https://github.com/langchain-ai/langgraph.git
+[submodule "reference/ai/agent/crewai"]
+	path = reference/ai/agent/crewai
+	url = https://github.com/crewAIInc/crewAI.git
+[submodule "reference/ai/agent/autogen"]
+	path = reference/ai/agent/autogen
+	url = https://github.com/microsoft/autogen.git
+[submodule "reference/ai/agent/metagpt"]
+	path = reference/ai/agent/metagpt
+	url = https://github.com/geekan/MetaGPT.git
+[submodule "reference/ai/agent/openai-agents"]
+	path = reference/ai/agent/openai-agents
+	url = https://github.com/openai/openai-agents-python.git
+[submodule "reference/ai/agent/swarm"]
+	path = reference/ai/agent/swarm
+	url = https://github.com/openai/swarm.git
+[submodule "reference/ai/agent/agents"]
+	path = reference/ai/agent/agents
+	url = https://github.com/microsoft/agents.git
+[submodule "reference/ai/agent/chatdev"]
+	path = reference/ai/agent/chatdev
+	url = https://github.com/OpenBMB/ChatDev.git
+[submodule "reference/ai/agent/agentverse"]
+	path = reference/ai/agent/agentverse
+	url = https://github.com/OpenBMB/AgentVerse.git
+[submodule "reference/ai/agent/agixt"]
+	path = reference/ai/agent/agixt
+	url = https://github.com/Josh-XT/AGiXT.git
+[submodule "reference/ai/agent/open-interpreter"]
+	path = reference/ai/agent/open-interpreter
+	url = https://github.com/OpenInterpreter/open-interpreter.git
+[submodule "reference/ai/agent/agentscope"]
+	path = reference/ai/agent/agentscope
+	url = https://github.com/modelscope/agentscope.git
+[submodule "reference/ai/agent/letta"]
+	path = reference/ai/agent/letta
+	url = https://github.com/letta-ai/letta.git

@@ -657,3 +657,220 @@ projects:
     status: active
     notes:
       - 向量数据库基准
+
+  - name: langchain
+    model: ai/rag
+    tier: core
+    repository: https://github.com/langchain-ai/langchain.git
+    mirror: https://github.com/langchain-ai/langchain.git
+    license: MIT
+    status: active
+    notes:
+      - LLM 应用编排框架主流实现
+  - name: llama-index
+    model: ai/rag
+    tier: core
+    repository: https://github.com/run-llama/llama_index.git
+    mirror: https://github.com/run-llama/llama_index.git
+    license: MIT
+    status: active
+    notes:
+      - RAG 数据框架代表
+  - name: haystack-ai
+    model: ai/rag
+    tier: core
+    repository: https://github.com/deepset-ai/haystack.git
+    mirror: https://github.com/deepset-ai/haystack.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - NLP 管道框架
+  - name: txtai
+    model: ai/rag
+    tier: representative
+    repository: https://github.com/neuml/txtai.git
+    mirror: https://github.com/neuml/txtai.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 语义搜索与 RAG 一体化
+  - name: embedchain
+    model: ai/rag
+    tier: representative
+    repository: https://github.com/embedchain/embedchain.git
+    mirror: https://github.com/embedchain/embedchain.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 快速构建 RAG 应用
+  - name: verba
+    model: ai/rag
+    tier: innovative
+    repository: https://github.com/weaviate/verba.git
+    mirror: https://github.com/weaviate/verba.git
+    license: MIT
+    status: active
+    notes:
+      - Weaviate 出品的 RAG 前端
+  - name: cognita
+    model: ai/rag
+    tier: representative
+    repository: https://github.com/truefoundry/cognita.git
+    mirror: https://github.com/truefoundry/cognita.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - TrueFoundry 出品的模块化 RAG
+  - name: r2r
+    model: ai/rag
+    tier: innovative
+    repository: https://github.com/SciPhi-AI/R2R.git
+    mirror: https://github.com/SciPhi-AI/R2R.git
+    license: MIT
+    status: active
+    notes:
+      - SciPhi 出品的 RAG 框架
+  - name: quivr
+    model: ai/rag
+    tier: representative
+    repository: https://github.com/QuivrHQ/quivr.git
+    mirror: https://github.com/QuivrHQ/quivr.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 个人第二大脑知识库
+  - name: private-gpt
+    model: ai/rag
+    tier: representative
+    repository: https://github.com/zylon-ai/private-gpt.git
+    mirror: https://github.com/zylon-ai/private-gpt.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 本地私有 GPT 问答
+  - name: qanything
+    model: ai/rag
+    tier: representative
+    repository: https://github.com/netease-youdao/QAnything.git
+    mirror: https://github.com/netease-youdao/QAnything.git
+    license: Apache-2.0
+    status: maintained
+    notes:
+      - 网易有道出品的本地知识库 QA
+  - name: langgraph
+    model: ai/agent
+    tier: core
+    repository: https://github.com/langchain-ai/langgraph.git
+    mirror: https://github.com/langchain-ai/langgraph.git
+    license: MIT
+    status: active
+    notes:
+      - LangChain 出品的图编排 Agent
+  - name: crewai
+    model: ai/agent
+    tier: core
+    repository: https://github.com/crewAIInc/crewAI.git
+    mirror: https://github.com/crewAIInc/crewAI.git
+    license: MIT
+    status: active
+    notes:
+      - 多 Agent 协作框架代表
+  - name: autogen
+    model: ai/agent
+    tier: core
+    repository: https://github.com/microsoft/autogen.git
+    mirror: https://github.com/microsoft/autogen.git
+    license: MIT
+    status: active
+    notes:
+      - Microsoft 出品的多 Agent 框架
+  - name: metagpt
+    model: ai/agent
+    tier: core
+    repository: https://github.com/geekan/MetaGPT.git
+    mirror: https://github.com/geekan/MetaGPT.git
+    license: MIT
+    status: active
+    notes:
+      - 软件公司多 Agent 模拟
+  - name: openai-agents
+    model: ai/agent
+    tier: representative
+    repository: https://github.com/openai/openai-agents-python.git
+    mirror: https://github.com/openai/openai-agents-python.git
+    license: MIT
+    status: active
+    notes:
+      - OpenAI 官方 Agent SDK
+  - name: swarm
+    model: ai/agent
+    tier: innovative
+    repository: https://github.com/openai/swarm.git
+    mirror: https://github.com/openai/swarm.git
+    license: MIT
+    status: maintained
+    notes:
+      - OpenAI 多 Agent 教学示例
+  - name: agents
+    model: ai/agent
+    tier: representative
+    repository: https://github.com/microsoft/agents.git
+    mirror: https://github.com/microsoft/agents.git
+    license: MIT
+    status: active
+    notes:
+      - Microsoft 新一代 Agent 框架
+  - name: chatdev
+    model: ai/agent
+    tier: representative
+    repository: https://github.com/OpenBMB/ChatDev.git
+    mirror: https://github.com/OpenBMB/ChatDev.git
+    license: Apache-2.0
+    status: maintained
+    notes:
+      - 教学型多 Agent 软件开发框架
+  - name: agentverse
+    model: ai/agent
+    tier: representative
+    repository: https://github.com/OpenBMB/AgentVerse.git
+    mirror: https://github.com/OpenBMB/AgentVerse.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 面向研究的多 Agent 平台
+  - name: agixt
+    model: ai/agent
+    tier: innovative
+    repository: https://github.com/Josh-XT/AGiXT.git
+    mirror: https://github.com/Josh-XT/AGiXT.git
+    license: MIT
+    status: active
+    notes:
+      - 插件化自动化 Agent 框架（原 AGiXT/AGiXT 已迁移）
+  - name: open-interpreter
+    model: ai/agent
+    tier: innovative
+    repository: https://github.com/OpenInterpreter/open-interpreter.git
+    mirror: https://github.com/OpenInterpreter/open-interpreter.git
+    license: AGPL-3.0
+    status: active
+    notes:
+      - 代码解释器型 Agent
+  - name: agentscope
+    model: ai/agent
+    tier: representative
+    repository: https://github.com/modelscope/agentscope.git
+    mirror: https://github.com/modelscope/agentscope.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 阿里 ModelScope 出品的多 Agent 框架
+  - name: letta
+    model: ai/agent
+    tier: innovative
+    repository: https://github.com/letta-ai/letta.git
+    mirror: https://github.com/letta-ai/letta.git
+    license: Apache-2.0
+    status: active
+    notes:
+      - 带长期记忆的状态化 Agent（原 MemGPT）
