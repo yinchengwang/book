@@ -286,7 +286,7 @@ USTore 还引入 **SSI 增强**：基于 undo 链跟踪读写冲突。
 ## 十四、源码学习路径
 
 1. **入口**：`src/gausskernel/process/postmaster.cpp`（主进程）、`src/gausskernel/storage/buffer/bufmgr.cpp:1649`（`ReadBuffer`）。
-2. **Heap AM**：`src/gausskernel/storage/access/heap/heapam.cpp:2980`（`heap_insert`）。
+2. **Heap AM**：`src/gausskernel/storage/access/heap/heapam.cpp:2980`（`heap_insert`）、`src/gausskernel/storage/access/heap/heapam.cpp:4029`（`heap_multi_insert`）。
 3. **USTore**：`src/gausskernel/storage/access/ustore/ustore.cpp`（事务管理）、`ustore_page.cpp`、`ustore_undo.cpp`。
 4. **优化器**：`src/gausskernel/optimizer/`（与 PG 类似但增强）。
 5. **向量化执行**：`src/gausskernel/runtime/vecexecutor/`。
@@ -376,7 +376,7 @@ USTore 还引入 **SSI 增强**：基于 undo 链跟踪读写冲突。
 
 1. openGauss 官方文档：<https://opengauss.org/zh/docs/>
 2. openGauss 源码 `src/gausskernel/storage/access/ustore/ustore.cpp`、`ustore_page.cpp`
-3. openGauss 源码 `src/gausskernel/storage/buffer/bufmgr.cpp:1649`、`storage/access/heap/heapam.cpp:2980`
+3. openGauss 源码 `src/gausskernel/storage/access/heap/heapam.cpp:2980`、`src/gausskernel/storage/access/heap/heapam.cpp:4029`、`src/gausskernel/storage/buffer/bufmgr.cpp:1649`、`src/gausskernel/storage/access/ustore/ustore.cpp`、`src/gausskernel/runtime/vecexecutor/`
 4. 木兰宽松许可证 v2：<https://license.coscl.org.cn/MulanPSL2>
 5. openGauss SIG-Meetup 演讲录像（社区）：<https://opengauss.org/zh/community/events/>
 6. HCIE-GaussDB 培训资料（华为官方）
