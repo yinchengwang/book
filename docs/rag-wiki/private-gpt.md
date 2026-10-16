@@ -215,10 +215,11 @@ private-gpt 通过 `VectorStoreComponent` 暴露抽象，下游 10+ 后端：
 - **Weaviate**（`WeaviateVectorStore`，内置混合检索）；
 - **Milvus**（`MilvusVectorStore`，单机 / 集群）；
 - **InMemory**（`InMemoryVectorStore`，进程内 / 测试用）；
-- **Metadata 存储**：
-  - **Postgres**（`private_gpt/components/database/postgres_database.py`，默认）；
-  - **SQLite**（`private_gpt/components/database/sqlite_database.py`，本地）；
-  - **MySQL**（社区）；
+- **Metadata 存储**（Postgres / SQLite / MySQL，通过 SQLAlchemy Engine 抽象）：
+  - **Postgres**（`private_gpt/components/database/connection_factory.py` 通过 SQLAlchemy `create_engine` 支持，默认）；
+  - **SQLite**（同上 `connection_factory.py`，本地嵌入式）；
+  - **MySQL**（同上 `connection_factory.py`，社区）；
+  - 注：`private_gpt/components/database/` 实际还提供 `function_inspector.py` / `procedure_inspector.py` / `table_inspector.py` / `view_inspector.py` / `inspected_schema.py` / `inspector_interface.py`，用于 RAG-on-SQL 的数据库对象内省（schema introspection），不是简单的连接配置模块；
 - **缓存**：
   - **Redis**（`private_gpt/components/cache/`，查询结果缓存）；
 - **任务队列**：
@@ -411,5 +412,17 @@ private-gpt 通过 `VectorStoreComponent` 暴露抽象，下游 10+ 后端：
 - MCP：https://modelcontextprotocol.io/
 - 论文：RAG、llama.cpp、Docling、MCP、Function Calling
 - 博客：https://zylon.ai/blog
+
+## 十七、与本项目关联
+
+private-gpt 作为「本地优先 + Ollama/llama.cpp + RAG-on-SQL 文档问答」框架，与本项目（engineering/ 轨道 C/C++ 自研存储与向量索引）在「本地化嵌入 + 文档摄取 + 元数据持久化 + 多 Vector DB 后端」四个维度有直接参考价值：
+
+- **本地嵌入模型适配**：private-gpt 默认走 Ollama / llama.cpp（GGUF 量化），本项目则在 `engineering/apps/multimodal_rag/src/index/hnsw_persist.c`（`hnsw_persist.h`）实现 C/C++ 端 HNSW 持久化索引，可作为 private-gpt `IngestionPipeline` 的底层 ANN 实现之一；向量索引层的核心实现见 `engineering/src/db/index/vector_index/hnsw_pq/hnsw_pq.c`（HNSW + 乘积量化）与 `engineering/include/db/index/vector_index/ivf/inverted_lists.h`（IVF 倒排链）。
+- **RAG-on-SQL 数据库内省**：private-gpt 的 `private_gpt/components/database/` 子树包含 `connection_factory.py` / `function_inspector.py` / `procedure_inspector.py` / `table_inspector.py` / `view_inspector.py` / `inspected_schema.py`，把「自然语言 → SQL 查询」拆为 schema introspection + query generation 两阶段。本项目则通过 PostgreSQL 风格的 Catalog 模块实现数据库元数据管理，参见 `engineering/include/db/catalog.h` 与 `engineering/src/db/storage/catalog/`（OID 分配、表/列/索引元数据），可类比 private-gpt 的 introspection 设计思路。
+- **多 Vector DB 后端抽象**：private-gpt 通过 `VectorStoreComponent` 抽象支持 Chroma / Qdrant / Milvus / pgvector / LanceDB / FAISS / Pinecone 等十余种后端；本项目 wiki 在 `docs/db-wiki/vector/` 已系统整理五种主流向量库的工程视角（`docs/db-wiki/vector/chroma.md`、`docs/db-wiki/vector/milvus.md`、`docs/db-wiki/vector/faiss.md`、`docs/db-wiki/vector/lancedb.md`、`docs/db-wiki/vector/qdrant.md`），可作为 Vector DB 选型决策的对照参考。
+- **文档摄取与多模态 Parser**：private-gpt 通过 Docling + Unstructured 实现高质量 PDF / Docx 解析，本项目多模态 RAG 应用层（`engineering/apps/multimodal_rag/`）同样提供 PDF / 图像 / 视频多模态摄取，可对照学习摄取管线的 chunking / embedding / 上传三段式设计。
+- **冷热分层与存储抽象**：private-gpt 支持 ingest 完成的文档 metadata 落入 Postgres / SQLite；本项目则实现多模态存储统一抽象（KV / Vector / Timeseries / Document / Spatial / Graph / Yang），参见 `engineering/include/db/mm_storage.h` 与 `engineering/src/db/storage/mm/mm_storage.c`，比 private-gpt 的「单一关系型后端」更通用。
+- **GUC 配置系统**：private-gpt 通过环境变量 + Settings (pydantic-settings) 管理 LLM / Embedding / Vector DB 连接；本项目实现 PostgreSQL 风格的 GUC 统一配置（`engineering/src/db/core/guc.c` 与 `engineering/include/db/core/guc.h`），支持 `shared_buffers` / `work_mem` / `wal_level` 等运行时参数化配置。
+- **量化与字典组件**：private-gpt 不自研量化与分词器；本项目则在 `engineering/src/algo-prod/quantization/`（PQ / LvQ / `adaptive_quantization.c`）与 `engineering/src/algo-prod/dict/`（结巴分词 `dict_cut.c` / `dict_hmm.c` / `dict_load.c`）自研底层组件，可在「本地嵌入 + 量化索引」方向对照学习。
 - Tutorial：https://docs.privategpt.dev/
 - Discord：https://discord.gg/zylon-ai
