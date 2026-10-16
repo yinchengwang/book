@@ -44,7 +44,7 @@ embedchain 是由 **Taranjeet Chugh**（Founder @ Mem0ai）于 **2023 年 4 月�
 
 ## 三、许可与商业限制
 
-- **核心代码**：**Apache 2.0**（`mem0/`、`embedchain/legacy`），可商用、修改、私有部署；
+- **核心代码**：**Apache 2.0**（`mem0/`、`mem0-ts/`，原 `embedchain/` 目录已删除 / 仓库已 archived，所有代码迁移至 mem0），可商用、修改、私有部署；
 - **与商业产品的关系**：
   - **Mem0 Cloud**（闭源 SaaS）：托管多租户 Mem0 服务、个性化、记忆分析、Memory Ops 工具；
   - **Mem0 Enterprise**：本地 / 私有部署版（与 AWS / Azure / GCP 集成）；
@@ -376,3 +376,15 @@ mem0 通过 `VectorStoreFactory`（`mem0/configs/vector_stores/`）暴露抽象�
 - 论文：Mem0（Chugh et al., 2024, arxiv.org/abs/2504.19413）、MemoryBank（Zhong et al. 2024, arxiv.org/abs/2305.10250）、A-Mem（Wang et al. 2025, arxiv.org/abs/2502.12110）
 - 博客：https://mem0.ai/blog
 - 集成示例：https://docs.mem0.ai/integrations
+
+## 十七、与本项目关联
+
+mem0（embedchain 演进版）作为「AI 长期记忆层 + 多 Memory 类型 + Graph Memory + Mem0 Cloud」框架，与本项目（engineering/ 轨道 C/C++ 自研存储与向量索引）在「多 Memory 抽象 + 向量/图后端 + LLM 抽取与冲突解决」三个维度有直接参考价值：
+
+- **多类型 Memory 抽象**：mem0 通过 `UserMemory` / `AgentMemory` / `SessionMemory` / `GraphMemory`（`mem0/memory/`）实现记忆分层（用户级 / Agent 级 / 会话级 / 图记忆），与本项目多模态存储抽象（KV / Vector / Timeseries / Document / Spatial / Graph / Yang 七种数据模型，参见 `engineering/include/db/mm_storage.h` 与 `engineering/src/db/storage/mm/mm_storage.c`）在「多数据模型统一接口」设计理念上高度一致；可类比 `MemoryType.USER_MEMORY` 与 `STORAGE_TYPE_VECTOR` 的抽象层次。
+- **向量后端 + Graph 后端双重路线**：mem0 同时支持向量检索（Qdrant / Chroma / PGVector / Pinecone / Weaviate / Milvus / LanceDB）与图检索（Memgraph / Neo4j / NetworkX / Kuzu），形成「向量召回 + 图关联」的 Web 双星架构。本项目则在 `engineering/src/db/index/vector_index/` 自研 HNSW + PQ/SQ 量化实现（`hnsw_pq.c`、`hnsw_sq.c`），并在 `engineering/src/db/storage/graph/` 提供图存储能力，可对照 mem0 的「向量 + 图」复合检索设计。
+- **LLM 抽取与冲突解决**：mem0 每次 `Memory.add` 调用 LLM 做事实抽取 + ADD/UPDATE/DELETE 决策；本项目则在 `engineering/src/algo-prod/quantization/`（PQ / LvQ / `adaptive_quantization.c`）与 `engineering/src/algo-prod/dict/`（结巴分词 `dict_cut.c` / `dict_hmm.c`）自研底层组件，可对照 mem0 的「LLM-driven memory update」思路，在「规则驱动 + 模型驱动」权衡上提供参考。
+- **Vector DB 选型决策**：mem0 支持的向量库（Qdrant / Chroma / PGVector / Pinecone / Weaviate / Milvus / LanceDB / Azure）在 `docs/db-wiki/vector/` 已有工程视角梳理（`docs/db-wiki/vector/chroma.md`、`docs/db-wiki/vector/qdrant.md`、`docs/db-wiki/vector/milvus.md`、`docs/db-wiki/vector/lancedb.md`），可作为 mem0 Vector Store 后端选型的对照资料。
+- **GUC 配置 + Mem0 cloud**：mem0 通过环境变量 + Cloud API 管理用户 / Agent 配置；本项目实现 PostgreSQL 风格的 GUC 配置系统（`engineering/src/db/core/guc.c`、`engineering/include/db/core/guc.h`），设计理念类似但更底层。
+- **多模态记忆与时序**：mem0 通过 TimescaleDB（Timeseries Memory）支持时序记忆；本项目则在 `engineering/src/db/storage/ts/` 提供原生时序存储能力，与 mem0 选型思路一致，但完全自研底层实现。
+- **学习建议**：阅读 mem0 源码重点关注「多 Memory 类型 API 设计」「LLM-driven memory update 算法」，对照本项目 `engineering/include/db/mm_storage.h` 的统一存储接口与 `engineering/src/db/storage/` 的模块化实现，加深对「数据模型抽象 + 长期记忆」系统设计的理解。
