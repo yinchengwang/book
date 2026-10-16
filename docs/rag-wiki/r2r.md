@@ -374,3 +374,17 @@ r2r 通过 `DatabaseProvider` 抽象（`py/core/base/providers/database.py`）�
 - 博客：https://www.sciphi.ai/blog
 - Tutorial：https://r2r-docs.sciphi.ai/getting-started
 - 中文社区：https://r2r-docs.sciphi.ai/
+
+## 十七、与本项目关联
+
+R2R 作为「SciPhi-AI 出品 + 生产级 RAG + 多模态 + GraphRAG + Hatchet 编排 + REST API」框架，与本项目（engineering/ 轨道 C/C++ 自研存储与向量索引）在「RAG 编排 + 多模态摄取 + GraphRAG + Hatchet 异步任务」四个维度具有直接参考价值：
+
+- **REST API + SDK + Node.js + Python 多语言支持**：R2R 提供 REST API + Python/JS SDK 多端接入，与本项目 `engineering/src/db/api/`（PG 风格 SQL 执行器接口）+ `engineering/src/db/cli/`（pg_ctl/initdb 工具）形成对照；本项目通过 `engineering/src/db/server/db_server.c`（简化版 PostgreSQL Wire 协议服务器）暴露 API，可在「服务端 API + 多语言客户端」架构上对照学习。
+- **Hatchet 异步任务编排**：R2R 通过 Hatchet 实现 ingestion / embedding / file-processing 异步任务，与本项目 `engineering/src/db/distributed/`（Phase 9 分布式协调）实现异步任务调度能力形成对照；本项目通过 `coordinator.h/c`（多节点协调）与 `raft.h/c`（Raft 高可用）实现类 Hatchet 的工作流引擎。
+- **多模态摄取 + OCR**：R2R 通过 `ingestion/` 抽象支持 PDF / 图像 / 视频多模态摄取；本项目多模态 RAG 应用层（`engineering/apps/multimodal_rag/`）同样提供 PDF / 图像 / 视频摄取，可在「多模态摄取抽象」方向对照学习。
+- **GraphRAG + 向量召回复合**：R2R 通过 `KnowledgeGraph` + 向量检索实现 GraphRAG；本项目则在 `engineering/src/db/storage/graph/` 提供原生图存储能力，并在 `engineering/src/db/index/vector_index/` 自研 HNSW + PQ/SQ 量化（`hnsw_pq.c`、`hnsw_sq.c`），可在「向量 + 图」复合检索方向对照设计。
+- **向量库后端**：R2R 支持 pgvector / Qdrant 等后端；本项目 wiki 在 `docs/db-wiki/vector/` 已系统梳理 Chroma / Milvus / FAISS / LanceDB / Qdrant 五种向量库的工程视角（`docs/db-wiki/vector/chroma.md`、`docs/db-wiki/vector/milvus.md`、`docs/db-wiki/vector/faiss.md`、`docs/db-wiki/vector/lancedb.md`、`docs/db-wiki/vector/qdrant.md`），可与 R2R 选型互补。
+- **GUC 配置系统**：R2R 通过环境变量 + TOML 配置管理 LLM / Embedding / VectorDB；本项目实现 PostgreSQL 风格的 GUC 配置（`engineering/src/db/core/guc.c` 与 `engineering/include/db/core/guc.h`），可在「运行时配置统一管理」理念上提供底层参考。
+- **冷热分层与多模态存储**：R2R 通过 pgvector + Postgres 实现一体化存储；本项目则实现多模态存储统一抽象（`engineering/include/db/mm_storage.h`、`engineering/src/db/storage/mm/mm_storage.c`），把 KV / Vector / Timeseries / Document / Spatial / Graph / Yang 七种数据模型统一管理，比 R2R 的「pgvector + Postgres」更通用。
+- **量化与字典组件**：R2R 不自研量化与分词器；本项目则在 `engineering/src/algo-prod/quantization/`（PQ / LvQ / `adaptive_quantization.c`）与 `engineering/src/algo-prod/dict/`（结巴分词 `dict_cut.c` / `dict_hmm.c`）自研底层组件，可在「本地嵌入 + 量化压缩」方向对照学习。
+- **学习建议**：阅读 R2R 源码重点关注「Hatchet 异步任务编排」「GraphRAG + 向量召回复合」「REST API + 多 SDK 集成」，与本项目 `engineering/src/db/distributed/` 分布式层 + `engineering/src/db/storage/graph/` 图存储层做接口设计对照，加深对生产级 RAG 系统的理解。
