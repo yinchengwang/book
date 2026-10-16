@@ -38,6 +38,16 @@ target_link_libraries(vdb_chaos_test
         GTest::gtest_main
 )
 
+# P1-A: Vector WAL 恢复独立单元测试
+add_executable(vdb_wal_recovery_test vdb_wal_recovery_test.cpp)
+target_link_libraries(vdb_wal_recovery_test
+    PRIVATE
+        vector_api
+        db_core
+        project_includes
+        GTest::gtest_main
+)
+
 # 向量操作测试
 # add_executable(test_vector_ops_integration vector_ops_test.cpp)
 # target_link_libraries(test_vector_ops_integration
