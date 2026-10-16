@@ -338,3 +338,16 @@ verba 主要绑定 **Weaviate**（默认 + 强耦合）：
 - 论文：BM25（Robertson et al. 1995）、Weaviate Hybrid Search（https://docs.weaviate.io/developers/weaviate/search/hybrid）、ColBERT（Khattab & Zaharia 2020, https://arxiv.org/abs/2004.12832）、HyDE（Gao et al. 2022, https://arxiv.org/abs/2212.10496）
 - 博客：https://weaviate.io/blog
 - Tutorial：https://github.com/weaviate/verba/blob/main/PYTHON_TUTORIAL.md
+
+## 十七、与本项目关联
+
+Verba 作为「Weaviate 出品 + 黄金 RAG + Hybrid Search + Reader/Generator 模块化」RAG 前端框架，与本项目（engineering/ 轨道 C/C++ 自研存储与向量索引）在「Weaviate 集成 + 模块化 Reader/Generator + 黄金 RAG 检索管线」三个维度具有直接参考价值：
+
+- **Weaviate 向量库后端**：Verba 默认绑定 Weaviate（`goldenverba/components/vector_store/`），通过 Weaviate 内置 Hybrid Search（BM25 + 向量 RRF 融合）实现高质量召回。可在 Weaviate 集成细节上对照本项目 wiki（`docs/db-wiki/vector/`），尤其是与 Weaviate 协同的混合检索设计。
+- **模块化组件设计**：Verba 通过 `goldenverba/components/` 把 Reader / Chunker / Embedder / Generator / Vector Store / Reranker 拆为可插拔模块。本项目则在 `engineering/include/db/` 提供 Catalog / GUC / VectorIndex / mm_storage 模块化抽象，与 Verba 的「模块可替换」设计理念一致。
+- **黄金 RAG 检索管线**：Verba 通过 Weaviate Hybrid Search + Reader 模块化 Rerank 实现「高质量 RAG」参考实现；本项目则在 `engineering/src/db/index/vector_index/` 自研 HNSW + PQ/SQ 量化（`hnsw_pq.c`、`hnsw_sq.c`、IVF `inverted_lists.h`），可在「自研 vs Weaviate Hybrid」决策上提供参考。
+- **多 Reader 适配**：Verba 通过 Reader 抽象适配 Weaviate Reader / 文件读取 / Web Reader；本项目多模态 RAG 应用层（`engineering/apps/multimodal_rag/`）通过自定义 parser 支持 PDF / 图像 / 视频摄取，可在「多 Reader 适配模式」上做工程化对照。
+- **GUC + Weaviate Cloud 配置**：Verba 通过 Weaviate Cloud + 环境变量管理配置；本项目实现 PostgreSQL 风格的 GUC 配置（`engineering/src/db/core/guc.c` 与 `engineering/include/db/core/guc.h`），可在「运行时配置统一管理」理念上提供底层参考。
+- **量化与字典组件**：Verba 不自研量化与分词器；本项目则在 `engineering/src/algo-prod/quantization/`（PQ / LvQ / `adaptive_quantization.c`）与 `engineering/src/algo-prod/dict/`（结巴分词 `dict_cut.c` / `dict_hmm.c`）自研底层组件，可对照 Verba 通过 Weaviate 远程服务的设计思路。
+- **冷热分层与多模态存储**：Verba 通过 Weaviate 单一向量库存储文档；本项目则实现多模态存储统一抽象（`engineering/include/db/mm_storage.h`、`engineering/src/db/storage/mm/mm_storage.c`），把 KV / Vector / Timeseries / Document / Spatial / Graph / Yang 七种数据模型统一管理，比 Verba 的「单一向量库」更通用。
+- **学习建议**：阅读 Verba 源码重点关注「Weaviate Hybrid Search 集成」「Reader/Generator 模块化设计」，与本项目 `engineering/apps/multimodal_rag/` 应用层 + `engineering/include/db/` 接口层做对比，加深对「生产级 RAG 前端」的工程理解。
