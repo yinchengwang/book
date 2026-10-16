@@ -14,7 +14,7 @@ if(API_SOURCE_FILES)
         ${ENGINEERING_SOURCE_DIR}/include/db
         ${ENGINEERING_SOURCE_DIR}/include/db/api
         ${ENGINEERING_SOURCE_DIR}/../third_part
-        ${ENGINEERING_SOURCE_DIR}/../third_part/cjson
+        ${ENGINEERING_SOURCE_DIR}/third_part/cjson
         ${UTHASH_INCLUDE_DIR}
     )
     target_link_libraries(vector_api PUBLIC
