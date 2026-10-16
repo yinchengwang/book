@@ -119,10 +119,10 @@ Apache Kafka 是由 **LinkedIn** 起源（2010 年 Jay Kreps 等人开源）、2
 | 模块 | 路径 |
 |------|------|
 | Kafka 主入口 | `core/src/main/scala/kafka/Kafka.scala` |
-| Broker 生命周期 | `core/src/main/scala/kafka/server/KafkaServer.scala`、`KafkaBroker.scala` |
+| Broker 生命周期 | `core/src/main/scala/kafka/server/KafkaBroker.scala` |
 | 元数据管理 | `core/src/main/scala/kafka/server/metadata/` |
 | 副本管理 | `core/src/main/scala/kafka/server/ReplicaManager.scala` |
-| Log 存储 | `core/src/main/scala/kafka/log/LogManager.scala`、`Log.scala` |
+| Log 存储 | `core/src/main/scala/kafka/log/LogManager.scala` |
 | Raft 共识 | `core/src/main/scala/kafka/raft/KafkaRaftManager.scala` |
 | Group 协调 | `core/src/main/scala/kafka/coordinator/group/GroupCoordinator.scala` |
 | 事务协调 | `core/src/main/scala/kafka/coordinator/transaction/TransactionCoordinator.scala` |
@@ -428,7 +428,7 @@ data_dir/
 
 | 阶段 | 模块 | 路径 | 说明 |
 |------|------|------|------|
-| 入门 | Log | `core/src/main/scala/kafka/log/Log.scala`、`LogSegment.scala` | 顺序写、segment 滚动、稀疏索引 |
+| 入门 | Log | `core/src/main/scala/kafka/log/LogManager.scala` | 顺序写、segment 滚动、稀疏索引 |
 | 入门 | Producer | `clients/src/main/java/org/apache/kafka/clients/producer/KafkaProducer.java` | 批处理、RecordAccumulator、partition 路由 |
 | 入门 | Consumer | `clients/src/main/java/org/apache/kafka/clients/consumer/KafkaConsumer.java` | 订阅、rebalance、fetch |
 | 进阶 | ReplicaManager | `core/src/main/scala/kafka/server/ReplicaManager.scala` | ISR、HW、Leader Epoch |
@@ -440,7 +440,7 @@ data_dir/
 
 ### 17.2 推荐阅读顺序
 
-1. **第 1 周**：Kafka 官方文档 + `Log.scala`（理解顺序写 + segment）；
+1. **第 1 周**：Kafka 官方文档 + `LogManager.scala`（理解顺序写 + segment）；
 2. **第 2 周**：Producer / Consumer 源码（理解客户端协议）；
 3. **第 3 周**：ReplicaManager + ISR 机制；
 4. **第 4 周**：KRaft 共识（对照 Raft 论文）；
