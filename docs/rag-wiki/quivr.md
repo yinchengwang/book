@@ -419,3 +419,18 @@ quivr V2 通过 **Weaviate**（默认）作为向量库：
 - 博客：https://quivr.com/blog
 - Tutorial：https://quivr.com/docs/quickstart
 - Discord：https://discord.gg/quivr
+
+## 十七、与本项目关联
+
+quivr V2 作为「Go 重写 + Content Engine + PostgreSQL + Weaviate + Temporal + TEI + S3」个人知识库框架，与本项目（engineering/ 轨道 C/C++ 自研存储与向量索引）在「多语言栈对照 + Content Engine + Temporal 异步 + 多存储后端」四个维度具有直接参考价值：
+
+- **Go 重写 vs C/C++ 自研**：quivr V2 从 Python 重写为 Go（API + Worker + PostgreSQL + Weaviate + Temporal + TEI + S3 完整 Content Engine），体现「系统级语言 + 模块化服务」设计思路；本项目同样以 C/C++ 为主语言（`engineering/src/db/`、`engineering/src/algo-prod/`），通过 Phase 9 分布式演进（`engineering/src/db/distributed/`）实现类 Go 后端的工程化体系。
+- **Content Engine 内容引擎**：quivr V2 定位升级为「Content Engine」，把个人知识库抽象为「上传 → 分块 → 嵌入 → 检索 → 生成」内容流水线，与本项目多模态 RAG 应用层（`engineering/apps/multimodal_rag/`）+ 多模态存储抽象（`engineering/include/db/mm_storage.h`）的设计理念一致——都是「内容 + 向量 + 元数据」三段式管线。
+- **Temporal 异步任务编排**：quivr V2 通过 Temporal 实现 ingestion / embedding / 长期任务的可靠编排；本项目在 `engineering/src/db/distributed/` 实现分布式协调 + 异步任务调度能力（Phase 9），可在「可靠任务编排引擎」方向对照学习。
+- **TEI 文本嵌入推理服务**：quivr V2 通过 HuggingFace TEI（Text Embeddings Inference，Rust 加速）做本地嵌入推理；本项目则通过 `engineering/apps/multimodal_rag/src/index/hnsw_persist.c`（`hnsw_persist.h`）实现 C/C++ 端 HNSW 持久化索引，可在「自研 vs TEI 集成」决策上提供参考。Rust 与 C 都是面向系统级性能的语言，本项目通过 C 端实现可在底层算法与数据结构优化上对照学习。
+- **PostgreSQL 元数据存储**：quivr V2 使用 PostgreSQL 作为元数据后端；本项目则实现 PostgreSQL 风格的 Catalog 模块（`engineering/include/db/catalog.h`、`engineering/src/db/storage/catalog/`）+ `engineering/src/db/core/guc.c`（GUC 配置系统），可在「PG 兼容设计」方向对照学习。
+- **Weaviate 向量库**：quivr V2 通过 Weaviate 做向量检索；本项目 wiki 在 `docs/db-wiki/vector/` 已系统梳理 Chroma / Milvus / FAISS / LanceDB / Qdrant 五种向量库的工程视角（`docs/db-wiki/vector/chroma.md`、`docs/db-wiki/vector/milvus.md`、`docs/db-wiki/vector/faiss.md`、`docs/db-wiki/vector/lancedb.md`、`docs/db-wiki/vector/qdrant.md`），可与 quivr V2 选型互补。
+- **S3 文件存储**：quivr V2 通过 S3 兼容接口管理文件；本项目则在 `engineering/src/db/storage/blob/` 提供 Blob 存储能力，可在「大文件 + 元数据分离存储」模式上对照。
+- **量化与字典组件**：quivr V2 通过 TEI 远程嵌入；本项目则在 `engineering/src/algo-prod/quantization/`（PQ / LvQ / `adaptive_quantization.c`）与 `engineering/src/algo-prod/dict/`（结巴分词 `dict_cut.c` / `dict_hmm.c`）自研底层组件，可在「自研 vs TEI 集成」决策上提供底层参考。
+- **冷热分层与多模态存储**：quivr V2 通过 PostgreSQL + Weaviate + S3 三层存储实现冷热分层；本项目则实现多模态存储统一抽象（`engineering/include/db/mm_storage.h`、`engineering/src/db/storage/mm/mm_storage.c`），把 KV / Vector / Timeseries / Document / Spatial / Graph / Yang 七种数据模型统一管理，比 quivr V3 的「Postgres + Weaviate + S3」更通用。
+- **学习建议**：阅读 quivr V2 源码重点关注「Go 微服务架构」「Content Engine 设计」「Temporal 异步任务编排」，与本项目 `engineering/src/db/distributed/` 分布式层 + `engineering/apps/multimodal_rag/` 应用层做架构对照，加深对「多存储引擎协同设计」的理解。
