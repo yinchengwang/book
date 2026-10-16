@@ -259,7 +259,7 @@ NATS 没有 Kafka 的 partition 概念，但有类似的并行度：
 
 ### 8.4 偏移量管理（Consumer + Ack + Sequence）
 
-- **Consumer**（`server/jetstream_consumer.go`）：
+- **Consumer**（`server/consumer.go`）：
   - 每个 Consumer 独立维护 `consumer_seq`（消费位置）；
   - **Ack Mode**：
     - **Explicit Ack**：消费者必须手动 ack（`jsMsg.Ack()`）；
@@ -276,12 +276,12 @@ NATS 没有 Kafka 的 partition 概念，但有类似的并行度：
 ### 8.5 存储分层（NATS Stream + KV Store + Object Store）
 
 - **NATS Stream**：持久化消息流（标准流模式）；
-- **KV Store**（`server/kv.go`）：
+- **KV Store**（`server/jetstream_api.go`）：
   - 基于 Stream 的 KV 存储；
   - **Watch**：订阅 key 变更事件；
   - **TTL**：支持 key 过期；
   - **History**：每个 key 保留 N 个历史版本（默认 1）；
-- **Object Store**（`server/obj.go`）：
+- **Object Store**（`server/jetstream_api.go`）：
   - 基于 Stream 的大对象存储（类似 S3）；
   - **分块**：大文件自动分块（512KB-4MB）；
   - **Watch**：对象变更事件；
