@@ -22,3 +22,27 @@
 ## 写作规范
 
 RAG 框架 wiki 必须覆盖以下扩展维度：嵌入模型适配、文档解析器、检索器/重排器、向量库后端。详见设计文档 4.3 节。
+
+## 项目状态总览
+
+以下 12 项全部完成，每篇 wiki 含完整章节、架构图、源码引用与外部参考。
+
+| 项目 | 状态 |
+|------|------|
+| [langchain.md](./langchain.md) | ✅ |
+| [llama-index.md](./llama-index.md) | ✅ |
+| [haystack-ai.md](./haystack-ai.md) | ✅ |
+| [txtai.md](./txtai.md) | ✅ |
+| [embedchain.md](./embedchain.md) | ✅ |
+| [verba.md](./verba.md) | ✅ |
+| [cognita.md](./cognita.md) | ✅ |
+| [r2r.md](./r2r.md) | ✅ |
+| [quivr.md](./quivr.md) | ✅ |
+| [private-gpt.md](./private-gpt.md) | ✅ |
+| [qanything.md](./qanything.md) | ✅ |
+| [commercial-rag-products.md](./commercial-rag-products.md) | ✅ |
+
+---
+
+**最近更新：2026-10-16**
+**统计：12 项（11 RAG + 1 商业），全部完成 ✅**

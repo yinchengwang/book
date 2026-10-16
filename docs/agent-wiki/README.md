@@ -24,3 +24,29 @@
 ## 写作规范
 
 Agent 框架 wiki 必须覆盖以下扩展维度：角色协作模式、记忆系统、工具调用协议、人机协作。详见设计文档 4.3 节。
+
+## 项目状态总览
+
+以下 14 项全部完成，每篇 wiki 含完整章节、架构图、源码引用与外部参考。
+
+| 项目 | 状态 |
+|------|------|
+| [langgraph.md](./langgraph.md) | ✅ |
+| [crewai.md](./crewai.md) | ✅ |
+| [autogen.md](./autogen.md) | ✅ |
+| [metagpt.md](./metagpt.md) | ✅ |
+| [openai-agents.md](./openai-agents.md) | ✅ |
+| [chatdev.md](./chatdev.md) | ✅ |
+| [agentverse.md](./agentverse.md) | ✅ |
+| [agixt.md](./agixt.md) | ✅ |
+| [open-interpreter.md](./open-interpreter.md) | ✅ |
+| [agentscope.md](./agentscope.md) | ✅ |
+| [letta.md](./letta.md) | ✅ |
+| [swarm.md](./swarm.md) | ✅ |
+| [agents.md](./agents.md) | ✅ |
+| [commercial-agent-products.md](./commercial-agent-products.md) | ✅ |
+
+---
+
+**最近更新：2026-10-16**
+**统计：14 项（13 Agent + 1 商业），全部完成 ✅**
