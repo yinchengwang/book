@@ -378,3 +378,16 @@ txtai 通过 `Vectors` 类（`src/python/txtai/vectors/base.py`）暴露后端�
 - 博客：https://neuml.github.io/txtai/blog/
 - Tutorial：https://neuml.github.io/txtai/getting-started/
 - 中文社区：https://github.com/neuml/txtai/discussions
+
+## 十七、与本项目关联
+
+txtai 作为「一体化语义搜索 + RAG + Workflow + Graph + ModelContext + Rust 加速」轻量级框架，与本项目（engineering/ 轨道 C/C++ 自研存储与向量索引）在「一体化抽象 + 向量后端 + 图与向量混合」三个维度具有直接参考价值：
+
+- **一体化抽象设计**：txtai 把 Embeddings / Vector Store / RAG / Workflow / Graph / ModelContext 整合到单一 `Embeddings` 类下，强调「一个类覆盖全场景」，与本项目多模态存储统一抽象（`engineering/include/db/mm_storage.h` + `engineering/src/db/storage/mm/mm_storage.c`）设计理念高度一致——都是「一个接口 + 多种后端实现」模式。
+- **Rust 加速 + C++ 加速**：txtai 通过 `simd-rust` / `faiss-rust` 提供 Rust 端 ANN 加速；本项目则在 `engineering/src/db/index/vector_index/` 提供 C 端自研实现（`hnsw_pq.c`、`hnsw_sq.c`、IVF `inverted_lists.h`），可在「向量索引底层性能优化」方向对照学习。Rust 与 C 都是面向系统级性能的选项，本项目通过 `engineering/apps/multimodal_rag/src/index/hnsw_persist.c`（`hnsw_persist.h`）实现端到端持久化能力。
+- **图与向量混合（GraphRAG）**：txtai 通过 `graph()` 抽象把向量检索与图遍历结合，支持 GraphRAG；本项目则在 `engineering/src/db/storage/graph/` 提供原生图存储能力，可在「图 + 向量」复合检索方向对照设计。
+- **向量库后端**：txtai 通过 `faiss` / `hnswlib` + 嵌入式 SQLite 实现轻量部署；本项目 wiki 在 `docs/db-wiki/vector/` 已系统梳理 Chroma / Milvus / FAISS / LanceDB / Qdrant 五种向量库的工程视角（`docs/db-wiki/vector/chroma.md`、`docs/db-wiki/vector/milvus.md`、`docs/db-wiki/vector/faiss.md`、`docs/db-wiki/vector/lancedb.md`、`docs/db-wiki/vector/qdrant.md`），可与 txtai 后端选型互补。
+- **量化与字典组件**：txtai 默认通过 HuggingFace Sentence Transformers 适配本地嵌入；本项目则在 `engineering/src/algo-prod/quantization/`（PQ / LvQ / `adaptive_quantization.c`）与 `engineering/src/algo-prod/dict/`（结巴分词 `dict_cut.c` / `dict_hmm.c`）自研底层组件，可类比 txtai 的 `scoring()` / `similarity()` 设计思路。
+- **冷热分层与多模态存储**：txtai 通过 `Embeddings` 抽象支持 RAG / Workflow；本项目则实现多模态存储统一抽象（`engineering/include/db/mm_storage.h`、`engineering/src/db/storage/mm/mm_storage.c`），比 txtai 的「单一 Embeddings 类」更通用（KV / Vector / Timeseries / Document / Spatial / Graph / Yang 七模型）。
+- **GUC 配置系统**：txtai 通过环境变量管理 Embedding 模型配置；本项目实现 PostgreSQL 风格的 GUC 配置（`engineering/src/db/core/guc.c` 与 `engineering/include/db/core/guc.h`），可在「运行时配置统一管理」理念上提供底层参考。
+- **学习建议**：阅读 txtai 源码重点关注「一体化 API 设计」与「Rust 加速抽象」，与本项目 `engineering/include/db/mm_storage.h` + `engineering/src/db/index/vector_index/` 的 C 端实现做接口设计对照，加深对轻量级 RAG 系统的理解。
