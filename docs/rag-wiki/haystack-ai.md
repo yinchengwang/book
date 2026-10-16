@@ -386,3 +386,16 @@ haystack 通过 `DocumentStore` 抽象（`haystack/document_stores/types/`）暴
 - Forum：https://github.com/deepset-ai/haystack/discussions
 - Tutorial：https://haystack.deepset.ai/tutorials
 - Components 中文社区：https://haystack.deepset.ai/
+
+## 十八、与本项目关联
+
+Haystack 作为「deepset 出品 + Pipeline 管道式 + Component 模块化 + 50+ 集成 + 生产级」RAG 框架，与本项目（engineering/ 轨道 C/C++ 自研存储与向量索引）在「管道编排 + 模块化组件 + Agent 协议」三个维度具有直接参考价值：
+
+- **Pipeline 管道编排模型**：Haystack 的 `Pipeline` / `AsyncPipeline` 把 RAG 拆为 `DocumentStore` → `Retriever` → `Ranker` → `PromptBuilder` → `Generator` 五段管道，与本项目 `engineering/src/db/executor/` 的执行器设计思路类似——把检索 / 重排 / 生成拆分为可组合的算子节点，可对照学习「数据流 + 控制流」编排范式。
+- **模块化 Component 抽象**：Haystack 2.0 引入 `Component` 协议（`@component` decorator + Input/Output sockets），与 LangChain Runnable、LlamaIndex Workflows 并列。本项目在 `engineering/src/db/core/` 与 `engineering/include/db/` 提供 Catalog / GUC / VectorIndex 等模块化抽象，可在「组件输入输出类型契约」设计上对照 Haystack Component 设计模式。
+- **Agent 与 MCP 集成**：Haystack 通过 `Agent` component + Tool Calling 集成 MCP（Model Context Protocol）；本项目则在 `engineering/src/db/distributed/`（分布式协调）实现类 Agent 调度能力，可在「Agent + 多工具调用」模式上对照学习。
+- **Document Store 多后端**：Haystack 支持 Elasticsearch / OpenSearch / Weaviate / Milvus / Pinecone / Qdrant / Chroma / FAISS 等 15+ DocumentStore；本项目 wiki 在 `docs/db-wiki/vector/` 已系统梳理 Chroma / Milvus / FAISS / LanceDB / Qdrant 五种向量库的工程视角（`docs/db-wiki/vector/chroma.md`、`docs/db-wiki/vector/milvus.md`、`docs/db-wiki/vector/faiss.md`、`docs/db-wiki/vector/lancedb.md`、`docs/db-wiki/vector/qdrant.md`），可与 Haystack DocumentStore 选型互补。
+- **本地嵌入与量化**：Haystack 默认通过 HuggingFace / Sentence Transformers 适配本地嵌入；本项目则在 `engineering/apps/multimodal_rag/src/index/hnsw_persist.c`（`hnsw_persist.h`）实现 C/C++ 端 HNSW 持久化索引，并自研量化算法（`engineering/src/algo-prod/quantization/`：`adaptive_quantization.c` / `pq.c` / `lvq.c`），可在「本地嵌入 + 量化索引」方向对照学习。
+- **多模态 Parser 与字典**：Haystack 通过 PyPDF / AzureOCR / OpenAI Whisper 等多模态 Parser；本项目则在 `engineering/src/algo-prod/dict/` 自研结巴分词（`dict_cut.c` / `dict_hmm.c` / `dict_load.c`），可在「中文分词 + 多模态解析」方向做底层对照。
+- **GUC 配置系统**：Haystack 通过环境变量 + YAML 配置管理 LLM / Embedding / DocumentStore 连接；本项目实现 PostgreSQL 风格的 GUC 配置（`engineering/src/db/core/guc.c` 与 `engineering/include/db/core/guc.h`），支持 `shared_buffers` / `work_mem` / `max_connections` 等运行时参数化。
+- **学习建议**：阅读 Haystack 源码重点关注「Pipeline 数据流图」与「Component 输入输出类型契约」设计，与本项目 `engineering/src/db/executor/` 与 `engineering/include/db/` 的接口分层做对比，加深对生产级 RAG 管道编排的理解。
