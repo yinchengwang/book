@@ -50,3 +50,14 @@ Agent 框架 wiki 必须覆盖以下扩展维度：角色协作模式、记忆�
 
 **最近更新：2026-10-16**
 **统计：14 项（13 Agent + 1 商业），全部完成 ✅**
+
+---
+
+## 差距分析
+
+基于本 wiki 库的「自研 vs 业界」Agent 专题分析已发布，详见：
+
+- 总报告：[docs/gap-analysis/README.md](../gap-analysis/README.md)
+- Agent 子报告：[docs/gap-analysis/agent.md](../gap-analysis/agent.md)
+
+最后更新：2026-10-16

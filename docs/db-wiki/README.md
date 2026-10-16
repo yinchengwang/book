@@ -167,3 +167,14 @@
 **统计：68 篇 wiki，全部完成 ✅**
 
 > benchmark/ 分类下 5 个项目（ann-benchmarks、vectordbbench、tpch、tpcds、db-bench）作为参考资料在 wiki 引用部分提及，不单独写 wiki。
+
+---
+
+## 差距分析
+
+基于本 wiki 库的「自研 vs 业界」分析已发布，详见：
+
+- 总报告：[docs/gap-analysis/README.md](../gap-analysis/README.md)
+- 子报告：[docs/gap-analysis/relational.md](../gap-analysis/relational.md)、[key-value.md](../gap-analysis/key-value.md)、[document.md](../gap-analysis/document.md)、[columnar.md](../gap-analysis/columnar.md)、[time-series.md](../gap-analysis/time-series.md)、[search.md](../gap-analysis/search.md)、[vector.md](../gap-analysis/vector.md)、[graph.md](../gap-analysis/graph.md)、[stream.md](../gap-analysis/stream.md)、[embedded.md](../gap-analysis/embedded.md)、[extension.md](../gap-analysis/extension.md)
+
+最后更新：2026-10-16
