@@ -44,7 +44,7 @@ langchain 是由 **Harrison Chase**（原 Robust Intelligence）于 2022-10 开�
 
 ## 三、许可与商业限制
 
-- **核心代码**：**MIT License**（`libs/langchain-core/`、`libs/langchain/langchain_classic/`、`libs/langchain_v1/`），可商用、修改、私有部署；
+- **核心代码**：**MIT License**（`libs/core/`、`libs/langchain/langchain_classic/`、`libs/langchain_v1/`），可商用、修改、私有部署；
 - **与商业产品的关系**：
   - **LangSmith**（闭源 SaaS）：Tracing、Evaluation、Prompt Hub、Dataset Management，提供 free tier + 企业版；
   - **LangGraph Platform**（闭源 SaaS）：托管 Agent runtime、checkpoint、长任务；
@@ -121,7 +121,7 @@ langchain 是由 **Harrison Chase**（原 Robust Intelligence）于 2022-10 开�
 
 ## 七、嵌入模型适配（EMB）
 
-langchain 通过 `Embeddings` 抽象类（`libs/langchain/langchain_classic/embeddings/base.py`）暴露 `embed_documents(texts)` / `embed_query(text)` 接口，下游 50+ 实现：
+langchain 通过 `Embeddings` 抽象类（`libs/core/langchain_core/embeddings/embeddings.py`）暴露 `embed_documents(texts)` / `embed_query(text)` 接口，下游 50+ 实现：
 
 - **OpenAI 系列**：`OpenAIEmbeddings`（`text-embedding-3-small/large`，维度 1536 / 3072，max input 8191 token）、`AzureOpenAIEmbeddings`、`OpenAIEmbeddings` v3；
 - **Anthropic**：无原生 embedding（langchain 推荐用 Voyage AI）；
@@ -244,7 +244,7 @@ langchain 通过 `VectorStore` 抽象（`vectorstores/base.py`）暴露 `add_tex
   - `RunnableWithFallbacks`（降级链）；
   - `RunnableConfig`（configurable fields, callbacks, tags, metadata）；
 - **Agent**：
-  - **ReAct**：`create_react_agent`（`libs/langgraph/`，`libs/langchain/langchain_classic/agents/react/`）；
+  - **ReAct**：`create_react_agent`（`libs/langgraph/`，`libs/langchain/langchain_classic/agents/agent.py`）；
   - **Function Calling / Tool Use**：`create_openai_functions_agent` / `create_tool_calling_agent`；
   - **Structured Chat**：`create_structured_chat_agent`（多输入工具）；
   - **Self-Ask**：`create_self_ask_with_search_agent`；
@@ -291,16 +291,16 @@ langchain 通过 `VectorStore` 抽象（`vectorstores/base.py`）暴露 `add_tex
 ## 十三、源码学习路径
 
 - **必读模块**（按学习顺序）：
-  1. `libs/langchain-core/langchain_core/runnables/base.py`：Runnable 协议核心；
-  2. `libs/langchain-core/langchain_core/prompts/`：PromptTemplate / ChatPromptTemplate；
-  3. `libs/langchain-core/langchain_core/messages/`：HumanMessage / AIMessage / SystemMessage / ToolMessage；
-  4. `libs/langchain-core/langchain_core/vectorstores.py`：VectorStore 抽象；
-  5. `libs/langchain-core/langchain_core/retrievers.py`：BaseRetriever 抽象；
-  6. `libs/langchain-core/langchain_classic/chains/retrieval_qa.base.py`：RetrievalQA 链实现；
-  7. `libs/langchain-core/langchain_classic/agents/initialize.py`：Agent 初始化；
-  8. `libs/langchain-core/langchain_classic/agents/agent.py`：Agent Executor（ReAct 主循环）；
-  9. `libs/langchain-core/langchain_classic/document_loaders/base.py`：DocumentLoader 抽象；
-  10. `libs/langchain-core/langchain_classic/document_transformers/text_splitter.py`：TextSplitter；
+  1. `libs/core/langchain_core/runnables/base.py`：Runnable 协议核心；
+  2. `libs/core/langchain_core/prompts/`：PromptTemplate / ChatPromptTemplate；
+  3. `libs/core/langchain_core/messages/`：HumanMessage / AIMessage / SystemMessage / ToolMessage；
+  4. `libs/core/langchain_core/vectorstores.py`：VectorStore 抽象；
+  5. `libs/core/langchain_core/retrievers.py`：BaseRetriever 抽象；
+  6. `libs/langchain/langchain_classic/chains/retrieval_qa/base.py`：RetrievalQA 链实现；
+  7. `libs/langchain/langchain_classic/agents/initialize.py`：Agent 初始化；
+  8. `libs/langchain/langchain_classic/agents/agent.py`：Agent Executor（ReAct 主循环）；
+  9. `libs/langchain/langchain_classic/document_loaders/base.py`：DocumentLoader 抽象；
+  10. `libs/langchain/langchain_classic/document_transformers/text_splitter.py`：TextSplitter；
 - **LOC 与语言**：
   - `langchain-core` ~30k LoC；
   - `langchain`（classic + v1）~80k LoC；
@@ -313,7 +313,7 @@ langchain 通过 `VectorStore` 抽象（`vectorstores/base.py`）暴露 `add_tex
 
 - **入门（1-2 周）**：
   - 阅读官方 Quickstart（`libs/langchain/README.md`）；
-  - 学习 Runnable 协议 + LCEL 语法（`libs/langchain_core/runnables/base.py`）；
+  - 学习 Runnable 协议 + LCEL 语法（`libs/core/langchain_core/runnables/base.py`）；
   - 跑通第一个 RAG（VectorStoreRetriever + RetrievalQA + OpenAI）；
   - 了解 Embeddings + VectorStore + Splitter 三大组件；
 - **进阶（2-4 周）**：
@@ -360,3 +360,15 @@ langchain 通过 `VectorStore` 抽象（`vectorstores/base.py`）暴露 `add_tex
 - LCEL 概念：https://python.langchain.com/docs/concepts/lcel/
 - RAG 教学：https://docs.ragas.io/
 - LangChain 中文社区：https://www.langchain.com.cn/
+
+## 十七、与本项目关联
+
+langchain 作为 LLM 应用编排框架的事实标准，与本项目（engineering/ 轨道 C/C++ 自研存储与向量索引）在「Python 编排层 + C/C++ 内核」分层架构上具有直接参考价值：
+
+- **多模态存储抽象层**：langchain 的 `MultiVectorRetriever` / `MultiModalEmbeddings` 抽象对应本项目实现 `engineering/include/db/mm_storage.h`（多模态存储接口），参见 `engineering/src/db/storage/mm/mm_storage.c`（实现），本项目以 C 语言在更底层提供 KV / Vector / Timeseries / Document / Spatial / Graph / Yang 七种数据模型统一抽象，可作为 langchain 的 VectorStore 后端之一（类似 `langchain_postgres` / `langchain_milvus` 的对接模式）。
+- **向量索引 HNSW/PQ/SQ 三种量化路径**：langchain 主要靠 FAISS / HNSWLib 包装实现 ANN 检索；本项目则自研 `engineering/src/db/index/vector_index/hnsw_pq/hnsw_pq.c`（HNSW + 乘积量化）与 `engineering/src/db/index/vector_index/hnsw_sq/hnsw_sq.c`（HNSW + 标量量化），可对照 langchain `VectorStore.similarity_search` 与 `as_retriever(search_kwargs={"k": 10})` 接口设计来理解生产级 HNSW 行为；IVF 倒排链实现见 `engineering/include/db/index/vector_index/ivf/inverted_lists.h`。
+- **向量库后端选型矩阵**：langchain 适配 50+ 向量库，本项目 wiki 在 `docs/db-wiki/vector/` 已系统梳理 Chroma / Milvus / FAISS / LanceDB / Qdrant 五种向量库的工程视角（`docs/db-wiki/vector/chroma.md`、`docs/db-wiki/vector/milvus.md`、`docs/db-wiki/vector/faiss.md`、`docs/db-wiki/vector/lancedb.md`、`docs/db-wiki/vector/qdrant.md`），可与 langchain VectorStore 抽象选型决策互补。
+- **RAG 文档解析与切分**：langchain 的 `UnstructuredPDFLoader` / `RecursiveCharacterTextSplitter` 对应本项目的多模态 RAG 应用层（`engineering/apps/multimodal_rag/`，含 `engineering/apps/multimodal_rag/include/mmrag/hnsw_persist.h`），本项目以 C/C++ 实现端到端 RAG 流水线，可与 langchain Python 端做性能 / 部署对比。
+- **量化与字典组件**：langchain 通过 OpenAI / Cohere / HuggingFace 等远程 Embedder 抽象降低本地依赖；本项目则在 `engineering/src/algo-prod/quantization/`（PQ、LvQ、`adaptive_quantization.c`）与 `engineering/src/algo-prod/dict/`（结巴分词 `dict_cut.c` / `dict_hmm.c`）自研底层组件，可类比 langchain 的 `SemanticChunker` 与多语言 Embeddings 设计思路。
+- **GUC 配置系统**：langchain 通过环境变量 + `.env` 文件管理 LLM API Key；本项目实现 PostgreSQL 风格的 GUC（Grand Unified Configuration）系统，见 `engineering/src/db/core/guc.c` 与 `engineering/include/db/core/guc.h`，设计理念类似但更结构化（`shared_buffers` / `work_mem` 等运行时参数统一管理）。
+- **学习建议**：阅读 langchain 源码重点理解「抽象边界」设计（哪些下沉到核心库、哪些交给 provider 包），与本项目 `engineering/include/db/` 的接口分层（catalog / storage / mm_storage / vector_index）做对比设计，可深化对生产级系统接口设计的理解。
