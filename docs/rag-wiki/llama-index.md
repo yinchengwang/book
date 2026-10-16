@@ -409,3 +409,16 @@ llama-index 通过 `BasePydanticVectorStore` 抽象（`llama-index-core/vector_s
 - Workflows 概念：https://docs.llamaindex.ai/en/stable/module_conguides/workflow/
 - RAG 教学：https://docs.ragas.io/
 - LlamaIndex 中文社区：https://www.llamaindex.ai/
+
+## 十七、与本项目关联
+
+LlamaIndex 作为「数据框架 + Indexing API + LlamaParse + LlamaCloud」RAG 数据底座，与本项目（engineering/ 轨道 C/C++ 自研存储与向量索引）在「数据接入 + Index 抽象 + 倒排检索 + 工作流编排」四个维度具有直接参考价值：
+
+- **Index 抽象分层**：LlamaIndex 的 `VectorStoreIndex` / `ListIndex` / `KeywordTableIndex` / `TreeIndex` / `KnowledgeGraphIndex` 抽象与本项目 `engineering/include/db/index/vector_index/` 的多层索引抽象（IVF 倒排链 `inverted_lists.h`、HNSW 量化 `hnsw_pq.h` / `hnsw_sq.h`）设计理念一致：把不同检索路径抽象为可插拔的索引类型。本项目在 `engineering/src/db/index/vector_index/` 提供了 C 端的 IVF / HNSW-PQ / HNSW-SQ 实现，可对照 LlamaIndex 的索引抽象理解生产级 ANN 索引设计。
+- **LlamaParse 文档解析**：LlamaParse 是 LlamaIndex 的商业化文档解析服务（OCR + 表格 + 公式抽取），本项目多模态 RAG 应用层（`engineering/apps/multimodal_rag/`）通过自定义 parser 支持 PDF / 图像 / 视频摄取，可在「高质量 PDF 解析」方向对照 LlamaParse 的商业化实现。
+- **工作流（Workflows）编排**：LlamaIndex 2.x 引入 `Workflow` 事件驱动框架（`@step` decorator），与 LangGraph 的状态机互补。本项目在 `engineering/src/db/core/` 与 `engineering/src/db/executor/` 提供底层执行器实现，可在「事件驱动 vs 状态机」编排范式上提供 C 端参照。
+- **向量库后端选型**：LlamaIndex 适配 50+ 向量库后端；本项目 wiki 在 `docs/db-wiki/vector/` 已系统梳理 Chroma / Milvus / FAISS / LanceDB / Qdrant 五种向量库的工程视角（`docs/db-wiki/vector/chroma.md`、`docs/db-wiki/vector/milvus.md`、`docs/db-wiki/vector/faiss.md`、`docs/db-wiki/vector/lancedb.md`、`docs/db-wiki/vector/qdrant.md`），可与 LlamaIndex VectorStore 抽象选型互补。
+- **GraphRAG 与知识图谱**：LlamaIndex 通过 `KnowledgeGraphIndex` 集成 Neo4j / NebulaGraph / TigerGraph；本项目则在 `engineering/src/db/storage/graph/` 提供原生图存储能力，可在「图索引 + 向量召回」的混合检索方向对照学习。
+- **GUC 配置系统**：LlamaIndex 通过 ServiceContext + Settings 管理 LLM / Embedding / NodeParser；本项目实现 PostgreSQL 风格的 GUC 配置（`engineering/src/db/core/guc.c` 与 `engineering/include/db/core/guc.h`），可在「运行时配置统一管理」理念上提供底层参考。
+- **量化与字典组件**：LlamaIndex 通过 OpenAI / Cohere / HuggingFace Embeddings 抽象降低本地依赖；本项目则在 `engineering/src/algo-prod/quantization/`（PQ / LvQ / `adaptive_quantization.c`）与 `engineering/src/algo-prod/dict/`（结巴分词 `dict_cut.c` / `dict_hmm.c`）自研底层组件，可类比 LlamaIndex 的 `SemanticSplitterNodeParser` 与多语言 Embeddings 设计思路。
+- **学习建议**：阅读 LlamaIndex 源码重点理解「Index 抽象边界」与「Node 节点关系图」，与本项目 `engineering/include/db/index/vector_index/` 的接口分层做对比设计，可深化对 RAG 数据框架的理解。
