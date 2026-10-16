@@ -333,7 +333,7 @@ qanything 通过 `connector/database/` 暴露抽象，下游多个后端：
   5. `qanything_kernel/core/retriever/elasticsearchstore.py`：Elasticsearch Retriever；
   6. `qanything_kernel/core/retriever/parent_retriever.py`：Parent Retriever；
   7. `qanything_kernel/connector/database/milvus/`：Milvus Connector；
-  8. `qanything_kernel/connector/database/elasticsearch/`：Elasticsearch Connector（社区）；
+  8. `qanything_kernel/core/retriever/elasticsearchstore.py`：Elasticsearch Retriever（注意：`connector/database/` 目录下并无 `elasticsearch/` 子目录，仅有 `faiss/` / `milvus/` / `mysql/`；Elasticsearch 由 `core/retriever/` 路径接入）；
   9. `qanything_kernel/connector/database/faiss/`：FAISS Connector；
   10. `qanything_kernel/connector/database/mysql/`：MySQL Connector；
   11. `qanything_kernel/connector/embedding/`：Embedding Connector；
@@ -419,3 +419,16 @@ qanything 通过 `connector/database/` 暴露抽象，下游多个后端：
 - 博客：网易有道 AI 博客；
 - 微信群 / QQ 群 / Discord；
 - 中文教程：CSDN / 知乎 / Bilibili / YouTube 中文频道
+
+## 十七、与本项目关联
+
+QAnything 作为「网易有道出品 + RAG + PaddleOCR + BGE-Reranker + Milvus + 国产 LLM」的中文 RAG 框架，与本项目（engineering/ 轨道 C/C++ 自研存储与向量索引）在「多模态 Parser + 向量索引 + 元数据存储 + 倒排检索」四个维度高度互补：
+
+- **多模态 OCR 与文档解析**：QAnything 通过 PaddleOCR 完成中文 PDF / 图像文字抽取；本项目多模态 RAG 应用层（`engineering/apps/multimodal_rag/`）同样支持 PDF / 图像 / 视频多模态摄取，可对照 QAnything 的 OCR + Chunking + Embedding 三段流水线设计（`qanything_kernel/connector/database/`）做工程化对比。
+- **Milvus / FAISS 向量后端**：QAnything 默认走 Milvus（`qanything_kernel/connector/database/milvus/`），并支持 FAISS（`qanything_kernel/connector/database/faiss/`）作为轻量备选。本项目 wiki 在 `docs/db-wiki/vector/` 已系统梳理 Milvus 与 FAISS 的工程视角（`docs/db-wiki/vector/milvus.md`、`docs/db-wiki/vector/faiss.md`），并自研 HNSW + PQ 量化实现（`engineering/src/db/index/vector_index/hnsw_pq/hnsw_pq.c`），可在「自研 vs 集成 Milvus」决策上提供参考。
+- **BGE-Reranker 重排**：QAnything 默认使用 BGE-Reranker 做中文重排，本项目可通过外部嵌入模型（`engineering/apps/multimodal_rag/` 配置）与自研 HNSW 索引配合，重排链路可参考 QAnything 的 `core/retriever/elasticsearchstore.py` 设计模式（虽然 Elasticsearch 在 QAnything 中是可选后端而非默认）。
+- **MySQL 元数据存储**：QAnything 用 MySQL（`qanything_kernel/connector/database/mysql/`）存储 ingestion 元数据、用户信息、评分。本项目实现 PostgreSQL 风格的 Catalog 模块（`engineering/include/db/catalog.h`、`engineering/src/db/storage/catalog/`），提供 OID 分配、表/列/索引元数据持久化，可与 QAnything 的 MySQL 元数据设计对照学习。
+- **冷热分层与多模态存储**：QAnything 通过 MySQL + Milvus 拆分管线元数据与向量；本项目则实现多模态存储统一抽象（`engineering/include/db/mm_storage.h`、`engineering/src/db/storage/mm/mm_storage.c`），把 KV / Vector / Timeseries / Document / Spatial / Graph / Yang 七种数据模型统一管理，比 QAnything 的「单一 MySQL 元数据」更通用。
+- **GUC 配置系统**：QAnything 通过 FastAPI Settings（pydantic-settings）+ 环境变量管理 LLM / Embedding / Milvus 连接；本项目实现 PostgreSQL 风格的 GUC 配置（`engineering/src/db/core/guc.c` 与 `engineering/include/db/core/guc.h`），支持 `shared_buffers` / `work_mem` / `max_connections` 等运行时参数化。
+- **量化与字典组件**：QAnything 通过 BGE Embedding + PaddleOCR 完成文本向量化与 OCR；底层算法层面，本项目在 `engineering/src/algo-prod/quantization/`（PQ / LvQ / `adaptive_quantization.c`）与 `engineering/src/algo-prod/dict/`（结巴分词 `dict_cut.c` / `dict_hmm.c`）自研底层组件，可在「向量量化压缩」与「中文分词」方向对照 QAnything 的 BGE 系列模型选择。
+- **学习建议**：阅读 QAnything 源码重点关注「Milvus + BGE + PaddleOCR 整合方案」与「Ingestion → Retrieval 流水线抽象」，对照本项目 `engineering/apps/multimodal_rag/` 应用层与 `engineering/src/db/index/vector_index/` 内核层，加深对端到端 RAG 系统的理解。
