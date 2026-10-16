@@ -325,3 +325,16 @@ cognita 通过 `VectorDB` 抽象（`backend/modules/vector_db/`）暴露接口�
 - 博客：https://www.truefoundry.com/blog
 - Tutorial：https://docs.truefoundry.com/cognita/getting-started
 - 中文社区：https://docs.truefoundry.com/cognita
+
+## 十七、与本项目关联
+
+cognita 作为「TrueFoundry 出品 + 模块化 + 生产级 + Ray Serve + 多模态 Parser + 多种 Vector DB」RAG 框架，与本项目（engineering/ 轨道 C/C++ 自研存储与向量索引）在「模块化抽象 + Ray 部署 + 多 Vector DB 切换」三个维度具有直接参考价值：
+
+- **模块化 Component 抽象**：cognita 通过 `backend/modules/` 把 QueryController / Parser / VectorDB / MetadataStore / ModelGateway 拆为可插拔组件，与本项目 `engineering/include/db/` 模块化接口设计思路一致——本项目在 `engineering/src/db/storage/` 提供 `vector/`、`graph/`、`kv/`、`ts/`、`document/` 等模块化目录实现，与 cognita 的「模块可替换」设计理念一致。
+- **Ray Serve + FastAPI 部署**：cognita 默认走 Ray Serve 部署，与本项目在 `engineering/src/db/distributed/` 实现分布式协调 + 多节点执行能力（Phase 9 分布式演进）形成对照；本项目通过 `engineering/src/db/core/`（`raft.h/c`、`coordinator.h/c`、`dist_txn.h/c`）提供类 Ray Actor 的分布式执行原语。
+- **多 Vector DB 切换**：cognita 通过 VectorDB 抽象支持 Qdrant / Milvus / Weaviate / MongoDB / SingleStore / LanceDB；本项目 wiki 在 `docs/db-wiki/vector/` 已系统梳理 Chroma / Milvus / FAISS / LanceDB / Qdrant 五种向量库的工程视角（`docs/db-wiki/vector/chroma.md`、`docs/db-wiki/vector/milvus.md`、`docs/db-wiki/vector/faiss.md`、`docs/db-wiki/vector/lancedb.md`、`docs/db-wiki/vector/qdrant.md`），可与 cognita 选型互补。
+- **多模态 Parser 抽象**：cognita 通过 Parser 抽象支持 UnstructuredIO / WebParser / AudioParser / VideoParser / MultiModalParser；本项目多模态 RAG 应用层（`engineering/apps/multimodal_rag/`）同样支持 PDF / 图像 / 视频多模态摄取，可在「多模态解析统一抽象」方向对照学习。
+- **Metadata Store 持久化**：cognita 通过 Metadata Store 抽象支持 MongoDB / Postgres / MySQL；本项目实现 PostgreSQL 风格的 Catalog 模块（`engineering/include/db/catalog.h`、`engineering/src/db/storage/catalog/`），提供 OID 分配 + 表/列/索引元数据持久化，可在「元数据管理设计」上对照。
+- **GUC 配置系统**：cognita 通过环境变量 + YAML 管理 LLM / Embedding / VectorDB 连接；本项目实现 PostgreSQL 风格的 GUC 配置（`engineering/src/db/core/guc.c` 与 `engineering/include/db/core/guc.h`），支持 `shared_buffers` / `work_mem` / `wal_level` 等运行时参数化。
+- **量化与字典组件**：cognita 不自研量化与分词器；本项目则在 `engineering/src/algo-prod/quantization/`（PQ / LvQ / `adaptive_quantization.c`）与 `engineering/src/algo-prod/dict/`（结巴分词 `dict_cut.c` / `dict_hmm.c`）自研底层组件，可对照 cognita 通过 ModelGateway + Embedder 抽象的设计思路。
+- **学习建议**：阅读 cognita 源码重点关注「模块化 Component 接口边界」「Ray Actor 与 FastAPI 集成」，与本项目 `engineering/include/db/` 接口层 + `engineering/src/db/distributed/` 分布式层做对比设计，加深对生产级 RAG 系统的工程理解。
