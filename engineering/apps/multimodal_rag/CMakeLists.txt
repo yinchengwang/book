@@ -12,12 +12,9 @@ find_package(Threads REQUIRED)
 # cpp-httplib: header-only library, only need httplib.h for include
 set(HTTPLIB_HEADER "${ENGINEERING_SOURCE_DIR}/third_part/cpp-httplib/httplib.h")
 if(NOT EXISTS "${HTTPLIB_HEADER}")
-    message(WARNING
+    message(FATAL_ERROR
         "cpp-httplib header not found at ${HTTPLIB_HEADER}. "
-        "multimodal_rag_server will be SKIPPED. "
-        "To enable: download httplib.h into engineering/third_part/cpp-httplib/, "
-        "or adjust HTTPLIB_HEADER in apps/multimodal_rag/CMakeLists.txt.")
-    return()
+        "Adjust HTTPLIB_HEADER in apps/multimodal_rag/CMakeLists.txt.")
 endif()
 
 # httplib is header-only, no need to compile httplib.cpp

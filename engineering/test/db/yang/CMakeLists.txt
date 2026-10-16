@@ -44,11 +44,7 @@ set_target_properties(test_yang PROPERTIES
 # ========================================================================
 # CMocka 并发测试（rwlock 基础测试）
 # ========================================================================
-if(EXISTS "${CMAKE_SOURCE_DIR}/third_part/cmocka-1.1.7/CMakeLists.txt"
-   AND EXISTS "${CMAKE_SOURCE_DIR}/third_part/cmocka-1.1.7/src/cmocka.c"
-   AND EXISTS "${CMAKE_SOURCE_DIR}/third_part/cmocka-1.1.7/src/test.c"
-   AND EXISTS "${CMAKE_SOURCE_DIR}/third_part/cmocka-1.1.7/src/assert.c"
-   AND EXISTS "${CMAKE_SOURCE_DIR}/third_part/cmocka-1.1.7/src/exception.c")
+if(EXISTS "${CMAKE_SOURCE_DIR}/third_part/cmocka-1.1.7/CMakeLists.txt")
     # 直接编译 cmocka 测试，不引入完整 cmocka 库
     add_executable(test_yang_cmocka
         ${CMAKE_SOURCE_DIR}/third_part/cmocka-1.1.7/src/cmocka.c
