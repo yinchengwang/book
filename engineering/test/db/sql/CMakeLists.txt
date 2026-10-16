@@ -2,23 +2,22 @@
 
 include(${CMAKE_SOURCE_DIR}/cmake/ProjectUtils.cmake)
 
-# MemoryContext 测试
-add_executable(test_memctx test_memctx.cpp)
-target_include_directories(test_memctx PRIVATE ${GTEST_INCLUDE_DIRS})
-target_link_libraries(test_memctx sql_engine project_includes gtest gtest_main)
+# MemoryContext 测试（test_memctx 在下方 line 162 统一定义，遵循 db_sql_memctx 库依赖）
 
 # SQL 解析器 canonical 烟测（T12 / WS-F，替代归档的 test_sql_parser / sql_parser.cpp）
-add_executable(test_canonical_parser test_canonical_parser.cpp)
-target_include_directories(test_canonical_parser PRIVATE ${GTEST_INCLUDE_DIRS})
-target_link_libraries(test_canonical_parser sql_engine db_storage project_includes gtest gtest_main)
-set_target_properties(test_canonical_parser PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
-    FOLDER "Tests"
-)
-gtest_discover_tests(test_canonical_parser
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "CanonicalParser"
-)
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/test_canonical_parser.cpp")
+    add_executable(test_canonical_parser test_canonical_parser.cpp)
+    target_include_directories(test_canonical_parser PRIVATE ${GTEST_INCLUDE_DIRS})
+    target_link_libraries(test_canonical_parser sql_engine db_storage project_includes gtest gtest_main)
+    set_target_properties(test_canonical_parser PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+        FOLDER "Tests"
+    )
+    gtest_discover_tests(test_canonical_parser
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        PROPERTIES LABELS "CanonicalParser"
+    )
+endif()
 
 # SQL 执行器测试
 add_executable(test_sql_executor test_executor.cpp)

@@ -5,6 +5,9 @@
 
 cmake_minimum_required(VERSION 3.20)
 
+# GNUInstallDirs 提供 CMAKE_INSTALL_INCLUDEDIR / CMAKE_INSTALL_BINDIR 等默认路径
+include(GNUInstallDirs)
+
 project(AlgorithmPractice
     VERSION 1.0.0
     DESCRIPTION "Algorithm and Data Structure Practice Project (Engineering Track)"
@@ -108,8 +111,8 @@ find_package(Threads REQUIRED)
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/ProjectUtils.cmake")
 
 # 包含 cJSON（单文件 JSON 库）
-if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/../third_part/cjson/CMakeLists.txt")
-    add_subdirectory(../third_part/cjson ${CMAKE_BINARY_DIR}/third_part/cjson_build)
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/third_part/cjson/CMakeLists.txt")
+    add_subdirectory(third_part/cjson ${CMAKE_BINARY_DIR}/third_part/cjson_build)
 endif()
 
 # 包含 libmicrohttpd（HTTP 服务器库）
