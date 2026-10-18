@@ -102,7 +102,8 @@ protected:
         free(v);
     }
 
-    // 查找目录下所有 .wal 文件，返回总字节数（找不到文件返回 0）
+    // 查找目录下所有 .log 文件，返回总字节数（找不到文件返回 0）
+    // 注意：vector_wal.c 的 wal_make_path() 生成的 WAL 文件后缀是 .log
     static uint64_t total_wal_file_size(const std::string& dir) {
         uint64_t total = 0;
         if (!fs::exists(dir)) return 0;
@@ -110,7 +111,7 @@ protected:
             if (!entry.is_regular_file()) continue;
             const std::string name = entry.path().filename().string();
             if (name.size() >= 4 &&
-                name.compare(name.size() - 4, 4, ".wal") == 0) {
+                name.compare(name.size() - 4, 4, ".log") == 0) {
                 total += static_cast<uint64_t>(
                     fs::file_size(entry.path()));
             }
@@ -118,14 +119,14 @@ protected:
         return total;
     }
 
-    // 查找目录下是否存在 .wal 文件
+    // 查找目录下是否存在 .log 文件（WAL 实际后缀）
     static bool has_any_wal_file(const std::string& dir) {
         if (!fs::exists(dir)) return false;
         for (auto& entry : fs::recursive_directory_iterator(dir)) {
             if (!entry.is_regular_file()) continue;
             const std::string name = entry.path().filename().string();
             if (name.size() >= 4 &&
-                name.compare(name.size() - 4, 4, ".wal") == 0) {
+                name.compare(name.size() - 4, 4, ".log") == 0) {
                 return true;
             }
         }
@@ -160,7 +161,7 @@ TEST_F(VDBCheckpointTest, CheckpointTriggeredAfterNRecords) {
     EXPECT_EQ(1000, vector_api_size(api, "ckpt_trigger"));
 
     // 期望 2：WAL 文件应在 checkpoint 之后存在
-    //         （vector_api 集成 vector_wal 后，P1-B Task 4-6 会真正写入 .wal）
+    //         （vector_api 集成 vector_wal 后，P1-B Task 4-6 会真正写入 .log）
     //         当前阶段此断言必然 FAIL（红）。
     EXPECT_TRUE(has_any_wal_file(test_data_dir));
 }
@@ -220,7 +221,7 @@ TEST_F(VDBCheckpointTest, TruncateAfterCheckpoint) {
     ASSERT_EQ(VECTOR_API_OK, vector_api_save(api));
 
     // 期望：truncate 后 WAL 文件大小应小于头部大小（仅留 checkpoint 标记）
-    //  当前 vector_api 尚未集成 WAL → 无 .wal 文件 → size = 0
+    //  当前 vector_api 尚未集成 WAL → 无 .log 文件 → size = 0
     //  但即便有 WAL，checkpoint+truncate 后也应 < 原始大小
     uint64_t wal_size = total_wal_file_size(test_data_dir);
     EXPECT_GT(wal_size, 0u);          // 期望 WAL 存在
