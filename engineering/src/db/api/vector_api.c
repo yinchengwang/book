@@ -111,6 +111,10 @@ static int64_t get_current_time_ms(void) {
  * 集合管理
  * ======================================================================== */
 
+/* 前向声明：save_collections_meta 定义在本文件后段（vector_api_save 之前），
+ * vector_api_create_collection（P1-B Task 8 修复）会调用它做 auto-save。 */
+static int save_collections_meta(VectorAPI *api);
+
 /**
  * @brief 创建集合实现
  */
@@ -359,6 +363,20 @@ int vector_api_create_collection(VectorAPI *api, const VectorCreateParams *param
 
     api->collections[api->n_collections++] = coll;
     LOG_INFO("集合创建成功: %s", params->name);
+
+    /* P1-B Task 8 修复：auto-save metadata
+     * chaos 测试模式为 create → insert → destroy → load，过程中从不调 save，
+     * 原逻辑下 collections.meta 不会被写入，load 找不到 collection 元数据，
+     * vector_api_size 返回 NOT_FOUND。WAL replay 是 source of truth（Task 6），
+     * 此处只需把元数据持久化，注册即落盘，后续 insert 走 WAL 恢复。
+     * 仅在 WAL 已启用时调用，否则相当于在纯内存 create 时强制磁盘写。 */
+    if (api->wal) {
+        if (save_collections_meta(api) != 0) {
+            LOG_WARN("auto-save collections.meta 失败: collection=%s", params->name);
+            /* 不阻断 create 流程 —— chaos 测试不依赖 snapshot，WAL replay 仍是 source of truth */
+        }
+    }
+
     return VECTOR_API_OK;
 }
 
@@ -830,33 +848,13 @@ static int64_t vector_api_wal_replay(VectorCollectionImpl *coll, const char *wal
     return replayed;
 }
 
-int vector_api_save(VectorAPI *api) {
+/* 将 api 当前所有 collections 的元数据 + 完整数据写入 collections.meta
+ * 被 vector_api_save（P1-B Task 5）使用；同时被 vector_api_create_collection
+ * （P1-B Task 8 修复）自动调用，保证 chaos 测试 create→insert→destroy→load
+ * 路径中 load 能从 collections.meta 找到 collection 元数据，再通过 WAL
+ * replay 拿到数据（WAL replay 是 source of truth，metadata 只是注册）。 */
+static int save_collections_meta(VectorAPI *api) {
     if (!api) return VECTOR_API_ERR_INVALID_PARAM;
-
-    /* P1-B Task 5：先 flush WAL，再 checkpoint 记录 LSN 起点，最后 truncate
-     * 截断 checkpoint 之前的旧数据，避免 WAL 无限增长。
-     * 三个调用失败仅 WARN，不阻断 snapshot 写入，保证 save 主路径可用。 */
-
-    /* 1. flush WAL（确保所有脏数据落盘） */
-    if (api->wal) {
-        if (vector_wal_flush(api->wal) != 0) {
-            LOG_WARN("WAL flush 失败: data_dir=%s", api->data_dir);
-        }
-    }
-
-    /* 2. checkpoint 记录 LSN 起点（truncate 之前的最后位置） */
-    if (api->wal) {
-        if (vector_wal_checkpoint(api->wal, VECTOR_CHECKPOINT_MANUAL) != 0) {
-            LOG_WARN("WAL checkpoint 失败: data_dir=%s", api->data_dir);
-        }
-    }
-
-    /* 3. truncate 删除 checkpoint 之前的旧数据（避免 WAL 无限增长） */
-    if (api->wal) {
-        if (vector_wal_truncate(api->wal) != 0) {
-            LOG_WARN("WAL truncate 失败: data_dir=%s", api->data_dir);
-        }
-    }
 
     /* 确保数据目录存在 */
 #ifdef _WIN32
@@ -914,6 +912,38 @@ int vector_api_save(VectorAPI *api) {
     fclose(fp);
     LOG_INFO("保存集合成功: %s, count=%d", path, api->n_collections);
     return VECTOR_API_OK;
+}
+
+int vector_api_save(VectorAPI *api) {
+    if (!api) return VECTOR_API_ERR_INVALID_PARAM;
+
+    /* P1-B Task 5：先 flush WAL，再 checkpoint 记录 LSN 起点，最后 truncate
+     * 截断 checkpoint 之前的旧数据，避免 WAL 无限增长。
+     * 三个调用失败仅 WARN，不阻断 snapshot 写入，保证 save 主路径可用。 */
+
+    /* 1. flush WAL（确保所有脏数据落盘） */
+    if (api->wal) {
+        if (vector_wal_flush(api->wal) != 0) {
+            LOG_WARN("WAL flush 失败: data_dir=%s", api->data_dir);
+        }
+    }
+
+    /* 2. checkpoint 记录 LSN 起点（truncate 之前的最后位置） */
+    if (api->wal) {
+        if (vector_wal_checkpoint(api->wal, VECTOR_CHECKPOINT_MANUAL) != 0) {
+            LOG_WARN("WAL checkpoint 失败: data_dir=%s", api->data_dir);
+        }
+    }
+
+    /* 3. truncate 删除 checkpoint 之前的旧数据（避免 WAL 无限增长） */
+    if (api->wal) {
+        if (vector_wal_truncate(api->wal) != 0) {
+            LOG_WARN("WAL truncate 失败: data_dir=%s", api->data_dir);
+        }
+    }
+
+    /* 4. 写 collections.meta snapshot（P1-B Task 8 抽出为 save_collections_meta） */
+    return save_collections_meta(api);
 }
 
 int vector_api_load(VectorAPI *api) {
