@@ -107,6 +107,8 @@ vector_wal_t *vector_wal_create(const char *path, uint32_t segment_id) {
         free(wal);
         return NULL;
     }
+    /* P1-B Task 6 修复：fflush 立即落盘，避免 isolation 模式下后续 fread 读到空文件 */
+    fflush(wal->fp);
 
     wal->buffer_size = VECTOR_WAL_BUFFER_SIZE;
     wal->buffer_used = 0;

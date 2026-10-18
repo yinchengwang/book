@@ -61,3 +61,21 @@
 7. **Task 7**：实现 CheckpointManager 后台线程
 8. **Task 8**：跑 vdb_chaos 3 用例 + vdb_checkpoint 5 用例 + 回归 vdb_wal_recovery + vdb_e2e
 9. **Task 9**：收口 + 归档
+
+## 关键架构决策
+
+### 本地 replay helper 替代 `vector_wal_replay`
+
+Task 6 实施时发现 `vector_wal_replay`（`vector_persist.h:690-693`）签名要求 `vector_segment_t*`（HNSW 段对象），而 `vector_api.c` 使用自己的 `VectorCollectionImpl`（扁平 `ids[] + vectors[]` 数组），两者数据模型不兼容。简报假设的回调签名 `vector_api_wal_replay_callback(void *ctx, const vector_wal_op_t *op)` 实际不存在。
+
+**决策**：在 `vector_api.c` 中实现本地静态函数 `vector_api_wal_replay`，复用 `vector_wal.c:644-737` 的 record 解析格式（`VECTOR_WAL_HEADER_SIZE` 跳到 `last_checkpoint`、record header 17 字节、CRC32 校验），但目标改为 `VectorCollectionImpl`（线性查重 + `collection_expand` + `memcpy`）。
+
+**影响**：
+- 重复约 70 行 record 解析代码（已尽量复用 `vector_persist.h` 中的常量和枚举）
+- 重复本地实现 `wal_crc32`（原 `vector_wal.c:38-52` 是 `static`）
+- 顺手修复 `vector_wal.c` 原 replay 的 latent CRC 偏移 bug（Task 6 用 `data_size` 正确偏移读 stored_crc，原代码用 `data_size - 4` 读到 data 末尾 4 字节）
+- 未来重构 `vector_wal_replay` 接受通用 record 回调，可消除重复（技术债）
+
+### 测试 isolation 模式 fflush 修复
+
+Task 6 审查发现 `vector_wal_create`（`vector_wal.c:103-109`）写 header 后未调 `fflush`，导致 isolation 模式（单跑某个 gtest 用例）下，后续 `fread` 读到空文件。已在 `vector_wal.c:110` 插入 `fflush(wal->fp);` 修复。
