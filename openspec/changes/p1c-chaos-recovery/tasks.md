@@ -18,14 +18,14 @@
 
 ## Task 3：写 5 个 chaos_e2e 红测试
 
-- [ ] `engineering/test/db/integration/chaos_e2e_test.cpp`
+- [x] `engineering/test/db/integration/chaos_e2e_test.cpp`
   - `TEST_F(ChaosE2ETest, KillDuringCheckpoint)`
   - `TEST_F(ChaosE2ETest, KillDuringReplay)`
   - `TEST_F(ChaosE2ETest, PartialWriteRecovery)`
   - `TEST_F(ChaosE2ETest, ShortIntervalStress)`
   - `TEST_F(ChaosE2ETest, ConcurrentSaveCrash)`
-- [ ] `engineering/test/db/integration/CMakeLists.txt` 加 `chaos_e2e_test` target，链接 `vector_api` + `vector_persist`
-- [ ] 5/5 红测试（vector_api_create 暂未支持 interval_ms → 编译可能不通过 → 红色状态）
+- [x] `engineering/test/db/integration/CMakeLists.txt` 加 `chaos_e2e_test` target，链接 `vector_api` + `vector_persist`
+- [x] 5/5 红测试（vector_api_create_with_interval 未实现 → 编译失败 = TDD 红状态）
 
 ## Task 4：CheckpointManager 间隔参数化
 
