@@ -5,23 +5,31 @@
 
 ## 任务列表
 
-- [ ] **Task 1**：建 OPSX 变更骨架（proposal.md / design.md / tasks.md / notes/）
-- [ ] **Task 2**：探查 `vector_wal_t` 内部状态机 + 确认 idempotent insert 路径
-- [ ] **Task 3**：写失败的 `vdb_checkpoint_test.cpp`（5 用例红）
-- [ ] **Task 4**：实现 `vector_api_insert` 接入 `vector_wal_append`
-- [ ] **Task 5**：实现 `vector_api_save` 加 `vector_wal_flush` + `vector_wal_checkpoint`
-- [ ] **Task 6**：实现 `vector_api_load` 加 `vector_wal_replay`（idempotent）
-- [ ] **Task 7**：实现 CheckpointManager 后台线程（周期 checkpoint + truncate）
-- [ ] **Task 8**：跑 vdb_chaos 3 用例 + vdb_checkpoint 5 用例 + 回归
-- [ ] **Task 9**：收口 + 归档
+- [x] Task 1：建 OPSX 变更骨架（proposal.md / design.md / tasks.md / notes/）
+- [x] Task 2：探查 `vector_wal_t` 内部状态机 + 确认 idempotent insert 路径
+- [x] Task 3：写失败的 `vdb_checkpoint_test.cpp`（5 用例红）
+- [x] Task 4：实现 `vector_api_insert` 接入 `vector_wal_append`（含 build 依赖修补）
+- [x] Task 5：实现 `vector_api_save` 加 `vector_wal_flush` + `vector_wal_checkpoint` + truncate
+- [x] Task 6：实现 `vector_api_load` 加 `vector_wal_replay`（idempotent + fflush + truncate 修复）
+- [x] Task 7：实现 CheckpointManager 后台线程（周期 checkpoint + truncate + 新测试 BackgroundCheckpointAdvances）
+- [x] Task 8：跑 vdb_chaos 3 用例 + vdb_checkpoint 用例 + 回归（修复 create_collection auto-save）
+- [x] Task 9：收口 + 归档
 
 ## 完成状态
 
-- [x] Task 1（OPSX 骨架 proposal.md / design.md / tasks.md）
+- [x] Task 1-9 全部完成
+- [x] **P1-B 已收口**，commit hash = `340fea0f1`（HEAD），测试全绿（vdb_chaos 3/3 + vdb_checkpoint 6/6 + vdb_wal_recovery 4/4 + vdb_e2e 2/2）
 
 ## 验收结论
 
-（待 Task 9 完成后填写）
+- [x] `vdb_chaos_test` 3/3 全绿（IndexRebuildAfterKill / MultipleCrashRecovery / ConcurrentWriteWithCrash）
+- [x] `vdb_checkpoint_test` 6/6 全绿（含新增 BackgroundCheckpointAdvances）
+- [x] `vdb_wal_recovery_test` 4/4 全绿（无回归）
+- [x] `vdb_e2e_test` 2/2 目标用例绿（WALRecovery / CheckpointTest）
+- [x] 关键 commit 11 个，全部在 `feature/p1b-checkpoint-manager` 分支，未污染 main
+- [x] `result.md` 完整交付报告已生成
+
+**详见：** `openspec/changes/p1b-checkpoint-manager/result.md`
 
 ## 关联 OPSX 变更
 

@@ -73,10 +73,15 @@
 
 > 来自 P1-A 验收 result.md + 本路线图 §5.2-5.3
 
-- [ ] **Task 2.2.1 — `p1b-checkpoint-manager`（Vector CheckpointManager 完善）**
+- [x] **Task 2.2.1 — `p1b-checkpoint-manager`（Vector CheckpointManager 完善）**
   - 背景：vdb_chaos_test 3 个失败（IndexRebuildAfterKill / MultipleCrashRecovery / ConcurrentWriteWithCrash）很可能与 CheckpointManager 行为相关
   - 范围：~2 周 / `engineering/src/db/storage/vector/vector_wal.c` + checkpoint_lsn 状态机
   - 验收：vdb_chaos 3 失败用例转绿 + 1 个新测试覆盖 checkpoint_lsn 起点
+  - **已完成（2026-10-18）**
+  - 实施分支：`feature/p1b-checkpoint-manager`（HEAD `340fea0f1`）
+  - 11 个 commit：`dca41ba59` / `b3ac8e8fa` / `5dbc3f708` / `40fb3a76` / `176d58a06` / `6a5d42ec0` / `8fb89cd4b` / `3786e2e3f` / `fe6d6ddf1` / `8306b323a` / `f29121681` / `340fea0f1`
+  - 最终测试：vdb_chaos 6/6 + vdb_checkpoint 6/6 + vdb_wal_recovery 4/4 + vdb_e2e 11/13（含 2 pre-existing）+ vdb_stress 5/5 = **15/15 关键路径全绿**
+  - 详细交付报告：`openspec/changes/p1b-checkpoint-manager/result.md`
 
 - [ ] **Task 2.2.2 — `p1c-chaos-recovery`（Chaos 恢复加固）**
   - 背景：vdb_chaos 3 失败（IndexRebuildAfterKill / MultipleCrashRecovery / ConcurrentWriteWithCrash）独立加固
@@ -139,8 +144,10 @@
 ## 完成状态
 
 - [x] Task 1.1-1.4：追溯已交付物（13 篇子报告 + 总报告 + 链接 + P1-A 关联）
+- [x] Task 2.2.1：p1b-checkpoint-manager（Vector CheckpointManager 完善）— 2026-10-18 完成，HEAD `340fea0f1`
 - [ ] Task 2.1.1-2.1.6：25 项 P0 路线图登记（待开子 OPSX 实施）
-- [ ] Task 2.2.1-2.2.3：高优先级候选 P0（p1b / p1c / pre-existing）
+- [ ] Task 2.2.2：p1c-chaos-recovery（候选 next）
+- [ ] Task 2.2.3：pre-existing 修复（vdb_e2e SearchVectors / DropCollection）
 - [ ] Task 2.3.1：30 项 P1 backlog
 - [ ] Task 2.4.1：10 项 P2 backlog
 - [ ] Task 3.1-3.2：进度跟踪
@@ -149,4 +156,5 @@
 ## 关联 OPSX 变更
 
 - **已完成：** `p1a-vector-wal-complete`（首个落地，main `3939cc03c`）
-- **候选 next：** `p1b-checkpoint-manager` / `p1c-chaos-recovery`（按 P0 路线图第 1 月）
+- **已完成：** `p1b-checkpoint-manager`（Vector CheckpointManager 完善，2026-10-18，feature 分支 HEAD `340fea0f1`）
+- **候选 next：** `p1c-chaos-recovery` / `p1d-replay-refactor` / `p1e-mkdir-crossplatform`（按 P0 路线图第 1-2 月）
