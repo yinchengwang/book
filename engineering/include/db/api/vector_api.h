@@ -122,6 +122,32 @@ typedef struct VectorSearchResult_s {
 VectorAPI *vector_api_create(const char *data_dir);
 
 /**
+ * @brief 创建向量 API 实例（带 checkpoint 周期参数，P1-C Task 4）
+ *
+ * 用于 chaos 测试场景：传入短 interval_ms（如 100ms）让后台 CheckpointManager
+ * 频繁触发 flush + checkpoint + truncate，从而在测试中能撞上各运行窗口。
+ *
+ * @param data_dir 数据目录路径
+ * @param checkpoint_interval_ms CheckpointManager 周期（毫秒），0 = 禁用后台 checkpoint
+ * @return API 句柄，失败返回 NULL
+ */
+VectorAPI *vector_api_create_with_interval(const char *data_dir,
+                                            uint32_t checkpoint_interval_ms);
+
+/**
+ * @brief 运行时调整 checkpoint 周期（线程安全，P1-C Task 4）
+ *
+ * 内部实现：lock(mgr_lock) → stop 旧 mgr → destroy 旧 mgr →
+ *          create 新 mgr(interval_ms) → start 新 mgr → unlock。
+ * 与 insert / save / search 不竞争（操作 coll->lock 与 wal->mutex）。
+ *
+ * @param api API 句柄
+ * @param interval_ms 新周期（毫秒），0 = 禁用后台 checkpoint
+ * @return 0 成功，-1 失败
+ */
+int vector_api_set_checkpoint_interval(VectorAPI *api, uint32_t interval_ms);
+
+/**
  * @brief 销毁向量 API 实例
  * @param api API 句柄
  */

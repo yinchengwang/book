@@ -10,6 +10,7 @@
 #include <db/storage/vector/checkpoint_manager.h>  /* P1-B Task 7 */
 #include <db/mmdb_lock.h>
 #include <db/log.h>
+#include <pthread.h>  /* P1-C Task 4：mgr_lock 保护 CheckpointManager 热切换 */
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -62,6 +63,9 @@ struct VectorAPI_s {
     char error_msg[256];         /**< 错误信息 */
     vector_wal_t *wal;           /**< P1-B Task 4：WAL 句柄（所有集合共享 segment 0） */
     CheckpointManager *checkpoint_mgr; /**< P1-B Task 7：后台 CheckpointManager */
+    /* P1-C Task 4：checkpoint 周期可调（setter / 构造函数参数化） */
+    uint32_t checkpoint_interval_ms;   /**< 当前 checkpoint 周期；0 表示禁用 mgr */
+    pthread_mutex_t mgr_lock;          /**< 保护 checkpoint_mgr / interval_ms 热切换 */
 };
 
 /** 搜索结果内部结构 */
@@ -246,7 +250,16 @@ static int collection_expand(VectorCollectionImpl *coll) {
  * API 生命周期
  * ======================================================================== */
 
-VectorAPI *vector_api_create(const char *data_dir) {
+/**
+ * @brief 内部创建函数（P1-C Task 4 抽出：把 interval_ms 透传给 CheckpointManager）
+ *
+ * 与原 vector_api_create 主体一致，差异：
+ *   - 字面量 5000 → 参数 interval_ms
+ *   - interval_ms=0 时不创建/启动后台 CheckpointManager（仅手动 save 路径）
+ *   - 初始化 pthread_mutex_t mgr_lock（供 setter 线程安全使用）
+ */
+static VectorAPI *vector_api_create_internal(const char *data_dir,
+                                              uint32_t interval_ms) {
     VectorAPI *api = (VectorAPI *)calloc(1, sizeof(*api));
     if (!api) return NULL;
 
@@ -266,6 +279,14 @@ VectorAPI *vector_api_create(const char *data_dir) {
     /* 初始化向量查询执行器 */
     vector_query_init();
 
+    /* 初始化 setter 互斥锁（必须在 checkpoint_mgr 创建前完成） */
+    if (pthread_mutex_init(&api->mgr_lock, NULL) != 0) {
+        LOG_ERROR("VectorAPI: mgr_lock 初始化失败");
+        free(api->collections);
+        free(api);
+        return NULL;
+    }
+
     /* P1-B Task 4：打开/创建 WAL（wal_make_path 会拼出 {data_dir}/vector_wal_0.log）。
      * vector_wal_open 内部失败时会自动 fallthrough 到 vector_wal_create，所以
      * 无需显式 try-create。失败不致命，仅记 WARN —— API 仍可运行。 */
@@ -274,11 +295,11 @@ VectorAPI *vector_api_create(const char *data_dir) {
         LOG_WARN("WAL 打开失败，vector_api 将在无 WAL 模式下运行: data_dir=%s", api->data_dir);
     }
 
-    /* P1-B Task 7：启动后台 CheckpointManager（5 秒周期）。
-     * 关键：start 必须在 vector_query_init 之后、API 返回前，否则 collection
-     * insert 可能在 mgr 还没起来前就丢失首次 checkpoint。 */
-    if (api->wal) {
-        api->checkpoint_mgr = checkpoint_manager_create(api->wal, 5000);
+    /* P1-B Task 7 + P1-C Task 4：启动后台 CheckpointManager。
+     * interval_ms=0 语义：禁用后台 mgr（chaos 测试规避此路径以保 mgr 始终运行）。 */
+    api->checkpoint_interval_ms = interval_ms;
+    if (api->wal && interval_ms > 0) {
+        api->checkpoint_mgr = checkpoint_manager_create(api->wal, interval_ms);
         if (api->checkpoint_mgr) {
             if (checkpoint_manager_start(api->checkpoint_mgr) != 0) {
                 LOG_WARN("CheckpointManager 启动失败");
@@ -290,12 +311,74 @@ VectorAPI *vector_api_create(const char *data_dir) {
         }
     }
 
-    LOG_INFO("VectorAPI 创建成功: data_dir=%s", api->data_dir);
+    LOG_INFO("VectorAPI 创建成功: data_dir=%s, interval_ms=%u",
+             api->data_dir, api->checkpoint_interval_ms);
     return api;
+}
+
+/**
+ * @brief P1-B 默认委托（P1-C Task 4 后保持行为完全不变：5s 周期） */
+VectorAPI *vector_api_create(const char *data_dir) {
+    return vector_api_create_internal(data_dir, 5000);
+}
+
+/**
+ * @brief P1-C Task 4：带 checkpoint 周期的创建入口（chaos 测试用） */
+VectorAPI *vector_api_create_with_interval(const char *data_dir,
+                                            uint32_t checkpoint_interval_ms) {
+    return vector_api_create_internal(data_dir, checkpoint_interval_ms);
+}
+
+/**
+ * @brief P1-C Task 4：运行时调整 checkpoint 周期（线程安全）
+ *
+ * 原子过渡：lock(mgr_lock) → stop 旧 mgr → destroy 旧 mgr →
+ *          create 新 mgr(interval_ms) → start 新 mgr → unlock。
+ * 任一步失败回滚（destroy 半创建的 mgr）+ 返回 -1。
+ * 与 insert / save / search 不持同一把锁，故不阻塞业务路径。
+ */
+int vector_api_set_checkpoint_interval(VectorAPI *api, uint32_t interval_ms) {
+    if (!api) return -1;
+
+    pthread_mutex_lock(&api->mgr_lock);
+
+    /* 停掉旧 mgr（若存在） */
+    if (api->checkpoint_mgr) {
+        checkpoint_manager_stop(api->checkpoint_mgr);
+        checkpoint_manager_destroy(api->checkpoint_mgr);
+        api->checkpoint_mgr = NULL;
+    }
+
+    /* 按新 interval 创建 mgr（仅当 interval_ms>0 且 WAL 有效） */
+    if (interval_ms > 0 && api->wal) {
+        api->checkpoint_mgr = checkpoint_manager_create(api->wal, interval_ms);
+        if (!api->checkpoint_mgr) {
+            LOG_WARN("set_checkpoint_interval: mgr 创建失败, interval=%u", interval_ms);
+            api->checkpoint_interval_ms = 0;
+            pthread_mutex_unlock(&api->mgr_lock);
+            return -1;
+        }
+        if (checkpoint_manager_start(api->checkpoint_mgr) != 0) {
+            LOG_WARN("set_checkpoint_interval: mgr 启动失败, interval=%u", interval_ms);
+            checkpoint_manager_destroy(api->checkpoint_mgr);
+            api->checkpoint_mgr = NULL;
+            api->checkpoint_interval_ms = 0;
+            pthread_mutex_unlock(&api->mgr_lock);
+            return -1;
+        }
+    }
+
+    api->checkpoint_interval_ms = interval_ms;
+    pthread_mutex_unlock(&api->mgr_lock);
+    return 0;
 }
 
 void vector_api_destroy(VectorAPI *api) {
     if (!api) return;
+
+    /* P1-C Task 4：先持 mgr_lock，再停/销毁 mgr，避免与 setter 并发
+     * （destroy 期间若 setter 也在 stop+create，可能拿到半销毁的 mgr）。 */
+    pthread_mutex_lock(&api->mgr_lock);
 
     /* P1-B Task 7：先停后台 CheckpointManager（避免与 collection 释放竞争，
      * 且 mgr 持有 wal 指针，必须在 wal close 前 stop）。 */
@@ -304,6 +387,9 @@ void vector_api_destroy(VectorAPI *api) {
         checkpoint_manager_destroy(api->checkpoint_mgr);
         api->checkpoint_mgr = NULL;
     }
+
+    pthread_mutex_unlock(&api->mgr_lock);
+    pthread_mutex_destroy(&api->mgr_lock);
 
     /* P1-B Task 4：关闭 WAL（必须在 collection 销毁前，避免引用悬空） */
     if (api->wal) {
