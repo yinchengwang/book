@@ -37,15 +37,16 @@
 
 ## Task 5：实现 chaos_e2e 5 + vdb_chaos 扩展
 
-- [ ] chaos_e2e 5 用例全绿
+- [x] chaos_e2e 5 用例全绿
   - `KillDuringCheckpoint`：循环 10 次取最坏 + interval_ms=100
   - `KillDuringReplay`：replay 10w 记录时立即 destroy
   - `PartialWriteRecovery`：ftruncate 末尾 16 字节后 reload
   - `ShortIntervalStress`：200 次 insert+kill 循环
   - `ConcurrentSaveCrash`：4 写 + 1 save + 1 destroyer 200ms 周期
-- [ ] vdb_chaos 加 2-3 个短 interval chaos 子用例
+- [x] vdb_chaos 加 2-3 个短 interval chaos 子用例
   - `ShortIntervalMultipleKillRecovery`（100ms × 5 轮 crash-recover）
   - `ShortIntervalConcurrentCrashSave`（100ms + 4 写 + 1 save + 周期 destroy）
+  - `IntervalChangeStress`（运行时 setter 改变 interval_ms）
 
 ## Task 6：跑 chaos 全套 + 回归 + 收口 + 合并 main
 
