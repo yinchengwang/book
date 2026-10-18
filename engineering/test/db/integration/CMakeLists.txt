@@ -62,6 +62,22 @@ target_link_libraries(vdb_checkpoint_test
         Threads::Threads
 )
 
+# P1-C: chaos_e2e 端到端混沌测试（TDD 红阶段）
+# 5 用例：KillDuringCheckpoint / KillDuringReplay / PartialWriteRecovery /
+#        ShortIntervalStress / ConcurrentSaveCrash
+# 依赖 vector_persist（partial write 测试直接 fopen WAL 文件）+ vector_api
+# 同时使用项目统一线程库（pthread/SRWLOCK 抽象）
+add_executable(chaos_e2e_test chaos_e2e_test.cpp)
+target_link_libraries(chaos_e2e_test
+    PRIVATE
+        vector_api
+        vector_persist   # P1-C: PartialWriteRecovery 直接操作 vector_wal_0.log
+        db_core
+        project_includes
+        GTest::gtest_main
+        Threads::Threads
+)
+
 # 向量操作测试
 # add_executable(test_vector_ops_integration vector_ops_test.cpp)
 # target_link_libraries(test_vector_ops_integration
