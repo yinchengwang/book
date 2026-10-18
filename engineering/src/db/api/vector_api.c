@@ -636,6 +636,174 @@ int32_t vector_api_size(VectorAPI *api, const char *collection) {
  * 持久化
  * ======================================================================== */
 
+/**
+ * @brief P1-B Task 6：从 WAL 文件 replay 到指定 collection（idempotent）
+ *
+ * 不使用 vector_wal_replay()，因为它要求 vector_segment_t，而本 API
+ * 用扁平的 ids[]/vectors[] 数据模型。复制 vector_wal.c:644-737 的 record
+ * 解析逻辑，目标改为 VectorCollectionImpl。
+ *
+ * @param coll 目标集合
+ * @param wal_path WAL 目录路径（与 vector_wal.c 的 wal_make_path 一致：
+ *                拼出 {wal_path}/vector_wal_{segment_id}.log）
+ * @return 重放成功插入或删除的 record 数（>=0）；< 0 表示错误
+ */
+static int64_t vector_api_wal_replay(VectorCollectionImpl *coll, const char *wal_path) {
+    if (!coll || !wal_path) return -1;
+
+    /* 生成完整 WAL 文件路径：{wal_path}/vector_wal_{segment_id}.log */
+    char path[256];
+    snprintf(path, sizeof(path), "%s/vector_wal_%u.log", wal_path,
+             (uint32_t)coll->wal_segment_id);
+
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        /* WAL 文件不存在不算错（首次启动场景） */
+        LOG_INFO("WAL 文件不存在，跳过 replay: %s", path);
+        return 0;
+    }
+
+    /* 读取头部 */
+    vector_wal_file_header_t header;
+    if (fread(&header, sizeof(header), 1, fp) != 1) {
+        LOG_ERROR("读取 WAL 头部失败: %s", path);
+        fclose(fp);
+        return -1;
+    }
+
+    if (header.magic != VECTOR_WAL_MAGIC) {
+        LOG_ERROR("WAL 魔数不匹配: 0x%X", header.magic);
+        fclose(fp);
+        return -1;
+    }
+
+    /* 跳到 checkpoint 位置（last_checkpoint 之前的 records 已被 snapshot 覆盖） */
+    if (header.last_checkpoint > VECTOR_WAL_HEADER_SIZE) {
+        fseek(fp, (long)header.last_checkpoint, SEEK_SET);
+    }
+    /* 否则 fread 已读完头部，位置恰好在 records 起点 */
+
+    /* 读取 records（按 vector_wal.c:686-732 格式）：
+     * [17-byte 头][data_size bytes 数据][4-byte CRC] */
+    uint8_t record[VECTOR_WAL_RECORD_HEADER_SIZE + 1024];
+    int64_t replayed = 0;
+    const uint32_t REC_HDR = VECTOR_WAL_RECORD_HEADER_SIZE;
+    const size_t DATA_BUF_MAX = sizeof(record) - REC_HDR;
+
+    while (fread(record, REC_HDR, 1, fp) == 1) {
+        uint8_t op = record[0];
+        uint32_t seg_id;
+        int32_t vec_id, dims;
+        uint32_t data_size;
+        memcpy(&seg_id, &record[1], 4);
+        memcpy(&vec_id, &record[5], 4);
+        memcpy(&dims, &record[9], 4);
+        memcpy(&data_size, &record[13], 4);
+
+        /* 读取数据部分 + 末尾 4 字节 CRC */
+        if (data_size > DATA_BUF_MAX - 4) {
+            /* 数据过大，跳过这条 record（避免 buffer overrun） */
+            LOG_WARN("WAL record data_size=%u 超过缓冲，跳过", data_size);
+            if (data_size > 0) {
+                fseek(fp, (long)(data_size + 4), SEEK_CUR);
+            }
+            continue;
+        }
+        if (data_size > 0) {
+            if (fread(record + REC_HDR, data_size + 4 /* +4 crc */, 1, fp) != 1) {
+                break;
+            }
+            /* 校验 CRC（与 vector_wal.c:710-716 对齐） */
+            uint32_t stored_crc, calc_crc;
+            memcpy(&stored_crc, &record[REC_HDR + data_size], 4);
+            /* 本地复算 CRC，避免依赖 vector_wal.c 的 static wal_crc32 */
+            calc_crc = 0xFFFFFFFFu;
+            for (size_t k = 0; k < (size_t)(REC_HDR + data_size); k++) {
+                calc_crc ^= record[k];
+                for (int j = 0; j < 8; j++) {
+                    calc_crc = (calc_crc & 1) ? ((calc_crc >> 1) ^ 0xEDB88320u)
+                                              : (calc_crc >> 1);
+                }
+            }
+            calc_crc = ~calc_crc;
+            if (stored_crc != calc_crc) {
+                LOG_WARN("WAL record CRC 不匹配，跳过: vec_id=%d", vec_id);
+                continue;
+            }
+        }
+
+        if (op == VECTOR_WAL_APPEND) {
+            /* idempotent：按 vector_id 线性查找 */
+            int32_t existing = -1;
+            for (int32_t i = 0; i < coll->size; i++) {
+                if (coll->ids[i] == (int64_t)vec_id) {
+                    existing = i;
+                    break;
+                }
+            }
+            if (existing >= 0) {
+                /* 已存在：跳过（idempotent）。允许 dims 不一致场景保留原数据 */
+                continue;
+            }
+            /* 不存在：扩展容量后追加 */
+            if (collection_expand(coll) != 0) {
+                LOG_ERROR("replay: 扩容失败");
+                break;
+            }
+            if (dims == coll->dimension && data_size == (uint32_t)(coll->dimension * sizeof(float))) {
+                memcpy(coll->vectors + (size_t)coll->size * coll->dimension,
+                       record + REC_HDR, (size_t)data_size);
+                coll->ids[coll->size] = (int64_t)vec_id;
+                coll->metadata[coll->size] = NULL;  /* replay 无元数据 */
+                coll->metadata_sizes[coll->size] = 0;
+                coll->size++;
+                /* next_id 推到 vec_id+1 之后，避免 insert 重复分配 */
+                if (coll->next_id <= (int64_t)vec_id) {
+                    coll->next_id = (int64_t)vec_id + 1;
+                }
+                replayed++;
+            } else {
+                LOG_WARN("replay: dims=%d/dim=%d 或 data_size=%u 不匹配，跳过 vec_id=%d",
+                         dims, coll->dimension, data_size, vec_id);
+            }
+        } else if (op == VECTOR_WAL_DELETE) {
+            /* idempotent delete：按 vector_id 查找并移除 */
+            for (int32_t i = 0; i < coll->size; i++) {
+                if (coll->ids[i] == (int64_t)vec_id) {
+                    /* 释放该 slot 的元数据 */
+                    if (coll->metadata[i]) {
+                        free(coll->metadata[i]);
+                        coll->metadata[i] = NULL;
+                    }
+                    coll->metadata_sizes[i] = 0;
+                    /* 后面的元素前移一格 */
+                    int32_t move_count = coll->size - i - 1;
+                    if (move_count > 0) {
+                        memmove(coll->ids + i, coll->ids + i + 1,
+                                (size_t)move_count * sizeof(int64_t));
+                        memmove(coll->vectors + (size_t)i * coll->dimension,
+                                coll->vectors + (size_t)(i + 1) * coll->dimension,
+                                (size_t)move_count * coll->dimension * sizeof(float));
+                        memmove(coll->metadata + i, coll->metadata + i + 1,
+                                (size_t)move_count * sizeof(void *));
+                        memmove(coll->metadata_sizes + i, coll->metadata_sizes + i + 1,
+                                (size_t)move_count * sizeof(int32_t));
+                    }
+                    coll->size--;
+                    replayed++;
+                    break;
+                }
+            }
+        }
+        /* 其他 op（SEGMENT_CREATE/DROP）暂不处理 */
+    }
+
+    fclose(fp);
+    LOG_INFO("WAL replay 完成: collection=%s, replayed=%lld",
+             coll->name, (long long)replayed);
+    return replayed;
+}
+
 int vector_api_save(VectorAPI *api) {
     if (!api) return VECTOR_API_ERR_INVALID_PARAM;
 
@@ -799,5 +967,18 @@ int vector_api_load(VectorAPI *api) {
 
     fclose(fp);
     LOG_INFO("加载集合成功: count=%d", api->n_collections);
+
+    /* P1-B Task 6：读 snapshot 之后 replay WAL（恢复 snapshot 之后的脏数据）
+     * 仅当 WAL 句柄存在时执行；replay 失败仅记 WARN，不阻断 load 主路径。 */
+    if (api->wal) {
+        for (int32_t i = 0; i < api->n_collections; i++) {
+            VectorCollectionImpl *coll = api->collections[i];
+            int64_t replayed = vector_api_wal_replay(coll, api->data_dir);
+            if (replayed < 0) {
+                LOG_WARN("WAL replay 失败: collection=%s", coll->name);
+            }
+        }
+    }
+
     return VECTOR_API_OK;
 }
