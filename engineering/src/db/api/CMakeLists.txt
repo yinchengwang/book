@@ -22,5 +22,6 @@ if(API_SOURCE_FILES)
         db_bm25
         project_includes
         cjson
+        vector_persist  # P1-B Task 4：vector_wal_open/close/append 符号来源
     )
 endif()

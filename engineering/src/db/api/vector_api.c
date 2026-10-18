@@ -47,6 +47,9 @@ typedef struct VectorCollectionImpl_s {
      * 无锁时并发 insert 的 coll->size++ 竞争与 collection_expand 的 racing
      * realloc 会造成堆损坏（c0000374），search 同时读已释放缓冲。 */
     mmdb_rwlock_t lock;
+
+    /* P1-B Task 4：集合关联的 WAL 段 ID（所有集合默认共享 segment 0） */
+    int32_t wal_segment_id;
 } VectorCollectionImpl;
 
 /** API 内部结构 */
@@ -56,6 +59,7 @@ struct VectorAPI_s {
     int32_t n_collections;       /**< 集合数量 */
     int32_t capacity;            /**< 容量 */
     char error_msg[256];         /**< 错误信息 */
+    vector_wal_t *wal;           /**< P1-B Task 4：WAL 句柄（所有集合共享 segment 0） */
 };
 
 /** 搜索结果内部结构 */
@@ -121,6 +125,8 @@ static VectorCollectionImpl *collection_create(const VectorCreateParams *params)
     coll->next_id = 1;
     coll->capacity = 1024;
     coll->size = 0;
+    /* P1-B Task 4：所有集合共享 segment 0，简化实现 */
+    coll->wal_segment_id = 0;
 
     /* 分配初始空间 */
     coll->ids = (int64_t *)malloc(coll->capacity * sizeof(int64_t));
@@ -254,12 +260,26 @@ VectorAPI *vector_api_create(const char *data_dir) {
     /* 初始化向量查询执行器 */
     vector_query_init();
 
+    /* P1-B Task 4：打开/创建 WAL（wal_make_path 会拼出 {data_dir}/vector_wal_0.log）。
+     * vector_wal_open 内部失败时会自动 fallthrough 到 vector_wal_create，所以
+     * 无需显式 try-create。失败不致命，仅记 WARN —— API 仍可运行。 */
+    api->wal = vector_wal_open(api->data_dir, 0);
+    if (!api->wal) {
+        LOG_WARN("WAL 打开失败，vector_api 将在无 WAL 模式下运行: data_dir=%s", api->data_dir);
+    }
+
     LOG_INFO("VectorAPI 创建成功: data_dir=%s", api->data_dir);
     return api;
 }
 
 void vector_api_destroy(VectorAPI *api) {
     if (!api) return;
+
+    /* P1-B Task 4：关闭 WAL（必须在 collection 销毁前，避免引用悬空） */
+    if (api->wal) {
+        vector_wal_close(api->wal);
+        api->wal = NULL;
+    }
 
     for (int32_t i = 0; i < api->n_collections; i++) {
         collection_destroy(api->collections[i]);
@@ -437,6 +457,19 @@ int vector_api_insert(VectorAPI *api, const VectorInsertParams *params, int64_t 
 
         coll->size++;
         inserted++;
+
+        /* P1-B Task 4：写 WAL（idempotent key = vector_id）。
+         * 同步模式 append 会立即 fsync；失败仅 WARN，不阻断 insert。 */
+        if (api->wal) {
+            if (vector_wal_append(api->wal,
+                                  (uint32_t)coll->wal_segment_id,
+                                  (int32_t)id,
+                                  (int32_t)coll->dimension,
+                                  params->vectors[i]) != 0) {
+                LOG_WARN("WAL append 失败: collection=%s, vector_id=%lld",
+                         coll->name, (long long)id);
+            }
+        }
     }
 
     coll->updated_at = get_current_time_ms();

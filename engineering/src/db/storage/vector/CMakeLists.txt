@@ -31,4 +31,5 @@ target_link_libraries(vector_persist PUBLIC
     vector_index
     storage_mm
     storage_lock
+    storage_wal  # P1-B Task 4：vector_wal 依赖 wal_flush_get_policy / db_fsync
 )
