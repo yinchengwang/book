@@ -500,52 +500,120 @@ int vector_wal_truncate(vector_wal_t *wal) {
 
     pthread_mutex_lock(&wal->mutex);
 
+    long post_checkpoint_size = 0;
+
     if (wal->last_checkpoint > VECTOR_WAL_HEADER_SIZE) {
-        /* 截断文件 - 先关闭再重新创建 */
         char temp_path[256];
         snprintf(temp_path, sizeof(temp_path), "%s.tmp", wal->path);
 
         FILE *src = wal->fp;
-        FILE *dst = fopen(temp_path, "wb");
-        if (!dst) {
-            LOG_ERROR("创建临时文件失败");
+
+        /* 计算原文件大小与 checkpoint 之后的数据大小 */
+        fseek(src, 0, SEEK_END);
+        long src_size = ftell(src);
+        if (src_size < 0) {
+            LOG_ERROR("获取 WAL 文件大小失败");
             pthread_mutex_unlock(&wal->mutex);
             return -1;
         }
-
-        /* 复制到检查点位置 */
-        fseek(src, 0, SEEK_SET);
-        uint8_t buf[4096];
-        long remaining = (long)wal->last_checkpoint;
-        while (remaining > 0) {
-            size_t to_read = remaining > (long)sizeof(buf) ? sizeof(buf) : (size_t)remaining;
-            size_t read = fread(buf, 1, to_read, src);
-            if (read == 0) break;
-            fwrite(buf, 1, read, dst);
-            remaining -= (long)read;
+        post_checkpoint_size = src_size - (long)wal->last_checkpoint;
+        if (post_checkpoint_size < 0) {
+            post_checkpoint_size = 0;
         }
-        fclose(dst);
+
+        if (post_checkpoint_size > 0) {
+            FILE *dst = fopen(temp_path, "wb");
+            if (!dst) {
+                LOG_ERROR("创建临时文件失败");
+                pthread_mutex_unlock(&wal->mutex);
+                return -1;
+            }
+
+            /* 1. 重写新 header（last_checkpoint 重置为 HEADER_SIZE） */
+            vector_wal_file_header_t new_header;
+            memset(&new_header, 0, sizeof(new_header));
+            /* 重新读原 header 保留 segment_id / mode / num_records / num_vectors */
+            fseek(src, 0, SEEK_SET);
+            if (fread(&new_header, sizeof(new_header), 1, src) != 1) {
+                LOG_ERROR("读取原 WAL header 失败");
+                fclose(dst);
+                remove(temp_path);
+                pthread_mutex_unlock(&wal->mutex);
+                return -1;
+            }
+            new_header.last_checkpoint = VECTOR_WAL_HEADER_SIZE;
+            if (fwrite(&new_header, sizeof(new_header), 1, dst) != 1) {
+                LOG_ERROR("写入新 WAL header 失败");
+                fclose(dst);
+                remove(temp_path);
+                pthread_mutex_unlock(&wal->mutex);
+                return -1;
+            }
+
+            /* 2. 复制 [last_checkpoint, EOF) 到 dst */
+            fseek(src, (long)wal->last_checkpoint, SEEK_SET);
+            uint8_t buf[4096];
+            long remaining = post_checkpoint_size;
+            while (remaining > 0) {
+                size_t to_read = remaining > (long)sizeof(buf) ? sizeof(buf) : (size_t)remaining;
+                size_t read = fread(buf, 1, to_read, src);
+                if (read == 0) break;
+                if (fwrite(buf, 1, read, dst) != read) {
+                    LOG_ERROR("写入 WAL 临时文件失败");
+                    fclose(dst);
+                    remove(temp_path);
+                    pthread_mutex_unlock(&wal->mutex);
+                    return -1;
+                }
+                remaining -= (long)read;
+            }
+            fclose(dst);
+        }
+
         fclose(src);
 
         /* 替换原文件 */
         remove(wal->path);
-        rename(temp_path, wal->path);
+        if (post_checkpoint_size > 0) {
+            if (rename(temp_path, wal->path) != 0) {
+                LOG_ERROR("重命名 WAL 临时文件失败");
+                pthread_mutex_unlock(&wal->mutex);
+                return -1;
+            }
+        } else {
+            /* checkpoint 之后没有新数据：临时文件未创建，清除可能残留 */
+            remove(temp_path);
+        }
 
         /* 重新打开文件 */
         wal->fp = fopen(wal->path, "r+b");
         if (!wal->fp) {
-            LOG_ERROR("重新打开 WAL 失败");
-            pthread_mutex_unlock(&wal->mutex);
-            return -1;
+            /* 文件不存在（post_checkpoint_size==0 路径），创建新的空 WAL */
+            wal->fp = fopen(wal->path, "w+b");
+            if (!wal->fp) {
+                LOG_ERROR("重新打开 WAL 失败");
+                pthread_mutex_unlock(&wal->mutex);
+                return -1;
+            }
+            vector_wal_file_header_t empty_header;
+            memset(&empty_header, 0, sizeof(empty_header));
+            empty_header.magic = VECTOR_WAL_MAGIC;
+            empty_header.version = VECTOR_WAL_VERSION;
+            empty_header.segment_id = wal->num_vectors;  /* 保留计数 */
+            empty_header.mode = wal->mode;
+            empty_header.last_checkpoint = VECTOR_WAL_HEADER_SIZE;
+            fwrite(&empty_header, sizeof(empty_header), 1, wal->fp);
+            fflush(wal->fp);
         }
 
-        wal->num_records = 0;
-        wal->num_vectors = 0;
+        /* 重置 last_checkpoint 与缓冲；num_records/num_vectors 保留 */
+        wal->last_checkpoint = VECTOR_WAL_HEADER_SIZE;
         wal->buffer_used = 0;
     }
 
     pthread_mutex_unlock(&wal->mutex);
-    LOG_INFO("截断 WAL 成功: checkpoint=%lu", wal->last_checkpoint);
+    LOG_INFO("截断 WAL 成功: checkpoint=%lu, post_size=%ld",
+             wal->last_checkpoint, post_checkpoint_size);
     return 0;
 }
 
