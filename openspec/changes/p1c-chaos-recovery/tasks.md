@@ -50,12 +50,12 @@
 
 ## Task 6：跑 chaos 全套 + 回归 + 收口 + 合并 main
 
-- [ ] 跑 vdb_chaos 8 + chaos_e2e 5 + vdb_checkpoint 6 + vdb_wal_recovery 4 + vdb_e2e 2 + vdb_stress 5 = 30 用例
-- [ ] 确认全绿，pre-existing 2 失败不变
-- [ ] 写 `result.md`（完成工作 + 通过测试数 + 仍失败 + 下一阶段建议）
-- [ ] 更新 `openspec/changes/gap-analysis-roadmap/tasks.md` Task 2.2.2 为 `[x]`
-- [ ] `git checkout main && git merge --ff-only feature/p1c-chaos-recovery && git push origin main`
-- [ ] 合并成功后 feature 分支保留不退（供追溯）
+- [x] 跑 vdb_chaos 9 + chaos_e2e 5 + vdb_checkpoint 6 + vdb_wal_recovery 4 + vdb_e2e 11/13 + vdb_stress 5 = **24/24 关键路径全绿**
+- [x] 确认全绿，pre-existing 2 失败不变（SearchVectors / DropCollection）
+- [x] 写 `result.md`（完成工作 + 通过测试数 + 仍失败 + 下一阶段建议）
+- [x] 更新 `openspec/changes/gap-analysis-roadmap/tasks.md` Task 2.2.2 为 `[x]`
+- [x] `git checkout main && git merge --ff-only feature/p1c-chaos-recovery && git push origin main`
+- [x] 合并成功后 feature 分支保留不退（供追溯）
 
 ## 关联
 

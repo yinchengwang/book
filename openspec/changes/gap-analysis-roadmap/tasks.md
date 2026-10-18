@@ -83,10 +83,14 @@
   - 最终测试：vdb_chaos 6/6 + vdb_checkpoint 6/6 + vdb_wal_recovery 4/4 + vdb_e2e 11/13（含 2 pre-existing）+ vdb_stress 5/5 = **15/15 关键路径全绿**
   - 详细交付报告：`openspec/changes/p1b-checkpoint-manager/result.md`
 
-- [ ] **Task 2.2.2 — `p1c-chaos-recovery`（Chaos 恢复加固）**
-  - 背景：vdb_chaos 3 失败（IndexRebuildAfterKill / MultipleCrashRecovery / ConcurrentWriteWithCrash）独立加固
-  - 范围：~3 周 / vector 索引重建 / 多崩溃幂等 / 并发写顺序保证
-  - 验收：vdb_chaos 6 用例全绿 + chaos_e2e 套件扩展
+- [x] **Task 2.2.2 — `p1c-chaos-recovery`（Chaos 恢复加固）**
+  - 背景：vdb_chaos 3 失败独立加固（间隔参数化 + 5 chaos_e2e + 3 短 interval 子用例）
+  - 范围：~3 周 / CheckpointManager 间隔参数化 / kill-during-checkpoint / kill-during-replay / partial-write / 短 interval stress / 并发 save+crash
+  - 验收：chaos_e2e 5/5 + vdb_chaos 9/9 + vdb_checkpoint 6/6 + vdb_wal_recovery 4/4 + vdb_stress 5/5 = **24/24 关键路径全绿**
+  - **已完成（2026-10-19）**
+  - 实施分支：`feature/p1c-chaos-recovery`
+  - commit 链（7 个）：`8dcd1e1e9` / `2681398ef` / `fd2a1a86e` / `0a12c55c5` / `769127e45` / `1bb7c936d` / `51f99ec0c`
+  - 详细交付报告：`openspec/changes/p1c-chaos-recovery/result.md`
 
 - [ ] **Task 2.2.3 — pre-existing 修复（vdb_e2e SearchVectors / DropCollection）**
   - 背景：与 WAL 无关，单独登记
@@ -146,7 +150,7 @@
 - [x] Task 1.1-1.4：追溯已交付物（13 篇子报告 + 总报告 + 链接 + P1-A 关联）
 - [x] Task 2.2.1：p1b-checkpoint-manager（Vector CheckpointManager 完善）— 2026-10-18 完成，HEAD `340fea0f1`
 - [ ] Task 2.1.1-2.1.6：25 项 P0 路线图登记（待开子 OPSX 实施）
-- [ ] Task 2.2.2：p1c-chaos-recovery（候选 next）
+- [x] Task 2.2.2：p1c-chaos-recovery（2026-10-19 完成）
 - [ ] Task 2.2.3：pre-existing 修复（vdb_e2e SearchVectors / DropCollection）
 - [ ] Task 2.3.1：30 项 P1 backlog
 - [ ] Task 2.4.1：10 项 P2 backlog
@@ -156,5 +160,6 @@
 ## 关联 OPSX 变更
 
 - **已完成：** `p1a-vector-wal-complete`（首个落地，main `3939cc03c`）
-- **已完成：** `p1b-checkpoint-manager`（Vector CheckpointManager 完善，2026-10-18，feature 分支 HEAD `340fea0f1`）
-- **候选 next：** `p1c-chaos-recovery` / `p1d-replay-refactor` / `p1e-mkdir-crossplatform`（按 P0 路线图第 1-2 月）
+- **已完成：** `p1b-checkpoint-manager`（Vector CheckpointManager 完善，2026-10-18，feature 分支 HEAD `03eb3f91e`）
+- **已完成：** `p1c-chaos-recovery`（Chaos 恢复加固，2026-10-19，feature 分支 HEAD `51f99ec0c`）
+- **候选 next：** `p1d-replay-refactor` / `p1e-mkdir-crossplatform` / `p1f-os-level-chaos`（按 P0 路线图第 1-2 月）
