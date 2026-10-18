@@ -639,6 +639,31 @@ int32_t vector_api_size(VectorAPI *api, const char *collection) {
 int vector_api_save(VectorAPI *api) {
     if (!api) return VECTOR_API_ERR_INVALID_PARAM;
 
+    /* P1-B Task 5：先 flush WAL，再 checkpoint 记录 LSN 起点，最后 truncate
+     * 截断 checkpoint 之前的旧数据，避免 WAL 无限增长。
+     * 三个调用失败仅 WARN，不阻断 snapshot 写入，保证 save 主路径可用。 */
+
+    /* 1. flush WAL（确保所有脏数据落盘） */
+    if (api->wal) {
+        if (vector_wal_flush(api->wal) != 0) {
+            LOG_WARN("WAL flush 失败: data_dir=%s", api->data_dir);
+        }
+    }
+
+    /* 2. checkpoint 记录 LSN 起点（truncate 之前的最后位置） */
+    if (api->wal) {
+        if (vector_wal_checkpoint(api->wal, VECTOR_CHECKPOINT_MANUAL) != 0) {
+            LOG_WARN("WAL checkpoint 失败: data_dir=%s", api->data_dir);
+        }
+    }
+
+    /* 3. truncate 删除 checkpoint 之前的旧数据（避免 WAL 无限增长） */
+    if (api->wal) {
+        if (vector_wal_truncate(api->wal) != 0) {
+            LOG_WARN("WAL truncate 失败: data_dir=%s", api->data_dir);
+        }
+    }
+
     /* 确保数据目录存在 */
 #ifdef _WIN32
     _mkdir(api->data_dir);
