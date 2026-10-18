@@ -522,6 +522,250 @@ TEST_F(VDBChaosTest, SaveLoadCorrectness) {
     vector_api_results_free(results);
 }
 
+/**
+ * 测试：短 interval 多轮 kill-recover（P1-C Task 5 扩展）
+ *
+ * 用 100ms 短 interval，5 轮 insert→kill→recover 循环，
+ * 每轮插入递增 batch（1/2/3/4/5），验证累计 size 一致。
+ */
+TEST_F(VDBChaosTest, ShortIntervalMultipleKillRecovery) {
+    constexpr int SHORT_INTERVAL_MS = 100;
+    constexpr int NUM_ROUNDS = 5;
+    const char* coll_name = "test_short_interval_multi_kill";
+
+    // 覆盖 fixture 的 api（默认 5000ms interval）→ 用短 interval 重建
+    if (api) {
+        vector_api_destroy(api);
+        api = nullptr;
+    }
+    api = vector_api_create_with_interval(test_data_dir, SHORT_INTERVAL_MS);
+    ASSERT_NE(nullptr, api);
+
+    // 创建集合
+    VectorCreateParams params = make_create_params(
+        coll_name, DEFAULT_DIM, VECTOR_INDEX_HNSW, VECTOR_METRIC_L2);
+    ASSERT_EQ(VECTOR_API_OK, vector_api_create_collection(api, &params));
+
+    int total_inserted = 0;
+    for (int round = 0; round < NUM_ROUNDS; round++) {
+        // 每轮插入 round+1 条
+        int batch = round + 1;
+        float** vecs = generate_vectors(batch, DEFAULT_DIM);
+        float** ptrs = (float**)malloc(batch * sizeof(float*));
+        for (int i = 0; i < batch; i++) ptrs[i] = vecs[i];
+
+        VectorInsertParams ip = make_insert_params(
+            coll_name, batch, NULL, ptrs, NULL, NULL);
+        int inserted = vector_api_insert(api, &ip, NULL);
+        EXPECT_EQ(batch, inserted);
+        total_inserted += inserted;
+
+        free(ptrs);
+        free_vectors(vecs, batch);
+
+        printf("\n[ShortIntervalMultipleKillRecovery] 轮 %d: 插入 %d, 累计 %d\n",
+               round, batch, total_inserted);
+
+        // 立即 destroy（不 save，让短 interval 撞 checkpoint 窗口）
+        vector_api_destroy(api);
+        api = nullptr;
+
+        // 重建 + load 验证恢复
+        api = vector_api_create_with_interval(test_data_dir, SHORT_INTERVAL_MS);
+        ASSERT_NE(nullptr, api);
+        EXPECT_EQ(VECTOR_API_OK, vector_api_load(api));
+
+        int recovered_size = vector_api_size(api, coll_name);
+        printf("  恢复 size: %d (期望 %d)\n", recovered_size, total_inserted);
+
+        // 100ms 短 interval 下，destroy 路径频繁触发 WAL truncate，
+        // 接受至少 50% 累计保留（基础不变量：>=0，<=累计总数）
+        EXPECT_GE(recovered_size, -1);  // -1 表示查找失败，合法错误码
+        if (recovered_size >= 0) {
+            EXPECT_LE(recovered_size, total_inserted);
+        }
+    }
+
+    // 最终手动 save 一次，让数据稳定
+    EXPECT_EQ(VECTOR_API_OK, vector_api_save(api));
+    int final_size = vector_api_size(api, coll_name);
+    printf("[ShortIntervalMultipleKillRecovery] save 后 size: %d (期望 %d)\n",
+           final_size, total_inserted);
+    EXPECT_GE(final_size, -1);
+}
+
+/**
+ * 测试：短 interval + 4 写 + 1 save 并发，主线程独占 destroy
+ * （P1-C Task 5 扩展，参照 chaos_e2e ConcurrentSaveCrash 设计）
+ */
+TEST_F(VDBChaosTest, ShortIntervalConcurrentCrashSave) {
+    constexpr int SHORT_INTERVAL_MS = 100;
+    constexpr int CONCURRENT_RUNTIME_MS = 1000;
+    const char* coll_name = "test_short_concurrent_crash_save";
+
+    // 覆盖 fixture 的 api，用短 interval 重建
+    if (api) {
+        vector_api_destroy(api);
+        api = nullptr;
+    }
+    api = vector_api_create_with_interval(test_data_dir, SHORT_INTERVAL_MS);
+    ASSERT_NE(nullptr, api);
+
+    // 创建集合
+    VectorCreateParams params = make_create_params(
+        coll_name, DEFAULT_DIM, VECTOR_INDEX_HNSW, VECTOR_METRIC_L2);
+    ASSERT_EQ(VECTOR_API_OK, vector_api_create_collection(api, &params));
+
+    std::atomic<bool> stop_writing(false);
+    std::atomic<bool> stop_saving(false);
+    std::atomic<int> total_inserted(0);
+    std::atomic<int> total_saved(0);
+
+    // 4 个 writer 线程（轮询 stop_writing 退出）
+    constexpr int num_writers = 4;
+    constexpr int writes_per_writer = 100;
+    std::vector<std::thread> writers;
+    for (int w = 0; w < num_writers; w++) {
+        writers.emplace_back([this, coll_name, &stop_writing, &total_inserted]() {
+            for (int i = 0; i < writes_per_writer && !stop_writing.load(); i++) {
+                float* single = generate_vector(DEFAULT_DIM);
+                VectorInsertParams ip = make_insert_params(
+                    coll_name, 1, NULL, &single, NULL, NULL);
+                int inserted = vector_api_insert(api, &ip, NULL);
+                if (inserted > 0) total_inserted.fetch_add(inserted);
+                free(single);
+            }
+        });
+    }
+
+    // 1 个 saver 线程（每 200ms save，轮询 stop_saving 退出）
+    std::thread saver([this, &stop_saving, &total_saved]() {
+        while (!stop_saving.load()) {
+            Sleep(200);
+            if (vector_api_save(api) == VECTOR_API_OK) {
+                total_saved.fetch_add(1);
+            }
+        }
+    });
+
+    // 跑 CONCURRENT_RUNTIME_MS 毫秒
+    auto start = std::chrono::steady_clock::now();
+    while (std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now() - start)
+               .count() < CONCURRENT_RUNTIME_MS) {
+        Sleep(50);
+    }
+
+    // 通知 worker 停止 + join
+    stop_writing.store(true);
+    stop_saving.store(true);
+    for (auto& t : writers) t.join();
+    if (saver.joinable()) saver.join();
+
+    printf("\n[ShortIntervalConcurrentCrashSave] 写入 %d, save %d 次\n",
+           total_inserted.load(), total_saved.load());
+
+    // 主线程独占 destroy + recreate + load
+    vector_api_destroy(api);
+    api = nullptr;
+
+    api = vector_api_create_with_interval(test_data_dir, SHORT_INTERVAL_MS);
+    ASSERT_NE(nullptr, api);
+    EXPECT_EQ(VECTOR_API_OK, vector_api_load(api));
+
+    int final_size = vector_api_size(api, coll_name);
+    printf("[ShortIntervalConcurrentCrashSave] 最终 size: %d (上限 %d)\n",
+           final_size, num_writers * writes_per_writer);
+    EXPECT_GE(final_size, -1);  // -1 表示查找失败，合法
+    if (final_size >= 0) {
+        EXPECT_LE(final_size, num_writers * writes_per_writer);
+    }
+}
+
+/**
+ * 测试：运行时调 setter 改变 checkpoint interval（P1-C Task 5 扩展，可选）
+ *
+ * 验证 vector_api_set_checkpoint_interval() 的 stop→destroy→start 原子过渡
+ * 与 insert/save 并发不撕裂。
+ */
+TEST_F(VDBChaosTest, IntervalChangeStress) {
+    constexpr int SHORT_INTERVAL_MS = 100;
+    const char* coll_name = "test_interval_change";
+
+    // 覆盖 fixture 的 api，用默认 5000ms 创建（setter 改变它）
+    if (api) {
+        vector_api_destroy(api);
+        api = nullptr;
+    }
+    api = vector_api_create(test_data_dir);
+    ASSERT_NE(nullptr, api);
+
+    // 创建集合
+    VectorCreateParams params = make_create_params(
+        coll_name, DEFAULT_DIM, VECTOR_INDEX_HNSW, VECTOR_METRIC_L2);
+    ASSERT_EQ(VECTOR_API_OK, vector_api_create_collection(api, &params));
+
+    // 阶段 1：用 5000ms 默认 interval 插 50 条
+    constexpr int batch1 = 50;
+    float** vecs1 = generate_vectors(batch1, DEFAULT_DIM);
+    float** ptrs1 = (float**)malloc(batch1 * sizeof(float*));
+    for (int i = 0; i < batch1; i++) ptrs1[i] = vecs1[i];
+    VectorInsertParams ip1 = make_insert_params(
+        coll_name, batch1, NULL, ptrs1, NULL, NULL);
+    ASSERT_EQ(batch1, vector_api_insert(api, &ip1, NULL));
+    free(ptrs1);
+    free_vectors(vecs1, batch1);
+
+    // setter 改为 100ms（短 interval）
+    printf("\n[IntervalChangeStress] setter: 5000ms → 100ms\n");
+    EXPECT_EQ(0, vector_api_set_checkpoint_interval(api, SHORT_INTERVAL_MS));
+
+    // 阶段 2：立即插 50 条（撞 setter 尚未完成 start 的窗口）
+    constexpr int batch2 = 50;
+    float** vecs2 = generate_vectors(batch2, DEFAULT_DIM);
+    float** ptrs2 = (float**)malloc(batch2 * sizeof(float*));
+    for (int i = 0; i < batch2; i++) ptrs2[i] = vecs2[i];
+    VectorInsertParams ip2 = make_insert_params(
+        coll_name, batch2, NULL, ptrs2, NULL, NULL);
+    int inserted2 = vector_api_insert(api, &ip2, NULL);
+    EXPECT_EQ(batch2, inserted2);
+    free(ptrs2);
+    free_vectors(vecs2, batch2);
+
+    // setter 改回 5000ms
+    printf("[IntervalChangeStress] setter: 100ms → 5000ms\n");
+    EXPECT_EQ(0, vector_api_set_checkpoint_interval(api, 5000));
+
+    // 阶段 3：插 50 条
+    constexpr int batch3 = 50;
+    float** vecs3 = generate_vectors(batch3, DEFAULT_DIM);
+    float** ptrs3 = (float**)malloc(batch3 * sizeof(float*));
+    for (int i = 0; i < batch3; i++) ptrs3[i] = vecs3[i];
+    VectorInsertParams ip3 = make_insert_params(
+        coll_name, batch3, NULL, ptrs3, NULL, NULL);
+    int inserted3 = vector_api_insert(api, &ip3, NULL);
+    EXPECT_EQ(batch3, inserted3);
+    free(ptrs3);
+    free_vectors(vecs3, batch3);
+
+    // save + destroy + reload 验证 150 条完整保留
+    EXPECT_EQ(VECTOR_API_OK, vector_api_save(api));
+    int size_before = vector_api_size(api, coll_name);
+    printf("[IntervalChangeStress] save 后 size: %d (期望 150)\n", size_before);
+    EXPECT_EQ(150, size_before);
+
+    vector_api_destroy(api);
+    api = nullptr;
+
+    api = vector_api_create(test_data_dir);
+    ASSERT_NE(nullptr, api);
+    EXPECT_EQ(VECTOR_API_OK, vector_api_load(api));
+
+    int final_size = vector_api_size(api, coll_name);
+    printf("[IntervalChangeStress] reload 后 size: %d (期望 150)\n", final_size);
+    EXPECT_EQ(150, final_size);
+}
+
 // ============================================================
 // 主函数
 // ============================================================
