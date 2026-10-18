@@ -48,14 +48,14 @@ target_link_libraries(vdb_wal_recovery_test
         GTest::gtest_main
 )
 
-# P1-B: Vector CheckpointManager 独立单元测试（TDD 红阶段占位）
-# 注：vector_wal 不是单独 library，其实现位于 vector_persist 库中。
-#     本测试当前阶段不直接调用 vector_wal_* API（改用 filesystem 间接断言），
-#     后续 Task 4-6 实施 WAL 集成后再按需扩展 target_link_libraries。
+# P1-B: Vector CheckpointManager 独立单元测试
+# P1-B Task 7：新增 BackgroundCheckpointAdvances 测试需要直接调用
+#             vector_wal_get_checkpoint_info，故链接 vector_persist 库。
 add_executable(vdb_checkpoint_test vdb_checkpoint_test.cpp)
 target_link_libraries(vdb_checkpoint_test
     PRIVATE
         vector_api
+        vector_persist   # P1-B Task 7：vector_wal_get_checkpoint_info
         db_core
         project_includes
         GTest::gtest_main

@@ -7,6 +7,7 @@
 #include <db/api/vector_api.h>
 #include <db/core/vector_query.h>
 #include <db/storage/vector/vector_persist.h>
+#include <db/storage/vector/checkpoint_manager.h>  /* P1-B Task 7 */
 #include <db/mmdb_lock.h>
 #include <db/log.h>
 #include <string.h>
@@ -60,6 +61,7 @@ struct VectorAPI_s {
     int32_t capacity;            /**< 容量 */
     char error_msg[256];         /**< 错误信息 */
     vector_wal_t *wal;           /**< P1-B Task 4：WAL 句柄（所有集合共享 segment 0） */
+    CheckpointManager *checkpoint_mgr; /**< P1-B Task 7：后台 CheckpointManager */
 };
 
 /** 搜索结果内部结构 */
@@ -268,12 +270,36 @@ VectorAPI *vector_api_create(const char *data_dir) {
         LOG_WARN("WAL 打开失败，vector_api 将在无 WAL 模式下运行: data_dir=%s", api->data_dir);
     }
 
+    /* P1-B Task 7：启动后台 CheckpointManager（5 秒周期）。
+     * 关键：start 必须在 vector_query_init 之后、API 返回前，否则 collection
+     * insert 可能在 mgr 还没起来前就丢失首次 checkpoint。 */
+    if (api->wal) {
+        api->checkpoint_mgr = checkpoint_manager_create(api->wal, 5000);
+        if (api->checkpoint_mgr) {
+            if (checkpoint_manager_start(api->checkpoint_mgr) != 0) {
+                LOG_WARN("CheckpointManager 启动失败");
+                checkpoint_manager_destroy(api->checkpoint_mgr);
+                api->checkpoint_mgr = NULL;
+            }
+        } else {
+            LOG_WARN("CheckpointManager 创建失败");
+        }
+    }
+
     LOG_INFO("VectorAPI 创建成功: data_dir=%s", api->data_dir);
     return api;
 }
 
 void vector_api_destroy(VectorAPI *api) {
     if (!api) return;
+
+    /* P1-B Task 7：先停后台 CheckpointManager（避免与 collection 释放竞争，
+     * 且 mgr 持有 wal 指针，必须在 wal close 前 stop）。 */
+    if (api->checkpoint_mgr) {
+        checkpoint_manager_stop(api->checkpoint_mgr);
+        checkpoint_manager_destroy(api->checkpoint_mgr);
+        api->checkpoint_mgr = NULL;
+    }
 
     /* P1-B Task 4：关闭 WAL（必须在 collection 销毁前，避免引用悬空） */
     if (api->wal) {

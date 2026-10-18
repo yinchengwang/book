@@ -17,6 +17,7 @@
  */
 #include <gtest/gtest.h>
 #include <db/api/vector_api.h>
+#include <db/storage/vector/vector_persist.h>  /* P1-B Task 7: vector_wal_get_checkpoint_info */
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -315,5 +316,61 @@ TEST_F(VDBCheckpointTest, ConcurrentInsertWithCheckpoint) {
     EXPECT_GE(size, 1000);
     EXPECT_EQ(1000, size);
     // 期望：WAL 文件存在（CheckpointManager 触发后必有 WAL 落盘）
+    EXPECT_TRUE(has_any_wal_file(test_data_dir));
+}
+
+// ============================================================
+// 测试 6 (P1-B Task 7 新增): 后台 CheckpointManager 推进 checkpoint_lsn
+// ============================================================
+// 关键验证：纯后台 CheckpointManager（无 save）也能推进 checkpoint。
+//         测试 5 的 ConcurrentInsertWithCheckpoint 因 snapshot 覆盖已绿，
+//         不能验证真后台流式 checkpoint；本测试是补全项。
+// 流程：create → 插 100 条 → 等 6 秒（5s 周期 + 1s 缓冲）→
+//       destroy → 重新 create → 读 checkpoint_info → last_checkpoint 应 > 0
+// ============================================================
+TEST_F(VDBCheckpointTest, BackgroundCheckpointAdvances) {
+    // P1-B Task 7 Windows 兼容：SetUp 的 `mkdir -p` 在 cmd.exe 下不支持 -p，
+    // 导致 data_dir 未创建。预先用 vector_api_save(_mkdir) 创建 dir，
+    // 保证后续 vector_wal_create 的 fopen 成功。这是测试代码的特例处理，
+    // 不影响其他用 vector_api_save 走主路径的测试。
+    {
+        VectorAPI *warmup = vector_api_create(test_data_dir.c_str());
+        ASSERT_NE(nullptr, warmup);
+        ASSERT_EQ(VECTOR_API_OK, vector_api_save(warmup));
+        vector_api_destroy(warmup);
+    }
+
+    api = vector_api_create(test_data_dir.c_str());
+    ASSERT_NE(nullptr, api);
+
+    VectorCreateParams params = make_create_params("bg_ckpt", 64);
+    ASSERT_EQ(VECTOR_API_OK, vector_api_create_collection(api, &params));
+
+    // 阶段 1：插入 100 条向量（不调用 save，让后台 CheckpointManager 自己跑）
+    float** vecs = generate_vectors(100, 64, 7001);
+    VectorInsertParams ip = make_insert_params("bg_ckpt", 100, vecs);
+    ASSERT_EQ(100, vector_api_insert(api, &ip, NULL));
+    free_vectors(vecs, 100);
+
+    // 阶段 2：等待 6 秒（后台 CheckpointManager 周期 5s + 1s 缓冲）
+    std::this_thread::sleep_for(std::chrono::seconds(6));
+
+    // 阶段 3：destroy 触发后台线程停止（不在 save 里 checkpoint），重新打开验证
+    vector_api_destroy(api);
+    api = vector_api_create(test_data_dir.c_str());
+    ASSERT_NE(nullptr, api);
+
+    // 阶段 4：从 WAL header 读取 last_checkpoint（应 > 0，因为后台跑了至少一次）
+    uint64_t ckpt_lsn = 0;
+    uint64_t records  = 0;
+    int rc = vector_wal_get_checkpoint_info(test_data_dir.c_str(), 0,
+                                            &ckpt_lsn, &records);
+    ASSERT_EQ(0, rc) << "vector_wal_get_checkpoint_info 失败: "
+                     << vector_api_error(api);
+
+    // 期望 1：checkpoint LSN 已被后台线程推进（> 0）
+    EXPECT_GT(ckpt_lsn, (uint64_t)0) << "后台 CheckpointManager 未推进 checkpoint_lsn";
+
+    // 期望 2：WAL 文件存在
     EXPECT_TRUE(has_any_wal_file(test_data_dir));
 }

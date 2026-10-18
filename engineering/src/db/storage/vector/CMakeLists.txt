@@ -9,6 +9,7 @@ set(VECTOR_PERSIST_SOURCES
     vector_segment.c
     vector_index_persist.c
     vector_wal.c
+    checkpoint_manager.c  # P1-B Task 7：后台 CheckpointManager
     vector_buf.c
     vector_engine.c
     vec_page.c
