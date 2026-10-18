@@ -434,3 +434,351 @@ MySQL 采用**经典的分层插件化架构**，**单进程多线程**，每个
 8. TiDB Documentation（MySQL 兼容性参考）：<https://docs.pingcap.com/>
 9. 知乎专栏「MySQL 入门教程」：<https://zhuanlan.zhihu.com/c_117287938>
 10. MySQL 实战 45 讲（极客时间，林晓斌）
+
+## 二十一、InnoDB B+Tree 页面分裂与插入路径算法
+
+§8.2 提到了 B+Tree 与自适应哈希索引，但**没展开「插入一个记录究竟走哪些函数」「页面满了怎么选 split_rec」**这些工程细节。本节聚焦 InnoDB 的页面插入与分裂算法。
+
+### 21.1 单页内插入：`page_cur_insert_rec_low`
+
+源码：`reference/relational/mysql/storage/innobase/page/page0cur.cc:1239`（行号对应 MySQL 9.x trunk，`MYSQL_VERSION` = 26.10.0 INNOVATION）。
+
+页面内插入按「优先复用空闲链表、其次堆顶分配」的策略：
+
+```text
+function page_cur_insert_rec_low(current_rec, index, rec, offsets, mtr):
+    page = page_align(current_rec)
+    rec_size = rec_offs_size(offsets)
+
+    # 1. 优先从 PAGE_FREE 空闲链表复用等大的 slot
+    free_rec = page_header_get_ptr(page, PAGE_FREE)
+    if free_rec != NULL and rec_size_of(free_rec) >= rec_size:
+        insert_buf = free_rec - rec_offs_extra_size(free_rec)
+        page_mem_alloc_free(page, free_rec.next, rec_size)
+    else:
+        # 2. 否则从堆顶向下分配
+        insert_buf = page_mem_alloc_heap(page, rec_size, &heap_no)
+        if insert_buf == NULL: return NULL  # 页面已满
+
+    # 3. 拷贝记录内容到 insert_buf
+    insert_rec = rec_copy(insert_buf, rec, offsets)
+
+    # 4. 串入单向链表：current_rec -> insert_rec -> next_rec
+    next_rec = page_rec_get_next(current_rec)
+    page_rec_set_next(insert_rec, next_rec)
+    page_rec_set_next(current_rec, insert_rec)
+
+    # 5. 维护 Page Directory slot（n_owned 超阈值则分裂 slot）
+    owner_rec = page_rec_find_owner_rec(insert_rec)
+    n_owned = rec_get_n_owned(owner_rec)
+    rec_set_n_owned(owner_rec, n_owned + 1)
+    if n_owned == PAGE_DIR_SLOT_MAX_N_OWNED:
+        page_dir_split_slot(page, owner_slot)
+
+    # 6. 写 mini-transaction redo 日志
+    page_cur_insert_rec_write_log(insert_rec, rec_size, current_rec, index, mtr)
+    return insert_rec
+```
+
+**复杂度**：单页插入主路径 O(1)（指针改写 + memcpy），触发 `page_dir_split_slot` 时 O(slot 数)。
+
+### 21.2 页面已满：`btr_page_split_and_insert` 的 split_rec 选择
+
+源码：`reference/relational/mysql/storage/innobase/btr/btr0btr.cc:2315`。
+
+`page_cur_insert_rec_low` 返回 NULL 说明页面放不下，进入分裂路径。**split_rec 的选择是分裂算法的核心**，MySQL 走「先尝试右兄弟 → 失败则按方向探测 → 仍失败则取中间记录」：
+
+```text
+function btr_page_split_and_insert(flags, cursor, offsets, heap, tuple, mtr):
+    block = btr_cur_get_block(cursor); page = block.frame
+
+    # 第 0 步：先尝试「偷」一个 slot 给右页（避免真分裂）
+    rec = btr_insert_into_right_sibling(...)
+    if rec != NULL: return rec   # 成功偷到 slot，直接插入
+
+    # 第 1 步：根据迭代次数与上一次分裂方向决定 split_rec
+    if n_iterations > 0:                    # retry 路径
+        direction = FSP_UP                  # 强制向上分裂
+        split_rec = btr_page_get_split_rec(cursor, tuple)
+        insert_left = (tuple < split_rec)
+    elif btr_page_get_split_rec_to_right(cursor, &split_rec):   # 右倾
+        direction = FSP_UP
+    elif btr_page_get_split_rec_to_left(cursor, &split_rec):    # 左倾
+        direction = FSP_DOWN
+    else:                                  # 兜底：取中间
+        if page_get_n_recs(page) > 1:
+            split_rec = page_get_middle_rec(page)
+        elif tuple < first_user_rec:
+            split_rec = first_user_rec       # 1 条记录 + 偏向左
+        else:
+            split_rec = NULL                 # 1 条记录 + 偏向右（新记录独占新页）
+
+    # 第 2 步：在 hint_page_no 附近申请新页
+    new_block = btr_page_alloc(cursor->index, hint_page_no, direction,
+                                btr_page_get_level(page), mtr, mtr)
+
+    # 第 3 步：把 [split_rec, end] 移到新页
+    if split_rec: first_rec = move_limit = split_rec
+    else:         first_rec = page_rec_get_next(page_get_infimum_rec(page))
+
+    # 第 4 步：插入 tuple 到合适一侧
+    insert_left = (tuple < first_rec)
+    page_cur_insert_rec_low(left_or_right_block, ..., tuple, mtr)
+
+    # 第 5 步：递归向上更新父节点（可能引发父页级联分裂）
+    btr_attach_half_pages(...)
+```
+
+**关键设计**：
+- **`insert_left` 优化**：若 tuple < split_rec 就直接放左页，避免在新页二次分裂。压缩页 `page_zip` 时若已分过一次，直接清空右页让 tuple 占整新页。
+- **retry loop（`func_start` 标号）**：若新申请页与现有页重叠（rare，缓冲池驱逐极端情况），回到 `func_start` 重选 split_rec，限制 n_iterations 防死循环。
+- **`btr_insert_into_right_sibling`**：避免真分裂的「偷 slot」路径——`innodb_index_change_buffering` 与右兄弟页面有空 slot 时生效。
+
+### 21.3 复杂度分析
+
+| 阶段 | 复杂度 | 备注 |
+|------|--------|------|
+| 单页插入（不分裂） | O(1) 均摊 | 含 slot 维护 |
+| 单页插入（分裂） | O(n) | n = 页内记录数，需移动后半段到新页 |
+| 父页级联分裂 | O(h × n) | h = 树高，InnoDB 通常 3-4 |
+| 偷 slot（right sibling） | O(1) | 命中时最优 |
+
+**与自增主键的关系**：自增主键总是追加到最右叶子页，使 `split_rec` 偏向「中间靠右」且右兄弟多为新页（顺序追加），写入放大最小——这是 §15.3「推荐自增主键」的算法层根据。
+
+### 21.4 本项目对应
+
+`engineering/src/db/storage/bufmgr.c`（Clock-Sweep）与 `engineering/src/db/btreeam.c` 的 B+Tree 实现可参考 InnoDB 的 split_rec 选择策略（特别在 `btr_page_get_split_rec_to_left/right`），但因本项目是教学版，目前按 `page_get_middle_rec` 兜底实现，未做方向探测。
+
+## 二十二、InnoDB MVCC 可见性算法与 ReadView 二分查找
+
+§10.2 提到「快照读」「`DB_TRX_ID` / `DB_ROLL_PTR`」「`trx_id < m_up_limit_id && not in m_ids`」三条结论，但**没展开 ReadView 的数据结构与判定流程**。本节聚焦可见性的实现细节。
+
+### 22.1 ReadView 数据结构
+
+源码：`reference/relational/mysql/storage/innobase/include/read0types.h:49`（类定义）、`:244-280`（私有字段）。
+
+ReadView 在事务首次一致性读（SELECT 不带锁）时构造，包含四个关键字段：
+
+```cpp
+class ReadView {
+ private:
+    trx_id_t m_low_limit_id;   // 高水位：read view 不应见 >= 此 id 的事务
+    trx_id_t m_up_limit_id;    // 低水位：read view 应见 < 此 id 的事务
+    ids_t     m_ids;           // 创建 read view 时仍活跃的事务 id 列表（已排序）
+    trx_id_t m_creator_trx_id; // 创建本 view 的事务 id（自己改的对自己可见）
+};
+```
+
+**构造时机**：`trx_assign_read_view()` 在 REPEATABLE READ 下事务首个 SELECT 时调用一次（RC 下每语句重新构造）。
+
+### 22.2 可见性判定公式：`ReadView::changes_visible`
+
+源码：`reference/relational/mysql/storage/innobase/include/read0types.h:159-175`。
+
+```cpp
+bool ReadView::changes_visible(trx_id_t id) const override {
+    ut_ad(id > 0);
+
+    // 1. 低水位之下 或 自己 → 可见
+    if (id < m_up_limit_id || id == m_creator_trx_id)
+        return true;
+
+    // 2. 高水位之上 → 不可见
+    if (id >= m_low_limit_id)
+        return false;
+
+    // 3. 中间地带：在创建快照时活跃的事务列表里二分查找
+    //    m_ids 已排序 → std::binary_search，O(log N)
+    if (m_ids.empty())
+        return true;
+    const auto *p = m_ids.data();
+    return !std::binary_search(p, p + m_ids.size(), id);
+}
+```
+
+**判定流程伪代码**（更直观版）：
+
+```text
+function is_visible(trx_id, undo_chain_head) -> (visible: bool, next_undo: undo_ptr):
+    # 1. 快速判定（直接基于 ReadView）
+    if trx_id < view.m_up_limit_id: return TRUE
+    if trx_id >= view.m_low_limit_id: return FALSE
+    if trx_id in view.m_ids (binary search): return FALSE
+
+    # 2. 该版本对当前快照可见
+    return TRUE
+```
+
+### 22.3 Undo log 链回溯
+
+若当前记录的 `DB_TRX_ID` 对快照不可见，沿着 `DB_ROLL_PTR` 在 undo log 中找更老版本：
+
+```text
+function find_visible_version(record, view) -> tuple:
+    cur = record
+    trx_id = read_DB_TRX_ID(cur)
+
+    while not view.is_visible(trx_id):
+        roll_ptr = read_DB_ROLL_PTR(cur)
+        if roll_ptr == NULL: raise error "no visible version"
+        cur = undo_log_read(roll_ptr)        # 沿 DB_ROLL_PTR 链回溯
+        trx_id = read_DB_TRX_ID(cur)
+
+    return cur
+```
+
+**Undo log 类型**（源码 `storage/innobase/trx/trx0undo.cc`）：
+- `TRX_UNDO_INSERT`：仅 INSERT 事务产生，回滚后即可丢弃（无 MVCC 价值）
+- `TRX_UNDO_UPDATE`：UPDATE/DELETE 产生，构成 MVCC 链，需等所有可能访问该版本的 read view 关闭后才能 purge
+
+### 22.4 复杂度分析
+
+| 操作 | 复杂度 | 工程含义 |
+|------|--------|----------|
+| `changes_visible` 判定 | O(log N) | N = `m_ids.size()`，通常 ≤ 活跃事务数 |
+| 单行可见性查找 | O(L) | L = undo 链长度（长事务下恶化） |
+| ReadView 创建 | O(N) | N = 当前活跃事务数（需拷贝 id 列表并排序） |
+| Purge undo | O(K) | K = 待回收 undo 页数，受 `innodb_purge_threads` 与 `innodb_purge_batch_size` 控制 |
+
+**关键优化**：
+- **Hint Bits**：在 tuple header 上缓存 `HEAP_XMIN_IS_VISIBLE` / `HEAP_XMAX_IS_VISIBLE`，命中后跳过 ReadView 判定（直读 tuple 头）。
+- **快照复用**：REPEATABLE READ 下 read view 全事务复用，RC 下每语句新 view（隔离级别越严格，read view 越长寿）。
+- **`MVCC::get_view_trx_ids`**：purge 线程据此找出「最老的 read view」，回收早于该 view 的 undo。
+
+### 22.5 本项目对应
+
+`engineering/src/db/heapam.c` 的 MVCC 实现可参考 InnoDB 的三段式判定（low/high/liddle），但目前用简化版「事务 id 单调递增 + last_committed 比较」即可满足教学需求，未实现完整 ReadView 与 undo 链。
+
+## 二十三、Hash Join 算法与查询代价模型
+
+§9.3 仅说「Hash Join（v8.0.18+）含经典 grace hash 与 chained hash」，**没展开算法细节与 cost 公式**。MySQL 8.0.20 起 BNL 被淘汰，Hash Join 成为默认的 equi-join 实现。
+
+### 23.1 经典 Grace Hash Join（内存充足）
+
+源码：`reference/relational/mysql/sql/iterators/hash_join_iterator.h:50-99`（类注释文档）。
+
+**两阶段算法**（build + probe）：
+
+```text
+function classic_grace_hash_join(build_input, probe_input, join_cond):
+    # Phase 1: BUILD —— 把内表装入哈希表
+    hash_table = empty
+    for row in build_input:
+        key = extract_join_key(row, join_cond)
+        if hash_table.has(key):
+            hash_table[key].append(row)      # chaining 处理重复 key
+        else:
+            hash_table[key] = [row]
+        if hash_table.estimated_size > join_buffer_size:
+            spill_to_disk()                   # 转 on-disk 分区路径
+
+    # Phase 2: PROBE —— 探测外表
+    result = []
+    for row in probe_input:
+        key = extract_join_key(row, join_cond)
+        if hash_table.has(key):
+            for match in hash_table[key]:
+                if satisfies_other_predicates(row, match):
+                    result.append(combine(row, match))
+    return result
+```
+
+**复杂度**：
+- 时间：O(|build| + |probe|) 均摊（哈希表期望 O(1) 查找）
+- 空间：O(|build|) 内存 + O(partition_count × avg_chunk) 磁盘（溢出时）
+
+### 23.2 磁盘溢出：分区 + 多趟合并
+
+源码：`reference/relational/mysql/sql/iterators/hash_join_iterator.h:99-115`（类注释 step 1-3）、`hash_join_iterator.cc` 中的 `InitRowBuffer/InitProbeIterator/InitWritingToProbeRowSavingFile`。
+
+当 build 输入超过 `join_buffer_size`（默认 256 KB，可调）时，进入 grace hash 的磁盘溢出路径：
+
+```text
+function on_disk_hash_join(build_input, probe_input, n_chunks = kMaxChunks):
+    # Step 1: 分区 —— 用 hash(key, partition_id) 把 build 与 probe 同时分到 n_chunks 对文件中
+    for row in build_input:
+        chunk_id = partition_hash(extract_join_key(row))
+        write_to_chunk_file('build', chunk_id, row)
+    for row in probe_input:
+        chunk_id = partition_hash(extract_join_key(row))
+        write_to_chunk_file('probe', chunk_id, row)
+
+    # Step 2: 递归处理每一对 chunk
+    for chunk_id in 0..n_chunks-1:
+        if chunk_size > memory_limit:
+            recurse_with_smaller_n_chunks(chunk_id)   # 嵌套分区
+        else:
+            classic_grace_hash_join(
+                build_chunk(chunk_id),
+                probe_chunk(chunk_id),
+                join_cond)
+```
+
+**Probe Row Saving**（源码 `hash_join_iterator.h:194-220`）：当 build chunk 大到同一 probe 行需读多次（如 semijoin 不允许重复输出），把 probe 行先写到「save file」，每次重读时从 save file 取，确保不重复输出。
+
+### 23.3 JoinType 与算法选择
+
+源码：`reference/relational/mysql/sql/join_type.h:28-43`：
+
+```cpp
+enum class JoinType {
+  INNER,           // 内连接
+  OUTER,           // 左外连接
+  ANTI,            // 反连接 (NOT EXISTS)
+  SEMI,            // 半连接 (EXISTS)
+  FULL_OUTER       // 全外连接
+};
+```
+
+**Hash Join 选择判据**（来自优化器 `sql/join_optimizer/`）：
+- 等值连接（`join_cond` 是 `=`）：Hash Join 候选
+- 非等值（`<`、`>`）：退化 NLJ
+- 驱动表行数 × 内表行数极大 且 索引不可用：CBO 倾向 Hash Join
+
+### 23.4 Hypergraph Cost 模型公式
+
+源码：`reference/relational/mysql/sql/join_optimizer/cost_constants.h:62-145`（MySQL 8.0.31+ 新代价模型，hypergraph-based）。
+
+MySQL 8.0.31 引入「Hypergraph」优化器（`optimizer_switch=hypergraph_optimizer=ON`），cost 常量重新校准：
+
+| 常量 | 值（单位成本 = kUnitCostInMicroseconds = 0.434 μs） | 含义 |
+|------|----------|------|
+| `kReadOneRowCost` | 0.1 / 0.434 ≈ 0.230 | 读取一行的固定成本 |
+| `kReadOneFieldCost` | 0.02 / 0.434 ≈ 0.046 | 每读一列的增量成本 |
+| `kReadOneByteCost` | 0.001 / 0.434 ≈ 0.0023 | 每读一字节的增量成本 |
+| `kApplyOneFilterCost` | 0.025 / 0.434 ≈ 0.058 | 单谓词单行评估成本 |
+| `kIndexLookupPageCost` | 0.5 / 0.434 ≈ 1.152 | 索引查找每页成本 |
+| `kSortOneRowCost` | 0.15 / 0.434 ≈ 0.346 | 排序读入缓冲区的固定成本 |
+| `kSortComparisonCost` | 0.014 / 0.434 ≈ 0.032 | 排序比较成本 |
+
+**单行读取代价公式**（`cost_constants.h:71-72`）：
+
+```
+cost_read_row = kReadOneRowCost
+              + kReadOneFieldCost × num_fields_in_read_set
+              + kReadOneByteCost × length_of_record_buffer
+```
+
+**IO 代价公式**（`cost_constants.h:74`）：
+
+```
+io_cost = kIOStartCost + n_bytes × kIOByteCost
+       = 937.0 + n_bytes × 0.0549
+```
+
+**代价单位校准**（`cost_constants.h:57-61`）：`1.0 unit = 0.434 μs`，定义为「InnoDB 上 10 列整数表 1M 行的 `SELECT * FROM t` 表扫描单行平均耗时」。
+
+### 23.5 Hash Join 复杂度对比
+
+| 算法 | 时间 | 空间 | 适用 |
+|------|------|------|------|
+| **NLJ（Nested Loop）** | O(\|outer\| × \|inner\|) | O(1) | 小驱动表 / 内表有索引 |
+| **BNL（Block NL，已废弃）** | O(\|outer\| × \|inner\| / block_size) | O(block_size) | 8.0.20 前 |
+| **Hash Join（内存）** | O(\|build\| + \|probe\|) 均摊 | O(\|build\|) | 等值连接、内存够 |
+| **Hash Join（磁盘溢出）** | O(\|build\| + \|probe\|) × partition_pass | O(chunk_size) | 超大表连接 |
+
+**AHI 影响**：自适应哈希索引使索引查找代价介于「AHI 命中（接近常数）」与「AHI 未命中（树高 × 页查找）」之间，MySQL 故意取两者插值（`cost_model.h::IndexLookupCost`）。
+
+### 23.6 本项目对应
+
+`engineering/src/db/sql/sql_planner.c` 的代价模型只实现了简单「rows × cost_factor」估算，未实现 hypergraph join ordering（基于 DP 或 GEQO 遗传算法），亦无 Hash Join 算子——本项目 join 直接走 Nested Loop，这是教学取舍；商用 MySQL 的 Hypergraph 优化器可作为未来扩展方向（`sql/join_optimizer/join_optimizer.cc`）。
