@@ -759,12 +759,14 @@ cost_read_row = kReadOneRowCost
               + kReadOneByteCost × length_of_record_buffer
 ```
 
-**IO 代价公式**（`cost_constants.h:74`）：
+**IO 代价公式**（`cost_model.h:74`，不在 `cost_constants.h`）：
 
 ```
 io_cost = kIOStartCost + n_bytes × kIOByteCost
        = 937.0 + n_bytes × 0.0549
 ```
+
+`kIOStartCost{937.0}` 与 `kIOByteCost{0.0549}` 定义在 `reference/relational/mysql/sql/join_optimizer/cost_model.h:85,88`。
 
 **代价单位校准**（`cost_constants.h:57-61`）：`1.0 unit = 0.434 μs`，定义为「InnoDB 上 10 列整数表 1M 行的 `SELECT * FROM t` 表扫描单行平均耗时」。
 
