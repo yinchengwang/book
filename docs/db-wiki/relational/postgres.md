@@ -448,3 +448,326 @@ SQL 标准四级全实现：
 8. PG 14+ 版本发布说明：<https://www.postgresql.org/docs/release/>
 9. 知乎「PostgreSQL 学徒」专栏：<https://zhuanlan.zhihu.com/postgresql>
 10. 本仓库 `engineering/src/db/` 中的简化 PG 风格存储引擎源码
+
+## 二十一、B+Tree 节点分裂算法
+
+本节深挖 `src/backend/access/nbtree/` 下的页面分裂策略。第八节 8.1 仅概览了首页链接风格，本节给出具体算法伪代码、复杂度分析与本项目对应实现。
+
+### 21.1 分裂触发
+
+当插入新元组后页内空间不足（PD 头计算 free space < `sizeof(IndexTuple)` + `sizeof(ItemIdData)` + page header 余量），PG v14+ 采用"首页链接（right-link）"风格而非 L&Y 算法，以减少页面分裂时的写放大（避免左兄弟同步更新）。整体流程：
+
+```
+_bt_insertonpage(itup_key, buf, itemsz, newitemoff, rel):
+  if page has enough free space:
+      place itup on buf
+      return buf
+  else:
+      // nbtinsert.c:1232 触发 _bt_split
+      newbuf = _bt_split(rel, heaprel, itup_key, buf, cbuf,
+                         newitemoff, itemsz, newitem, ...)
+      return newbuf
+```
+
+源码：`reference/relational/postgres/src/backend/access/nbtree/nbtinsert.c:1489`（`_bt_split` 函数定义）、`:1232`（分裂调用点）。
+
+### 21.2 分割点定位：`_bt_findsplitloc` 与 `_bt_split_penalty`
+
+分裂质量取决于"何处切"。PG 枚举所有候选 split offset，对每个候选计算 penalty，目标是**最小化写放大**（让某一侧更满、降低后续插入的再次分裂概率）：
+
+```
+_bt_split_penalty(state, split):
+  // state 含左右区间分别的 free space（差）与原始空间
+  diff = split.left_free  - split.right_free
+  if |diff| <= page_size / 8:
+      // 单边差异不大时：剩余空闲越多越好（写放大最小）
+      penalty = min(split.left_free, split.right_free)
+  else:
+      // 严重倾斜时大偏移惩罚
+      penalty = max(split.left_free, split.right_free) + HUGE_OFFSET_BIAS
+  return penalty
+
+_bt_findsplitloc(rel, origpage, newitemoff, newitemsz):
+  candidates = []
+  for each valid split offset in page:
+      candidates.append(compute_split(offset, ...))
+  qsort(candidates by _bt_splitcmp)
+  return candidates with minimal penalty
+```
+
+源码：`reference/relational/postgres/src/backend/access/nbtree/nbtsplitloc.c:1132`（`_bt_split_penalty`）、`:588`（`qsort` 排序）、`nbtinsert.c:1567`（`_bt_findsplitloc` 调用）。
+
+### 21.3 后缀截断（Suffix Truncation）
+
+当 newitem 与页面 high key 共享后缀时，PG 会在新右页的 high key 上**截断冗余后缀**，节省内部页与叶页之间重复 key 的存储：
+
+```
+_bt_truncate(rel, lastleft, firstright, itup_key):
+  // nbtinsert.c:1682 处的 _bt_truncate
+  // 截断 lastleft/firstright 共享后缀，使 high key 更短
+  return truncated_highkey
+```
+
+源码：`reference/relational/postgres/src/backend/access/nbtree/nbtinsert.c:1682`（`_bt_truncate`）。该优化建立在 v13 的 dedup 之上，是 PG 在写放大控制上的二次升级。
+
+### 21.4 复杂度分析
+
+| 步骤 | 时间复杂度 | 备注 |
+|------|-----------|------|
+| 候选 split 枚举 | O(N) | N = 页内 tuple 数（≤ ~256） |
+| Penalty 计算 | O(1) / candidate | |
+| Split 排序 | O(N log N) | `qsort` |
+| 页面写入 | O(N/2) | 左右各写一半 |
+| 总分裂成本 | O(N log N) + O(log M) 寻路 | M = 总页数 |
+
+业界实测平均空间利用率约 **70-90%**，远优于朴素 halving（50%）。`_bt_split` 内部还会触发 `_bt_newlevel` 处理根节点分裂（2 → 3 页 → 根级数 +1），属于 O(log M) 摊销。
+
+### 21.5 本项目对应
+
+`engineering/src/db/btreeam.c` 实现的简化版仅做朴素 halving（左右各 50%），**未实现** penalty-based split 与 suffix truncation。对比阅读可看出 PG 在写放大与空间利用率上的工程深度。
+
+## 二十二、MVCC 可见性判断与快照语义
+
+第十节 10.2 仅列出 `HeapTupleSatisfiesMVCC` 与 `SnapshotData` 名称。本节给出可见性判断的完整公式、hint bits 缓存策略与复杂度分析。
+
+### 22.1 快照数据结构
+
+PG 快照 `SnapshotData` 定义见 `reference/relational/postgres/src/include/utils/snapshot.h:153`，核心三字段：
+
+```
+typedef struct SnapshotData {
+    TransactionId xmin;   // 所有 < xmin 的 XID 一定可见
+    TransactionId xmax;   // 所有 >= xmax 的 XID 一定不可见
+    TransactionId *xip;   // (xmin, xmax) 间已活动但未提交的事务列表
+    uint32      xcnt;     // xip 数组长度
+    TransactionId *subxip;// 子事务活动列表（>= xmin，未过滤 xmax）
+    int32       subxcnt;
+    bool        takenDuringRecovery;
+    ...
+} SnapshotData;
+```
+
+`xmin ≤ xip[i] < xmax` 三元组共同定义快照的"可见性世界"。源码：`reference/relational/postgres/src/include/utils/snapshot.h:153-180`。
+
+### 22.2 可见性判断公式：`HeapTupleSatisfiesMVCC`
+
+源码入口：`reference/relational/postgres/src/backend/access/heap/heapam_visibility.c:939`。逻辑可表达为：
+
+```
+HeapTupleSatisfiesMVCC(tuple, snapshot):
+  xmin = tuple.t_xmin
+  xmax = tuple.t_xmax
+
+  // ===== 阶段 1：xmin（插入事务）可见性 =====
+  if xmin == snapshot.self_xact:
+      visible_xmin = true                       // 自己插入
+  elif XidInMVCCSnapshot(xmin, snapshot):       // xmin ∈ snapshot.xip
+      return INVISIBLE                          // 插入事务未提交
+  elif TransactionIdDidCommit(xmin):
+      visible_xmin = true                       // 插入事务已提交
+  else:
+      return INVISIBLE                          // 已回滚/crash
+
+  // ===== 阶段 2：xmax（删除/更新事务）检查 =====
+  if xmax == InvalidTransactionId:
+      return VISIBLE                             // 未删除
+  if xmax == snapshot.self_xact:
+      return INVISIBLE                            // 自己刚刚删除
+  if XidInMVCCSnapshot(xmax, snapshot):
+      return VISIBLE                              // 删除事务未提交 → 仍可见
+  elif TransactionIdDidCommit(xmax):
+      return INVISIBLE                            // 删除已提交 → 不可见
+  else:
+      return VISIBLE                              // 删除已回滚 → 仍可见
+```
+
+源码同文件 `:1005`（`XidInMVCCSnapshot(xmin, snapshot)` 调用 + `SetHintBitsExt`）、`:1053`（xmax 检查）。
+
+### 22.3 Hint Bits 缓存
+
+第一次判断后会设置 `t_infomask` 中的 hint 位（`HEAP_XMIN_COMMITTED` / `HEAP_XMIN_INVALID` / `HEAP_XMAX_COMMITTED` / `HEAP_XMAX_INVALID`），后续判断退化为**常数时间位测试**，避免反复访问 CLOG。
+
+```
+// heapam_visibility.c:1010 附近
+if TransactionIdDidCommit(HeapTupleHeaderGetRawXmin(tuple)):
+    SetHintBitsExt(tuple, buffer, HEAP_XMIN_COMMITTED,
+                   HeapTupleHeaderGetRawXmin(tuple), state)
+else:
+    SetHintBitsExt(tuple, buffer, HEAP_XMIN_INVALID, ...)
+```
+
+源码：`reference/relational/postgres/src/backend/access/heap/heapam_visibility.c:1010`（hint bits 设置）。
+
+### 22.4 快照获取与推进
+
+- `GetTransactionSnapshot()` 在事务/语句开始时构建 `xmin/xmax/xip`。
+- `ProcArray`（`src/backend/storage/ipc/procarray.c`）维护所有活动事务的 XID 列表。
+- READ COMMITTED 每条语句新快照；REPEATABLE READ / SERIALIZABLE 整个事务共用一个。
+
+### 22.5 复杂度与代价
+
+| 操作 | 复杂度 | 备注 |
+|------|--------|------|
+| 首次判断（无 hint） | O(log N) | CLOG SLRU 缓存二分查找 |
+| 命中 hint bits | O(1) | 位测试 + 短路 |
+| 快照构建 | O(K) | K = 全局活跃事务数 |
+| `XidInMVCCSnapshot` | O(xcnt) | 二分查找 xip 数组 |
+
+### 22.6 本项目对应
+
+`engineering/src/db/heapam.c` 当前实现无 MVCC（单版本覆盖写），**未实现** xmin/xmax 字段、hint bits 与 CLOG。对比阅读可清晰看到 PG 在多版本并发控制上的工程深度。
+
+## 二十三、查询优化器与 Join 算法
+
+第九节 9.2/9.3 提到 GEQO / Volcano，但未给出动态规划 join order 伪代码、Hash/Merge Join 实现细节。本节深入优化器与 Join 算法。
+
+### 23.1 优化器总体流程
+
+PG 优化器位于 `reference/relational/postgres/src/backend/optimizer/plan/planner.c`，主入口 `planner()`。整体流程：
+
+```
+planner(root):
+  1. subquery_pull_up + 表达式预处理
+  2. 统计信息读取（pg_statistic / pg_statistic_ext）
+  3. 初始化 base rels（size estimate、单表 access paths）
+  4. 启发式优化（强制单表 access path 选择）
+  5. join search:
+       if join_search_hook:
+           return hook(root, levels_needed, initial_rels)
+       elif enable_geqo && levels_needed >= geqo_threshold:
+           return geqo(root, levels_needed, initial_rels)            // 遗传算法
+       else:
+           return standard_join_search(root, levels_needed, initial_rels)  // DP
+  6. top-level: distinct, aggregation, sort, limit 处理
+```
+
+源码：`reference/relational/postgres/src/backend/optimizer/path/allpaths.c:3915`（GEQO vs DP 路由判断）。
+
+### 23.2 Join 顺序搜索：动态规划（`standard_join_search`）
+
+源码：`reference/relational/postgres/src/backend/optimizer/path/joinrels.c:78`（`join_search_one_level`）。按层级构造 joinrel，每层处理规模递增。
+
+```
+standard_join_search(root, levels_needed):
+  // levels_needed = N - 1（N 个 base rel 需要 N-1 次连接）
+  for lev = 2 to levels_needed:
+    // 上一轮 join 出的中间 joinrel（每个含 lev-1 张 base rel）
+    for each old_rel in joinrels[lev - 1]:
+      for each initial_rel not yet in old_rel:
+        new_joinrel = make_join_rel(old_rel, initial_rel, ...)
+        paths = generate_paths(new_joinrel)   // 嵌套循环 / 哈希 / 归并
+        keep cheapest_path(new_joinrel)
+    joinrels[lev] = all new joinrels at this level
+  
+  return cheapest_path(joinrels[levels_needed])
+```
+
+源码同文件 `:78`（`join_search_one_level` 函数定义）。
+
+**复杂度**：O(3^N)（每个 N 元集合有 3^N − 1 个非空子集）；空间 O(2^N)（存每层 joinrel）。N ≤ `geqo_threshold`（默认 12）可行，超出后切换 GEQO。
+
+### 23.3 GEQO 遗传算法
+
+当 N > 12 时 DP 空间爆炸，PG 切换到遗传算法：
+
+```
+geqo(root, levels_needed, initial_rels):
+  // 染色体编码：表的排列 + join 方法标签
+  init_population(pool_size = pool_size)        // 默认 50
+  for gen = 0 to generations:                   // 默认 200
+    fitness = geqo_eval(pool)                   // 每条染色体 → 计划 cost
+    selected = selection(pool)                  // 锦标赛 / 赌轮
+    children = crossover_and_mutate(selected)   // ERX / OX1 / OX2
+    pool = children
+  return best_fitness_chromosome
+```
+
+源码目录：`reference/relational/postgres/src/backend/optimizer/geqo/`（含 `geqo_main.c`、`geqo_eval.c`、`geqo_pool.c`、`geqo_cx.c`、`geqo_mutation.c` 等）。
+
+### 23.4 Volcano 拉取模型
+
+执行器采用经典 Volcano pull-based，每个 Plan Node 实现三个回调 `init_plan / next_tuple / end_plan`。主循环在 `ExecProcNode`：
+
+```
+ExecProcNode(node):
+  if node->chgParam != NULL:
+      re_scan(node)
+  return node->ExecNodeProc(node)         // 节点类型多态派发
+```
+
+源码：`reference/relational/postgres/src/backend/executor/execMain.c:308`（`ExecutorRun` 顶层循环）。
+
+### 23.5 Hash Join 算法
+
+源码：`reference/relational/postgres/src/backend/executor/nodeHashjoin.c:225`（`ExecHashJoinImpl`）。
+
+```
+ExecHashJoin(outer, inner, hash_keys):
+  // 阶段 1：build（内表构造 hash 表）
+  for tuple in inner:
+    bucket = hash(tuple.hash_key) % nbuckets
+    append tuple to bucket
+  
+  // 阶段 2：probe（外表探测，可分批 spill）
+  for tuple in outer:
+    h = hash(tuple.hash_key)
+    for match in bucket[h]:
+      if match.join_key == tuple.join_key:
+        emit(match, tuple)                       // 输出连接结果
+```
+
+时间复杂度：O(M + N) 平均（M = inner 行数，N = outer 行数）；最坏 O(M * N)（严重 hash 冲突）。源码同文件 `:225`。
+
+### 23.6 Merge Join 算法
+
+源码：`reference/relational/postgres/src/backend/executor/nodeMergejoin.c`。
+
+```
+ExecMergeJoin(outer_sorted, inner_sorted, join_keys):
+  outer_it = outer_sorted.begin()
+  inner_it = inner_sorted.begin()
+  while outer_it != end and inner_it != end:
+    cmp = compare(outer_it.key, inner_it.key)
+    if cmp < 0: outer_it++
+    elif cmp > 0: inner_it++
+    else:                                         // 相等 key
+      emit_all_equal_pairs(outer_it, inner_it)    // 内连接输出所有配对
+      mark_outer_end / mark_inner_end             // 处理重复 key
+```
+
+要求两侧已排序（pre-sort 或 index scan），时间复杂度：O(M + N)；对重复 key 最坏退化为 O(M * N)。
+
+### 23.7 统计信息
+
+PG 统计信息由 ANALYZE 命令维护，存储于系统表：
+
+| 系统表 | 关键字段 | 用途 |
+|--------|---------|------|
+| `pg_class` | `reltuples`, `relpages` | 基础行数与页数 |
+| `pg_statistic` | `stainherit`, MCVs, `histogram_bounds`, `null_frac`, `distinct` | 单列分布 |
+| `pg_statistic_ext` | n-distinct 多列、functional dependencies、MCV list | 多列扩展统计 |
+
+代价模型 `src/backend/optimizer/path/costsize.c` 用这些统计量估算 rows：
+
+```
+rows = base_rows * selectivity_from_clauses(stats)
+     * join_selectivity(stats, join_type)
+```
+
+`EXPLAIN (ANALYZE)` 把 estimated rows 与 actual rows 对比，偏差过大说明统计过期（需 ANALYZE）。
+
+### 23.8 复杂度对比
+
+| 算法 | 适用场景 | 时间复杂度 | 空间复杂度 |
+|------|----------|-----------|-----------|
+| Nested Loop | 外表小 + 内表带索引 | O(M * log N) | O(1) |
+| Hash Join | 等值连接，无索引 | O(M + N) | O(M) |
+| Merge Join | 已排序 / 范围连接 | O(M + N) | O(1) |
+| DP Join Order | N ≤ 12 | O(3^N) | O(2^N) |
+| GEQO | N > 12 | O(P * G) | O(P) |
+
+P = 种群大小（默认 50），G = 代数（默认 200）。
+
+### 23.9 本项目对应
+
+`engineering/src/db/` 当前仅实现 catalog / heap / btree，**未实现** join 算法与查询优化器。可对比 PG 学习如何把动态规划、Volcano 拉取、统计信息三者结合，构造可扩展的关系型优化器。教学实现可参考 `learning/code-solutions/` 下的 LeetCode 排序/搜索类题目。
