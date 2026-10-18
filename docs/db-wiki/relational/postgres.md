@@ -473,29 +473,34 @@ _bt_insertonpage(itup_key, buf, itemsz, newitemoff, rel):
 
 ### 21.2 分割点定位：`_bt_findsplitloc` 与 `_bt_split_penalty`
 
-分裂质量取决于"何处切"。PG 枚举所有候选 split offset，对每个候选计算 penalty，目标是**最小化写放大**（让某一侧更满、降低后续插入的再次分裂概率）：
+分裂质量取决于"何处切"。PG 枚举所有候选 split offset，对每个候选计算 penalty。**`_bt_split_penalty` 的真实目的**是确定**新 high key 需保留的属性数**（影响 suffix truncation 深度）；写放大最小化是上层 `_bt_findsplitloc` 在所有候选间选择最优的整体目标（包含 distribution-by-space），并非 `_bt_split_penalty` 自身职责。
 
 ```
 _bt_split_penalty(state, split):
-  // state 含左右区间分别的 free space（差）与原始空间
-  diff = split.left_free  - split.right_free
-  if |diff| <= page_size / 8:
-      // 单边差异不大时：剩余空闲越多越好（写放大最小）
-      penalty = min(split.left_free, split.right_free)
+  // state 含 is_leaf、origpage、newitemoff 等
+  if !state->is_leaf:
+      // 内页：直接返回 firstright tuple 的实际尺寸
+      // （含 line pointer 开销，将作为新 high key）
+      if !split.newitemonleft && split.firstrightoff == state->newitemoff:
+          return state->newitemsz
+      itemid = PageGetItemId(state->origpage, split.firstrightoff)
+      return MAXALIGN(ItemIdGetLength(itemid)) + sizeof(ItemIdData)
   else:
-      // 严重倾斜时大偏移惩罚
-      penalty = max(split.left_free, split.right_free) + HUGE_OFFSET_BIAS
-  return penalty
+      // 叶页：返回 lastleft/firstright 之间需要区分的属性数
+      // 决定 suffix truncation 时新 high key 应保留几位
+      lastleft  = _bt_split_lastleft(state, split)
+      firstright = _bt_split_firstright(state, split)
+      return _bt_keep_natts_fast(state->rel, lastleft, firstright)
 
 _bt_findsplitloc(rel, origpage, newitemoff, newitemsz):
   candidates = []
   for each valid split offset in page:
       candidates.append(compute_split(offset, ...))
-  qsort(candidates by _bt_splitcmp)
-  return candidates with minimal penalty
+  qsort(candidates by _bt_splitcmp)  // 升序：penalty 最小优先
+  return first candidate
 ```
 
-源码：`reference/relational/postgres/src/backend/access/nbtree/nbtsplitloc.c:1132`（`_bt_split_penalty`）、`:588`（`qsort` 排序）、`nbtinsert.c:1567`（`_bt_findsplitloc` 调用）。
+源码：`reference/relational/postgres/src/backend/access/nbtree/nbtsplitloc.c:1132`（`_bt_split_penalty`）、`:588`（`qsort`）、`nbtinsert.c:1567`（`_bt_findsplitloc` 调用）。`_bt_keep_natts_fast` 声明在 `reference/relational/postgres/src/include/access/nbtree.h:1310`。
 
 ### 21.3 后缀截断（Suffix Truncation）
 
