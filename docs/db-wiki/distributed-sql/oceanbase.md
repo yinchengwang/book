@@ -916,7 +916,7 @@ function POINT_GET(key, schema_version):
 
 ---
 
-## 二十四、参考资料
+## 二十七、参考资料
 
 1. OceanBase 官方文档（中文）：https://www.oceanbase.com/docs/
 2. OceanBase 官方文档（英文）：https://en.oceanbase.com/docs/
