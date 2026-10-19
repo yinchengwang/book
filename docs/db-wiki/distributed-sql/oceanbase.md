@@ -695,6 +695,227 @@ OB 4.x 自带 `_metrics` Prometheus endpoint（基于 service 暴露）；
 - **学习轨参考**：`learning/notes/` 中已含 NewSQL、Paxos、HLC 相关章节；OB 的具体 API 可作为产业落地案例补充。
 - **分布式存储参考**：`learning/scaffold/cpp/dist_kv/`（如存在）可与 OB 的 LogStream 对照看。
 
+## 二十五、Paxos 状态机与 Leader Lease 协议（算法深度）
+
+§十.3 已概述 Paxos / Multi-Paxos / Learner / 配置变更的角色分工；本节聚焦**算法伪代码与状态转移**，补足实现细节。所有源码路径均基于公开 OB 4.x master 头部位置（`reference/distributed-sql/oceanbase/` 子模块**未 init**，下列行号均为 approx 估算，仅作入口参考）。
+
+### 25.1 Multi-Paxos 角色与状态机
+
+OB 的 Palf（Parallel Log Framework）将"一条 LogStream = 一组 Paxos 实例"实现为**稳定 Leader + log batching**：
+
+```
+角色：
+  - Proposer  = 当前 LogStream 的 Leader replica
+  - Acceptor  = 全部 N 个 Paxos 副本（含 Leader 自身）
+  - Learner   = 所有副本（含 ReadOnly Columnar Replica）
+
+单 Paxos 实例（instance i）状态：
+  state.proposal_id  ← 单调递增 (leader_id 嵌入高 32 位，本地 ballot 嵌入低 32 位)
+  state.accepted_id  ← 最近一次 Promise 的 proposal_id
+  state.accepted_val ← 最近一次 Accepted 的 log entry
+
+Multi-Paxos 优化：
+  - Stable Leader：leader 任期内的 Prepare/Promise 只需一次；log entry 可跳过
+    Prepare 阶段（仅记录当前 leader ballot，replicas 已认可）
+  - Log Batching：leader 把多条 redo log 聚合成一个 slab 走一次 Accept，
+    减少 RPC 往返
+```
+
+### 25.2 Multi-Paxos Accept 路径伪代码
+
+```
+function LEADER_ACCEPT(entry: LogEntry):
+    # 本轮 leader 任期，proposal_id 由 (term, slot) 推得
+    pid = (current_term, monotonically_increasing_local_ballot)
+
+    # 单副本内：本地写日志 + 同步给 followers
+    LDR_localAppend(entry, pid)
+    if quorum_send(entry, pid) == MAJORITY:  # N/2+1 acks
+        commit_index = max(commit_index, entry.lsn)
+        # leader 把 commit point 推给 followers（async）
+        broadcast_commit(commit_index)
+        return COMMITTED
+    else:
+        return REJECTED  # 触发重新 Prepare 或切主
+```
+
+复杂度：
+- **单次 Accept RPC 延迟**：1 × RTT（leader → majority followers）；
+- **失败重试**：O(retries) × RTT，重试期间 leadership 变化需重新 Prepare（额外 1 RTT）。
+
+源码入口：`src/logservice/palf/palf_handle_impl.cpp` (approx, 模块未 init，行号需校对)；`src/logservice/palf/palf_kv_cb_engine.cpp`。
+
+### 25.3 Leader Lease 与弱读（Weakly Consistent Read）
+
+OB 4.x 在 Paxos 之上叠加 **leader-based lease** 以支持**弱一致性读**（无 redo log 走读路径，直接读 follower）：
+
+```
+参数：weak_read_lease_duration_ms（默认 5000 ms）
+状态：lease_start_ts, lease_end_ts（follower 侧记录）
+
+Leader 续约（每 lease/3 时间间隔）：
+  function LEADER_RENEW_LEASE():
+      now = monotonic_clock()
+      if now >= lease_end_ts - lease_duration/3:
+          lease_end_ts = now + weak_read_lease_duration_ms
+          # 把 lease 走 Paxos Accept 同步到 majority
+          ACCEPT_LOG(LeaseRecord{renew_ts=now, expire_ts=lease_end_ts})
+
+Follower 弱读：
+  function FOLLOWER_WEAK_READ(snapshot_ts):
+      if lease_start_ts <= snapshot_ts <= lease_end_ts - now():
+          # 在 lease 窗口内，leader 不会切主 → 可线性读
+          return local_snapshot_read(snapshot_ts)
+      else:
+          # 退化为强读：转 leader 走 read index 或 round-robin
+          return STRONG_READ(snapshot_ts)
+```
+
+要点：
+- **强读路径**仍走 Paxos log position（§10.2 提到的 `read snapshot_version`）；
+- **弱读路径**仅在 lease 窗口内安全，避免 follower 读旧 leader 的脏数据；
+- 与 Spanner 的 TrueTime 不同，OB 不依赖硬件时钟同步，而是依赖 **Paxos lease 上的单调时间**。
+
+源码入口：`src/logservice/palf/palf_handle_impl.cpp` 中的 lease 续约循环（approx, 模块未 init，行号需校对）。
+
+### 25.4 配置变更：Joint Consensus 简化版
+
+OB 在副本增删时使用**类 Joint Paxos**两阶段切换，避免双主：
+
+```
+function CHANGE_REPLICAS(zone_list: list):
+    Phase 1 (Prepare):
+      1. 旧 leader 把 C_old 配置封入 log entry（仍走 Quorum_C_old）
+      2. 一旦 Quorum_C_old ack，进入 Phase 2
+    Phase 2 (Commit):
+      3. 旧 leader 把 C_new 配置封入 log entry
+      4. Quorum_{C_old ∪ C_new} ack 后，C_new 生效，新 leader 由 C_new 选出
+    期间读写由 C_old 继续服务；不存在双 leader 同时接受写的窗口。
+```
+
+源码入口：`src/logservice/palf/ob_palf_replica_config_handler.cpp` (approx, 模块未 init，行号需校对)。
+
+---
+
+## 二十六、LSM-Tree 合并策略与全局时间戳分配
+
+§七.1 给出 LSM-Tree + Macro Block 的概念图，§10.4 仅 3 行提及全局时间戳；本节深挖**合并策略选择算法、Macro Block cost 估算、TSO 中央分配器**，补足实现算法。
+
+### 26.1 合并层级与触发条件
+
+OB 的合并按影响范围分三类：
+
+| 合并类型 | 范围 | 触发条件 | 阻塞写入 |
+|----------|------|----------|----------|
+| **minor freeze** | MemTable → 0 层 SST | MemTable 内存超阈值（`freeze_trigger_percentage`，默认 50%） | 仅冻结的 MemTable |
+| **major freeze** | 全部 SST 全量合并为快照 | 显式 `ALTER SYSTEM MAJOR FREEZE` 或调度策略 | 是，影响所有 SST |
+| **daily merge** | 多层 SST 选择性合并 | 后台调度 + 成本阈值 | 否，后台任务 |
+
+### 26.2 Minor / Major Freeze 时序伪代码
+
+```
+function MAYBE_TRIGGER_FREEZE(ls: LogStream):
+    mem_used = sum(memtables[].approx_size())
+    mem_cap  = ls.memory_limit_bytes
+
+    if mem_used >= mem_cap * freeze_trigger_percentage / 100:
+        # minor freeze: 把 active memtable 切为 immutable，flush 为 0 层 SST
+        immutable = memtables[active].freeze()
+        flush_immutable_to_sst_0(immutable)   # 异步磁盘写
+
+    if scheduler_major_freeze_window():
+        # major freeze: 沿 schema_version 链全量合并
+        snapshot = pick_snapshot_version_for_major()
+        parallel_for_each(sst_level in 0..N):
+            merge_into_new_sst(sst_level, snapshot)
+
+    if cluster_2pc_coordinator_signals_merge():
+        # 分布式协调器（RootService）下达的合并指令
+        execute_scheduled_merge(task_descriptor)
+```
+
+### 26.3 合并 Cost 估算
+
+OB 合并选择器为每个候选 SST 集合估算 cost（读取放大 + 写入放大 + 空间放大），选 cost 最低者：
+
+```
+cost(L_selected) = w_r · read_amp(L_selected)         # 读放大
+               + w_w · write_amp(L_selected)          # 写放大
+               + w_s · space_amp(L_selected)          # 空间放大
+
+其中：
+  read_amp = sum(sst.selected[i].bloom_size + index_size) / row_count
+  write_amp = sum(rewrite_bytes(sst.selected)) / total_bytes
+  space_amp = total_size_with_overlap / total_unique_size
+
+权重 w_r, w_w, w_s 默认 1:1:1（可通过 GUC 微调）
+```
+
+启发式：OB 不像 RocksDB 那样追求严格的 level-tiered，而是 **"按 range 选择 + 周期性 major"**——通过 major freeze 兜底，避免 read amp 无限增长。
+
+源码入口：`src/storage/compaction/ob_compaction_choice_provider.cpp`、`src/storage/compaction/ob_merge_task.cpp` (approx, 模块未 init，行号需校对)。
+
+### 26.4 全局时间戳分配（TSO / GTS）
+
+OB 不依赖外部时钟，而用 **Paxos log position 作为逻辑时钟**；同时存在一个**单机版 Timestamp Oracle**（`GTS`）用于单分区事务。
+
+```
+中央分配器（单分区内）：
+  function GTS_NEXT(slots=200):
+      # slots 是批量分配数量，避免单点 RPC
+      atime = monotonic_clock_ns()
+      ret = atomic_fetch_add(global_ts_counter, slots)
+      return (atime << 20) | ret   # 高 44 位物理时间，低 20 位逻辑计数
+
+事务层调用：
+  function TRANS_BEGIN():
+      ts_read  = GTS_NEXT()         # 读快照版本
+      ts_write = GTS_NEXT()         # 写入 commit 版本
+      txn = TxContext(read_ts=ts_read, write_ts=ts_write)
+      return txn
+
+  function TRANS_COMMIT(txn):
+      # write_ts 必须比所有冲突事务的 read_ts 都大
+      assert(ts_write > max(conflict_read_ts))
+      APPLY_VIA_PAXOS(txn)         # 走 §10.2 描述的 2PC + Multi-Paxos
+```
+
+注：
+- GTS 是 **per-zone** 中央分配（并不是全局唯一），跨 zone 事务还需 Paxos log position 兜底；
+- 这与 Spanner TrueTime 不同——OB 牺牲"全局同步时钟"换取"协议实现纯粹度"；
+- 事务 commit 时如果 `ts_write` 已被其他事务占用，需 retry（serializable isolation 下）。
+
+源码入口：`src/storage/transaction/ob_trans_ctx.cpp`、`src/observer/ob_observer_func.cpp`（含 GTS 启动逻辑）(approx, 模块未 init，行号需校对)。
+
+### 26.5 读路径与 schema_version 协调
+
+OB 的合并强 schema 约束——读路径需找到对应的 schema_version：
+
+```
+function POINT_GET(key, schema_version):
+    # schema_version 由 schema service 提供；通常表结构变更后 +1
+    sst_idx = memtable_binary_search(key, ts=read_snapshot)
+
+    # 0 层 SST 是按 schema_version 分桶的
+    sst = sst_layer_0.lookup(key, schema_version=schema_version)
+    if sst is None:
+        sst = sst_layer_1plus.lookup(key, schema_version)
+
+    if sst.column_meta[schema_version] exists:
+        return decode_row(sst, key, columns_requested)
+    else:
+        # schema 已演进到新版本，需要 column mapping
+        return materialize_via_column_mapping(sst, key, old_to_new_schema)
+```
+
+要点：
+- ClogPB 列存天然支持 schema 演进（每列独立写新 SST，旧 SST 可读旧 schema）；
+- 合并时不同 schema_version 的 SST 不会相互覆盖，避免跨版本 IO 抖动。
+
+源码入口：`src/storage/blocksstable/ob_block_manager.cpp`、`src/storage/blocksstable/cs_encoding/ob_column_oriented_encoding.cpp`、`src/share/schema/ob_column_schema.cpp` (approx, 模块未 init，行号需校对)。
+
+---
+
 ## 二十四、参考资料
 
 1. OceanBase 官方文档（中文）：https://www.oceanbase.com/docs/
