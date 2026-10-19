@@ -627,11 +627,11 @@ YB 自带 CDC SDK（`java/yb-cdc/`），由 Debezium / 第三方 sink 消费：
 - **共识协议**：`engineering/src/dist/` 已有 raft + 2PC 学习实现；与 `src/yb/consensus/raft_consensus.cc` 工业级对照。
 - **学习轨**：`learning/notes/` 内已含 NewSQL 与多区容灾章节，可结合 YB 的具体 API 强化。
 
-## 二十五、DocDB 自管编码：DocKey 二进制布局与 PackedRow V2 Schema 折叠
+## 二十四、DocDB 自管编码：DocKey 二进制布局与 PackedRow V2 Schema 折叠
 
 YB 把「schema 维度 + 行内子文档 + 时间戳 + 类型字节」全部压到一个 RocksDB key + 一个 RocksDB value。本节逐字段拆解 DocKey 的二进制布局、PackedRow V2 的 schema-version + flags 编码、ValueControlFields 与 ValueEntryTypeAsChar——这些是 DocDB 区别于「裸 RocksDB KV」的关键设计，也是 §7.1 概念图背后真正的字节排布。
 
-### 25.1 DocKey 二进制布局（CotableId/ColocationId + Hash + Range + DocHybridTime + UserKey）
+### 24.1 DocKey 二进制布局（CotableId/ColocationId + Hash + Range + DocHybridTime + UserKey）
 
 `src/yb/dockv/doc_key.h:95` 的 `class DocKey` 与 `src/yb/dockv/doc_key.cc:252 DocKey::AppendTo(KeyBytes* out)` 暴露了 5 段式二进制布局：
 
@@ -647,11 +647,11 @@ YB 把「schema 维度 + 行内子文档 + 时间戳 + 类型字节」全部压�
 - `Hashed group`：构成 PRIMARY KEY 中「hash 部分」的列序列（YCQL 全列主键即 hash，YSQL 主键中标记为 hash 的列即 hashed group）；
 - `Range group`：构成 PRIMARY KEY 中「range 部分」的列序列，对应 PostgreSQL 风格的主键第二段；
 - `DocHybridTime`：版本戳（物理微秒 + logical），单调递增（`src/yb/common/hybrid_time.h`、`src/yb/common/doc_hybrid_time.h`）；
-- `UserKey`：子文档/列的 path 编码，每段以前缀 `ValueEntryTypeAsChar` 的类型字节打头（§25.5）。
+- `UserKey`：子文档/列的 path 编码，每段以前缀 `ValueEntryTypeAsChar` 的类型字节打头（§24.5）。
 
 源码：`reference/distributed-sql/yugabytedb/src/yb/dockv/doc_key.h:95-340`（`DocKey` / `DocKeyEncoder` / `DocKeyEncoderAfterHashStep` / `DocKeyEncoderAfterTableIdStep`），`reference/distributed-sql/yugabytedb/src/yb/dockv/doc_key.cc:252 DocKey::AppendTo`、`:408 DocKey::DecodeHash`。
 
-### 25.2 DocKeyEncoder 链式 API
+### 24.2 DocKeyEncoder 链式 API
 
 `src/yb/dockv/doc_key.h:339` 的 `class DocKeyEncoderAfterHashStep` 与 `:352` 的 `class DocKeyEncoderAfterTableIdStep` 实现了「先 CotableId → Hash → Range」的链式编码器，强制使用者按既定顺序生成字节流，避免漏段：
 
@@ -690,7 +690,7 @@ void DocKey::AppendTo(KeyBytes* out) const {
 
 编译期强约束编码形态（hash 必须在 range 之前，table id 必须在 hash 之前），源码层杜绝「半成品 key」。
 
-### 25.3 PackedRow V2 编码：schema_version + flags + 列数据
+### 24.3 PackedRow V2 编码：schema_version + flags + 列数据
 
 §7.1 提到的「Schema-aware PackedRow v2」的真实字节布局来自 `src/yb/dockv/packed_row.h:148 RowPackerV1` / `:190 RowPackerV2`：
 
@@ -727,7 +727,7 @@ V1 vs V2 对比（packed_row.h:151 / :192）：
 
 `SchemaPacking` 是 PackedRow 的反向工程器：把「表 schema + schema_version」映射成「列在 packed 字节流中的偏移表」，提供 `column_packing_data(idx)`、`GetValue(idx, packed)`、`GetBounds`（用于 range 范围裁剪）等接口；同表多 schema_version 时通过 `SchemaVersionMapper` 协调多版本读（`schema_packing.h:75`、`schema_packing.cc:904 InsertSchemas`）。
 
-### 25.4 ValueControlFields（TTL + user timestamp + merge flags）
+### 24.4 ValueControlFields（TTL + user timestamp + merge flags）
 
 每个 value 的控制字段来自 `src/yb/dockv/value.h:27 struct ValueControlFields`：
 
@@ -760,7 +760,7 @@ struct ValueControlFields {
 - `kResetTtl` 是 CQL 语义下「0 TTL = 无 TTL」特例的别名；
 - `DecodeWithIntentDocHt` 额外吐出 intent doc hybrid time，给 transactional apply 路径用。
 
-### 25.5 ValueEntryTypeAsChar 类型字节
+### 24.5 ValueEntryTypeAsChar 类型字节
 
 `src/yb/dockv/value_type.h:161 DOCDB_VALUE_ENTRY_TYPES` 用单字节 ASCII 字符表达「value 类型」+「key 字段类型」+「编码控制字」。下表节选与 packed_row 紧密相关的字节（`value_type.h:208-214`）：
 
@@ -782,7 +782,7 @@ struct ValueControlFields {
 
 源码：`reference/distributed-sql/yugabytedb/src/yb/dockv/value_type.h:108-219 DOCDB_VALUE_ENTRY_TYPES`（含完整 key/字节编码表）。
 
-### 25.6 复杂度与本项目对照
+### 24.6 复杂度与本项目对照
 
 | 操作 | YB DocDB | 本项目 `engineering/src/db/storage/` |
 |------|----------|--------------------------------------|
@@ -801,11 +801,11 @@ struct ValueControlFields {
 
 ---
 
-## 二十六、Raft 自维护：UpdateReplica 6 步流水线与 OperationTracker 内存门控
+## 二十五、Raft 自维护：UpdateReplica 6 步流水线与 OperationTracker 内存门控
 
 YB Raft（`src/yb/consensus/raft_consensus.cc`）与 etcd-raft 的关键差异在于「follower 侧的 apply 流水线」：follower 接收到 leader 的 batch 后不是直接写 RocksDB，而是先 enqueue prepare、再 enqueue WAL、再 commit、再异步 apply，每一步都可在 failure injection 下暂停测试。本节拆解这 6 步流水线，以及 OperationTracker / VoteCounter / LeaderLease 这三件配套机制。
 
-### 26.1 UpdateReplica 6 步流水线（`RaftConsensus::UpdateReplica`）
+### 25.1 UpdateReplica 6 步流水线（`RaftConsensus::UpdateReplica`）
 
 `src/yb/consensus/raft_consensus.cc:1966 Result<UpdateReplicaResult> RaftConsensus::UpdateReplica` 是 follower 侧的处理入口。源码注释 `:1978-2057` 显式列出 6 步（编号 0–5）：
 
@@ -845,7 +845,7 @@ Result<RaftConsensus::UpdateReplicaResult> RaftConsensus::UpdateReplica(
 
 源码：`reference/distributed-sql/yugabytedb/src/yb/consensus/raft_consensus.cc:1966 RaftConsensus::UpdateReplica`、`:2114 EarlyCommitUnlocked`、`:2117 EnqueuePreparesUnlocked`、`:2125 EnqueueWritesUnlocked`、`:2166 TRACE("UpdateReplica() finished")`。
 
-### 26.2 OperationTracker 内存门控（Add/Release）
+### 25.2 OperationTracker 内存门控（Add/Release）
 
 `src/yb/tablet/operations/operation_tracker.h:59 class OperationTracker` 跟踪每个 TabletPeer 上「prepare 完成但 apply 未完成」的 in-flight operation。其 `Add`（`:68`）的关键实现：
 
@@ -882,7 +882,7 @@ Status OperationTracker::Add(OperationDriver* driver) {
 
 源码：`reference/distributed-sql/yugabytedb/src/yb/tablet/operations/operation_tracker.h:59 class OperationTracker`、`:68 Status Add(...)`、`:72 void Release(...)`、`:127 pending_operations_ hashmap`；`reference/distributed-sql/yugabytedb/src/yb/tablet/operations/operation_tracker.cc:160 OperationTracker::Add`、`:213 DecrementCounters`、`:225 Release`、`:285 WaitForAllToFinish`。
 
-### 26.3 VoteCounter 与 LeaderElection
+### 25.3 VoteCounter 与 LeaderElection
 
 `src/yb/consensus/leader_election.h:69 class VoteCounter` 是选举票收集器：
 
@@ -913,25 +913,28 @@ class VoteCounter {
 
 源码：`reference/distributed-sql/yugabytedb/src/yb/consensus/leader_election.h:65 ElectionVote 3 态枚举`、`:69 VoteCounter`、`:209 RecordVoteUnlocked`；`reference/distributed-sql/yugabytedb/src/yb/consensus/leader_election.cc:147 RunElection`、`:225 VoteResponseRpcCallback`、`:312 RecordVoteUnlocked`。
 
-### 26.4 LeaderLease（leader_lease_duration_ms）
+### 25.4 LeaderLease（leader_lease_duration_ms）
 
-`src/yb/consensus/raft_consensus.h:86` 定义 `kDefaultLeaderLeaseDurationMs = 2000`（2 秒）。`FLAGS_leader_lease_duration_ms` 在 `raft_consensus.cc:217 DEFINE_NON_RUNTIME_int32` 注册，`:223 DEFINE_validator` 强制「election timeout 严格小于 leader_lease」：
+`src/yb/consensus/raft_consensus.h:86` 定义 `kDefaultLeaderLeaseDurationMs = 2000`（2 秒）。`FLAGS_leader_lease_duration_ms` 在 `raft_consensus.cc:217 DEFINE_NON_RUNTIME_int32` 注册，`:223 DEFINE_validator` 用 `FLAG_DELAYED_COND_VALIDATOR` 强制「leader_lease 严格大于 raft_heartbeat_interval」：
 
 ```c++
-// src/yb/consensus/raft_consensus.cc:217-234 真实注册
+// src/yb/consensus/raft_consensus.cc:217-226 真实注册
 DEFINE_NON_RUNTIME_int32(leader_lease_duration_ms, yb::consensus::kDefaultLeaderLeaseDurationMs,
-                         "Leader lease duration. If a follower does not receive a heartbeat from "
-                         "the leader within this interval, it considers the leader to be failed.");
+             "Leader lease duration. A leader keeps establishing a new lease or extending the "
+             "existing one with every UpdateConsensus. A new server is not allowed to serve as a "
+             "leader (i.e. serve up-to-date read requests or acknowledge write requests) until a "
+             "lease of this duration has definitely expired on the old leader's side.");
 DEFINE_validator(leader_lease_duration_ms,
-                 [](const int32_t& _value) -> Status {
-                   if (_value < FLAGS_leader_lease_duration_ms) {
-                     return STATUS_FORMAT(InvalidArgument,
-                         "Must be strictly less than leader_lease_duration_ms: $0",
-                         FLAGS_leader_lease_duration_ms);
-                   }
-                   return Status::OK();
-                 });
+    FLAG_DELAYED_COND_VALIDATOR(
+        FLAGS_raft_heartbeat_interval_ms < _value,
+        yb::Format("Must be strictly greater than raft_heartbeat_interval_ms: $0",
+            FLAGS_raft_heartbeat_interval_ms)));
 ```
+
+- 配对的 `raft_heartbeat_interval_ms` 也有反向 validator（`:229-233`）：`_value < FLAGS_leader_lease_duration_ms` 强制「heartbeat 严格小于 leader_lease」；
+- `FLAG_DELAYED_COND_VALIDATOR` 是「延迟校验」：两个 flag 注册顺序可能不固定，先注册的先定义；启动时如果发现 `leader_lease <= heartbeat` 不报错，到 validator 触发时才报错（避免 init 期顺序敏感）；
+- 真实约束意图：每次 heartbeat 后 leader 的 lease 还有 ≥ heartbeat 间隔的余量，保证新 leader 选举前旧 leader 一定先 lease expire。
+
 
 `UpdateReplica` 收到 leader 请求时（`:2097 state_->UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked`）：
 - `CoarseTimeLeaseUpdate.holder_uuid = deduped_req.leader_uuid`；
@@ -946,7 +949,7 @@ DEFINE_validator(leader_lease_duration_ms,
 
 源码：`reference/distributed-sql/yugabytedb/src/yb/consensus/raft_consensus.h:86 kDefaultLeaderLeaseDurationMs`；`reference/distributed-sql/yugabytedb/src/yb/consensus/raft_consensus.cc:217 DEFINE_NON_RUNTIME_int32(leader_lease_duration_ms)`、`:2097 UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked`、`:1307 LeaderLeaseStatus 3 态`。
 
-### 26.5 复杂度与本项目对照
+### 25.5 复杂度与本项目对照
 
 | 操作 | YB Raft | 本项目 `engineering/src/dist/raft.c` |
 |------|---------|--------------------------------------|
@@ -969,11 +972,11 @@ DEFINE_validator(leader_lease_duration_ms,
 
 ---
 
-## 二十七、xCluster 跨集群复制：CDC 流控与 producer/consumer 主端生命周期
+## 二十六、xCluster 跨集群复制：CDC 流控与 producer/consumer 主端生命周期
 
 YB 的 xCluster 用「同集群同步 + 跨集群异步」两层实现 DR：同集群内仍是 Raft 同步；跨集群（DR/异地多活/读扩展）通过 CDC 流把 source cluster 的 WAL 推到 target cluster，由 target 端的 WAL applier 重放。本节聚焦「CDC GetChanges 流控 + producer/consumer 生命周期 + tablet split 透传」，补齐 §11.2.2 / §14.4 仅有的 high-level 描述。
 
-### 27.1 xCluster 拓扑与主端元数据
+### 26.1 xCluster 拓扑与主端元数据
 
 xCluster 由 master 端 + tserver 端两层组成：
 
@@ -981,7 +984,7 @@ xCluster 由 master 端 + tserver 端两层组成：
 - **TServer 端**：每个 tablet 的 CDC 流由 `CDCServiceImpl::GetChanges`（`src/yb/cdc/cdc_service.cc:1622`）响应 consumer 的 poll，吐出该 tablet WAL 中 `[from_op_id, to_op_id]` 段内的变更记录；
 - **Target 端**：poll 拿到变更后写入 target cluster 的 DocDB（同样走 Raft），由 `XClusterConsumerReplicationStatusPB` 同步 checkpoint。
 
-### 27.2 CDC GetChanges 流控（`CDCServiceImpl::GetChanges`）
+### 26.2 CDC GetChanges 流控（`CDCServiceImpl::GetChanges`）
 
 `src/yb/cdc/cdc_service.cc:1622 void CDCServiceImpl::GetChanges(GetChangesRequestPB* req, GetChangesResponsePB* resp, RpcContext context)` 是 producer 端的核心入口。真实骨架（`:1622-1710`）：
 
@@ -1042,37 +1045,44 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
 
 源码：`reference/distributed-sql/yugabytedb/src/yb/cdc/cdc_service.cc:1622 CDCServiceImpl::GetChanges`、`:432 TabletLeaderGetChanges`；`reference/distributed-sql/yugabytedb/src/yb/cdc/cdc_service.proto:339 GetChangesRequestPB`、`:590 GetChangesResponsePB`。
 
-### 27.3 CDC 流身份与 checkpoint 双轨
+### 26.3 CDC 流身份与 checkpoint 双轨
 
-`src/yb/cdc/cdc_service.proto:339 GetChangesRequestPB` 定义了请求字段：
+`src/yb/cdc/cdc_service.proto:339 GetChangesRequestPB` 定义了请求字段（18 个字段，字段号 1-18）：
 
 ```protobuf
-// src/yb/cdc/cdc_service.proto:339-398 真实字段
+// src/yb/cdc/cdc_service.proto:339-394 真实字段
 message GetChangesRequestPB {
-  required bytes stream_id = 1;     // 老 API 单 stream 标识
-  optional bytes db_stream_id = 11; // 新 API 整 db stream 标识
-  required bytes tablet_id = 2;     // 必填
-  optional fixed64 from_op_id = 3;  // consumer 上次确认的 checkpoint
-  // max 响应字节数；超过即截断（让 client 端能 backpressure）
-  optional uint64 max_bytes_of_response = 7;
-  optional uint64 wal_segment_index = 8;
-  // 上次 GetChanges 在 sort window 中的 max op-index；本次接续读取
-  optional fixed64 max_num_records = 9;
-  optional fixed32 kscp_historical_max_op_id_time = 12;
-  ...
+  optional bytes stream_id = 1;                       // 老 API 单 stream 标识
+  optional bytes tablet_id = 2;                       // 必填
+  optional CDCCheckpointPB from_checkpoint = 3;       // consumer 上次确认的 checkpoint
+  optional uint32 max_records = 4;                    // 最多读多少条记录
+  optional bool serve_as_proxy = 5 [default = true];  // 非 leader tserver 是否代理转发
+  optional bytes db_stream_id = 6;                    // 新 API 整 db stream 标识（CDCSQL）
+  optional bytes table_id = 7;                        // colocated 表场景下用
+  optional CDCSDKCheckpointPB from_cdc_sdk_checkpoint = 8;
+  optional bool need_schema_info = 9 [default = false];
+  optional CDCSDKCheckpointPB explicit_cdc_sdk_checkpoint = 10;
+  optional int64 safe_hybrid_time = 11 [default = -1];
+  optional int32 wal_segment_index = 12 [default = 0]; // 已流过的 WAL 段索引
+  optional uint32 auto_flags_config_version = 13;     // xCluster auto-flag 兼容用
+  optional CDCSDKRequestSource cdcsdk_request_source = 14 [default = DEBEZIUM];
+  optional int64 raft_config_opid_index = 15;         // consumer 端已知 raft config op-id
+  optional uint64 getchanges_resp_max_size_bytes = 16;// CDCSDK 模式下响应字节上限
+  optional bool force_update_cdc_state_checkpoint = 17;
+  optional int64 max_index_in_sort_window = 18 [default = 0]; // 上次 sort window 的 max op-id
 }
 ```
 
-`GetChangesResponsePB`（`:590 CDCErrorPB` + `:590 GetChangesResponsePB`）返回 `checkpoint`（consumer 回传标已 commit 的位点）+ `errors[]`（错误码）。
+`GetChangesResponsePB`（`cdc_service.proto:590-614`）返回 `error`（`CDCErrorPB` 错误码）+ `checkpoint`（consumer 回传标已 commit 的位点，用于下一次 GetChanges 的 `from_checkpoint`）+ `cdc_sdk_checkpoint`/`records[]`/`safe_hybrid_time`/`wal_segment_index`/`max_index_in_sort_window` 等。`CDCErrorPB`（`:82`）定义错误枚举，包含 `TABLET_SPLIT` / `LEADER_NOT_READY` / `AUTO_FLAGS_CONFIG_VERSION_MISMATCH` 等。
 
 stream_id/db_stream_id 的关系：
-- 老 API（v2.0 ~ v2.14）：每个 table 一个 stream，由 master `XClusterOutboundReplicationGroup` 协调；
+- 老 API（v2.0 ~ v2.14）：每个 table 一个 `stream_id`，由 master `XClusterOutboundReplicationGroup` 协调；
 - 新 API（v2.16+）：一个 db 一个 `db_stream_id`，由 master `CDCSysCatalogEntry` 维护；
-- 两者本质都是「UUID + metadata」，区别在 master 端维护粒度。
+- 两者本质都是「UUID + metadata」，区别在 master 端维护粒度；`req->has_stream_id() || req->has_db_stream_id()` 二者必有其一（`cdc_service.cc:1649-1654`）。
 
 源码：`reference/distributed-sql/yugabytedb/src/yb/cdc/cdc_service.proto:339 GetChangesRequestPB`、`:590 GetChangesResponsePB`；`reference/distributed-sql/yugabytedb/src/yb/cdc/cdc_state_table.cc`（stream metadata 持久化）。
 
-### 27.4 Tablet Split 透传
+### 26.4 Tablet Split 透传
 
 `src/yb/cdc/cdc_service.cc:1669` 的 `status.IsTabletSplit()` 返回 `CDCErrorPB::TABLET_SPLIT`，consumer 端收到后必须：
 1. 调 master `GetTableLocations` 重新解析原 parent tablet_id 的 children（children 已分裂成两个新 tablet）；
@@ -1082,7 +1092,7 @@ stream_id/db_stream_id 的关系：
 
 源码：`reference/distributed-sql/yugabytedb/src/yb/cdc/cdc_service.cc:1669 status.IsTabletSplit() → TABLET_SPLIT`；`reference/distributed-sql/yugabytedb/src/yb/cdc/cdc_error.h`（`IsTabletSplit` 实现）；`reference/distributed-sql/yugabytedb/src/yb/master/xcluster_consumer_registry_service.cc`（CDC stream 注册）。
 
-### 27.5 复杂度与本项目对照
+### 26.5 复杂度与本项目对照
 
 | 操作 | YB xCluster | 本项目（无对应实现） |
 |------|-------------|----------------------|
@@ -1099,7 +1109,7 @@ stream_id/db_stream_id 的关系：
 
 本项目对应：`engineering/src/db/replication/` 当前为空目录（占位），未来扩展可参考 YB 的「master 端元数据 + tserver 端 CDC producer/consumer」双层架构，把本项目的 `engineering/src/db/wal.c` 改造为 CDC-compatible WAL reader，提供跨进程 WAL 推送能力。
 
-## 二十八、参考资料
+## 二十七、参考资料
 
 1. YugabyteDB 官方文档：https://docs.yugabyte.com/
 2. YugabyteDB Architecture 章节：https://docs.yugabyte.com/preview/architecture/
