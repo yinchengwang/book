@@ -580,3 +580,606 @@ ALTER DATABASE app SURVIVE REGION FAILURE;     -- 1 region 离线不影响
 8. Hybrid Logical Clocks：https://www.cockroachlabs.com/blog/hybrid-logical-clocks/
 9. Multi-Region in CockroachDB v22.1（Blog）：https://www.cockroachlabs.com/blog/multi-region-an-improved-version-now-generally-available/
 10. TPC-C 6.46M tpmC 报道：https://www.cockroachlabs.com/blog/6-46m-tpmc-with-cockroachdb-on-25-nodes/
+
+## 二十五、DistSender 批量分片路由与 TxnCoordSender 事务重试链
+
+`§10.2` 仅以 ASCII 图呈现了分布式事务路径，未涉及 `DistSender` 如何在多 Range 上切分 Batch、RangeDescriptor stale 时如何重发现、`TxnCoordSender` 的拦截器栈如何处理 6 类 retryable 错误。本节深入这两条核心链路的伪代码细节。
+
+### 25.1 DistSender.Send 入口与 1PC / Parallel commit 分流
+
+`pkg/kv/kvclient/kvcoord/dist_sender.go:1310` 是所有 KV 请求的统一入口。它接收 `*kvpb.BatchRequest`，先做 `initAndVerifyBatch`（含混合 EndTxn 与非 EndTxn 请求的合法性校验），再决定是否走 1PC 或 parallel commit 路径：
+
+```go
+// pkg/kv/kvclient/kvcoord/dist_sender.go:1310 (DistSender.Send)
+func (ds *DistSender) Send(ctx, ba *kvpb.BatchRequest) (*BatchResponse, *kvpb.Error) {
+    ds.incrementBatchCounters(ba)
+    if pErr := ds.initAndVerifyBatch(ctx, ba); pErr != nil {
+        return nil, pErr
+    }
+    // 1PC: 客户端将 EndTxn 与前置 DML 合批，要求单 round-trip 提交
+    var require1PC bool
+    lastReq := ba.Requests[len(ba.Requests)-1].GetInner()
+    if et, ok := lastReq.(*kvpb.EndTxnRequest); ok && et.Require1CP {
+        require1PC = true
+    }
+    // 非 1PC 且 txn.Epoch > 0 时拆分 EndTxn，单独成 part 防饥饿
+    splitET := ba.Txn != nil && ba.Txn.Epoch > 0 && !require1PC
+    parts := splitBatchAndCheckForRefreshSpans(ba, splitET)
+    for len(parts) > 0 {
+        // Parallel commit 走独立路径
+        if etArg, ok := ba.GetArg(kvpb.EndTxn); ok {
+            et := etArg.(*kvpb.EndTxnRequest)
+            withCommit := et.Commit
+            if et.IsParallelCommit() {
+                ds.divideAndSendParallelCommit(ctx, ba, rs, batchIdx)
+            } else {
+                ds.divideAndSendBatchToRanges(ctx, ba, rs, withCommit, batchIdx)
+            }
+        }
+    }
+}
+```
+
+关键点：
+- `splitBatchAndCheckForRefreshSpans` 把一个 Batch 按 Range 边界切成多个 part；
+- `splitET=true` 时 EndTxnRequest 单独成 part，目的是让前置 DML 落定后再提交，避免 starvation（前置 DML 被无限重试）；
+- 收到 `errNo1PCTxn` 时若本应是 1PC 路径则 fatal，否则把 ET 再切一次重试。
+
+### 25.2 divideAndSendBatchToRanges 多 Range 切分
+
+`pkg/kv/kvclient/kvcoord/dist_sender.go:1847` 是多 Range 路由的核心：
+
+```go
+// pkg/kv/kvclient/kvcoord/dist_sender.go:1847
+func (ds *DistSender) divideAndSendBatchToRanges(ctx, ba, rs RSpan, withCommit bool, batchIdx int) {
+    if ba.Txn != nil {
+        ba.Txn = ba.Txn.Clone()      // 防止上层修改影响本 part 的 txn proto
+    }
+    ri := MakeRangeIterator(ds)        // 本地 RangeDescriptor cache 迭代器
+    ri.Seek(ctx, rs.Key, Ascending)
+    if !ri.Valid() {
+        return nil, ri.Error()
+    }
+    // 快路径：单 Range 内直接发送
+    if !ri.NeedAnother(rs) {
+        return ds.sendPartialBatch(ctx, ba, rs, withCommit, batchIdx, ri.Token())
+    }
+    // 多 Range 时按 boundary 切片，每个 part 走 sendPartialBatchAsync
+    parts := rs.Split(ri)              // 按 RangeDescriptor 边界切分
+    for each part in parts {
+        ds.sendPartialBatchAsync(ctx, ba, part, ...)
+    }
+}
+```
+
+`RangeIterator` 是客户端缓存的 `RangeDescriptor` 数组视图，由 gossip + Range lookup RPC 维护；`rs.Split(ri)` 按 `RangeDescriptor.EndKey` 对齐切分。`sendPartialBatchAsync` 把每个 part 当独立 gRPC 请求发出，到 leaseholder 上执行。
+
+### 25.3 sendPartialBatch / sendToReplicas 重试与 stale 重发现
+
+`pkg/kv/kvclient/kvcoord/dist_sender.go:2669` 在 leaseholder / replicas 间重试，并在 `RangeKeyMismatchError` 时触发 RangeDescriptor 重发现：
+
+```go
+// pkg/kv/kvclient/kvcoord/dist_sender.go:2669 (sendToReplicas 简化)
+func (ds *DistSender) sendToReplicas(ctx, ba, rs RSpan, ...) {
+    ri := MakeRangeIterator(ds)
+    for {
+        desc, err := ri.Val()             // 取当前 RangeDescriptor
+        if err != nil {
+            return nil, err
+        }
+        // 取 leaseholder 优先；leaseholder 不可用则取 voter replicas
+        replicas := desc.Replicas()
+        leaseholder := desc.LeaseHolder()  // 线性化读也走 leaseholder
+        if leaseholder == invalidID {
+            replicas = replicas.VotersOnly()
+        }
+        resp, pErr := transport.SendNext(ctx, ba, replicas)
+        if pErr == nil {
+            return resp, nil
+        }
+        // RangeKeyMismatchError → RangeDescriptor 不准，触发重发现
+        if isRangeMismatch(pErr) {
+            ri.Reslice(seekKey)           // 用 response 中的 descriptor 重置 cache
+            continue
+        }
+        if !isRetryable(pErr) {
+            return nil, pErr
+        }
+    }
+}
+```
+
+设计要点：
+- **Leaseholder 优先**：写请求与 linearizable 读只发 leaseholder；lease 失效或未决时回退到 voter 集合；
+- **RangeKeyMismatchError 自愈**：遇到 stale descriptor（split / merge 之后）就用 response 中的新 descriptor 重 slice，无需客户端感知；
+- **Transport 层**：实际是 `rpc.Context` 把 `BatchRequest` 通过 gRPC 发到远端 `kvserver.Replica`，执行后返回 `BatchResponse`。
+
+### 25.4 TxnCoordSender.Send 拦截器栈与心跳追踪
+
+`pkg/kv/kvclient/kvcoord/txn_coord_sender.go:510` 是事务入口：`Send` 把请求路由到 interceptor 栈，再转给 leaf `DistSender`：
+
+```go
+// pkg/kv/kvclient/kvcoord/txn_coord_sender.go:510 (TxnCoordSender.Send 简化)
+func (tc *TxnCoordSender) Send(ctx, ba *kvpb.BatchRequest) {
+    if ba.Txn == nil {
+        return tc.wrapped.Send(ctx, ba)   // 非事务请求直接走底层 sender
+    }
+    // 事务请求：依序经过所有 interceptor（lock spans、read timestamp、heartbeat tracking…）
+    lastActive := tc.mu.txn.LastActive()
+    pErr := tc.interceptorStack.sendLocked(ctx, ba)
+    if pErr != nil {
+        return tc.handleRetryableErrLocked(ctx, pErr)  // 重试决策
+    }
+    // 更新 LastActive 心跳基线（事务 deadline 计时）
+    if lastActive != nil {
+        lastActive.Time = tc.clock.Now()
+    }
+    return resp, nil
+}
+```
+
+`interceptorStack` 是一个按序串联的责任链：`txnLockGateInterceptor`（冲突避免）→ `rowEncoder`（KV key 编码）→ `intentBuilder`（写 Intent 占位）→ `distSender`（底层 leaf sender）→ 等等。每个 interceptor 可修改 batch、记账或短路返回。
+
+### 25.5 cleanupTxnLocked 与 handleRetryableErrLocked 6 类错误分发
+
+`pkg/kv/kvclient/kvcoord/txn_coord_sender.go:846` 是事务结束的关闭路径：
+
+```go
+// pkg/kv/kvclient/kvcoord/txn_coord_sender.go:846
+func (tc *TxnCoordSender) cleanupTxnLocked(ctx) {
+    if tc.mu.closed {
+        return
+    }
+    tc.mu.closed = true
+    for _, reqInt := range tc.interceptorStack {
+        reqInt.closeLocked()              // 按栈顺序反向关闭，释放 buffered intents
+    }
+}
+```
+
+`pkg/kv/kvclient/kvcoord/txn_coord_sender.go:864` 是 6 类可重试错误的恢复决策：
+
+```go
+// pkg/kv/kvclient/kvcoord/txn_coord_sender.go:864 (handleRetryableErrLocked 简化)
+func (tc *TxnCoordSender) handleRetryableErrLocked(ctx, pErr *kvpb.Error) error {
+    switch tErr := pErr.GetDetail().(type) {
+    case *kvpb.TransactionRetryError:        // SERIALIZABLE 冲突 → epoch 提升重试
+        tc.metrics.RestartsSerializable.Inc()
+    case *kvpb.WriteTooOldError:             // read_ts 太旧 → 推进 read_ts
+        tc.metrics.RestartsWriteTooOld.Inc()
+    case *kvpb.ReadWithinUncertaintyIntervalError:  // HLC 漂移
+        tc.metrics.RestartsReadWithinUncertainty.Inc()
+    case *kvpb.ExclusionViolationError:      // lock span 冲突
+        tc.metrics.RestartsExclusionViolation.Inc()
+    case *kvpb.TransactionAbortedError:      // 已被另一事务 push abort → 不可用
+        tc.metrics.RestartsTxnAborted.Inc()
+    case *kvpb.TransactionPushError:         // push 失败
+        tc.metrics.RestartsPush.Inc()
+    default:
+        tc.metrics.RestartsUnknown.Inc()
+    }
+    // 用 nextTxn + prevTxn 构造 TransactionRetryWithProtoRefreshError
+    nextTxn, _ := kvpb.PrepareTransactionForRetry(pErr, userPriority, clock)
+    return kvpb.NewTransactionRetryWithProtoRefreshError(...)
+}
+```
+
+关键不变量：**6 类错误对应 6 种 restart reason 指标**；客户端 driver（如 pgx）只需捕获 `TransactionRetryWithProtoRefreshError` 并按 `nextTxn` 重发同一个 SQL。`TransactionAbortedError` 后 TxnCoordSender 不可继续使用，必须新建事务。
+
+### 25.6 复杂度表
+
+| 操作 | 平均 | 最坏 | 备注 |
+|------|------|------|------|
+| `DistSender.Send` 单 Range | O(1) gRPC RTT | O(1) | 走 fast path |
+| `DistSender.Send` N Range split | O(N) gRPC RTT | O(N) | 每个 part 一次 RTT，可 parallel |
+| `RangeDescriptor` stale 重发现 | O(1) extra RTT | O(log M) M=Range 数 | gossip + lookup cache miss |
+| `TxnCoordSender.Send` 拦截器栈 | O(K) K=interceptor 数 | O(K) | 每个 interceptor O(1) |
+| `handleRetryableErrLocked` 分发 | O(1) | O(1) | type switch 命中即返回 |
+| 事务 retry 整体 | O(1) 次 epoch bump | O(W) 次 | W=write-write 冲突数 |
+
+### 25.7 本项目对应
+
+- `engineering/src/db/dist_txn.c` 实现了简化版 2PC 协调器（`txn_coord_sender` 等价物），但仅单节点内多 Range，未实现并行 commit / 1PC / 拦截器栈；
+- `engineering/src/db/sharding/sharding.c` 仅做 hash 分片路由，无 RangeDescriptor cache 与 stale 重发现逻辑；可参考 §25.2-25.3 引入 `RangeIterator` + `RangeKeyMismatchError` 自愈机制；
+- 本项目的 transaction restart 处理散落在 `shard_coordinator.c` 中，未做 6 类错误的 metrics 区分；可参考 §25.5 在 `dist_txn.c` 中引入 `restart_reason` 指标。
+
+## 二十六、Raft 选举与 Leaseholder linearizable read 实现
+
+`§10.3` 仅一句话提到「Lease 是 Raft 之上的 read-quorum 优化」。本节深入 etcd-Raft 的选举状态机 + CockroachDB 在其上叠加的 Leaseholder 实现与 linearizable read 协议。
+
+### 26.1 三态转换与 PreVote 防无效 term 抬升
+
+`pkg/raft/raft.go` 实现的是 etcd-Raft，但引入了 `StatePreCandidate` 中间态（CockroachDB fork 后新增）。状态机：
+
+```
+                 RequestVote / PreVote 失败 (timeout)
+   Follower ──────────────────────────────▶ Candidate
+       │                                       │
+       │ 收到 AppendEntries from higher term    │ 赢得选举 (获得多数票)
+       ▼                                       ▼
+   Follower (新 term)                       Leader
+       ▲                                       │
+       └────────── 失去 lease/election ─────────┘
+```
+
+`pkg/raft/raft.go:1289` 实现 follower → candidate 的转换：
+
+```go
+// pkg/raft/raft.go:1289 (becomeCandidate)
+func (r *raft) becomeCandidate() {
+    if r.state == pb.StateLeader {
+        panic("invalid transition [leader -> candidate]")
+    }
+    assertTrue(!r.supportingFortifiedLeader(),
+        "shouldn't become a candidate if we're supporting a fortified leader")
+    r.step = stepCandidate                 // 切换 step 函数表
+    r.reset(r.Term + 1)                   // 任期 +1，重置选举计时器
+    r.tick = r.tickElection
+    r.setVote(r.id)                       // 给自己投票
+    r.state = pb.StateCandidate
+}
+```
+
+`becomePreCandidate`（raft.go:1305）是 CockroachDB 增强：不增 term，先发 PreVote；只在 PreVote 通过后才真正 +1 term 进入 Candidate，避免「被网络分区后再恢复时无意义抬升 term 打断集群」。
+
+### 26.2 becomeLeader 重置 Progress tracker 与 fortified quorum
+
+`pkg/raft/raft.go:1326` 是 follower/candidate → leader 的关键转换：
+
+```go
+// pkg/raft/raft.go:1326 (becomeLeader 简化)
+func (r *raft) becomeLeader() {
+    r.step = stepLeader
+    r.reset(r.Term)                       // 任期不变但重置 Progress
+    r.fortificationTracker.Reset(r.Term) // 重置 fortified quorum 追踪
+    r.tick = r.tickHeartbeat
+    r.setLead(r.id)
+    r.state = pb.StateLeader
+    r.trk.Visit(func(id PeerID, pr *Progress) {
+        if id == r.id {
+            r.becomeReplicate(pr)         // leader 自己立刻进入 replicate 态
+            pr.RecentActive = true
+            return
+        }
+        // 所有 follower 初始为 StateProbe，等下一轮 probe 才进入 replicate
+        assertTrue(pr.State == tracker.StateProbe, ...)
+        r.metrics.FlowsEnteredStateProbe.Inc(1)
+    })
+    r.pendingConfIndex = r.raftLog.lastIndex()
+    emptyEnt := pb.Entry{Data: nil}
+    r.appendEntry(emptyEnt)               // 提交一条 no-op entry（commit 之前的 entries）
+}
+```
+
+关键不变量：
+- `pendingConfIndex = lastIndex()` 是为了「延迟未来 proposals 直到现有 pending log entries 全部 commit」，避免 leader 切换瞬间丢配置变更；
+- 末尾的 `emptyEnt` 是 etcd-Raft 的标准做法：commit 之前 term 的 entries，让 leader 一上任就拥有完整的 committed index；
+- `fortificationTracker` 是 CockroachDB 在 etcd-Raft 之上的增强：通过 store liveness 让 followers 显式 fortify leader，防止「老 leader 复活」split-brain。
+
+### 26.3 Step 入口与选举/日志分发
+
+`pkg/raft/raft.go:1541` 是消息入口，根据当前 step 函数（stepFollower / stepCandidate / stepLeader）分发：
+
+```go
+// pkg/raft/raft.go:1541 (Step 简化)
+func (r *raft) Step(m pb.Message) error {
+    // 来自本地 proposals 的 MsgProp
+    switch m.Type {
+    case pb.MsgHup:
+        if r.state != pb.StateLeader {
+            r.hup(campaignPreElection)        // 触发 PreVote → Election
+        }
+    case pb.MsgRequestPreVote, pb.MsgRequestPreVoteResponse:
+        return r.stepCandidate(m)              // 候选阶段处理 pre-vote
+    case pb.MsgRequestVote, pb.MsgRequestVoteResponse:
+        return r.stepCandidate(m)              // 候选阶段处理 vote
+    case pb.MsgAppend, pb.MsgAppendResponse, pb.MsgHeartbeat, pb.MsgHeartbeatResponse:
+        return r.stepFollower(m)               // follower 处理 leader 的 append/heartbeat
+    }
+    switch r.state {
+    case pb.StateFollower:  return r.stepFollower(m)
+    case pb.StateCandidate: return r.stepCandidate(m)
+    case pb.StateLeader:    return r.stepLeader(m)   // 处理 MsgProp、MsgAppend 等
+    }
+}
+```
+
+CockroachDB 复用 etcd-Raft 的所有消息类型，仅在 Message.Type 上扩展了 `MsgFortify / MsgFortifyResp / MsgDeFortify`（raft.go:792、828、850），用于 fortified leader 协议。
+
+### 26.4 leases.Status 与 lease 类型
+
+`pkg/kv/kvserver/leases/status.go:100` 实现 lease 状态查询，是 linearizable read 的入口：
+
+```go
+// pkg/kv/kvserver/leases/status.go:100 (Status 简化)
+func Status(ctx, nl NodeLiveness, i StatusInput) LeaseStatus {
+    // 1. 取 NodeLiveness（store 是否 alive）
+    liveness, err := nl.Self()
+    if !liveness.IsLive(livenessExpiry) {
+        return LeaseStatus{State: LeaseState_EXPIRED}
+    }
+    // 2. 比较当前 store 的 epoch 是否 ≥ leaseholder 要求
+    if liveness.Epoch < i.Lease.Epoch {
+        return LeaseStatus{State: LeaseState_NOT_YET}
+    }
+    // 3. 验 leaseholder 是否还拥有 lease
+    if i.Lease.Replica.StoreID != i.LocalStoreID {
+        return LeaseStatus{State: LeaseState_OTHER}
+    }
+    // 4. lease 是否在有效期内
+    expiration := i.Lease.Start.Add(i.Lease.RequestedExpiration)
+    now := i.Now
+    if now.Less(expiration) {
+        return LeaseStatus{State: LeaseState_VALID, Lease: i.Lease}
+    }
+    return LeaseStatus{State: LeaseState_EXPIRED}
+}
+```
+
+Lease 状态机：`VALID / EXPIRED / PROBING / NOT_YET / OTHER`。读请求必须经过 `Status` 判定 `VALID`，否则降级到 read-quorum（Raft index barrier）。
+
+### 26.5 Linearizable read fast path 与 closedts 优化
+
+CockroachDB linearizable read 有两条路径：
+
+1. **Lease-based fast path**：直接读 leaseholder，无须 Raft 同步。读 ts 必须高于 lease.start（隐式 Raft barrier 已被 lease 蕴含）。
+2. **Read-quorum fallback**：leaseholder 失效或 `Status` 返回非 VALID 时，向 voter 多数派发 `ReadIndex` 请求，Raft 同步到当前 commit index 后再读。
+
+```
+   客户端 read at ts=T
+       │
+       ▼
+   gateway DistSender → 当前 leaseholder
+       │
+       ├─ leases.Status == VALID ? → 直接读（fast path）
+       │       └─ read ts > lease.start ? → 否则 Raft ReadIndex 屏障
+       │
+       └─ 非 VALID → 走 ReadIndex，向 voter 多数发起
+                          └─ majority respond at committedIndex → 读
+```
+
+v22.1+ 引入 `closedts` provider（`pkg/kv/kvserver/closedts/`）：让 follower 在次秒级看到一致时间戳，把更多读降级为非 leaseholder 读，显著降低 leaseholder 读热点。
+
+### 26.6 HLC 单调性与 Clock.Update 不变量
+
+`pkg/util/hlc/hlc.go:471` 实现 HLC 的 Update，保证单调性是 linearizable read 的基础：
+
+```go
+// pkg/util/hlc/hlc.go:471 (Clock.Update 简化)
+func (c *Clock) Update(rt ClockTimestamp) {
+    // 快路径：远端 wall time 落后于本地，无需加锁直接返回
+    if rt.WallTime < atomic.LoadInt64(&c.mu.timestamp.WallTime) {
+        return
+    }
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    if rt.WallTime > c.mu.timestamp.WallTime {
+        atomic.StoreInt64(&c.mu.timestamp.WallTime, rt.WallTime)
+        c.mu.timestamp.Logical = rt.Logical       // 远端 wall time 更新
+    } else if rt.WallTime == c.mu.timestamp.WallTime {
+        if rt.Logical > c.mu.timestamp.Logical {
+            c.mu.timestamp.Logical = rt.Logical   // 同 wall time 取大 logical
+        }
+    }
+    c.enforceWallTimeWithinBoundLocked()          // max offset 校验（防时钟欺骗）
+}
+```
+
+单调性公式：
+
+```
+local_new.logical = max(local.logical + 1, max(remote.logical))
+local_new.wall = max(local.wall, remote.wall)
+```
+
+这把 wall time 与 logical 组合成一个全序，保证不同节点的 timestamp 仍然可比——这是 CockroachDB 在没有 TrueTime 硬件的前提下实现「bounded staleness」的关键。
+
+### 26.7 复杂度表
+
+| 操作 | 平均 | 最坏 | 备注 |
+|------|------|------|------|
+| `becomeCandidate` / `becomeLeader` | O(N) | O(N) | N=peer 数，Visit Progress tracker |
+| `Step` 分发 | O(1) | O(1) | type switch |
+| `handleAppendEntries` | O(1) | O(M) M=log diff | match log + append |
+| `leases.Status` 查询 | O(1) | O(1) | NodeLiveness 一次 map lookup |
+| Linearizable read fast path | 1 RTT | 1 RTT | 仅 leaseholder |
+| Linearizable read fallback | M/2+1 RTT | M RTT | Raft ReadIndex 多数派 |
+| `Clock.Update` 快路径 | O(1) | O(1) | atomic load，无需加锁 |
+| `Clock.Update` 慢路径 | O(1) | O(1) | mutex 临界区 |
+
+### 26.8 本项目对应
+
+- `engineering/src/db/consensus/raft.c` 是简化版 Raft 实现，仅 `becomeCandidate / becomeLeader / Step` 三函数；未实现 `PreVote`、fortified quorum、Message 类型扩展；
+- `engineering/src/dist/raft/raft.h` 中 leaseholder 概念尚未抽离出来；可参考 §26.4 在 `kvserver/leases/` 子目录引入独立 lease 抽象 + `Status` 查询接口；
+- `engineering/src/util/hlc.c` 仅实现最朴素的 wall time 逻辑（无 logical counter），无法支撑 CockroachDB 风格的 bounded staleness；可参考 §26.6 引入 32-bit logical counter 实现单调 HLC。
+
+## 二十七、Cascades 风格 SQL 优化器与 ZoneConfig 多级继承
+
+`§6.1` 仅以一句「Cascades 风格 + 规则/代价」带过优化器，`§11.4` 仅给 zone 生存目标示例。本节深入 `pkg/sql/opt/xform/optimizer.go` 的两阶段搜索流程 + `pkg/config/zonepb/zone.go` 的多级继承链。
+
+### 27.1 Optimizer.Optimize 三阶段流程
+
+`pkg/sql/opt/xform/optimizer.go:250` 是优化器入口，三阶段：
+
+```go
+// pkg/sql/opt/xform/optimizer.go:250 (Optimize 简化)
+func (o *Optimizer) Optimize() (opt.Expr, error) {
+    if o.mem.IsOptimized() {
+        return nil, errors.AssertionFailedf("cannot optimize a memo multiple times")
+    }
+    // Phase 1: optimizeRootWithProps → 给根 group 装载 Required properties
+    o.optimizeRootWithProps()
+    // Phase 2: 深度优先优化所有子 group（递归 optimizeGroup）
+    root := o.mem.RootExpr()
+    rootProps := o.mem.RootProps()
+    o.optimizeGroup(root, rootProps)
+    // Phase 3: setLowestCostTree → 从根向下追溯最低代价路径，写回 memo
+    root = o.setLowestCostTree(root, rootProps).(memo.RelExpr)
+    o.mem.SetRoot(root, rootProps)
+    // 不变量校验：root 无 outer columns、factory stack depth = 0
+    if !root.Relational().OuterCols.Empty() { return nil, ... }
+    o.f.CheckConstructorStackDepth()
+    return root, nil
+}
+```
+
+三阶段分工：
+- **Phase 1**：从根 group 出发，把 `physical.Required`（如 ordering、distribution、limit hints）作为任务下推；
+- **Phase 2**：递归对每个 group 调用 `optimizeGroup`（optimizer.go:473），对 group 内每个成员（`optimizeGroupMember`，optimizer.go:579）应用所有 explore 规则；
+- **Phase 3**：从根 group 选 cost 最低的成员作为 `BestExpr`，重写 memo root 指针。
+
+### 27.2 optimizeGroup / optimizeGroupMember 表达式穷尽搜索
+
+`pkg/sql/opt/xform/optimizer.go:473` 是核心：
+
+```go
+// pkg/sql/opt/xform/optimizer.go:473 (optimizeGroup 简化)
+func (o *Optimizer) optimizeGroup(grp memo.RelExpr, required *physical.Required) *groupState {
+    state := &groupState{}
+    for i := 0; i < grp.Relational().ChildCount(); i++ {
+        child := grp.Relational().Child(i)
+        if child != nil {
+            childState := o.optimizeExpr(child, required)  // 递归
+            state.cost.Add(childState.cost)
+        }
+    }
+    // 对 group 内每个成员 explore 一遍 rules
+    for _, e := range grp.Members() {
+        memberState := o.optimizeGroupMember(e, required)
+        if memberState.cost.Less(state.bestCost) {
+            state.bestCost = memberState.cost
+            state.bestExpr = e
+        }
+    }
+    // enforce properties（ordering、distribution）：达不到 cost 就跳过
+    state.fullyOptimized = state.bestExpr != nil
+    return state
+}
+```
+
+`optimizeGroupMember`（optimizer.go:579）针对单个 member 调用 `explorer.exploreMember`，依次尝试 `norm` 规则（重写）与 `xform` 规则（物理化）；每个 explore 触发后可能生成新成员 → 加入 memo → 触发新 explore，是 Cascades 的「Group → Rule → New Group → Rule」核心循环。
+
+### 27.3 Coster 成本模型与 Postgres 因子
+
+`pkg/sql/opt/xform/coster.go:98` 暴露 `MakeDefaultCoster`，常量来自 Postgres optimizer：
+
+```go
+// pkg/sql/opt/xform/coster.go:98 (MakeDefaultCoster + 常量)
+const (
+    cpuCostFactor    = 0.01    // 1 行 CPU 计算 ≈ 0.01 cost
+    seqIOCostFactor  = 1       // 顺序 I/O 1 页 ≈ 1 cost
+    randIOCostFactor = 4       // 随机 I/O 1 页 ≈ 4 cost（4 倍惩罚）
+)
+```
+
+ComputeCost（coster.go:526）核心公式：
+
+```
+cost(rel) = seqIOCostFactor * (rows * tupleWidth / pageSize)
+          + randIOCostFactor * (rows * filterSelectivity * indexDepth)
+          + cpuCostFactor * (rows * cpuTuplesPerSec)
+```
+
+注释明确指出这些因子**复制自 Postgres optimizer**（`src/include/optimizer/cost.h`），且「TODO: 考虑增大 cpuCostFactor 以反映现代硬件缓存」（coster.go:113-116）。Scan/Join/Sort/TopK/Distribute/Vector 各有独立 cost 子例程（coster.go:696-806）。
+
+### 27.4 ZoneConfig.Validate 校验链
+
+`pkg/config/zonepb/zone.go:384` 校验 zone 配置合法性，是写入系统表 `system.zones` 前的最后一道关：
+
+```go
+// pkg/config/zonepb/zone.go:384 (Validate 简化)
+func (z *ZoneConfig) Validate() error {
+    if err := z.ValidateTandemFields(); err != nil { return err }
+    // NumReplicas 必须为正且 ≤ 约束数
+    if z.NumReplicas != nil && *z.NumReplicas < 0 {
+        return errors.New("NumReplicas must be non-negative")
+    }
+    // Constraints 不能为空约束；至少 1 个非空
+    for _, c := range z.Constraints {
+        if len(c.Key) == 0 && len(c.Values) == 0 {
+            return errors.New("Constraint must have at least one key/value")
+        }
+    }
+    // LeasePreferences 不能为空 store
+    for _, lp := range z.LeasePreferences {
+        if len(lp.Constraints) == 0 {
+            return errors.New("LeasePreference must have at least one constraint")
+        }
+    }
+    return nil
+}
+```
+
+`ValidateTandemFields`（zone.go:330）做兼容性校验：`GlobalReads` 与 `NumVoters` 不能同时设、`LeasePreferences` 与 `Constraints` 不能互相矛盾等。
+
+### 27.5 ZoneConfig.InheritFromParent 多级继承
+
+`pkg/config/zonepb/zone.go:583` 是 ZoneConfig 多级继承的核心实现：
+
+```go
+// pkg/config/zonepb/zone.go:583 (InheritFromParent 简化)
+func (z *ZoneConfig) InheritFromParent(parent *ZoneConfig) {
+    // NumReplicas: 子未设置或显式 0 → 继承父
+    if z.NumReplicas == nil || *z.NumReplicas == 0 {
+        if parent.NumReplicas != nil {
+            z.NumReplicas = proto.Int32(*parent.NumReplicas)
+        }
+    }
+    if z.NumVoters == nil || *z.NumVoters == 0 {
+        if parent.NumVoters != nil {
+            z.NumVoters = proto.Int32(*parent.NumVoters)
+        }
+    }
+    if z.GlobalReads == nil {
+        if parent.GlobalReads != nil { z.GlobalReads = proto.Bool(*parent.GlobalReads) }
+    }
+    if z.RangeMinBytes == nil {
+        if parent.RangeMinBytes != nil { z.RangeMinBytes = proto.Int64(*parent.RangeMinBytes) }
+    }
+    if z.RangeMaxBytes == nil {
+        if parent.RangeMaxBytes != nil { z.RangeMaxBytes = proto.Int64(*parent.RangeMaxBytes) }
+    }
+    // GC、Constraints 等有更细的 ShouldInheritXxx 判定（zone.go:305-323）
+    if z.ShouldInheritGC(parent) { z.GC = parent.GC }
+    if z.ShouldInheritConstraints(parent) { z.Constraints = parent.Constraints }
+    ...
+}
+```
+
+继承层级（自顶向下）：
+
+```
+   default (system-wide 默认: 3 voter, 128MB-512MB Range, GC 25h)
+       ↓
+   database.<name>                (ALTER DATABASE ... CONFIGURE ZONE)
+       ↓
+   table.<schema>.<name>          (ALTER TABLE ... CONFIGURE ZONE)
+       ↓
+   partition.<partname>           (PARTITION BY ... CONFIGURE ZONE)
+       ↓
+   index.<idxname>                (ALTER INDEX ... CONFIGURE ZONE)
+       ↓
+   range (实际副本约束)
+```
+
+每一级子 zone 未显式设置的字段（`NumReplicas=nil`）都从父 zone 继承，构成 SQL 引擎层到副本放置层的完整链路。`InheritedConstraints` 标志位（zone.go:615-617）专门标记「本字段来自父继承」便于显示。
+
+### 27.6 复杂度表
+
+| 操作 | 平均 | 最坏 | 备注 |
+|------|------|------|------|
+| `Optimizer.Optimize` 整体 | O(R × G × M) | O(2^N) | N=join 表数；R=rules, G=groups, M=members |
+| `optimizeGroup` 单 group | O(M × R) | O(M × R) | M=group 成员数, R=explore 规则数 |
+| `setLowestCostTree` | O(G) | O(G) | 递归选 bestExpr |
+| `Coster.ComputeCost` 单算子 | O(1) | O(1) | 算术运算 |
+| `ZoneConfig.Validate` | O(C) | O(C) | C=Constraint 数 |
+| `ZoneConfig.InheritFromParent` | O(F) | O(F) | F=字段数（~20） |
+| Zone 链路总长度 | O(L) | O(L) | L=继承层级（≤6） |
+
+### 27.7 本项目对应
+
+- `engineering/src/db/sql/sql_planner.c` 仅实现 RBO + 极简 CBO（基于 cardinality 估算），无 Cascades 风格的多 group + 多 rule 探索；可参考 §27.1-27.2 引入 `Group / Member / Required properties` 三元组 + memo 重写规则；
+- `engineering/src/db/sql/sql_planner.c` 中 cost 常量采用 4-IO/1-CPU 等硬编码经验值；可参考 §27.3 引入 Postgres 风格 `cpuCostFactor/seqIOCostFactor/randIOCostFactor` 三参数模型；
+- `engineering/src/db/` 无 zone 配置层（副本数硬编码 3）；可参考 §27.5 在 `db/zone_config.c` 中引入 `ZoneConfig.Validate / InheritFromParent` + 多级 `system → database → table → index` 继承链。
+
+
