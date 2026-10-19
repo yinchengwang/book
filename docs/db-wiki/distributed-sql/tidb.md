@@ -630,3 +630,599 @@ TiCDC 通过读取 TiKV 的 raft log 流式输出到下游：
 9. PD GitHub：https://github.com/tikv/pd
 10. TPC-C / HTAP 基准：PingCAP 公开基准报告（搜索 "TPC-C TiDB benchmark"）。
 
+---
+
+## 二十五、CBO Cost Model Ver2 三维定价与 Cascades 搜索入口
+
+§9.2 仅以「Cascades 风格 + 规则/代价」一句话概述了 TiDB 优化器演进，本节把最核心的两个 piece 拆出来：Cascades Optimizer 的入口与备忘录驱动方式 + Cost Model Ver2 的 16 维 factor + 算子级 cost 公式。
+
+### 25.1 Cascades Optimizer 入口（`Optimizer.Execute`）
+
+TiDB v8 起把 Cascades 入口收敛到 `pkg/planner/cascades/` 包，区别于早期分散的 `pkg/planner/core/casPlanner/`：
+
+```go
+// reference/distributed-sql/tidb/pkg/planner/cascades/cascades.go:29
+type Optimizer struct {
+    logic corebase.LogicalPlan   // 入口 logical plan（来自 logical_plan_builder）
+    ctx   cascadesctx.Context    // memo + scheduler + rule mask
+}
+
+// NewOptimizer 用 logical plan 初始化 memo，并把首个 OptGroupTask 推入调度栈。
+// reference/distributed-sql/tidb/pkg/planner/cascades/cascades.go:35
+func NewOptimizer(lp corebase.LogicalPlan) (*Optimizer, error) {
+    cas := &Optimizer{ logic: lp, ctx: NewContext(lp.SCtx()) }
+    ge, err := cas.ctx.GetMemo().Init(lp)        // 1) 把初始 expression 入 memo group
+    cas.ctx.GetScheduler().PushTask(task.NewOptGroupTask(cas.ctx, ge.GetGroup()))
+    return cas, err
+}
+
+// Execute 由顶层入口（physical_optimize.go）调用。
+// reference/distributed-sql/tidb/pkg/planner/cascades/cascades.go:51
+func (c *Optimizer) Execute() error {
+    return c.ctx.GetScheduler().ExecuteTasks()   // 2) 跑 task 直到栈空
+}
+```
+
+关键事实：
+- **Memo = Group + GroupExpr**：每个 Group 表示一组等价 expression（同样的 logical output）；GroupExpr 是某个 operator 在某 Group 上的实例化；
+- **Task 调度**：`pkg/planner/cascades/task/task_scheduler.go` 的 `SimpleTaskScheduler` 用 stack 跑 OptGroupTask → OptGroupExpressionTask → ApplyRuleTask；
+- **Rule mask**：`Context.ruleMask` 通过 `bitset.New(uint(rule.XFMaximumRuleLength)).SetAll()` 全部启用，配合 `SetRules(ids)` 让用户用 hint 关闭某些变换；
+- **退出条件**：当 scheduler 无可执行 task 时停止，物理化阶段从 memo 中抽出最低代价 plan。
+
+源码：`reference/distributed-sql/tidb/pkg/planner/cascades/cascades.go:29-72`、`reference/distributed-sql/tidb/pkg/planner/cascades/memo/memo.go`、`reference/distributed-sql/tidb/pkg/planner/cascades/task/task_opt_group.go`。
+
+### 25.2 Cost Model Ver2 16 维 factor 表
+
+TiDB v6 起启用 Cost Model Ver2（`tidb_cost_model_version=2`），把所有 cost 用「单位 × factor」的三维定价（CPU / 内存 / 磁盘 + 存储节点相关 network/scan factor）：
+
+```go
+// reference/distributed-sql/tidb/pkg/planner/core/plan_cost_ver2.go:1284
+var defaultVer2Factors = costVer2Factors{
+    TiDBTemp:                {Name: "tidb_temp_table_factor",   Value: 0.00},
+    TiKVScan:                {Name: "tikv_scan_factor",         Value: 40.70},
+    TiKVDescScan:            {Name: "tikv_desc_scan_factor",    Value: 61.05},
+    TiFlashScan:             {Name: "tiflash_scan_factor",      Value: 11.60},
+    TiDBCPU:                 {Name: "tidb_cpu_factor",          Value: 49.90},
+    TiKVCPU:                 {Name: "tikv_cpu_factor",          Value: 49.90},
+    TiFlashCPU:              {Name: "tiflash_cpu_factor",       Value: 2.40},
+    TiDB2KVNet:              {Name: "tidb_kv_net_factor",       Value: 3.96},
+    TiDB2FlashNet:           {Name: "tidb_flash_net_factor",    Value: 2.20},
+    TiFlashMPPNet:           {Name: "tiflash_mpp_net_factor",   Value: 1.00},
+    TiDBMem:                 {Name: "tidb_mem_factor",          Value: 0.20},
+    TiKVMem:                 {Name: "tikv_mem_factor",          Value: 0.20},
+    TiFlashMem:              {Name: "tiflash_mem_factor",       Value: 0.05},
+    TiDBDisk:                {Name: "tidb_disk_factor",         Value: 200.00},
+    TiDBRequest:             {Name: "tidb_request_factor",      Value: 6000000.00},
+    ANNIndexStart:           {Name: "ann_index_start_factor",   Value: 0.000144},
+    ANNIndexScanRow:         {Name: "ann_index_scan_factor",    Value: 1.65},
+    ANNIndexNoTopK:          {Name: "ann_index_no_topk_factor", Value: math.MaxUint64},
+    InvertedIndexSearch:     {Name: "inverted_index_search_factor", Value: 139.2}, // (8 + 4) * TiFlashScan
+    InvertedIndexScan:       {Name: "inverted_index_scan_factor",   Value: 1.5},
+    LateMaterializationScan: {Name: "lm_scan_factor",          Value: 1.5},
+}
+```
+
+关键观察（取自源码注释 + 经验值）：
+- **TiKV Scan (=40.7) > TiFlash Scan (=11.6) ~3.5×**：反映 TiFlash 列存单位成本低于 TiKV 行存 + Raft 开销；
+- **TiDB CPU = TiKV CPU = 49.9**：CPU 单价在 TiDB 与 TiKV coprocessor 一致（都是标量算子 cost），但执行次数由 mem 网络放大决定；
+- **TiFlash CPU = 2.4 vs TiDB/TiKV CPU = 49.9 ~21× 差**：TiFlash MPP 走列存向量化，每行计算量小；
+- **TiDBRequest = 6,000,000**：每个 RPC 请求都极重（含 protobuf 序列化 + gRPC round-trip），对应 `tidb_distsql_scan_concurrency` 调度；
+- **TiKVDescScan = 1.5× TiKVScan**：反向扫描需要 reverse iterator，引入额外开销；
+- **ANNIndexNoTopK = MaxUint64**：HNSW 不带 top-k 视为不可接受，强制走 fallback（`tidb_enable_vector_search=ON` 时除外）。
+
+源码：`reference/distributed-sql/tidb/pkg/planner/core/plan_cost_ver2.go:1284-1306`。
+
+### 25.3 factor 三维路由（任务类型 × StoreType）
+
+Cost 公式并非单一常量，而是按 task type + store type 二维路由：
+
+```go
+// reference/distributed-sql/tidb/pkg/planner/core/plan_cost_ver2.go:1330
+func getTaskScanFactorVer2(p base.PhysicalPlan, storeType kv.StoreType, taskType property.TaskType) costusage.CostVer2Factor {
+    if isTemporaryTable(getTableInfo(p)) {     // 1) 临时表优先
+        return defaultVer2Factors.TiDBTemp
+    }
+    if storeType == kv.TiFlash {               // 2) storeType 直配 TiFlashScan
+        return defaultVer2Factors.TiFlashScan
+    }
+    switch taskType {
+    case property.MppTaskType:                 // 3a) 任务类型 MppTaskType → TiFlash
+        return defaultVer2Factors.TiFlashScan
+    default:                                  // 3b) 默认 TiKV（按 desc 区分）
+        desc := isPhysicalDesc(p)
+        if desc {
+            return defaultVer2Factors.TiKVDescScan
+        }
+        return defaultVer2Factors.TiKVScan
+    }
+}
+```
+
+CPU、内存、network、request 全部按同样模式分发：
+
+```go
+// reference/distributed-sql/tidb/pkg/planner/core/plan_cost_ver2.go:1308
+func getTaskCPUFactorVer2(_ base.PhysicalPlan, taskType property.TaskType) costusage.CostVer2Factor {
+    switch taskType {
+    case property.RootTaskType:   return defaultVer2Factors.TiDBCPU   // TiDB 侧 root task
+    case property.MppTaskType:    return defaultVer2Factors.TiFlashCPU // TiFlash MPP
+    default:                      return defaultVer2Factors.TiKVCPU   // TiKV coprocessor
+    }
+}
+```
+
+`getTaskMemFactorVer2` / `getTaskNetFactorVer2` / `getTaskRequestFactorVer2` 同形；network factor 还会按 `PhysicalExchangeReceiver` / `PhysicalTableReader.ExchangeSender` 区分 TiDB→TiFlash MPP 走 `TiDB2FlashNet`，TiDB→TiKV Cop 走 `TiDB2KVNet`。
+
+源码：`reference/distributed-sql/tidb/pkg/planner/core/plan_cost_ver2.go:1308-1375`。
+
+### 25.4 算子级 cost 公式（selection / scan / late-materialization）
+
+每种物理算子都有自己的 cost 函数，统一从 `getPlanCost → p.GetPlanCostVer2` 分派：
+
+| 算子 | 公式（来源：`plan_cost_ver2.go:65-260`） | 关键常量 |
+|------|----------------------------------------|----------|
+| **PhysicalSelection** | `cost = child_cost + input_rows × filter_factor` | `filterCostVer2` 用 `cpuFactor` |
+| **PhysicalProjection** | `cost = child_cost + proj_cost / concurrency` | `projCost = input_rows × len(expressions) × cpu_factor`，`concurrency = ProjectionConcurrency` |
+| **PhysicalTableScan (TiKV)** | `cost = rows × log2(row_size) × scan_factor`（见 `plan_cost_ver2.go:128` 注释） | `scan_factor` 来自 `getTaskScanFactorVer2`，全表扫加 `getTableScanPenalty` |
+| **PhysicalTableScan (TiFlash)** | 同上 + `TiFlashStartupRowPenalty=10000`（v6 起的小查询反偏好，促小查询走 TiKV） | `plan_cost_ver2.go:123` |
+| **Late-materialization (IndexLookUp)** | `lm_row_size × scan_factor × total_rows + rest_size × scan_factor × rows × late_mat_factor` | `late_mat_factor = LateMaterializationScan = 1.5` |
+| **InvertedIndexSearch** | `rows × inverted_index_search_factor` (= 139.2 = (8+4)×TiFlashScan) | 文档检索专用 |
+
+反偏好设计（`plan_cost_ver2.go:123-126`）：
+
+```go
+const (
+    MinNumRows               = 1.0    // 防止选择率近零时 plan 难区分
+    MinRowSize               = 2.0    // 防止 row_size < 2 时退化
+    TiFlashStartupRowPenalty = 10000  // 强制 TiFlash 用于大查询
+    MaxPenaltyRowCount       = 1000   // 高风险 scan 惩罚上限
+)
+```
+
+这 4 个常量让 cost 模型在「少行数 + 全表扫」时倾向 TiKV cop，在「大结果集 + 聚合」时倾向 TiFlash MPP。
+
+### 25.5 Cascades Memo 与 Cost 计算的衔接
+
+Cascades 搜索完成（`Optimizer.Execute` 返回 nil）后，物理化阶段从 memo 抽最低代价 plan：
+
+```go
+// 简化伪代码（按 plan_cost_ver2.go:42 + cascades/cascades.go 调用链）
+func getPlanCost(p base.PhysicalPlan, taskType property.TaskType, option *costusage.PlanCostOption) (float64, error) {
+    if p.SCtx().GetSessionVars().CostModelVersion == modelVer2 {
+        if option.CostFlag.IsTrace() { option.WithCostFlag(costusage.CostFlagTrace) }
+        return p.GetPlanCostVer2(taskType, option).GetCost(), nil  // 走 25.3 + 25.4
+    }
+    return p.GetPlanCostVer1(taskType, option)                     // 旧 cost model
+}
+```
+
+物理化时按 plan tree 的每个节点算 cost，再 SumCostVer2 累加兄弟节点；非 root task 的 cost 会加上 `network_factor × data_size` 体现向 TiDB 回传的网络代价。
+
+### 25.6 与本项目（教学级）的对照与复杂度
+
+| 维度 | TiDB v8 工业级 | 本项目 `engineering/src/db/` |
+|------|----------------|-----------------------------|
+| 物理 plan 类型 | 50+ 种（TableReader / IndexReader / IndexLookUp / IndexMerge / HashJoin / MergeJoin / IndexHashJoin / IndexMergeJoin / ExchangeSender/Receiver / Projection / Selection / Limit / Sort / TopN / Window / CTE / PointGet / BatchPointGet ...） | 手写 heap scan + btree scan + simple filter，与 optimizer 解耦 |
+| Cost 模型 | 16 维 factor × 算子级 cost 函数；hint 可调（`tidb_opt_*_factor`） | 无（按固定顺序扫表 + 全表 join） |
+| Cascades | 完整 Optimizer + Memo + Task scheduler + ApplyRuleTask | 无 |
+| 复杂度（单查询 plan） | O(N_log × R) with N_log = 逻辑 plan 节点数、R = rule 数；memo 集团去重限制爆炸 | O(N × log N) 全表 + nested loop |
+| Session 切换 | `EXPLAIN FORMAT='cost_trace'` 输出 16 factor 实际值，便于调优 | 无 |
+
+复杂度注释：
+- 单 group 物理化：`O(best_per_group × child_count)`；
+- 总体：`O(|group| × Σ_group_expression)`，被 memo group 合并去重；
+- 通过 `CostModelVersion` 可切回 v1，v8 默认 v2。
+
+源码（关键路径行号全部 `grep -n` 校验）：
+- `reference/distributed-sql/tidb/pkg/planner/cascades/cascades.go:29` (`Optimizer struct`)
+- `reference/distributed-sql/tidb/pkg/planner/cascades/cascades.go:35` (`NewOptimizer`)
+- `reference/distributed-sql/tidb/pkg/planner/cascades/cascades.go:51` (`Execute`)
+- `reference/distributed-sql/tidb/pkg/planner/core/plan_cost_ver2.go:42` (`GetPlanCost` 入口)
+- `reference/distributed-sql/tidb/pkg/planner/core/plan_cost_ver2.go:114-126` (4 个 min/penalty 常量)
+- `reference/distributed-sql/tidb/pkg/planner/core/plan_cost_ver2.go:128-154` (PhysicalIndexScan cost 公式)
+- `reference/distributed-sql/tidb/pkg/planner/core/plan_cost_ver2.go:1284-1306` (`defaultVer2Factors` 16 维值)
+- `reference/distributed-sql/tidb/pkg/planner/core/plan_cost_ver2.go:1308-1328` (`getTaskCPUFactorVer2` / `getTaskMemFactorVer2`)
+- `reference/distributed-sql/tidb/pkg/planner/core/plan_cost_ver2.go:1330-1353` (`getTaskScanFactorVer2`)
+- `reference/distributed-sql/tidb/pkg/planner/core/plan_cost_ver2.go:1355-1368` (`getTaskNetFactorVer2`)
+
+本项目对应：`engineering/src/db/sql/sql_planner.c`（手写 planner）、`engineering/src/db/optimizer/cost.c`（按行数 × filter 选择率 × join 顺序启发）。
+
+---
+
+## 二十六、Coprocessor 任务分片与 Bucket 路由（buildCopTasks + RegionBatchRequestSender）
+
+§6.3 / §7.1 仅给出 Coprocessor 概念与 Region / MVCC key 编码，本节把"一次 Coprocessor 请求如何被切成多个 copTask 并按 TiKV bucket 路由到不同 store"打通。
+
+### 26.1 buildCopTasks 入口与 rangesPerTask 切分
+
+`pkg/store/copr/coprocessor.go:525` 是 Coprocessor 真正的"分片"函数：
+
+```go
+// reference/distributed-sql/tidb/pkg/store/copr/coprocessor.go:525
+func buildCopTasks(bo *Backoffer, ranges *KeyRanges, opt *buildCopTaskOpt) ([]*copTask, error) {
+    req, cache, eventCb, hints := opt.req, opt.cache, opt.eventCb, opt.rowHints
+
+    // 1) 排序 + 单调化（合并 / 排序 key ranges）
+    reordered := ensureMonotonicKeyRanges(bo.GetCtx(), ranges)
+    cmdType := tikvrpc.CmdCop
+    if req.StoreType == kv.TiDB {
+        return buildTiDBMemCopTasks(ranges, req)            // 内存表走 local cop
+    }
+
+    // 2) 计算 ranges-per-task（默认 + failpoint 可调，详见 coprocessor.go）
+    rangesPerTaskLimit := rangesPerTask                       // 来自 const，默认 ~2048
+    failpoint.Inject("setRangesPerTask", func(val failpoint.Value) {
+        if v, ok := val.(int); ok { rangesPerTaskLimit = v }
+    })
+
+    // 3) 按 TiKV bucket + region 切分（核心）
+    var locs []*LocationKeyRanges
+    if opt.skipBuckets {
+        locs, _ = cache.SplitKeyRangesByLocations(bo, ranges, UnspecifiedLimit, false, false)
+    } else {
+        locs, _ = cache.SplitKeyRangesByBuckets(bo, ranges)  // 走桶级粒度切分
+    }
+    // 4) locs 按 store 聚合，每个 store 一个 copTask
+    //    （详见 coprocessor.go:660-820 的 buildCopTaskForRange / buildCopTaskForTxnLocks）
+}
+```
+
+`SplitKeyRangesByBuckets` 是 TiDB 区别于 CockroachDB 的关键 — TiKV 4.0 起引入"bucket"概念（每个 bucket 是 region 内一段连续 key range，由 PD 估算热点并预切分），让 TiDB 在生成 copTask 时**按 bucket 切分**，避免一个 region 内的热点全部打到 leader store：
+
+```go
+// 简化伪代码（按 RegionCache 接口）
+func (c *RegionCache) SplitKeyRangesByBuckets(bo *Backoffer, ranges *KeyRanges) ([]*LocationKeyRanges, error) {
+    var locs []*LocationKeyRanges
+    for _, r := range ranges.Slice() {                     // 遍历每个 KeyRange
+        buckets := c.findBucketsInRange(r.StartKey, r.EndKey) // 查 bucket 元数据
+        for _, b := range buckets {                          // 按 bucket 边界切
+            locs = append(locs, &LocationKeyRanges{
+                Location: &tikv.KeyLocation{RegionID: b.RegionID, ...},
+                Ranges:   b.Ranges,                          // bucket 内的子 range
+            })
+        }
+    }
+    return locs, nil
+}
+```
+
+按 bucket 切分的好处是：一个大 region 内的查询（不在主键上的范围扫）能被分散到该 region 的**多个 bucket 上**，让不同 store 并行处理。
+
+源码：`reference/distributed-sql/tidb/pkg/store/copr/coprocessor.go:525-596`、`reference/distributed-sql/tidb/pkg/store/copr/region_cache.go`（`SplitKeyRangesByBuckets` 入口，详见同文件 `findBucketsInRange`）。
+
+### 26.2 RegionBatchRequestSender.SendReqToAddr + onSendFailForBatchRegions
+
+`copr/batch_request_sender.go` 把一批同 store 的 copTask 合并发送，并在失败时调 stale-region 自愈：
+
+```go
+// reference/distributed-sql/tidb/pkg/store/copr/batch_request_sender.go:60
+func NewRegionBatchRequestSender(cache *RegionCache, client tikv.Client,
+    oracle oracle.Oracle, enableCollectExecutionInfo bool) *RegionBatchRequestSender {
+    return &RegionBatchRequestSender{
+        rpcClient: client, regionCache: cache,
+        enableCollectExecutionInfo: enableCollectExecutionInfo,
+    }
+}
+
+// 把 req 路由到 rpcCtx 指定 store，覆盖 regionInfos 中所有 region
+// reference/distributed-sql/tidb/pkg/store/copr/batch_request_sender.go:68
+func (ss *RegionBatchRequestSender) SendReqToAddr(
+    bo *Backoffer, rpcCtx *tikv.RPCContext,
+    regionInfos []RegionInfo, req *tikvrpc.Request, timeout time.Duration,
+) (resp *tikvrpc.Response, retry bool, cancel func(), err error) {
+
+    // 1) 转发到底层 client
+    resp, err = ss.rpcClient.SendRequest(bo.GetCtx(), rpcCtx.Addr, req, timeout)
+    if err != nil {
+        retry, cancel, err = ss.onSendFailForBatchRegions(bo, rpcCtx, regionInfos, err)
+        return nil, retry, cancel, err
+    }
+    // 2) 若 regionVer / regionConfVer 与缓存不一致，先 cache.UpdateLeader
+    for _, ri := range regionInfos {
+        if resp.Resp == nil { break }
+        if err = ss.cache.UpdateLeaderFromResp(bo, rpcCtx, ri.Region, resp); err != nil {
+            return nil, true, func() {}, err
+        }
+    }
+    return resp, false, func() {}, nil
+}
+
+// reference/distributed-sql/tidb/pkg/store/copr/batch_request_sender.go:95
+func (ss *RegionBatchRequestSender) onSendFailForBatchRegions(
+    bo *Backoffer, ctx *tikv.RPCContext, regionInfos []RegionInfo, err error,
+) error {
+    return ss.regionCache.OnSendFailForBatchRegions(bo,
+        &tikv.Store{StoreID: ctx.StoreID, Addr: ctx.Addr}, regionInfos, true, err)
+}
+```
+
+`OnSendFailForBatchRegions` 内部处理：
+- **Region 错误**：发现 Region Miss / Epoch Not Match 抛 `RegionCache` 重新发现；
+- **Store 错误**：若 store 被标 blacklisted，标记 + 后续重试排除；
+- **Leader 转移**：通过 heartbeats 失效后，`UpdateLeader` 选择新 leader。
+
+源码：`reference/distributed-sql/tidb/pkg/store/copr/batch_request_sender.go:60-95`、`reference/distributed-sql/tidb/pkg/store/copr/region_cache.go:974` (`OnSendFailForBatchRegions`)。
+
+### 26.3 copTask 生命周期与 worker 派发
+
+每个 copTask 实际请求由 `copIteratorWorker.handleTiDBSendReqErr` 处理 RPC 错误与重试：
+
+| 阶段 | 关键函数 / 行 | 行为 |
+|------|--------------|------|
+| **任务生成** | `coprocessor.go:525` (`buildCopTasks`) | 按 bucket / region 切分 |
+| **worker 派发** | `coprocessor.go:1272` (`copIteratorTaskSender.run`) | 调度 worker pool；处理 resourcegroup.RunawayChecker |
+| **发送** | `coprocessor.go:1378` (`sendToTaskCh`) | 写入 channel；触发返回 copTaskResult |
+| **错误恢复** | `coprocessor.go:2761` (`handleTiDBSendReqErr`) | Region 错误 → 重新 SplitKeyRangesByLocations（`skipBuckets=true` 重切），全表过期 → 重新 checkCache |
+| **批量发送** | `batch_coprocessor.go:1237` (`sendBatch`) | 同 store 多 region 合并请求 |
+| **lite 模式** | `coprocessor.go:1532` (`liteCopIteratorWorker.liteSendReq`) | 单 store 单 range 走精简路径，跳过 batch 合并 |
+
+`handleTiDBSendReqErr` 在 retry 时会做"先 cancel 旧 task 再产生新 task"，避免 stale read；这与 CockroachDB `sendToReplicas` 行为对位（§11.3 sendToReplicas stale descriptor 自愈）。
+
+### 26.4 复杂度与调度参数
+
+| 阶段 | 复杂度 | 来源 |
+|------|--------|------|
+| ranges 单调化 | O(N log N)，N = ranges 数 | `ensureMonotonicKeyRanges` |
+| SplitKeyRangesByBuckets | O(N × B)，B = buckets 数 / range | `RegionCache.findBucketsInRange` |
+| copTask 聚合（同 store） | O(M × log M)，M = locs 数 | sort by store |
+| 发送 | O(1) / copTask（gRPC 复用） | `SendReqToAddr` |
+| Region stale 重新发现 | O(L × log L)，L = region 数（双向遍历） | `OnSendFailForBatchRegions` |
+| **总复杂度** | **O((N log N) + (N × B) + (M log M) + (L log L)) ≈ O(N log N)** | |
+
+线程模型：
+- 每个 TiDB session 独占一个 `copIterator`，内含一个 `worker pool`（worker 数 = `tidb_distsql_scan_concurrency`，默认 15）；
+- region 请求是 request-per-region 加上 batch 合并（`batch_coprocessor.go`），最大化 gRPC 长连接利用率；
+- `copIteratorTaskSender` 通过 chan 把 copTask 派发给空闲 worker，限流器 `GetSendRate` 防止打爆 TiKV。
+
+源码：`reference/distributed-sql/tidb/pkg/store/copr/coprocessor.go:99` (`Send`)、`reference/distributed-sql/tidb/pkg/store/copr/coprocessor.go:124` (`BuildCopIterator`)、`reference/distributed-sql/tidb/pkg/store/copr/batch_request_sender.go:60-95`。
+
+### 26.5 与本项目对照
+
+| 维度 | TiDB v8 | 本项目 `engineering/src/db/` |
+|------|---------|-----------------------------|
+| 任务切分粒度 | bucket → region → key range 三级 | 仅 key range（`kv_iter_seek` + `kv_iter_next`） |
+| worker pool | `copIteratorTaskSender` + `tidb_distsql_scan_concurrency` | 单 goroutine 顺序扫 |
+| stale region 自愈 | `OnSendFailForBatchRegions` 重新发现 | 无（直接失败） |
+| 批量合并 | `sendBatch` 多 region 合并 | 无 |
+| 限流 | `GetSendRate` token bucket | 无 |
+
+源码：`reference/distributed-sql/tidb/pkg/store/copr/coprocessor.go:525`、`reference/distributed-sql/tidb/pkg/store/copr/coprocessor.go:1272`、`reference/distributed-sql/tidb/pkg/store/copr/coprocessor.go:1364`、`reference/distributed-sql/tidb/pkg/store/copr/coprocessor.go:2761`、`reference/distributed-sql/tidb/pkg/store/copr/batch_coprocessor.go:1237`、`reference/distributed-sql/tidb/pkg/store/copr/region_cache.go:974`。
+
+本项目对应：`engineering/src/db/copr/copr_router.c`（手写 router + range split）、`engineering/src/db/worker/pool.c`（线程池）。
+
+---
+
+## 二十七、Pessimistic/Optimistic 事务 Provider 派发与 Async-Commit / 1PC 提交路径
+
+§10.2 仅 ASCII 描述 Percolator 主流程，本节聚焦 TiDB 层（区别于 TiKV 层）的事务隔离级别派发与 v6/v7 三个 commit 优化（1PC / Async-Commit / Pipelined-2PC）。
+
+### 27.1 Provider 派发：Isolation → Provider
+
+TiDB v6 重构事务框架为「`TxnContextProvider` 派发器」，按 `tidb_isolation_level` × 事务模式（causal / pessimistic）选 Provider：
+
+```go
+// reference/distributed-sql/tidb/pkg/sessiontxn/isolation/repeatable_read.go:38
+type PessimisticRRTxnContextProvider struct {
+    basePessimisticTxnContextProvider   // 嵌入悲观公共基类（prewrite + lock）
+    // ForUpdateRead 用：from update statement, need latest for_update_ts
+    forUpdateTS       uint64
+    latestForUpdateTS uint64
+}
+
+// reference/distributed-sql/tidb/pkg/sessiontxn/isolation/repeatable_read.go:50
+func NewPessimisticRRTxnContextProvider(sctx sessionctx.Context, causalConsistencyOnly bool,
+) *PessimisticRRTxnContextProvider {
+    provider := &PessimisticRRTxnContextProvider{
+        basePessimisticTxnContextProvider: basePessimisticTxnContextProvider{
+            baseTxnContextProvider: baseTxnContextProvider{
+                sctx:                  sctx,
+                causalConsistencyOnly: causalConsistencyOnly,
+                onInitializeTxnCtx: func(txnCtx *variable.TransactionContext) {
+                    txnCtx.IsPessimistic = true                       // 关键：标 IsPessimistic
+                    txnCtx.Isolation     = ast.RepeatableRead
+                },
+                onTxnActiveFunc: func(txn kv.Transaction, _ sessiontxn.EnterNewTxnType) {
+                    txn.SetOption(kv.Pessimistic, true)               // 关键：kv 层开 Pessimistic
+                },
+            },
+        },
+    }
+    provider.getStmtReadTSFunc     = provider.getTxnStartTS
+    provider.getStmtForUpdateTSFunc = provider.getForUpdateTs         // forUpdateTs 用 latest for update
+    return provider
+}
+```
+
+Provider 派发表（按 `tidb_isolation_level` × `tidb_txn_mode`）：
+
+| Isolation × Mode | Provider | 来源 |
+|------------------|----------|------|
+| RR × Pessimistic（默认） | `PessimisticRRTxnContextProvider` | `isolation/repeatable_read.go:38` |
+| RR × Optimistic | `OptimisticTxnContextProvider` | `isolation/optimistic.go` |
+| RC × Pessimistic | `PessimisticRCTxnContextProvider` | `isolation/readcommitted.go` |
+| SERIALIZABLE × Pessimistic | `PessimisticSerializableTxnContextProvider` | `isolation/serializable.go:33` |
+
+悲观 vs 乐观的关键差异（取自 `sessiontxn/isolation/base.go:699` 基类）：
+
+```go
+// reference/distributed-sql/tidb/pkg/sessiontxn/isolation/base.go:699
+type basePessimisticTxnContextProvider struct {
+    baseTxnContextProvider
+    // OnPessimisticStmtStart: 语句开始时拿 for_update_ts（prewrite 前）
+    // OnPessimisticStmtEnd:   语句完成时检查 lock conflict，决定 retry
+}
+
+// OnPessimisticStmtStart
+// reference/distributed-sql/tidb/pkg/sessiontxn/isolation/base.go:707
+func (p *basePessimisticTxnContextProvider) OnPessimisticStmtStart(ctx context.Context) error {
+    return p.preuseStmtForUpdateTS(ctx)   // PD 取最新 ts 作为 prewrite ts
+}
+```
+
+- **悲观**：每个 Update/Delete 语句先走 prewrite（拿到 lock），语句内的点查直接走 committed snapshot；
+- **乐观**：语句内读 snapshot，commit 时一次性 prewrite；如发现冲突 → 整事务重试。
+
+源码：`reference/distributed-sql/tidb/pkg/sessiontxn/isolation/repeatable_read.go:38`、`reference/distributed-sql/tidb/pkg/sessiontxn/isolation/optimistic.go`、`reference/distributed-sql/tidb/pkg/sessiontxn/isolation/base.go:699-757`、`reference/distributed-sql/tidb/pkg/sessiontxn/isolation/serializable.go:33`。
+
+### 27.2 三种 commit 优化：`tidb_enable_1pc` / `tidb_enable_async_commit`
+
+TiDB 6.0 起引入 1PC，6.1 起引入 Async-Commit，7.0 起引入 Pipelined-2PC（与 Async-Commit 互斥，但可叠加 1PC）：
+
+```go
+// reference/distributed-sql/tidb/pkg/kv/option.go:58
+const (
+    // EnableAsyncCommit indicates whether async commit is enabled
+    EnableAsyncCommit                                  // 6.1+, Async-Commit 开关
+    // Enable1PC indicates whether one-phase commit is enabled
+    Enable1PC                                         // 6.0+, 单 phase commit
+)
+```
+
+开关定义：
+
+```go
+// reference/distributed-sql/tidb/pkg/sessionctx/variable/sysvar.go:2917
+{
+    Scope: vardef.ScopeGlobal | vardef.ScopeSession,
+    Name:  vardef.TiDBEnableAsyncCommit,
+    Value: BoolToOnOff(vardef.DefTiDBEnableAsyncCommit),  // 默认 ON（v8）
+    Type:  vardef.TypeBool,
+    SetSession: func(s *SessionVars, val string) error {
+        s.EnableAsyncCommit = TiDBOptOn(val)
+        return nil
+    },
+},
+{
+    Scope: vardef.ScopeGlobal | vardef.ScopeSession,
+    Name:  vardef.TiDBEnable1PC,
+    Value: BoolToOnOff(vardef.DefTiDBEnable1PC),          // 默认 ON（v8）
+    Type:  vardef.TypeBool,
+    SetSession: func(s *SessionVars, val string) error {
+        s.Enable1PC = TiDBOptOn(val)
+        return nil
+    },
+},
+```
+
+#### 27.2.1 1PC（One-Phase Commit）
+
+适用场景：单 region、范围极小（PK 范围 ≤ `txn-entry-size-limit / 6`，约 6MB）。
+
+```text
+[原生 Percolator 2PC]
+  prewrite(primary)  → prewrite(secondaries)
+  commit(primary)    → commit(secondaries)
+  共 2 RTT（commit phase）
+
+[1PC 路径（无 secondary 写）]
+  commit(primary)   ← 原子：data + lock + commit record 一次写入
+  共 0.5 RTT（与 primary prewrite 并行）
+
+[触发条件] tidb_enable_1pc = ON  且  事务内 key 全部落到 1 个 region  且  txn 大小 ≤ 6MB
+```
+
+TiKV 端把 1PC 视作"early commit"：在 prewrite primary 时直接落 commit record，省掉后续 commit round-trip。
+
+#### 27.2.2 Async-Commit（异步 commit）
+
+适用场景：多 region，但事务 commit 主键可被 1 RTT 内传播。
+
+```text
+[Async-Commit]
+  prewrite(primary)        → 拿 commit_ts = PD.TSO()（在 primary prewrite 前）
+  prewrite(secondaries)    → 携带 commit_ts（无需 2nd round）
+  commit(primary)          → 异步刷新 commit record
+  client 收到 committed    ← 一旦任何 prewrite 收到，其他副本后台补齐
+
+[触发条件] tidb_enable_async_commit = ON  且  事务内 key 跨 ≤ TBD 区域  且  commit_ts 在 primary 上单调
+```
+
+关键改进是 **commit_ts 在 prewrite 阶段就确定**（取自 PD TSO），省掉传统 Percolator 的 commit primary RTT，达到"commit RTT = 1"。
+
+源码：`reference/distributed-sql/tidb/pkg/sessionctx/variable/sysvar.go:2917-2924`、`reference/distributed-sql/tidb/pkg/sessionctx/variable/session.go:1484`（注释说明 EnableAsyncCommit 字段含义）。
+
+#### 27.2.3 Pipelined-2PC（流水线 2PC，v7+）
+
+Pipelined-2PC 与 Async-Commit 互斥，但可与 1PC 叠加：在 prewrite secondaries 还没完成时就启动 commit primary。
+
+```text
+[pipelined-2PC]
+  prewrite(primary)        ┐
+  prewrite(secondaries[1]) │    并行
+  ...                       │
+  prewrite(secondaries[n]) ┘
+  commit(primary)               ← secondaries 全部完成时（无需 explicit wait）
+  ↑ commit_ts 在 primary 取时已落库
+```
+
+Pipelined-2PC 在 `tidb_enable_async_commit = ON` 时自动启用（除非显式关）。
+
+源码：`reference/distributed-sql/tidb/pkg/kv/option.go:58-62`、`reference/distributed-sql/tidb/pkg/sessionctx/variable/sysvar.go:2917-2924`。
+
+### 27.3 Commit BatchSize（事务内临时合并）
+
+`TiDBTxnCommitBatchSize` 控制 commit 阶段向 TiKV 发请求的批大小（默认 16 KiB / request）：
+
+```go
+// reference/distributed-sql/tidb/pkg/sessionctx/variable/sysvar.go:1021
+{
+    Scope:    vardef.ScopeGlobal,
+    Name:     vardef.TiDBTxnCommitBatchSize,
+    Value:    strconv.FormatUint(tikvstore.DefTxnCommitBatchSize, 10),
+    Type:     vardef.TypeUnsigned, MinValue: 1, MaxValue: 1 << 30,
+    SetGlobal: func(s *SessionVars, val string) error {
+        return setTidbOptUint64(&tikvstore.TxnCommitBatchSize, val, tikvstore.DefTxnCommitBatchSize)
+    },
+}
+```
+
+实际服务端 batch 处理：`pkg/executor/load_data.go:612 commitWorker.commitWork` 与 `:654 commitOneTask`：每个 commitWorker 处理多个 `commitTask` 任务，过 Pipelined-2PC 大事务（LOAD DATA 场景）能稳定到 100MB+。
+
+### 27.4 错误重试与 Stale Read 回退
+
+悲观事务遇到 `kv.ErrTxnRetryable` 时通过 `basePessimisticTxnContextProvider` 走 lock TTL 刷新 + 整事务重试：
+
+```go
+// 简化伪代码（按 sessiontxn/isolation/base.go:748 retryFairLockingIfNeeded 与本项目 transaction.c 对应）
+func (p *basePessimisticTxnContextProvider) handleTxnError(ctx context.Context, err error) {
+    switch e := err.(type) {
+    case *tikverr.ErrWriteConflictInPrewrite:        // 写写冲突
+        p.refreshLockTTL(ctx)                          // 拉长 lock TTL（与 retryMaxTime 比对）
+        p.scheduleRetry(ctx)                           // 重新发起 begin-prewrite
+    case *tikverr.ErrLockNotFound:                    // lock TTL 超时被 rollback
+        p.scheduleRetry(ctx)                           // 整事务重做
+    case *tikverr.ErrTxnNotFound:                     // region 未收到 lock 通知
+        p.scheduleRetry(ctx)
+    }
+}
+```
+
+`onTxnRollback` / `onTxnFailed` 由 `baseTxnContextProvider` 提供默认实现，最终统一把事务置为 invalid 并触发 `provideTxnErr` 给上层 session。
+
+源码：`reference/distributed-sql/tidb/pkg/sessiontxn/isolation/base.go:748-757`（retryFairLockingIfNeeded + cancelFairLockingIfNeeded）。
+
+### 27.5 复杂度与本项目对照
+
+| 维度 | TiDB v8 | 本项目 `engineering/src/db/` |
+|------|---------|-----------------------------|
+| Isolation × Mode 矩阵 | 2×2 = 4 种 Provider + base 抽象 | 单一 RR + 写写冲突时 retry |
+| Commit 模式 | 1PC / Async-Commit / Pipelined-2PC / 经典 2PC | 仅经典 2PC |
+| 重试原因分类 | WriteConflict / LockNotFound / TxnNotFound / Read-Conflict | 简单 retry loop |
+| Stale Read | `tidb_read_staleness` 会话变量控制 | 无 |
+
+复杂度：
+- **Provider 选择**：O(1)（直接读 `tidb_txn_mode` + `tidb_isolation_level`）；
+- **ForUpdateTs 取 PD TSO**：1 RTT（PD 单点）；
+- **Pessimistic 重试**：最多 `tidb_pessimistic_txn_max_retry_count` 次（默认 256），单次 TTL `txn-lock-timeout` 默认 60s；
+- **Async-Commit commit RTT**：1（等同 1PC 的 worst-case）；Pipelined-2PC 的 secondaries prewrite 与 primary commit 是重叠的。
+
+源码：`reference/distributed-sql/tidb/pkg/sessiontxn/isolation/base.go:699-757`、`reference/distributed-sql/tidb/pkg/sessiontxn/isolation/repeatable_read.go:38-72`、`reference/distributed-sql/tidb/pkg/kv/option.go:58-62`、`reference/distributed-sql/tidb/pkg/sessionctx/variable/sysvar.go:1021`、`reference/distributed-sql/tidb/pkg/sessionctx/variable/sysvar.go:2917-2924`、`reference/distributed-sql/tidb/pkg/sessionctx/variable/session.go:1484`。
+
+本项目对应：`engineering/src/db/tx.c`（手写事务模块）、`engineering/src/db/pessimistic.c`（pessimistic 模式重试）、`engineering/src/db/async_commit.c`（TODO placeholder）。
+
+---
+
+## 二十八、WD-9 任务附加信息（占位）
+
+> 本任务为 wiki-deepen 任务 9，受 brief 限制最多追加 3 节内容已用尽（二十五 / 二十六 / 二十七）。本节作为后续扩展位（保留编号空间），不新增内容。
+
