@@ -633,7 +633,508 @@ LiteCore **不提供多文档 ACID 事务**——与多数文档数据库一致�
 - **Actor 模式**（`LiteCore/Support/Actor.hh`）值得借鉴到 `engineering/src/db/` 中需要并发安全的模块；
 - **Fleece 零拷贝 JSON** 思路可应用到 `engineering/src/algo/` 的字符串处理。
 
-## 二十六、参考资料
+## 二十六、RevTree 版本树与赢家选举算法
+
+§7.2 只列出了 `RevTree.cc` / `RevID.cc` 两个路径，本节补上 CouchDB 2.x 传统 revision-tree 版本体系的**实际算法**：revid 的双形态编码、赢家排序比较函数、共同祖先查找与历史插入、以及深度剪枝。
+
+### 26.1 revid 的双形态二进制编码
+
+`revid` 是一个 `slice` 包装（非拥有内存），有**两种互斥形态**，靠首字节区分（`LiteCore/RevTrees/RevID.hh:20-45`）：
+
+| 形态 | ASCII 样例 | 二进制布局 | 用途 |
+| --- | --- | --- | --- |
+| **digest**（revision-tree） | `123-cafebabedeadbeefdeadfade` | `varint(generation)` ‖ 原始 digest 字节 | CouchDB 2.x 及以下 |
+| **version**（version-vector） | `1772c7cb27da0000@ZegpoldZegpoldZegpoldA` | `0x00` ‖ `varint(压缩时间戳)` ‖ `SourceID` | Couchbase Lite 3.x |
+
+- 判别式：`revid::isVersion()` 即 `size > 0 && (*this)[0] == 0`（`RevID.hh:65`）；
+- digest 形态构造把 ASCII 的 hex 对**两两折叠成字节**再前缀 varint 代数（`RevID.cc:152-175`），`_buffer` 定长 42 字节、溢出抛 `BadRevisionID`（`RevID.hh:130`）；
+- 二进制序即字典序的排序基础：
+
+```cpp
+// LiteCore/RevTrees/RevID.cc:62-70（已验证）
+bool revid::operator<(const revid& other) const {
+    if (isVersion()) {
+        return Version::byAscendingTimes(asVersion(), other.asVersion());  // 混合逻辑时间
+    } else {
+        auto [myGen, myDigest]       = generationAndDigest();
+        auto [otherGen, otherDigest] = other.generationAndDigest();
+        return (myGen != otherGen) ? myGen < otherGen : myDigest < otherDigest;
+    }
+}
+```
+
+`generationAndDigest()` 会校验 `0 < gen ≤ UINT_MAX`，否则抛 `CorruptRevisionData`（`RevID.cc:32-39`）——**代数即版本树深度**，代数乱序意味着树被破坏。
+
+### 26.2 赢家选举：compareRevs 五级优先级字典序
+
+CouchDB 的"当前版本"（current rev）不是简单的最大代数，而是按一组标志位做**逐级降序比较**（`LiteCore/RevTrees/RevTree.cc:532-549`）：
+
+```cpp
+// 返回 true ⇔ rev1 优先级高于 rev2（配合 std::ranges::sort 即降序）
+__hot static bool compareRevs(const Rev* rev1, const Rev* rev2) {
+    int delta = rev2->isLeaf() - rev1->isLeaf();          // ① 叶优先
+    if (delta) return delta < 0;
+    delta = rev1->isConflict() - rev2->isConflict();      // ② 冲突分支永不当 current
+    if (delta) return delta < 0;
+    delta = rev1->isDeleted() - rev2->isDeleted();        // ③ 活跃优先于墓碑
+    if (delta) return delta < 0;
+    delta = rev1->isClosed() - rev2->isClosed();        // ④ 已关闭分支垫底
+    if (delta) return delta < 0;
+    return rev2->revID < rev1->revID;                     // ⑤ 否则按 revid 降序
+}
+```
+
+伪代码形式（便于对照）：
+
+```text
+compareRevs(r1, r2):
+    if isLeaf(r1)     ≠ isLeaf(r2):      return isLeaf(r1)
+    if isConflict(r1) ≠ isConflict(r2):  return ¬isConflict(r1)
+    if isDeleted(r1)  ≠ isDeleted(r2):   return ¬isDeleted(r1)
+    if isClosed(r1)   ≠ isClosed(r2):    return ¬isClosed(r1)
+    return revid(r2) < revid(r1)
+```
+
+配套的"活跃"判定（`RevTree.cc:165-175`）：
+
+```cpp
+bool Rev::isActive() const {
+    // 传统（CouchDB 以来）活跃 = 叶 且 非墓碑；墓碑用于封顶冲突分支，本身不制造冲突。
+    // 但 CBL 2 的 no-conflicts 语义下允许「活文档 vs 已删文档」构成冲突，
+    // 因此当墓碑正是服务端 current rev 时也算活跃。
+    return isLeaf() && (!isDeleted() || isLatestRemoteRevision());
+}
+```
+
+排序后 `_revs[0]` 即 current，`hasConflict()` 退化为 O(1) 的 `_revs[1]->isActive()`（`RevTree.cc:148-163`，未排序时才 O(n) 全扫）。**复杂度**：排序 O(n log n)，比较函数摊还 O(1)（`revid::operator<` 对 version 形态是常数时间的 64 位比较，对 digest 形态是 O(digest 长度)）。
+
+### 26.3 insertHistory：共同祖先查找与历史批量插入
+
+同步推送时对端送来的 `revisions` 数组形如 `[新 rev, 父 rev, 祖 rev, ...]`，`RevTree::insertHistory` 需要先在本地树里定位**最长公共前缀**，再把缺失的一段补进去（`RevTree.cc:366-374`）：
+
+```text
+findCommonAncestor(history, allowConflict):
+    lastGen, parent ← 0, nil
+    for i ← 0 … len(history)-1:
+        gen ← generation(history[i])
+        if lastGen > 0 and gen ≠ lastGen - 1:
+            # 代数不连续
+            if gen < lastGen and i ≥ _pruneDepth - 1:
+                pass                    # 例外：即将被剪掉的深度，允许挖洞以压缩长历史
+            else:
+                return (nil, -400)      # HTTP 400，history 非法
+        lastGen ← gen
+        parent ← get(history[i])
+        if parent ≠ nil: break
+    if ¬allowConflict:
+        if (parent ≠ nil and ¬isLeaf(parent)) or (parent = nil and _revs ≠ ∅):
+            return (nil, -409)          # HTTP 409，插入将产生冲突
+    return (parent, i)
+```
+
+```text
+insertHistory(history, body, flags, allowConflict, markConflict):
+    (parent, idx) ← findCommonAncestor(history, allowConflict)
+    if idx > 0 and body ≠ nil:
+        for i ← idx-1 down to 1:                 # 中间缺失段，无 body，逆序补链
+            parent ← _insert(history[i], ∅, parent, kNoFlags, markConflict)
+        _insert(history[0], body, parent, flags, markConflict)
+```
+
+- **单调不变量**：`newGen == parentGen + 1`，否则 HTTP 400（`RevTree.cc:342-346`）——这是防止伪造 revid 造出"跳跃代数"的关键防线；
+- **幂等**：revid 已存在直接返回 200 不做事（`RevTree.cc:321-324`）；
+- **复杂度**：单次 `findCommonAncestor` O(H)（H = history 长度，逐项 hash/线性查表）；`get(revid)` 在已排序树上可二分，未排序时退化为 O(n)（`RevTree.cc:132-138`）。
+
+### 26.4 prune 与 compact：深度剪枝
+
+版本树是无界的（每次写入 +1 代），LiteCore 用 `_pruneDepth` 限制树深（`RevTree.hh:225`，默认 `UINT_MAX`）（`RevTree.cc:436-478`）：
+
+```text
+prune(maxDepth):
+    for each rev in _revs:                       # _revs 已按优先级降序，叶在前
+        if isLeaf(rev):
+            depth ← 0
+            for anc ← rev; anc ≠ nil; anc ← anc.parent:
+                if ++depth > maxDepth and ¬keepBody(anc):
+                    anc.kPurge ← true; numPruned++        # 打标记
+        else if _sorted: break                   # 已排序则后续全是非叶，提前收工
+    for (rid, r) in _remoteRevs:                 # 例外：远端 current rev 永不剪
+        if r.kPurge: clearFlag(r, kPurge); numPruned--
+    for rev in _revs:                            # 修补父指针，跳过被剪节点
+        while rev.parent and rev.parent.kPurge: rev.parent ← rev.parent.parent
+    compact()
+```
+
+`compact()` 用一次**原地滑动压缩**回收被标 `kPurge` 的 `Rev` 槽位（`RevTree.cc:504-528`），并同步清理 `_remoteRevs` / `_rejectedRevs` 两个反向索引——注意它要**拷贝 `_remoteRevs`** 再遍历，因为擦除会失效迭代器。
+
+**复杂度**：`prune` 是 O(L·D)（L = 叶数，D = maxDepth），只在触发剪枝时执行；`compact` 是 O(n)。
+
+**工程含义**：`_pruneDepth` 直接决定了"同步断点续传能回溯多远"——深度被剪掉的历史无法再用于增量追平，只能全量 dump，这也是 §23.2 中"checkpoint 失败导致全量重同步"的根因之一。
+
+## 二十七、Version Vector 向量时钟与冲突合并算法（CouchDB 3.x 路径）
+
+§18 只用一行提过 Version Vector。本节展开 Couchbase Lite 3.x 的向量时钟体系：**混合逻辑时钟（Hybrid Logical Clock）**生成单调逻辑时间戳，**版本向量（VersionVector）**记录各 peer 的最新时间以判定 happens-before 与冲突，`merge()` 把两个冲突向量合成为一个带 merge 标记的向量。
+
+### 27.1 Version 结构与 HLC 逻辑时间
+
+```cpp
+// LiteCore/RevTrees/Version.hh:131-132
+SourceID    _author;   // 创建该版本的 peer（本地用 kMeSourceID = 0 缩写）
+logicalTime _time;     // 逻辑时间戳
+```
+
+逻辑时间戳是 64 位，**高 48 位物理时间（ns）+ 低 16 位同刻计数器**（`LiteCore/Support/HybridClock.cc:40-53`）。`now()` / `seen()` 严格实现 HLC 论文 Figure 5 的两段规则（`HybridClock.cc:77-124`）：
+
+```text
+now():                                   # 取新逻辑时间
+    c ← source.now()                     # 真实墙钟
+    if c.wall ≤ last.wall: last.counter++         # 物理时间未前进 → 计数器自增
+    else:                  now ← (c.wall, 0)      # 物理时间前进 → 计数器归零
+    return CAS(last ← now)              # 失败则重试
+
+seen(seenT):                             # 吸收远端时间戳，防时钟回退
+    local ← source.now()
+    if seenT.wall > local.wall + kMaxClockSkew:  reject   # 远未来 → 丢弃
+    now ← max(seenT.wall, last.wall, local)
+    # 三分支决定计数器：
+    if now.wall = last.wall:
+        now.counter ← (now.wall = seenT.wall) ? max(last.counter, seenT.counter) + skipPast
+                                               : last.counter + skipPast
+    elif now.wall = seenT.wall:
+        now.counter ← seenT.counter + skipPast
+    return now
+```
+
+- `kMaxClockSkew = 2 * 60 * kNsPerSec`（**120 秒**，`LiteCore/Support/HybridClock.hh:79`）：超出本地墙钟 2 分钟的远端时间戳直接拒收，防止恶意 peer 用巨大时间戳毒化向量（`HybridClock.cc:107-112`）；
+- `checkTime()` 另一侧兜底：过旧（低于 `_minValid`）或 `> kMaxValidTime` 都拒绝（`HybridClock.cc:126-136`）；
+- `update()` 用 `compare_exchange_strong` 做无锁 CAS 循环（`HybridClock.cc:66-75`），保证同一 HLC 上并发 `now()` 不产生重复时间戳。
+
+### 27.2 逻辑时间的压缩编码
+
+大多数 HLC 的低 16 位计数器恒为 0，直接 varint 编码要 10 字节。LiteCore 做了位级压缩（`LiteCore/RevTrees/Version.cc:107-119`）：
+
+```cpp
+static uint64_t compress(logicalTime g) {
+    auto i = uint64_t(g);
+    if (i & 0xFFFF) return (i << 1) | 1;   // 计数器非零：左移 1 位，LSB 置 1 作 tag
+    else             return i >> 15;       // 计数器为零：右移 15 位（省下 15 个 0）
+}
+static logicalTime decompress(uint64_t i) {
+    if (i & 1) i >>= 1;                    // tag=1 → 去 tag，右移还原
+    else        i <<= 15;                  // tag=0 → 左移补回 15 个 0
+    return logicalTime(i);
+}
+```
+
+**空间收益**：计数器为零时有效位从 64 降到 49，varint 宽度由 `⌈64/7⌉ = 10` 字节降到 `⌈49/7⌉ = 7` 字节，**每个 Version 省 3 字节**。代价是计数器非零时反而要 11 字节——用"绝大多数正常路径"换掉极端路径。写入路径见 `Version::writeBinary`（`Version.cc:160-163`）：`writeUVarInt(compress(_time))` 后接 `SourceID::writeBinary`。
+
+### 27.3 向量比较：四点定序与 happens-before 判定
+
+`versionOrder` 是四值域 `{kOlder, kSame, kNewer, kConflicting}`。原语是"本向量 vs 单个 Version"（`LiteCore/RevTrees/VersionVector.cc:219-226`）：
+
+```text
+VersionVector::compareTo(v):          # 我方向量 vs 单个版本 v = ⟨t, author(v)⟩
+    mine ← find(v.author())           # 线性查该 author 的条目
+    if mine 缺失 or mine.time < v.time:   return kOlder
+    if mine.time = v.time and mine 是首项: return kSame     # 首项 = current
+    return kNewer                       # mine.time > v.time
+```
+
+向量 vs 向量（`VersionVector.cc:237-254`）：
+
+```text
+VersionVector::compareTo(other):
+    if count() = 0: return (other.count() = 0) ? kSame : kOlder
+    if other.count() = 0: return kNewer
+    myCmp ← compareTo(other.current())          # 我的 current vs 对方同 author 条目
+    if myCmp = kSame: return kSame              # 双方 current 同源同刻 → 同一版本
+    theirCmp ← other.compareTo(this.current())
+    if myCmp = theirCmp: return kConflicting    # 互为"更新" → 典型并发写冲突
+    return myCmp                                # 否则一边 happens-before 另一边
+```
+
+**关键点**：`kConflicting` 不由单个字段比较得出，而是"我的 current 比对方新 **且** 对方 current 比我新"——两个方向都为 `kNewer` 时才判定并发。这正是分布式向量时钟的标准判定式，**不需要传递完整因果历史**，只需每个 peer 的最新时间戳，通信量 O(peer 数) 而非 O(操作数)。
+
+### 27.4 merge：把两个冲突向量合成为一个
+
+冲突被检测到后，`VersionVector::merge` 生成一个新的、**带 merge 标记**的向量：前 3 项固定是「我自己刚生成的新版本 + 两个冲突方的 current」，标记为 `_nCurrent = 3`（`VersionVector.cc:420-446`）：
+
+```text
+merge(v1, v2, clock):
+    v1.current().updateClock(clock, anyone=true)     # 吸收双方时间戳，防回退
+    v2.current().updateClock(clock, anyone=true)
+    result ← VersionVector({Version(clock.now(), kMeSourceID), v1.current(), v2.current()}, nCurrent=3)
+    sort(result[1..], byDescendingTimes)              # 冲突方按时间降序
+    c1, c2 ← result[1].author, result[2].author
+    if c1 = c2: throw BadRevisionID                    # 同 author 的"冲突"非法
+    # 并行双指针遍历两个向量，按 author 对齐：
+    compareBySource(v1, v2, |author, t1, t2|:
+        if author ∉ {kMeSourceID, c1, c2}:             # 非冲突方 → 取双方较新时间戳
+            result.push_back(Version(max(t1, t2), author))
+        return true)
+    sort(result[3..], byDescendingTimes)               # 历史条目同样按时间降序
+    return result
+```
+
+`compareBySource`（`VersionVector.cc:392-418`）是**归并式双指针**：两个向量各自按 `SourceID` 升序排列，缺失的一侧时间戳取 `logicalTime::none`（最小值），从而在不建哈希表的前提下完成按 author 的对齐：
+
+```text
+compareBySource(v1, v2, cb):
+    i ← v1.versionsBySource(); j ← v2.versionsBySource()      # 各 O(n log n) 排序
+    do:
+        if i.author = j.author:  t1←i.t, t2←j.t; i++; j++
+        elif i.author < j.author: t1←i.t, t2←none;    i++     # 只有 v1 有该 author
+        else:                      author←j.author; t1←none; j++
+        if not cb(author, t1, t2): break
+    while (i,j 未耗尽)
+```
+
+- **不变式**：`merge` 结果的 `_nCurrent = 3 > 1`，下游据此知道这是"合并产物"而非"单点更新"，`_revs[3..]` 全是历史 peer 条目；
+- **兄弟版本检测**：`mergesSameVersions()`（`VersionVector.cc:505`）判断两个向量是否由同一次冲突合并产生——这让**重复同步同一合并结果**成为幂等操作，不会再次触发合并；
+- **复杂度**：设两向量规模 n、m，`merge` 为 **O(n log n + m log m)**（两次排序 + 一次线性归并）；`compareTo` 为 **O(n + m)**（两次线性 author 查找）；空间 O(n + m)。
+
+### 27.5 向量记录的持久化
+
+单个文档的当前版本向量与冲突影子分支由 `VectorRecord`（`LiteCore/RevTrees/VectorRecord.hh:92`，实现 `VectorRecord.cc` 790 行）承载：它把 current vector、merge versions、逐 peer 的影子记录一起编码成一条定长可比较的二进制记录，随文档存进 KV，从而让"打开一个文档"这一动作本身就能判定 `kConflict` / `kOlder` / `kNewer` 而无需读取正文（`VectorRecord.hh:201` 注释："conflict 是以 `kConflict` 返回值而非异常表达"）。这与 §26 的 RevTree 是**两套并存的版本体系**，通过 `revid::isVersion()` 单字节 tag 互不干扰地共存于同一份 `_rev` 字段。
+
+## 二十八、增量同步引擎：ChangesFeed、SequenceSet 区间集与 Checkpoint 断点续传
+
+§11.3 与 §13.3 只说"每个 channel 维护 LocalSequence / RemoteSequence"。Couchbase Lite 里真正驱动增量同步的是 **ChangesFeed（历史扫描 + 观察者双通道）+ SequenceSet（稀疏区间集）+ Checkpoint（稀疏断点）** 三件套——这是 LiteCore 版的增量同步引擎。
+
+### 28.1 双通道架构：先挂观察者，再补历史
+
+`ChangesFeed::getMoreChanges` 的关键在于**注册观察者的时机**（`Replicator/ChangesFeed.cc:65-87`）：
+
+```cpp
+ChangesFeed::Changes ChangesFeed::getMoreChanges(unsigned limit) {
+    if (_continuous && !_changeObserver) {
+        // 先启动 observer，再查询历史变更，避免历史与通知之间出现空隙。
+        // 但此时还不置 _notifyOnChanges。
+        _changeObserver = C4DatabaseObserver::create(coll, [this](C4DatabaseObserver*) { this->_dbChanged(); });
+    }
+    Changes changes       = {};
+    changes.firstSequence = _maxSequence + 1;
+    if (_caughtUp && _continuous) getObservedChanges(changes, limit);
+    else                         getHistoricalChanges(changes, limit);
+    changes.lastSequence = _maxSequence;
+    if (_options->isActive() && changes.lastSequence >= changes.firstSequence)
+        _checkpointer->addPendingSequences(changes.revs, changes.firstSequence, changes.lastSequence);
+    return changes;
+}
+```
+
+```
+          ┌────────────── 连续模式 ──────────────┐
+          │  先注册 C4DatabaseObserver           │
+          │        ↓                             │
+          │  getHistoricalChanges(_maxSequence)  │  按序扫描补历史
+          │        ↓ (_caughtUp = true)          │
+          └──→ getObservedChanges()  ←── _dbChanged() 回调唤醒
+                     ↑ 去重：sequence ≤ startingMaxSequence 的直接丢弃
+```
+
+**正确性论证**：若反过来（先扫历史再挂 observer），历史扫描窗口内发生的写入既不在历史结果里、也不会触发 observer 通知，**变更永久丢失**。先挂后扫 + 按 `_maxSequence` 过滤掉重复区间（`ChangesFeed.cc:143`）是标准的"订阅先于消费 + 单调水位线"模式。
+
+### 28.2 历史扫描：by-sequence 枚举器
+
+`getHistoricalChanges` 用 `C4DocEnumerator(collection, _maxSequence, options)` 做顺序扫描（`ChangesFeed.cc:89-117`）：
+
+```cpp
+C4DocEnumerator e(collection, _maxSequence, options);   // 从 _maxSequence 起
+changes.revs.reserve(limit);
+while (e.next() && limit > 0) {
+    auto rev = makeRevToSend(e.documentInfo(), &e);
+    if (rev) { changes.revs.push_back(rev); --limit; }
+}
+if (limit > 0 && !_caughtUp) _caughtUp = true;   // 拿不满 = 已追平历史
+changes.askAgain = !_caughtUp || _continuous;
+```
+
+- 若已配置 `pushFilter`，则**去掉 `kC4IncludeBodies`**（`ChangesFeed.cc:95`）——被过滤掉的文档连正文都不用从磁盘读出，这是"过滤器下推"的省 IO 手段；
+- **复杂度**：O(batch)，无索引开销，按序扫描；filter 命中后可在更早阶段短路。
+
+### 28.3 观察者通道：乱序去重与批量上限
+
+`getObservedChanges` 从 `C4DatabaseObserver` 拉变更，单批上限 `kMaxChanges = 100`（`ChangesFeed.cc:119-184`）：
+
+```cpp
+static constexpr uint32_t kMaxChanges = 100;
+C4DatabaseObserver::Change c4changes[kMaxChanges];
+...
+while (limit > 0) {
+    nextObservation = _changeObserver->getChanges(c4changes, min(limit, kMaxChanges));
+    uint32_t nChanges = nextObservation.numChanges;
+    if (nChanges == 0) break;
+    for (uint32_t i = 0; i < nChanges; ++i, ++c4change) {
+        if (c4change->sequence <= startingMaxSequence) continue;   // ① 越过水位线：丢弃
+        // ② purge 变更的 sequence 为 0，被 ① 顺带过滤
+        if (!allowObservedChange(info)) { _maxSequence = info.sequence; continue; }  // ③
+        if (auto rev = makeRevToSend(info, nullptr); rev) {
+            // ④ 同一 docID 在两次 getChanges 之间可能重复提交 → 线性扫描去重
+            for (size_t j = 0; j < oldChangesCount; ++j)
+                if (changes.revs[j]->docID == c4change->docID) { changes.revs.erase(...); ++limit; break; }
+            changes.revs.push_back(rev); --limit;
+        }
+    }
+}
+```
+
+- ① 的水位线过滤是 §28.1 的对偶：订阅先于扫描带来的重复，在这里被抹掉；
+- ④ 的去重是 **O(b²) 线性扫描**（b ≤ min(limit, 100)），小批量下比哈希表更划算；`kMaxChanges = 100` 这个常量同时也是栈上固定数组 `c4changes[100]` 的尺寸依据；
+- **墓碑策略**（`ChangesFeed.cc:156-158`）：即便 `skipDeletions` 为真，实时变更里的墓碑**照发**——`skipDeletions` 只作用于初次 dump，不作用于 live 变更，否则对端的删除永远不会传播；
+- `_dbChanged()` 由观察者回调，用 `std::atomic<bool>` 做 **test-and-clear**（`ChangesFeed.cc:188-192`，字段声明见 `ChangesFeed.hh:119`）：`if (_notifyOnChanges.exchange(false)) { ... }`，保证"有新变更"事件不会丢失也不会重复触发。
+
+### 28.4 SequenceSet：稀疏区间集
+
+推送侧要表达"哪些 sequence 已完成、哪些还欠着"。若用位图，10⁹ 条变更就是 125 MB；若用集合，同样稀疏。LiteCore 用**区间映射**：`std::map<左端, 右端(开区间)>`（`LiteCore/Support/SequenceSet.hh:28-132`）。
+
+单点插入 `_add` 只有 5 种情形（`LiteCore/Support/SequenceSet.cc:30-70`）：
+
+```text
+_add(s) → 覆盖 s 的区间迭代器:
+    upper ← 第一条 start > s 的区间
+    if upper 存在 and s = upper.start - 1:
+        if upper 有前驱 lower and lower.end = s:
+            lower.end ← upper.end; erase(upper); return lower     # ③ 夹缝合并
+        return 前接 s 到 upper                                    # ②
+    if upper 有前驱 lower:
+        if s < lower.end:  return lower                           # ① 已含（幂等，O(1)）
+        if s = lower.end:  ++lower.end; return lower              # ④ 后接
+    return 插入单点区间 [s, s+1)                                  # ⑤ 新建
+```
+
+`add(s0, s1)` 在此之上再 `_add(s1-1)` 并把中间区间整段擦掉（`SequenceSet.cc:72-85`）。**复杂度**：单点 O(log r)；区间 add 为 O(log r + k)（k = 被吞掉的中间区间数）；`size()` / `pendingSequenceCount()` 是 O(r)（`Checkpoint.cc:154-164`，直接累加区间之间的"空洞"长度）。
+
+集合运算（`SequenceSet.cc:143-180`）：
+
+```text
+intersection(s1, s2):            # 归并双指针 O(r1 + r2)
+    while i1,i2 未耗尽:
+        start ← max(i1.first, i2.first);  end ← min(i1.second, i2.second)
+        if start < end: ret.add(start, end)
+        advanceFirst  ← (i1.second ≤ i2.second)
+        advanceSecond ← (i1.second ≥ i2.second)   # 相等时同时推进
+        按上面两个布尔量推进迭代器
+
+difference(s1, s2) = s1 依次 remove(s2 每条区间)      # O(r1·log r2 + …)
+unionOf(s1, s2)     = s1 依次 add(s2 每条区间)
+```
+
+持久化用的是 **Fleece 稀疏数组**（`SequenceSet.cc:182-203`）：每条区间写成 `(start, length)` 一对，省掉"最后一个区间的无穷端点"：
+
+```cpp
+void SequenceSet::encode_fleece(FLEncoder flEnc) const {
+    Encoder enc(flEnc); enc.beginArray();
+    for (auto& range : _sequences) {
+        enc.writeUInt(uint64_t(range.first));
+        enc.writeUInt(uint64_t(range.second - range.first));   // 长度而非右端
+    }
+    enc.endArray(); enc.detach();
+}
+```
+
+**空间**：O(r)，r = 未完成区间数。稳态下 r 通常为个位数，断点文件大小因此与"文档总数"**无关**，只与"乱序在途量"有关——这是 §23.2「checkpoint 失败 → 全量重同步」在存储层面的根因：`intersection` 回滚后空洞可能被放大。
+
+### 28.5 Checkpoint：序列化与对账回滚
+
+`Checkpoint::toJSON` 只在"有多于一条区间"时才写稀疏字段（`Replicator/Checkpoint.cc:36-66`）：
+
+```cpp
+#define SPARSE_CHECKPOINTS  // 若定义，整份稀疏集写入 JSON
+
+auto minSeq = localMinSequence();
+if (minSeq > 0_seq) enc.writeKey("local"_sl), enc.writeUInt(uint64_t(minSeq));   // 兼容旧格式
+#ifdef SPARSE_CHECKPOINTS
+    if (_completed.rangesCount() > 1) {
+        enc.writeKey("localCompleted"_sl);
+        _completed.encode_fleece(enc);        // 新格式：[ (start,len), ... ]
+    }
+#endif
+    if (_remote) enc.writeKey("remote"_sl), expert(enc).writeRaw(_remote.toJSON());
+```
+
+读回时 `readDict` 优先尝试新字段、失败或缺失才回落到旧的单值 `local`（`Checkpoint.cc:77-96`）——**向后兼容的字段级版本协商**。
+
+真正的分歧处理在 `validateWith`（`Checkpoint.cc:98-142`），三条分支：
+
+```text
+validateWith(remoteCP) → match:
+    if _completed ≠ remoteCP._completed:                    # 本地与服务端认为完成的集合不一致
+        log "Rolling back to a failsafe"
+        _completed ← intersection(_completed, remoteCP._completed)   # 退回"双方都确认"的安全集
+        match ← false                                        # 会重复提议部分变更
+
+    if _remote ≠ remoteCP._remote:
+        if 两侧都能 ParsedSequenceID 解析:
+            if remoteParsed.before(localParsed):
+                _remote ← remoteCP._remote; match ← false    # 服务端更旧 → 回滚接受
+            else:
+                忽略服务端 sequence（本地不更旧）
+        else:
+            Warn "Unparseable remote sequence ... Resetting replication"
+            _remote ← ∅; match ← false                       # 兜底：整体重置
+```
+
+**设计要点**：任何不确定情形都选择**多发而不是漏发**（宁可重复提议、幂等去重，也不丢变更），只有"不可解析"才走最重的整体重置。这是典型的 at-least-once + 幂等消费组合。
+
+### 28.6 复合序列号定序：ParsedSequenceID::before
+
+LiteCore 需要与 Sync Gateway 的 `SequenceID.Before()` **判定完全一致**，否则双方会各持"较新"断点形成活锁。SG 在 `_changes` 上发三种序列号（`Replicator/ParsedSequenceID.hh:21-45`）：
+
+| 形态 | 样例 | 语义 | 比较值 CV |
+| --- | --- | --- | --- |
+| Simple | `"42"` | 普通数据库序号 | `seq` |
+| Backfill | `"100:35"` | 因授权变更（seq 100）触发的回补，seq 35 是回补内容 | `triggeredBy` |
+| LowSeq | `"20:100:35"` / `"20::35"` | 回补 + 客户端已完整处理的最低连续序号 | `lowSeq` |
+
+`before()` 实现 3×3 的跨形态定序表（`ParsedSequenceID.hh:141-172`）：
+
+```text
+before(b):
+    # 键规则：LowSeq 看 lowSeq；Backfill 看 triggeredBy；Simple 看 seq
+    if a.isLowSeq:      if b.isLowSeq:    return a.lowSeq < b.lowSeq or (相等时对内层 (seq,trig) 递归)
+                        if b.isTriggered: return a.lowSeq <  b.triggeredBy
+                        else:             return a.lowSeq <  b.seq
+    if a.isTriggered:   if b.isLowSeq:    return a.triggeredBy ≤ b.lowSeq     # ≤ 而非 <
+                        if b.isTriggered: return a.triggeredBy < b.triggeredBy or (相等时 a.seq < b.seq)
+                        else:             return a.triggeredBy ≤ b.seq
+    # a 是 Simple
+                        if b.isLowSeq:    return a.seq ≤ b.lowSeq
+                        if b.isTriggered: return a.seq <  b.triggeredBy
+                        else:             return a.seq <  b.seq
+```
+
+注意 Backfill 与 Simple 交叉时用的是 **`<=`**（Backfill 可被视为"覆盖到 triggeredBy 时刻"的等价进度），LowSeq ↔ Backfill 亦然。`Checkpoint::validateWith` 正是靠它来判断该接受还是忽略服务端的 remote sequence（`Checkpoint.cc:118-130`）。**复杂度**：O(1)，纯整数比较；`parse` 为 O(L)（L = 字符串长度，最多 3 段数字，`ParsedSequenceID.hh:85-118`）。
+
+### 28.7 拉取侧的乱序窗口：RemoteSequenceSet
+
+推送侧按序消费，拉取侧却可能乱序到达（网络重排）。`RemoteSequenceSet` 维护一个**乱序容忍窗口**（`Replicator/RemoteSequenceSet.hh:22-101`）：
+
+```cpp
+void add(RemoteSequence s, uint64_t bodySize) {
+    bool wasEmpty = empty();
+    auto p = _sequences.insert({s, {_nextOrder++, _lastAdded, bodySize}});  // 按 sequence 排序的 map
+    _lastAdded = std::move(s);
+    if (wasEmpty) _first = p.first;                    // 空集时 _first = map 的首元素
+}
+
+void remove(const RemoteSequence& s, bool& wasEarliest, uint64_t& outBodySize) {
+    auto i = _sequences.find(s);
+    if (i == _sequences.end()) { outBodySize = 0; wasEarliest = false; return; }
+    outBodySize  = i->second.bodySize;
+    wasEarliest  = (i == _first);
+    if (wasEarliest) { size_t minOrder = i->second.order; _sequences.erase(i); findFirst(minOrder + 1); }
+    else              { _sequences.erase(i); }
+}
+```
+
+- 双索引结构：`_sequences` 是 `map<RemoteSequence, value>`（按**序列值**有序），`value.order` 是**入队顺序**；`_first` 指向"最早入队且仍在窗口内"的元素；
+- `findFirst` 是全量线性扫描找最小 order（`RemoteSequenceSet.hh:75-87`，源码里带 `// OPT: Slow linear scan. Keep a secondary collection sorted by order?` 的显式 TODO 标注）——**复杂度 O(r)**，但只在"被移除的恰是最早元素"这一低频路径上触发；
+- **单调水位线**：`since()` 返回 `_first->second.prevSequence`（`RemoteSequenceSet.hh:39`）——只要最早元素还没到，拉取断点就不能推进。这正是"只有连续前缀才算已消费"的流控语义。
+
+**复杂度汇总**：推送侧 `SequenceSet` O(log r)/操作、O(r) 空间；拉取侧 `RemoteSequenceSet` O(log r) 插入删除、O(r) 的最早元素维护；两者稳态 r 都由**网络乱序窗口**而非数据量决定，因此移动端 5GB 数据库的复制元数据仍是常数级。
+
+## 二十九、参考资料
 
 1. **Couchbase LiteCore 仓库**：[github.com/couchbase/couchbase-lite-core](https://github.com/couchbase/couchbase-lite-core)；
 2. **Couchbase Lite 文档**：[docs.couchbase.com/couchbase-lite](https://docs.couchbase.com/couchbase-lite/current/index.html)；
