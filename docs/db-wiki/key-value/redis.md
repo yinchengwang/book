@@ -485,7 +485,426 @@ Redis 事务模型较为朴素：
   - 编码自适应策略（小数据紧凑、大数据 hash）对内存受限场景极有价值；
   - 跳表实现可作为 `learning/ds-c/orig/` 教学数据结构补充。
 
-## 二十五、参考资料
+## 二十六、核心数据结构的关键算法
+
+§七、§十一 已经给出了各结构的**内存布局**与"是什么"，本节补上"怎么动"：扩容、迁移、插入、级联更新的具体判定式、伪代码与复杂度分析。
+
+### 26.1 SDS 扩容：sdsMakeRoomFor 的预分配公式
+
+源码：`redis/src/sds.c`（approx，模块未 init，行号需校对）`sdsMakeRoomFor`、`sdsReqType`、`SDS_MAX_PREALLOC`；头文件 `redis/src/sds.h`（approx）`sdsHdrSize`、`sdsReqType` 宏。
+
+```c
+/* 伪代码（依据 sdsMakeRoomFor 逻辑整理，非逐字拷贝） */
+sds sdsMakeRoomFor(sds s, size_t addlen) {
+    size_t avail = sdsalloc(s) - sdslen(s);
+    if (avail >= addlen) return s;              /* ① 快路径：余量够，O(1) 无拷贝 */
+
+    size_t newlen = sdslen(s) + addlen;
+    size_t hdrlen = sdsReqType(newlen);         /* ② 选能装下 newlen 的最小 header 档位 */
+
+    if (newlen < SDS_MAX_PREALLOC)               /* SDS_MAX_PREALLOC = 1MB */
+        newlen *= 2;                             /* 小串：翻倍 */
+    else
+        newlen += SDS_MAX_PREALLOC;              /* 大串：每次只多给 1MB */
+
+    if (newlen < hdrlen + addlen)                /* ③ 防溢出兜底 */
+        newlen = hdrlen + addlen;
+
+    if (sdsHdrSize(s) == hdrlen) {               /* header 档位不变 → 原地 realloc */
+        newsh = s_realloc(sh, hdrlen + newlen + 1);
+        ...
+    } else {                                     /* header 变大 → malloc + 拷贝尾部 */
+        newsh = s_malloc(hdrlen + newlen + 1);
+        memcpy(newsh, s, hdrlen + curlen + 1);
+        sfree(sh); ...
+    }
+    return s;
+}
+```
+
+可验证的三个结论：
+
+- **摊销复杂度 O(1)**：连续 `sdscatlen` 追加 n 字节的**均摊**成本是 O(n) 而非 O(n²)。按翻倍策略，8→16→32→…→N 的复制总量为 N/2 + N/4 + … < N，均摊到每字节仍是常数。这是 SDS 不用 `stringcat`（`realloc` 严格 +1，导致每次追加都 O(len) 拷贝）而必须自造结构的原因。
+- **空间放大上界**：`< 1MB` 的串满足 `alloc ≤ 2 × len`，最坏浪费一半；`≥ 1MB` 的串浪费量固定在 1MB 以内。这正是 §7.2 那条"小串翻倍、大串加 1MB"的公式化表达。
+- **header 档位切换的额外代价**：`sdsReqType(x)` 按 `1<<5 / 1<<8 / 1<<16 / 1<<32` 四道门槛挑最小档（返回 SDS_TYPE_5/8/16/32/64），其中 `sdshdr5` 没有真实的 `len`/`alloc` 字段，`sdslen`/`sdsalloc` 读出的是 -1。跨档时 `realloc` 无法安全前移（header 变大会覆盖数据尾部），必须走 malloc + memcpy，因此**跨档的那一次追加是 O(n)**，摊销分析不受影响。
+
+### 26.2 dict 渐进式 rehash：桶迁移与耗时预算
+
+源码：`redis/src/dict.c`（approx，模块未 init，行号需校对）`_dictNextPower`、`_dictExpand`、`dictRehash`、`_dictRehashStep`、`dictRehashMilliseconds`、`dictExpandIfNeeded`、`dictGenericDelete`；头文件 `redis/src/dict.h`（approx）`struct dict`、`dictht`、`dictType`。
+
+**扩容与收缩共用同一条迁移路径**：`_dictExpand` 只负责把目标桶数组挂到 `ht[1]`，数据搬运统一由 `dictRehash(d, n)` 完成——每次调用只迁移 n 个桶：
+
+```c
+/* 伪代码 */
+static void _dictRehashStep(dict *d) {
+    /* ① 有活跃安全迭代器时完全停手：否则迭代器会看到"撕裂"的表 */
+    if (d->iterators == 0) dictRehash(d, 1);
+}
+```
+
+真正把"渐进"落地的核心是 `dictRehashMilliseconds` 的**耗时预算公式**——它按已完成比例线性外推本次该迁多少桶：
+
+```c
+/* 伪代码（dictRehashMilliseconds，变量名以源码为准） */
+    /* 进度外推：若按当前比例推算能让整个 rehash 在 ~1ms 内收敛，本次最多迁 j 个桶 */
+    j = d->rehashidx * 1000 / dictSize(d);
+    if (j <= 2) return;                    /* 进度 < 2‰，本轮不值得动 */
+
+    elapsed = getMonotonicUs() / 1000 - d->elapsedRehashingMs;
+    if (elapsed < 2) return;               /* 距上次 rehash 不足 2ms */
+
+    /* 实测每桶耗时 = elapsed / j（微秒量级）；比阈值宽裕太多说明算力有余，可多迁 */
+    if (elapsed * 1000 / j > CRON_DICT_REHASHING_FACTOR * 2) return;
+
+    dictRehash(d, j);
+    d->elapsedRehashingMs = getMonotonicUs() / 1000;
+```
+
+- **公式含义**：这里是一个**自适应背压**控制器——`dictSize(d)` 是 `ht[0].used + ht[1].used`，`rehashidx` 是已迁移到的桶下标，`rehashidx / dictSize(d)` 是进度近似；`j` 就是"按当前比例推算能吃下的最大桶数"。若实测每桶耗时超过阈值（`CRON_DICT_REHASHING_FACTOR` 的倍数）就**立刻退避**，下一轮 cron 再来；低于阈值说明主线程有余量就多迁几个桶。
+- **总复杂度**：`Θ(N)` 的迁移量被摊到两次扩容之间的 N 次操作上，**稳态查询保持 O(1)**，且单次操作的最坏耗时被压到毫秒级——这就是渐进式 rehash 相比"一次 rehash 全部迁完"的核心收益（后者在百万级 key 上会造成秒级卡顿）。
+- **桶数组恒为 2 的幂**：`_dictNextPower` 把目标 size 向上取整到 2ᵏ，使 `hash & (size - 1)` 等价于取模、且扩容恰好是 `size × 2`，索引分布不出现明显聚集。
+
+**查询侧：rehash 期间必须双表查找**（先 `ht[0]`，miss 再 `ht[1]`）：
+
+```c
+/* 伪代码（dictFind / _dictLookup 路径） */
+    if (dictIsRehashing(d)) {
+        he = lookupIn(d, key, d->ht[0].table, d->ht[0].size, hash);
+        if (he != NULL && dictCompareKeys(d, key, he->key)) return he;
+        he = lookupIn(d, key, d->ht[1].table, d->ht[1].size, hash);
+        if (he != NULL && dictCompareKeys(d, key, he->key)) return he;
+        return NULL;
+    }
+    return lookupIn(d, key, d->ht[0].table, d->ht[0].size, hash);
+```
+
+配套约定：**新插入的 key 直接写 `ht[1]`**（新表），旧 key 原地留在 `ht[0]` 待迁；删除（`dictGenericDelete`）必须同时检查两张表，否则会漏删。代价是 miss 时查两次，仍是 O(1)。
+
+### 26.3 zskiplist 插入与 span 不变式
+
+源码：`redis/src/zskiplist.c`（approx，模块未 init，行号需校对）`zslRandomLevel`、`zslCreateNode`、`zslInsert`、`zslGetRank`；调用方 `redis/src/t_zset.c`（approx）`zslInsert`。
+
+`zslInsert` 是"自顶向下搜路径 → 自底向上改指针 + 修正 span"三段式：
+
+```c
+/* 伪代码（zslInsert 核心逻辑） */
+zskiplistNode *zslInsert(zskiplist *zsl, sds ele, double score) {
+    update[MAXLEVEL], rank[MAXLEVEL];
+    x = zsl->header;
+    for (i = 0; i < zsl->level; i++) {
+        rank[i] = (i == 0) ? 0 : rank[i - 1];
+        while (x->level[i].forward && 前驱应继续向前走) {
+            rank[i] += x->level[i].span;     /* 累加"已跨过的节点数" */
+            x = x->level[i].forward;
+        }
+        update[i] = x;                        /* 第 i 层的前驱 */
+    }
+
+    x = zslCreateNode(ele, score);           /* 层数由 zslRandomLevel 随机决定 */
+
+    for (i = 0; i < zsl->level; i++) {
+        /* span 不变式的维护（见下） */
+        x->level[i].span       = update[i]->level[i].span - (rank[0] - rank[i]);
+        update[i]->level[i].span = (rank[0] - rank[i]) + 1;
+        x->level[i].forward       = update[i]->level[i].forward;
+        update[i]->level[i].forward = x;
+    }
+    return x;
+}
+```
+
+**span 不变式**（能 O(log N) 算 `ZRANK` 的关键）：`node->level[i].span` = 从 node 沿第 i 层走到 `forward` 之间**跳过的节点数**。插入 x 后：
+
+- 前驱 `update[i]` 到 x 跨过了 `rank[0] - rank[i]` 个节点，故新 span = `rank[0] - rank[i] + 1`；
+- x 到原后继的跨过数 = 原 `update[i]` 的 span 减去被 x 吃掉的前半段，即 `old_span - (rank[0] - rank[i])`。
+
+**层高分布与搜索复杂度**：`ZSKIPLIST_P = 0.25`，即每个节点以 0.25 的概率晋升一层，于是
+
+```
+E[level]       = 1 / (1 - P) = 4/3 ≈ 1.33        （与 §7.4 的 1.33 一致）
+搜索复杂度     = O(log_{1/P} N) = O(log N / log(1/P))
+                 P = 0.25 时 ≈ 0.5 · log₂N，即 O(log N)
+ZSKIPLIST_MAXLEVEL = 32  →  4³² ≈ 1.8×10¹⁹ 个节点才可能触顶，实践中永不发生
+```
+
+`zslGetRank` 复用同一套 span 累加，只是方向相反（自顶向下累加 `rank += x->level[i].span`），因此**排名查询与范围查询共享同一条搜索路径**，无需额外的有序索引。
+
+### 26.4 ziplist 级联更新：prevlen 编码与最坏 O(n²)
+
+源码：`redis/src/ziplist.c`（approx，模块未 init，行号需校对）`ZIP_PREVLEN_BYTES`、`zipRawEntry`、`__ziplistInsert`；对照实现 `redis/src/listpack.c`（approx）`lpEncode` / `lpSkip`。
+
+ziplist 的每个 entry 头部带一个 `prevlen`，表示**前一个 entry 的总字节数**，编码规则：
+
+```
+prevlen < 254           → 1 字节
+254 ≤ prevlen ≤ 65535   → 5 字节（首字节 0xFE + uint32 小端）
+prevlen > 65535         → 9 字节（首字节 0xFF + uint64 小端）
+```
+
+**级联更新（cascade update）**：在第 i 个 entry 后插入新节点，后续所有 entry 整体后移 `extra` 字节。只有当某个后继 entry 的 `prevlen` **实际占用的字节数与移动量不匹配**时（如前驱长度从 253 跨过 254，prevlen 必须从 1 字节扩成 5 字节），才需要扩位；而扩位又改变了"前驱总长度"，进而可能让再下一个 entry 的 prevlen 也需要扩位——于是递归传播：
+
+```c
+/* 伪代码（ziplistInsert 循环体） */
+    do {
+        整体 memmove：把 tail 之后的区间后移 extra 字节
+        ret = __ziplistInsert(head, tail + extra, master, &newlen, &next);
+        if (ret == 1) {
+            /* 某个 entry 的 prevlen 需要扩位 → 把 next 也挪过来重新对齐，继续传播 */
+            prev = next;
+            continue;
+        }
+        break;
+    } while (1);
+```
+
+**最坏复杂度 O(n²)**：当所有 entry 的 prevlen 都恰好卡在 254 的边界附近时，头部的一次插入会触发贯穿全表的链式扩位，每个 entry 都要被"搬一次 + 改一次"，长度 N 的列表插入/删除退化为 Θ(N²)。
+
+Redis 7.0 用 **listpack** 取代 ziplist 的根因正在于此：listpack 的每个 entry 记录的是**自身总长度**（`<encoding-type><element-data><element-tot-len>`），不依赖前驱的长度，因此**没有任何连锁传播**——插入只 `memmove` 一次受影响区间（单次 O(N) 但无递归），消除了大 hash / 大 list 编辑时的卡顿。§7.6 说的"避免 cascade update"，指的就是这条不变式差异。
+
+## 二十七、持久化与复制的关键算法
+
+§十、§十四 只列了"有 RDB 和 AOF"这一层结论，本节补上 fork/COW 的内存放大公式、三种刷盘策略的代价对照、rewrite 的触发判定式，以及 PSYNC2 的 backlog 判定式。
+
+### 27.1 RDB：fork + Copy-On-Write 的内存放大
+
+源码：`redis/src/rdb.c`（approx，模块未 init，行号需校对）`rdbSaveBackground`、`rdbSaveRio`、`rdbSaveRawString`、`rdbSaveLzfStringObject`；配置项 `rdbcompression`、`rdb-key-save-delay`、`overhead-memory-fork-percentage`。
+
+`BGSAVE` 的主线程只做一次 `fork()`，子进程持有一个**写时复制（Copy-On-Write）**的整个数据集视图：
+
+```
+时间轴    主线程                                   子进程
+ t0       计算 dirty / 调用 fork()
+ t1       fork 返回，开始正常接受客户端写           从 COW 视图逐页写出 dump.rdb
+ t2       写命令触发页表写保护异常
+          → 操作系统复制该页（页粒度由 allocator 决定，通常 4KB 或更大）
+ t3       子进程退出 → 原子 rename 覆盖 dump.rdb
+```
+
+**主线程阻塞时长只取决于页表大小，与数据集大小几乎无关**：
+
+```
+页表大小 ≈ 虚拟地址空间 / 4096 × 8B  =  数据集大小 S / 2048
+
+1 GB 数据集  →  约 0.5 MB 页表  →  fork 通常 < 1ms
+32 GB 数据集 →  约 16 MB 页表   →  fork 可能数十至数百毫秒
+```
+
+这正是生产环境要求 `vm.overcommit_memory=1` 与禁用 THP 的原因——fork 需要能 overcommit 虚拟地址，且要避免透明大页带来的 fork 页表放大。
+
+**内存放大公式**：设 fork 期间共修改 K 个页，则
+
+```
+峰值内存 ≈ S × (1 + K × PAGE_SIZE / S)     （修改均匀的理想情况）
+最坏情况 ≈ S × 2                          （K ≈ S/PAGE_SIZE，即每页只被改 1 次且全部被改）
+```
+
+按 allocator 页计数是关键：§23 提到的**大 key** 在 BGSAVE 期间被修改一次，就可能复制掉整个对象对应的巨大页，主从两侧各一份，峰值内存接近翻倍。
+
+缓解手段：
+
+- `overhead-memory-fork-percentage`：fork 前若 RSS 相对逻辑内存过高，先 `memreap` 回收 malloc arena 并对空闲页 `MADV_DONTNEED`，降低实际页数；
+- `rdb-key-save-delay`（微秒）：故意拖慢子进程写出节奏，间接降低主线程的写速率（测试/应急用）；
+- 若数据集会长期 fork 不下来，可改用纯 AOF，或把大 key 拆分（呼应 §23 的 `UNLINK` / `SCAN` 建议）。
+
+### 27.2 LZF 压缩算法（liblzf）
+
+源码：`redis/deps/lzf/lzf_c.c` 与 `redis/deps/lzf/lzf_d.c`（approx，模块未 init，行号需校对）；调用点 `redis/src/rdb.c`（approx）`rdbSaveRawString`。
+
+RDB 默认 `rdbcompression yes`，字符串对象走 LZF。其输出流是 `[literal run]` 与 `[back-reference]` 交替：
+
+```
+literal run : 1 字节控制符。若控制符 < 0xE0，长度 = 控制符 >> 5；
+              否则长度 = (控制符 & 0x1F) + 7 + 下一字节，上限 MAX_LIT = 32
+back-ref    : 2 字节打包 → distance = 字节 >> 8（上限 MAX_OFF = 8192），
+              matchlen  = (字节 & 0xFF) + 2（上限 MAX_REF = 264）
+```
+
+- **压缩窗口仅 8 KB**（`MAX_OFF`），所以膨胀率极低（一般 < 1.3%），且解压无需索引表——`lzf_d.c` 是**单遍 O(n) 解压、常数额外内存**（只维护一个固定大小的历史串缓冲）。
+- **匹配用固定大小哈希表**：把 3 字节前缀散列到最近出现位置，冲突时线性再散列，最多重试固定次数。因此整体是 **O(n) 时间 / O(1) 额外内存**（哈希表容量编译期固定，不随输入增长）。
+- **Redis 侧的回退判定**：`rdbSaveRawString` 先压，若压缩后长度不小于原文，就放弃压缩直接写原文——避免"压不动还变大"的负收益。
+- **设计取舍**：LZF 换的是**解压速度**而非压缩率。若数据是高度可压缩的长文本且磁盘吃紧，RDB 层面的压缩收益有限，此时应优先考虑调大 `maxmemory` / 分片，而不是换压缩算法。
+
+### 27.3 AOF：三种刷盘策略与 rewrite 触发判定
+
+源码：`redis/src/aof.c`（approx，模块未 init，行号需校对）`feedAppendOnlyFile`、`flushAppendOnlyFile`、`rewriteAppendOnlyFileBackground`、`checkAutoRewrite`、`getNewBaseSizeAndOffset`、`getAofWriteDiff`、`struct aofChildInfo`；配置项 `appendfsync`、`auto-aof-rewrite-percentage`、`auto-aof-rewrite-min-size`。
+
+三种 `appendfsync` 的代价对照：
+
+| 策略 | 刷盘时机 | 崩溃丢失窗口 | 吞吐代价 |
+|------|----------|--------------|----------|
+| `always` | 每条命令后 fsync | 最多 1 条命令（理想情况为 0） | 每命令一次 fsync，QPS 受限于磁盘 fsync 延迟，通常只有 10³ 量级 |
+| `everysec`（默认） | 后台每秒 fsync 一次 | 最多约 1 秒 | QPS 上限约等于磁盘单次 fsync 延迟的倒数 |
+| `no` | 交给操作系统，不主动 fsync | 取决于内核 `dirty_expire_centisecs`，可达数十秒 | 最快，安全性最差 |
+
+AOF 若只追加不重写，会随运行时长**线性膨胀**（同一个键被反复覆盖，旧命令依然留在文件里）。自动触发 rewrite 的判定在 `checkAutoRewrite`，是**双阈值同时满足**：
+
+```c
+/* 伪代码（checkAutoRewrite） */
+    /* 相对增幅：相对上次 rewrite 完成后的大小，增长了多少个百分点 */
+    growth = am->current_size * 100 / (am->base_size + 1);
+    if (growth < server.aof_rewrite_min_growth)    return CANT_TRIGGER;  /* 涨得不够快 */
+    if (am->current_size < server.aof_rewrite_min_size) return CANT_TRIGGER; /* 绝对量太小 */
+    return OK;   /* auto-aof-rewrite-percentage 默认 100，auto-aof-rewrite-min-size 默认 64MB */
+```
+
+只保留任一条阈值都会出问题：**只有相对阈值**会让小库被频繁 rewrite（哪怕只涨了几 MB）；**只有绝对阈值**会让大库在写入暴涨时迟迟不 rewrite、AOF 无限膨胀。
+
+**rewrite 期间不阻塞、也不丢写**——Redis 7.x 的**多部分 AOF（multi-part AOF）** 布局：
+
+```
+appendonlydir/
+├── manifest         # 记录 base 与 incr 的基准序列号
+├── base-<seq>.rdb   # rewrite 产出的快照（base）
+└── incr-<seq>.aof   # rewrite 启动之后新写入的命令（incr）
+```
+
+流程：父进程 fork 出子进程去写 `base-<seq>.rdb`，并通过 `struct aofChildInfo` 把子进程写盘的起点位置 `rewrite_pos` 回传给父进程；父进程在这段时间**继续把新命令写进旧的 incr 文件**；子进程写完后，父进程用 `getNewBaseSizeAndOffset` / `getAofWriteDiff` 算出需要补齐的区间，把 `rewrite_pos` 到当前末尾的命令补写进新的 `incr-<seq>.aof`，最后**原子替换 manifest**。父进程按固定步长处理并让出时间片，rewrite 期间的新命令不会长时间排队。
+
+### 27.4 PSYNC2：repl_backlog 环形缓冲区与断点续传
+
+源码：`redis/src/replbacklog.c`（approx，模块未 init，行号需校对）`replBacklogAppend`、`replBacklogGetByte`、`replBacklogAckOffset`、`replBacklogPurge`；协议侧 `redis/src/replication.c`（approx）`masterTryPartialResynchronization`、`sendBulkPayload`；配置项 `repl-backlog-size`。
+
+全量同步要把整个数据集以 RDB 形式传给从库，代价 O(N)。Redis 的优化是：主库在把 `replid` 广播给从库的同时，**把复制流持续环形写入 `repl_backlog`**（默认 1 MB，可用 `repl-backlog-size` 调整）：
+
+```c
+/* 结构（replbacklog.h，伪代码） */
+struct replBacklog {
+    char *buf;       /* 环形缓冲，容量固定 = backlog_size */
+    off_t offset;    /* 已写入的绝对复制偏移（主库累计传播字节数） */
+    off_t len;       /* 当前有效字节数，<= backlog_size */
+    off_t first;     /* 读游标；读到末尾回卷到 0，实现"环形" */
+    long long history_replid[2];   /* 最近的两次 replid，用于判定 PSYNC 是否可用 */
+};
+```
+
+从库断线重连时带回自己已收到的 `reploff`，主库判定：
+
+```
+backlog 覆盖区间 = [ master_repl_offset - repl_backlog.len , master_repl_offset )
+
+若 slave_reploff ≥ master_repl_offset - repl_backlog.len
+    → +CONTINUE <replid> <master_repl_offset>
+      从库从环形缓冲的 first 对齐位置回放到自己的末尾，随后无缝接入命令流
+否则
+    → +FULLRESYNC <replid> <master_repl_offset>
+      只能全量（RDB 传输），代价退回 O(N)
+```
+
+设计要点：
+
+- **用 offset 而非序号**：复制偏移量就是主库已传播的字节数，主从各自单调递增，断线后无需重新计数或协商；
+- **容量与断线窗口的取舍**：`repl-backlog-size` 必须 ≥ 写速率 × 预期断线时长，否则一次网络抖动就会击穿 backlog，把增量同步降级为全量同步——这是 §23"主从切换丢数据"之外的另一类常见性能事故；
+- **ACK 推进**：`replBacklogAckOffset(off)` 推进 `master_reploff`，对应 `INFO replication` 里 `slave0:... offset=` 的读数；
+- **为什么叫 PSYNC2**：相比早期 PSYNC 的"要么全量要么从头追加"，PSYNC2 用 replid + offset 实现了真正的部分续传，从库可以精确知道自己落后了多少字节。
+
+## 二十八、过期删除与集群哈希槽算法
+
+§六 与 §十八 只提到 `expire.c` 和"16384 槽"这两个名词，本节补上过期删除的时间预算控制与哈希槽的完整计算式。
+
+### 28.1 惰性删除 + 定期删除的时间预算
+
+源码：`redis/src/expire.c`（approx，模块未 init，行号需校对）`activeExpireCycle`、`activeExpireCycleFast`、`propagateExpire`、`expireIfNeeded`；调用点 `redis/src/server.c`（approx）`serverCron`；`redis/src/db.c`（approx）`expireIfNeeded`、`deleteDbKey`；配置项 `hz`、`active-expire-effort`。
+
+Redis **不为过期键维护任何有序索引**（那会让每条写命令都付出 O(log N) 维护代价），而是惰性与主动双轨并用：
+
+- **惰性（lazy）**：`expireIfNeeded(db, key)` 在每次读/写命中键空间前先查 `db->expires`，已过期则 `deleteDbKey` 删除，并把 DEL 事件 `propagateExpire` 传播给副本与 AOF。代价内嵌在每次访问里，是 O(1)。
+- **主动（active）**：`serverCron` 按固定频率调用 `activeExpireCycle`，从 `db->expires` **随机抽样**检查：
+
+```c
+/* 伪代码（activeExpireCycle 核心） */
+    /* ① 一次 cycle 的总时间预算：最长 ACTIVE_EXPIRE_CYCLE_DURATION 毫秒 */
+    for (i = 0; i < ACTIVE_EXPIRE_CYCLE_SAMPLE_SIZE && count < ACTIVE_EXPIRE_CYCLE_DURATION; i++) {
+        de = dictGetRandomKey(ht);          /* ② 随机抽样一个 expires 条目 */
+        ttl = getExpire(db, de->key);
+        /* ③ 必须"确实过期"且"仍在主 dict 中"才删 —— 先读一次过滤掉并发的逻辑删除 */
+        if (ttl != -1 && ttl <= mstime() && lookupKeyReadWithFlags(...) != NULL) {
+            propagateExpireDbFlag(db, de->key);
+            deleteDbKey(db, de->key);
+            count++;
+        }
+    }
+    /* ④ 若一个周期只删了很少的键，补跑一轮 fast 模式去捞"即将过期"的 key */
+```
+
+三个关键常数与它们的工程含义：
+
+| 常数 | 值 | 作用 |
+|------|-----|------|
+| `ACTIVE_EXPIRE_CYCLE_SAMPLE_SIZE` | 20 | 每轮抽样条数，与字典规模无关 |
+| `ACTIVE_EXPIRE_CYCLE_DURATION` | 1000 ms | 单次 cycle 的最长执行时间，超时立即收手 |
+| `ACTIVE_EXPIRE_CYCLE_FACTOR` | 10 | 调用频率 = `hz × 10`；Redis 7.0 起暴露为 `active-expire-effort` 配置并允许运行时动态调节 |
+
+**复杂度**：单次 `activeExpireCycle` 是 **O(k) + O(实际删除数)**，k 为抽样条数（常数），**与 `expires` 字典的总规模无关**。设过期速率为 λ（key/s），两轮抽样间隔为 T，则单次抽样的期望命中率约为 `λ × T`；命中率越高说明抽样窗口覆盖的过期时间越宽，滞后删除越接近"有界"。这是一个用**采样换复杂度**的经典取舍：宁可容忍少量过期键多存活一会儿，也不愿为每个键维护精确索引。
+
+### 28.2 CRC16 哈希槽与 hash tag
+
+源码：`redis/src/crc16.c`（approx，模块未 init，行号需校对）`crc16`（CRC16-CCITT：多项式 0x1021、初值 0、不做输入输出反射）；`redis/src/cluster.c`（approx）`keyHashSlot`、`getNodeByQuery`；头文件 `redis/src/cluster.h`（approx）`CLUSTER_SLOTS`、`CLUSTER_SLOTS_MASK`。
+
+槽位计算只有一行：
+
+```
+slot(key) = CRC16_CCITT(key) & CLUSTER_SLOTS_MASK = crc16(key) & 16383
+```
+
+- **为什么是掩码而不是取模**：槽数固定为 2¹⁴，`& 16383` 与 `% 16384` 完全等价，但掩码是纯位运算；更关键的是它与 §26.2（桶数组恒为 2 的幂）、§26.3（层高分布）采用同一套"2 的幂 + 位运算"约定，节点持有槽位位图时也直接用位运算索引。
+- **为什么是 16384 而不是 65536**：节点间的 Gossip（`PING` / `PONG` 消息）需要广播本节点负责的槽位集合。16384 个槽位用 **16384 位的位图**表示即 **2048 字节**，可直接塞进每个 Gossip 包；65536 槽对应 8192 字节，而 Gossip 包体本身有上限，槽位位图一旦逼近包体就得再拆成多个包，Gossip 成本成倍上升。**16384 是"位图大小"与"Gossip 包体"之间的权衡值**，而不是 2¹⁶ 的自然上限。
+
+**hash tag**：多键命令（`MGET` / `MSET` / `SINTERSTORE` / Lua 多键脚本等）要求全部 key 落在同一槽，Redis 用 `{...}` 显式指定：
+
+```c
+/* 伪代码（keyHashSlot） */
+int keyHashSlot(char *key, size_t keylen) {
+    /* 找第一个 '{' */
+    start = sdslfind(s, '{', 0, sdslen(s));
+    if (start == -1)
+        return crc16(key, keylen) & CLUSTER_SLOTS_MASK;   /* 无 '{'：哈希整个 key */
+
+    /* 找配对的 '}'，且必须非空 */
+    end = sdslfind(s, '}', start + 1, sdslen(s));
+    if (end == -1 || end == start + 1)
+        return crc16(key, keylen) & CLUSTER_SLOTS_MASK;   /* 无配对 '}' 或 "{}"：哈希整个 key */
+
+    /* 只哈希花括号内的内容 */
+    return crc16(s + start + 1, end - start - 1) & CLUSTER_SLOTS_MASK;
+}
+```
+
+工程含义：`user:{1001}:profile` 与 `user:{1001}:orders` 同槽，跨键事务才可用。两条易错点：
+
+1. hash tag 应优先选**基数低、分布均匀**的业务键（如租户 id / 用户 id），若用高基数或递增 id 会把大量 key 压到同一槽，形成热点；
+2. `{}` 为空、或只有 `{` 而无配对 `}` 时**退化回哈希整个 key**（上面代码的 `end == start + 1` 分支），不要把 `"foo{}"` 当成"固定槽"来用。
+
+### 28.3 MOVED / ASK 重定向与槽迁移
+
+源码：`redis/src/cluster.c`（approx，模块未 init，行号需校对）`getNodeByQuery`、`clusterRedirectClient`、`getKeysUsingHashSlot`、`migrateCommand`、`clusterCommand`；常量 `CLUSTER_REDIR_MOVED` / `CLUSTER_REDIR_ASK`。
+
+客户端发命令时，服务端按 slot 查槽表决定走向：
+
+```
+slot = keyHashSlot(key)
+node = cluster->slots[slot]
+
+node == NULL            → CLUSTERDOWN（该槽未被任何节点覆盖）
+node == cluster->myself  → 本地执行
+node 是副本节点           → MOVED 到其主节点
+node 与本地判断不一致      → -MOVED <slot> <host:port>     永久归属变更
+node 处于 IMPORTING 状态  → -ASK  <slot> <host:port>      迁移进行中，仅本次有效
+```
+
+- **`MOVED` 与 `ASK` 的语义差异**是槽迁移协议的核心：`MOVED` 表示"这个槽永久归对方了"，客户端应**更新本地 slot→node 路由表**，此后该槽的所有命令直连目标节点；`ASK` 只对**当前这一条命令**有效，客户端需先发 `ASKING` 再重发，**不更新路由表**。把两者混用是集群客户端最常见的 bug。
+- **槽迁移的协议顺序**（源节点 src、目标节点 dst）：
+
+```
+1. CLUSTER SETSLOT <slot> IMPORTING <dst-node-id>     （在 src 上执行）
+2. MIGRATE <dst-host:port> <slot> <key> 0 REPLACE      （逐 key 搬迁）
+3. CLUSTER SETSLOT <slot> MIGRATING <src-node-id>      （在 dst 上执行）
+4. CLUSTER SETSLOT <slot> NODE <dst-node-id>           （两端都执行）
+```
+
+  源节点通过 `getKeysUsingHashSlot` 枚举该槽的 key 逐个搬，因此迁移代价是 **O(该槽内 key 数)**，而非全量；第 4 步执行前，落到源节点该槽的请求会拿到 `ASK`，落到 dst 的拿到 `MOVED`，保证迁移窗口内数据可达。
+- **排障顺序**：`MOVED` / `ASK` 频率突然升高时，先确认是客户端 slot 缓存过期（`cluster-node-timeout` 相对网络抖动过短），而不是先去动服务端配置。
+
+## 二十九、参考资料
 
 - [Redis 官方文档](https://redis.io/docs/)
 - [Redis 7.0 发布说明](https://github.com/redis/redis/releases/tag/7.0.0)
