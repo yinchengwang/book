@@ -663,6 +663,13 @@ T_dispatch = max(T_docdb, T_proxy)
 
 **共享 `Request` 的并发安全性**是这里能成立的前提：`Request.doc` 在构造时已 `Freeze()`（§26.2 的 `request.go:80`），两个 goroutine 只读不写，因此无需额外加锁。
 
+两个 handler 的实现分处两个包，这点容易看错：
+
+- **DocDB handler** 在 `internal/handler/`（单数），是 FerretDB 自研引擎入口；
+- **Proxy handler** 在 `internal/handlers/proxy/`（复数，全仓库仅 `conn.go` 235 行 + `proxy.go` 271 行两个文件），它把请求**原样转发给一个真正的 MongoDB wire 兼容服务**——`Handler.Handle`（`internal/handlers/proxy/proxy.go:106`）拿到请求后经 `getConn`（`proxy.go:146`，按 `conninfo` 做**客户端连接与上游连接的一对一映射**）取到上游连接，再 `c.handle(ctx, req)`（`proxy.go:152`）转发，响应结构与 docdb handler 一致，因此能直接喂给 `logDiff` 做对拍。
+
+即 §6.1 表格里"`internal/handlers/` → `internal/handler/`"的替换并非彻底：命令处理器迁到了 `handler/`，但**代理处理器仍留在 `handlers/proxy/`**，而它正是 diff 模式的另一半。
+
 ### 27.3 统一差异比对
 
 `logDiff`（`middleware.go:265-315`）做两次独立的 unified diff，分别覆盖 header 与 body：
