@@ -572,7 +572,362 @@ LevelDB **本身不内置复制**，由上层应用实现：
   - 跳表 + Restart Interval + 二分查找组合是教学经典；
   - 整个代码库 LOC 仅 2.5 万行，是 C++ LSM 入门首选。
 
-## 二十五、参考资料
+## 二十六、WriteBatch 合并算法与 Version 快照读取
+
+> 本节源码路径：`db/dbformat.h`、`db/dbformat.cc`、`db/write_batch.cc`、`db/version_set.cc`、`db/memtable.cc`（canonical；模块未 init，行号需校对）。§7.2 / §7.8 只给了类骨架与要点清单，本节补齐「键怎么打包 → 批次怎么重放 → 读时怎么裁决版本」三段算法。
+
+### 26.1 Internal Key 的打包与排序
+
+跳表、SST 内部存的都不是用户键，而是 **InternalKey** = `user_key || 8 字节 trailer`，trailer 按小端打包：
+
+```
+trailer = (sequence << 8) | type
+```
+
+`InternalKeyComparator`（`db/dbformat.h` + `db/dbformat.cc`）的语义是「用户键升序 + 序号降序」：
+
+```
+Compare(a, b):
+    r = user_comparator.Compare(a.user_key, b.user_key)
+    if r != 0: return r
+    # trailer 以小端字节序存放，字节序比较 == 数值比较
+    if a.trailer > b.trailer: return -1      # 大 trailer 排在前 = 新记录排在前
+    if a.trailer < b.trailer: return +1
+    return 0
+```
+
+两个推论：
+
+- **同一 user_key 的最新版本一定排最前**，Seek 后取到的第一条即最新版本，不必遍历比较时间戳；
+- 排序键是 `(user_key ASC, sequence DESC)`，所以一个 key 在 SST 内是一条「倒序时间线」，旧版本物理上排在后面，只能靠 compaction 回收。
+
+> 复杂度：单次比较 O(键长)；跳表查找期望 O(log n) 次比较 ⇒ 期望 O(log n · L)。注意因 `kMaxHeight` 上界存在，极端情况退化到 O(n)。
+
+### 26.2 WriteBatch 的物理编码
+
+`WriteBatch` 是「一次原子提交多条记录」的载体，其编码（`db/write_batch.cc`）= 12 字节头 + N 条变长记录：
+
+```
+[8B sequence (fixed64, 小端)][4B count (fixed32, 小端)] [record] × count
+```
+
+每条 record 是「1 字节 ValueType 标签 + 若干 LengthPrefixedSlice 字段」。符号名取自 `db/dbformat.h` 的 `ValueType` 枚举；枚举数值随版本演进（RangeDeletion 等新类型曾插入），故此处只列语义、不列数值：
+
+| ValueType | 负载字段 | 语义 |
+|---|---|---|
+| `kTypeValue` | key, value | 写入 |
+| `kTypeDeletion` | key | 写 tombstone |
+| `kTypeSingleDeletion` | key | 写「一次性删除」标记 |
+| `kTypeMerge` | key, value | 追加一个 merge operand |
+| `kTypeColumnFamilyValue` | cf, key, value | 多列族写入（LevelDB 主干未启用列族，见 §十二） |
+| `kTypeColumnFamilyDeletion` | cf, key | 多列族删除 |
+| `kTypeLogData` | blob | 只进 WAL、不进 MemTable 的旁路载荷 |
+
+**SingleDeletion 与普通 tombstone 的区别**：读路径遇到 `kTypeSingleDeletion` 即可判定「该 key 的全部旧版本作废」，不再往下层找；而 `kTypeDeletion` 只挡住比它更新的版本，比它更旧的仍可能被读到。二者都最终要靠 compaction 真正下沉清理，但 SingleDeletion 允许压实时更激进地丢弃整条 key 的历史链。
+
+### 26.3 InsertInto：把 batch 重放到目标
+
+`WriteBatchInternal::InsertInto`（`db/write_batch.cc`）用一个内部接口 `Handler` 把「类型分支」从遍历逻辑中抽离，MemTable 与 Version 实现同一套 Handler，于是同一份 batch 既能重放到内存表、也能在恢复时重放到 SST 层：
+
+```
+InsertInto(mem):
+    writer = MemTableInserter{ snapshot = batch.sequence, mem }
+    if batch.count == 0: return
+    if batch.sequence + batch.count > mem.latest_sequence:   # 跨 batch 推进时回调 DBImpl
+        return HandleNotInBatch(batch.sequence, batch.count)
+    Iterate(batch.contents[12 ..], &writer)                   # 触发 writer.Put / Delete / SingleDelete / Merge
+```
+
+类型分支伪代码（Handler 视角，注意 **seq 在遍历中自增**）：
+
+```
+Handler::Put(cf, key, value):
+    mem.Insert(EncodeInternalKey(key, ++seq, kTypeValue), value)
+Handler::Delete(cf, key):
+    mem.Insert(EncodeInternalKey(key, ++seq, kTypeDeletion), "")
+Handler::SingleDelete(cf, key):
+    mem.Insert(EncodeInternalKey(key, ++seq, kTypeSingleDeletion), "")
+Handler::Merge(cf, key, value):
+    mem.Insert(EncodeInternalKey(key, ++seq, kTypeMerge), value)
+```
+
+一次 batch 内的 N 条记录因此天然占据连续 N 个序号 `[S, S+N)`。这正是 §十 中「WriteBatch 原子性」的存储层基础：崩溃恢复时只要序号连续即可整批重放。原子可见性由读路径的 snapshot 序号裁决 —— `LookupKey` 以 batch 首序号 `S` 为可见上界，落在 `(S, S+N)` 区间内的记录对尚未推进的读者一律不可见。
+
+### 26.4 Version::Get：自底向上的版本裁决
+
+读路径最终落到 `Version::Get`（`db/version_set.cc`），顺序固定为「L0 → L1 → … → 最大非空层」（MemTable 由 `DBImpl::Get` 在调用本函数前先行查询），遇到**第一个可裁决的记录**即停止：
+
+```
+Version::Get(options, lkey, value, stats):
+    state = fresh
+    # 1) L0：文件间 key range 重叠，必须全查；Version 保持 files_[0] 按序号倒序
+    GetOverlappingInputs(level = 0, &lkey, /*null largest*/ &tmp)
+    for f in tmp:                          # 最新的文件先试
+        TableCache::Get(f) -> Table::InternalGet(...)
+        if state.found: return true
+    # 2) L1..N：range 互不重叠，二分定位唯一文件即可
+    for level in 1 .. kNumLevels-1:
+        f = FindFile(level, lkey)         # 二分：smallest <= target <= largest
+        if f == nullptr: continue
+        TableCache::Get(f) -> Table::InternalGet(...)
+        SaveValue(lkey, value_type, value, state)
+        if state.found: return true
+    return state.found
+```
+
+`SaveValue` 是**「能不能停」的裁决核心**（`db/version_set.cc` 中的独立成员函数）：
+
+```
+SaveValue(lkey, value_type, value, state) -> stop:
+    if value_type ∉ {kTypeValue, kTypeMerge}:
+        return true        # kTypeDeletion / kTypeSingleDeletion：
+                            # 已有更新版本判定「不存在」，下层同 key 必然更旧，无意义，直接停
+    if value_type == kTypeMerge:
+        state.merge_operands.push(value)     # merge 可累加，继续下探找基底
+        return false
+    # kTypeValue：这就是该 key 的「基底值」
+    state.base_value = value
+    state.found = true
+    return true                              # 停止向下查找
+```
+
+注意职责边界：`Version::Get` 只负责**找齐 base + operands 并置位状态**，operand 的实际归约（`MergeHelper::TimedFullMerge`）发生在 `DBImpl::Get` 层完成。
+
+> 复杂度与放大：`FindFile` 每次 O(log n_level)；磁盘代价上界 = 每层 1 次 index seek + 1 次 data block seek ⇒ 读放大 R = O(kNumLevels)。若 Bloom 全部判定「不存在」（查询的 key 真不存在），R 退化为 O(kNumLevels) 次常数级内存判定、**0 次磁盘 IO** —— 这是 Bloom filter 的主要收益场景（详见 §二十八）。
+
+### 26.5 Snapshot：序号即一致性视图
+
+`DBImpl::Get` 未显式指定 `options.snapshot` 时取 `versions_->LastSequence()` 作上界；显式指定则取 `SnapshotImpl::sequence_`（`db/db_impl.h`）。可见性不靠事后过滤，而是靠**比较器的截断**：`LookupKey(key, snapshot)` 把 seek 键的 trailer 固定为 `(snapshot, kValueTypeForSeek)`；由于排序是 seq 降序，Seek 会正好停在第一条「序号 ≤ snapshot」的记录上。
+
+```
+seek_key = Encode(user_key, trailer = (snapshot << 8) | kValueTypeForSeek)
+# 排序 (user_key ASC, seq DESC) ⇒ seek 之后的第一个有效节点即 snapshot 可见的最新版本
+```
+
+复杂度 O(1)（无额外扫描），代价只是 seek 键多带 8 字节。
+
+## 二十七、Compaction 触发、选择与 TrivialMove 优化
+
+> 本节源码路径：`db/version_set.cc`（`Version::PickCompaction` / `PickLevelCompaction` / `GetOverlappingInputs`）、`db/compaction.cc`（`Compaction::IsTrivialMove`）、`db/version_edit.cc`（canonical；模块未 init，行号需校对）。§7.5 给了类骨架与一句式 score 公式，本节补齐触发判据、两套文件选择策略、免 IO 优化条件与写放大量级推导。
+
+### 27.1 触发判据：score，自低层向上取首个超限者
+
+```
+score(L0)   = |files_[L0]| / kL0_CompactionTrigger
+score(L>0)  = TotalFileSize(L) / MaxBytesForLevel(L)
+
+MaxBytesForLevel(L) = 10MiB × max_bytes_for_level_multiplier^(L-1)      # L ≥ 1
+
+PickCompaction():
+    for level in 0 .. kNumLevels-2:
+        if score(level) >= 1.0: return PickLevelCompaction(level)        # 低层优先
+    return PickFileToCompact()                                          # 兜底：按 seek 计数挑最冷文件
+```
+
+要点：
+
+- **L0 用文件数而非字节数**：新 flush 的文件大小未知（可能远小于 2MiB 目标值），按字节算 score 会长期为 0 而永不触发。`kL0_CompactionTrigger` 的具体默认值随版本演进，此处不写死数字，其量级为「个位数」。另有独立的写停顿阈值 `kL0_StopWritesTrigger` 控制反压。
+- **`MaxBytesForLevel` 是等比数列**（公比 = `max_bytes_for_level_multiplier`，默认 10）。每层容量差 10 倍是 LevelDB 写放大可控的直接原因（推导见 27.4）。
+- **低层优先**：一旦 L0 超限就压 L0，即使 L3 也超限也不会先压 L3 —— 因为 L0 是读路径必经层，收益最大。
+- **兜底路径**保证压实永不饿死：所有层 score 都 < 1 时按 seek 计数挑文件，摊平长期冷数据。
+
+> 复杂度：逐层求 `TotalFileSize` 为 O(总文件数)；单次 Pick O(总文件数)，全部发生在后台线程，不进入读路径。
+
+### 27.2 PickLevelCompaction 的两套策略
+
+```
+PickLevelCompaction(level):
+    if level == 0:
+        return SetupOtherL0Files(files_[0] sorted by seq DESC)   # 文件可能互相重叠，逐个向后取
+    else:
+        f = FindSmallestFileWithLeastOverlap(output_level = level + 1)   # 重叠字节最少 = 最省 IO
+        return SetupOtherInputs(f)
+```
+
+- **L0 路径**：`SetupOtherL0Files` 从当前文件往后**连续**取文件，直到下一个文件与已选集合的 range 不再重叠 —— 因为 L0 单个文件可能同时压在多个 L0 文件上，不连续取会漏数据。
+- **L>0 路径**：`FindSmallestFileWithLeastOverlap` 在输出层逐文件累加重叠字节数，取最小者。这是经典的 **min-overlap 选择**：输入文件选得越「干净」，需要归并的输出层文件越少，IO 越省。
+- **Grandfather 限制**：输入集合展开后，还要检查它与 **L+2 层**的重叠字节总量；超阈值就扩展输入集合「多吞几个同层文件」一并压掉，避免压完立刻触发下一次级联压实（parent 变成 grandparent 的数据量暴涨）。
+- 两种策略的展开都由 `GetOverlappingInputs` 完成 —— 它就是 §26.4 读路径 L0 检索用的同一个函数，一套 range overlap 判定服务读写两侧。
+
+### 27.3 IsTrivialMove：LevelDB 最具特色的免 IO 优化
+
+若一次压实的输出与某个已存在文件「逐字节等价」，压实就退化成一次文件重命名。`Compaction::IsTrivialMove`（`db/compaction.cc`）给出三个必须**同时**成立的判据：
+
+```
+IsTrivialMove(files) -> bool:
+    # 判据 1：总大小不超过输出层容量上限（防止免 IO 搬运造出巨型文件）
+    if TotalFileSize(files) > MaxBytesForLevel(output_level): return false
+    # 判据 2：只能是单文件输入（多文件必然要归并，无法复用）
+    if files.size() != 1: return false
+    # 判据 3：输入文件的 key range 不得与祖父层（output_level + 1）重叠
+    if SomeFileOverlapsRange(output_level + 1, f.smallest, f.largest): return false
+    return true
+```
+
+为什么判据 3（祖父层检查）必要：免 IO 搬运把文件「就地升级」到输出层，若它与祖父层大量重叠，祖父层本应被压掉的数据就要在下一轮做一次昂贵的全量归并 —— 等于把成本推迟并放大。这正是 LevelDB 官方实现笔记反复强调的「不要制造一个需要昂贵 merge 的 parent file」。
+
+TrivialMove 生效时的 `VersionEdit` 只做两件事：把该文件标记删除、以新 level 号重新加入 —— **不 merge、不写新数据、只有一次 rename**，`edit` 里不含任何 SST 内容。走这条路径时压缩的写 IO 摊销为 0，是 LevelDB 在「刚 flush、下一层恰好有同区间空位」场景下的关键性能来源。
+
+> 注：部分后续版本在判据 1 之前追加了更严格的祖父层字节预算检查（按 grand-grandparent 重叠量设阈值）。本文按上游主干的三判据表述，具体阈值以所用版本源码为准。
+
+### 27.4 写放大的数量级推导
+
+LevelDB 采用 level compaction（不支持 universal，见 §7.5），一条记录从 flush 进 L0 到沉到最底层，需跨越 `kNumLevels - 1` 次层间压实，**每下沉一层就被完整重写一次**：
+
+```
+WA ≈ 1 (flush 写) + (kNumLevels - 1) (逐层重写) ≈ kNumLevels      # kNumLevels = 7 ⇒ 量级 ~7
+# 实测量级 ~10-30 倍（见 §十三）：差值来自 merge 放大、边界文件非满量归并、块压缩失败重写等
+```
+
+两条可调的权衡：
+
+- 层数越多 / 每层容量倍增比越激进 ⇒ 写放大越低，但读放大线性上升（每层一次 seek）；
+- LevelDB 固定 `kNumLevels = 7`、不提供运行时动态调层 —— 这是它与 RocksDB（可配置层数、多 Column Family、universal/tiered 策略）的分水岭。
+
+## 二十八、SST 文件结构、BlockBuilder 前缀压缩与 FilterBlock 查询
+
+> 本节源码路径：`db/table/builder.cc`、`db/table/format.cc`、`db/table/format.h`、`db/table/two_level_iterator.cc`、`table/filter_block.cc`、`table/block_based_filter_policy.h`、`util/bloom.cc`（canonical；模块未 init，行号需校对）。§7.3 画了块级布局、§7.6 给了 Bloom 类骨架，本节补齐「块内怎么排 → 块间怎么定位 → 缺失 key 怎么跳过」三层算法。
+
+### 28.1 BlockBuilder：前缀压缩 + restart 数组
+
+`BlockBuilder::Add`（`db/table/builder.cc`）对相邻键做公共前缀压缩：
+
+```
+Add(key, value):
+    shared     = common_prefix_length(key, last_key)
+    non_shared = key.size() - shared
+    EncodeVarint32(shared); EncodeVarint32(non_shared)
+    append(key[shared ..]); append(value)
+    restarts.push_back(current_offset)
+    if num_entries % block_restart_interval == 0:      # 默认 16
+        restarts.push_back(restarts.back())           # 追加一个全量键作为新锚点
+        last_key.clear()
+```
+
+`Finish` 收尾时把 restart 偏移数组追加到数据之后，每个偏移变长编码，末尾再写 4 字节 `num_restarts`：
+
+```
+[entries:  varint32 shared | varint32 non_shared | key_tail | value ] × N
+[restart 数组: varint32 偏移 × num_restarts ]
+[4B num_restarts]
+[block trailer: 1B block type + 4B crc32c]                  # kBlockTrailerSize = 5
+```
+
+两个参数的取值与含义：
+
+| 参数 | 默认 | 作用 |
+|---|---|---|
+| `Options::block_size` | 4096 字节 | 压缩单元大小，也是一次磁盘 IO 的粒度 |
+| `Options::block_restart_interval` | 16 | 前缀压缩的「重启周期」，也是线性扫描上界 |
+| `kBlockTrailerSize` | 5 字节 | 每块尾部 1 字节类型 + 4 字节校验和 |
+
+（校验算法上游为 **crc32c** Castagnoli，`table/format.cc` 的 crc mask 为 `0xa282ead8`；此处与 §7.4 提到的 WAL 侧 CRC32 属不同实现。）
+
+**空间复杂度**：设块内 N 条键、平均键长 L、公共前缀占比 p、value 平均长 V，则
+
+```
+块大小 ≈ N·(1-p)·L + N·V + O(N/16)·varint(L) + O(N/16)
+```
+
+**点查复杂度**：先在 restart 数组上二分（O(log(N/16)) 次键比较）落入区间，再顺序线性扫描至多 `block_restart_interval` 条 ⇒
+
+```
+单块点查 = O(log(N/16) + block_restart_interval) 次键比较，与块大小无关
+```
+
+这正是 restart 机制的核心价值：没有 restart 点就得对全块做前缀逐字节二分（O(N) 次比较且必须从头解压键），有了它就把「键前缀依赖」限制在 16 条的窗口内。
+
+### 28.2 BlockHandle 与两级定位（TwoLevelIterator）
+
+块在文件中的位置用 `BlockHandle{offset, size}` 表示，`db/table/format.cc` 用变长编码落盘（`util/coding.h` 的 `EncodeVarint64` / `DecodeVarint64`，单值最多 10 字节）：
+
+```
+Encode:  varint64(offset) || varint64(size)
+Decode:  读 varint64 得 offset，再读 varint64 得 size，
+         有效负载长度 = size - kBlockTrailerSize      # 扣掉尾部 type + crc
+```
+
+Footer 是文件末尾的定长尾记录，存放两个 `BlockHandle`（meta index 与 index），后跟对齐填充与 8 字节 magic number（`table/format.h` 的 `kTableMagicNumber = 0xdb4775248b80fb57`，用于快速判定「这是不是一个 LevelDB table」）。关键设计点：meta index 自身以 `filter.<policy name> → BlockHandle` 记录 filter 块位置，因此**换 filter 策略只需改 meta index，不必重排任何 data block**。
+
+两级定位由 `db/table/two_level_iterator.cc` 实现：
+
+```
+Seek(target):
+    index_iter_.Seek(target)                     # index block 内二分：entry = (块首键 → BlockHandle)
+    if !index_iter_.Valid(): return INVALID
+    data_iter_ = block_cache.Get(index_iter_.value())    # BlockHandle → 该 data block 的迭代器
+    data_iter_.Seek(target)                     # 块内 restart 数组二分 + 窗口内线性扫描
+    SaveDataIterator(data_iter_, &data_iter_)  # 缓存，Next() 时省去再次取块
+```
+
+点查代价：**1 次 index block 读 + 1 次 data block 读**（两次顺序 IO；命中 OS page cache 时后者常为 0 次物理 IO），CPU 代价为两次块内二分，即 O(log(块内条目数)) 次键比较。
+
+### 28.3 FilterBlock：每块一份 Bloom + 稀疏 offset 数组
+
+Bloom 数据不是「一个文件一份」，而是**每个 data block 独立一份**，索引用一个稀疏 offset 数组（`table/filter_block.cc`）：
+
+```
+FilterBlockBuilder::AddFilter(filter):            # 每个 data block 调一次
+    filter_offsets.push(data_.size())             # 记录该 filter 在数据区的起始偏移
+    data_.append(1 字节长度前缀)                    # 让 reader 知道这个 filter 有多长
+    data_.append(filter)
+
+FullFilterBlockReader::Filter(block_offset):      # reader 侧：filter 数可远多于查询数
+    index = block_offset >> base_lg_              # base_lg_ 由 filter 平均大小推出，直接算候选下标
+    start = offsets[index]; limit = offsets[index + 1]
+    if block_offset == last_block_offset_ && !last_filter.empty():
+        return last_filter                        # 命中上一次缓存，零 IO
+    return ReadFilter(filter_data, start, limit)  # 未命中才解引用
+```
+
+`BlockBasedFilterPolicy::KeyMayMatch`（`table/block_based_filter_policy.h`）的判定只有两步：
+
+```
+KeyMayMatch(block_offset, key):
+    f = reader.Filter(block_offset)
+    if f.empty(): return true                     # 关键：该块没有 filter 时必须放行，
+                                                  #       不能误判为「不存在」
+    return BloomFilterPolicy::KeyMayMatch(key, f) # 见 §7.6
+```
+
+「缺 filter 即放行」是**正确性要点**：Bloom 只能产生假阳（把不存在说成可能存在），绝不能产生假阴；缺失 filter 的唯一安全行为是退化为全扫。
+
+### 28.4 Bloom 位寻址：单个哈希派生的等差序列
+
+`util/bloom.cc` 不做 k 次独立哈希，而是用**一个 64 位哈希派生的等差序列**逼近 k 个独立哈希：
+
+```
+构建:  h    = BloomHash(key)                    # util/hash.cc 的 64 位哈希
+       delta = (h >> 17) | (h << 47)            # 循环左移 47 位，取另一组近似独立位模式
+       bits  = n × bits_per_key                 # n = 本次 Add 的键数
+       对 j = 0 .. k-1:
+           bitpos = h % bits
+           result[bitpos >> 3] |= 1 << (bitpos & 7)
+           h += delta                           # 模 2^64 自然回绕
+
+查询:  h    = BloomHash(key)
+       delta = (h >> 17) | (h << 47)
+       bits  = (filter_len - 1) × 8             # 减去 1 字节长度前缀
+       对 j = 0 .. k-1:
+           bitpos = h % bits
+           if (filter[bitpos >> 3] & (1 << (bitpos & 7))) == 0: return false   # 任一未置位即排除
+           h += delta
+       return true
+```
+
+假阳率（独立哈希近似）：
+
+```
+p ≈ (1 - e^(-k·n/m))^k,   取 k = bits_per_key · ln 2 使 p 关于 bits_per_key 单调最小
+# §7.6 的 k_ = bits_per_key × 0.69 即 ln 2 的工程近似
+# bits_per_key = 10 ⇒ k = 6, p ≈ 1%
+```
+
+Bloom 带来的复杂度收益：本来要 O(log(N/16) + 16) 次键比较 + 2 次块读才能确认「不存在」；命中 filter 后只需 O(k) 次位判定即可返回 false，**磁盘 IO 降为 0**。收益随「查询中不存在的 key 占比」近似线性增长 —— 这正是读多写少、且查询以点查为主的负载下 Bloom 最划算的原因。反之，写入密集型负载要为每条记录额外付出 k 次位置 1 的写放大，性价比下降。
+
+> 变体说明：`delta` 的位移量、BloomHash 的具体实现（`util/hash.cc`）在派生 fork（Pebble、以及移植进 RocksDB 的版本）中存在差异，本节按上游 LevelDB 表述。
+
+## 二十九、参考资料
 
 - [LevelDB GitHub](https://github.com/google/leveldb)
 - [LevelDB Implementation Notes](http://leveldb.google.com/static/docs/impl.html)
