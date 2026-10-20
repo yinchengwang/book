@@ -536,7 +536,273 @@ Pebble **本身不内置复制**：
   - **MVCC + Compaction** 在 Go 语言中的最佳实践；
   - **CockroachDB 全栈存储**是教学经典。
 
-## 二十五、参考资料
+## 二十六、Clock-Pro 缓存替换算法：三链结构与 ghost entry
+
+Pebble 的 block cache 没有沿用纯 LRU，而是实现了 **Clock-Pro**。动机很直接：LSM 的读放大决定点查要碰多个 block，而一次范围扫描会**顺序触达成百上千个 block**。纯 LRU 下，这批「只读一次」的 block 会把扫描前建立的热 block 全部挤出缓存；Clock-Pro 用一条 ghost list 记住「被淘汰但可能还会被再访问」的 block，用二轮扫描（second chance）保护真正的热点，因此在 scan-heavy 负载下命中率显著优于 LRU。
+
+源码：`internal/cache/clockpro.go`（approx，参考子模块未 init，行号需校对）中的 `shard` / `entry` 状态机与 `metaAdd` / `evict` / `runHandCold` / `runHandHot` / `runHandTest`；条目定义在 `internal/cache/entry.go`（approx）的 `entry` 与 `entryType`（`etHot` / `etCold` / `etTest`）；分片构造在 `internal/cache/cache.go`（approx）的 `New` / `NewWithShards`。注意实现已迁到 `internal/cache/`，而非仓库根的 `cache/`。
+
+### 26.1 三条 page list 与 reference bit 语义
+
+每个 shard 独立持有一条热点链表与两个手针：
+
+| list | entry 标记 | 含义 | 持有 value？ |
+|------|-----------|------|------------|
+| cold | `etCold` | 新进入缓存的 block 的默认归属（`newEntry` 里初始化为 `ptype: etCold`） | 是 |
+| hot | `etHot` | 被引用过一轮、已证明是热点的 block | 是 |
+| test / ghost | `etTest` | value 已丢弃、只保留 key 的「被淘汰过」占位 | 否（`setValue(nil)`） |
+
+`entry.referenced atomic.Bool` 是整个算法的核心：每次命中时置位；clock hand 第一次扫到该 entry 时**清位**，第二次扫到仍未被置位才真正降级或淘汰。这等价于「一轮扫描 = 一次宽限期」，把 LRU 的精确时间序退化成近似序，但把维护成本从「每次访问都改 doubly-linked list」降到「每次访问只改一个原子位」。
+
+```text
+// 伪代码（与 runHandCold / runHandHot / runHandTest 的语义等价）
+runHandCold():
+  while targetSize() <= sizeHot + sizeCold and handCold != nil:
+      e := handCold
+      if e.ptype == etCold:
+          if e.referenced:                 // 轮内已被再次访问 → 升级
+              e.referenced = false
+              e.ptype = etHot
+              sizeCold -= e.size;  sizeHot += e.size
+          else:                            // 二轮未见 → 降为 ghost
+              e.setValue(nil)              // 丢掉 value，只留 key
+              e.ptype = etTest
+              sizeCold -= e.size;  sizeTest += e.size
+              while targetSize() < sizeTest:
+                  runHandTest()
+      handCold = handCold.next()
+      while targetSize() - coldTarget <= sizeHot and handHot != nil:
+          runHandHot()
+
+runHandHot():
+  if handHot == handTest:  runHandTest()   // ghost 链较短时先扫 ghost
+  e := handHot
+  if e.ptype == etHot:
+      if e.referenced:  e.referenced = false  // 宽限一轮，不降级
+      else:
+          e.ptype = etCold                    // 热点降温
+          sizeHot -= e.size;  sizeCold += e.size
+  handHot = handHot.next()
+
+runHandTest():
+  if sizeCold > 0 and handTest == handCold:
+      runHandCold()
+  e := handTest
+  if e.ptype == etTest:
+      sizeTest   -= e.size
+      coldTarget -= e.size        // ★ ghost 被彻底淘汰 → cold 下界下调
+      coldTarget  = max(coldTarget, 0)
+      metaDel(e)                   // 彻底删除 ghost 条目
+  handTest = handTest.next()
+```
+
+### 26.2 ghost entry 与自适应 cold 配额
+
+`coldTarget` 是 Pebble 相对原论文最重要的改动。设 `N = targetSize()`，实现维持三条不变量：
+
+```text
+sizeHot + sizeCold <= N                 常驻 block 总量不超过缓存容量
+sizeHot           <= N - coldTarget    hot 配额上限（等价于 cold 的下界为 coldTarget）
+sizeTest          <= N                 ghost 链也以 N 为上界
+
+初始  coldTarget = maxSize = N   ⇒   sizeHot = 0（起步时全部进 cold）
+每次淘汰一个 size 为 s 的 ghost：  coldTarget ← max(0, coldTarget - s)
+```
+
+也就是说：ghost 条目被彻底丢弃，意味着「它被淘汰之后依然没被再访问」——这个负面信号被用来下调 cold 的下界、给 hot 让出配额。稳态下
+
+```text
+sizeHot ≈ N - (N - Σ{已被淘汰的 ghost 的 size}) = Σ{已淘汰 ghost 的 size}（下限截到 0）
+```
+
+原论文中 hot 固定为 `γ·N`（γ 典型取 20%）需要人工调参；Pebble 把它换成由 ghost 历史推导出的**自适应**量，且 `Options` 中不对外暴露 γ 参数。代价是多了一条不变量 `sizeTest <= N`，收益是无需针对负载调参。
+
+### 26.3 复杂度与并发特征
+
+| 操作 | 摊还复杂度 | 关键点 |
+|------|-----------|--------|
+| `shard.get` / `shard.set` | O(1) | 命中只置一个原子位 + 挂链表尾；链表指针仅在 hand 扫到时才改 |
+| `shard.evict()` | O(k)，k = 本次逐出的 entry 数 | 每个 entry 在 cold / hot hand 上至多各被扫一次 |
+| 分片隔离 | — | `cache.New(size)` 取 `m = 4 * runtime.GOMAXPROCS(0)`；若 `size/m < 4 MiB` 则压缩到 4 片（默认值以 `options.go` 为准） |
+
+高频 Get 只写一个 `atomic.Bool`，把 LRU「每次访问都改 doubly-linked list」造成的 cache line 争用降下来——这是 Clock-Pro 在多核 Go 运行时里比 LRU 更划算的根本原因。每个 shard 各自持有一套三链与三个手针，天然无跨核协调（唯一的锁是 shard 级的 `sync.RWMutex`）。
+
+此外还有按文件整批逐出的路径：`shard.evictFile(handleID, fileNum)` 与 `shard.evictFileRun(fkey)`（approx）。SST 文件被删除时同步清掉缓存里的相关 block，避免缓存条目泄漏到已删文件上。
+
+## 二十七、并发 compaction 调度：槽位公式与 elision-only / trivial move
+
+RocksDB 默认同一层同时只跑一个 compaction；Pebble 允许**并发 compaction**，并用三个压力信号动态决定并发槽位数。
+
+源码：`options.go`（approx）中的 `CompactionConcurrencyRange` / `L0CompactionConcurrency` / `CompactionDebtConcurrency` / `CompactionGarbageFractionForMaxConcurrency`；核心计算在 `compaction_picker.go`（approx）的 `compactionPickerByScore.getCompactionConcurrency()`；compaction 类型枚举在 `compaction.go`（approx）的 `compactionKind`；elision-only 的挑选逻辑在 `compaction_picker.go`（approx）的 `pickElisionOnlyCompaction()`。各默认值以 `options.go` 的 `EnsureDefaults` 为准。
+
+### 27.1 并发槽位公式
+
+```text
+lower, upper := opts.CompactionConcurrencyRange()      // 默认 func() (int,int) { return 1, 1 }
+if lower >= upper: return upper
+
+// 信号 1：L0 read-amp（sublevel 深度，与 DB 大小无关）
+n1 = 0
+if opts.L0CompactionConcurrency > 0:                  // 默认 10
+    n1 = latestVersionState.l0Organizer.MaxDepthAfterOngoingCompactions() / opts.L0CompactionConcurrency
+
+// 信号 2：compaction debt（防止 base compaction 一结束并发数立刻回落）
+n2 = 0
+if opts.CompactionDebtConcurrency > 0:                // 默认 1 << 30，即 1 GiB
+    n2 = int(estimatedCompactionDebt() / opts.CompactionDebtConcurrency)
+
+// 信号 3：可压缩垃圾占比（DEL + RANGEDEL 是写放大的主因）
+n3 = 0
+if f := opts.CompactionGarbageFractionForMaxConcurrency(); f > 0 and dbSizeBytes > 0:
+    g = (delBytes.PointDels + delBytes.RangeDels) / dbSizeBytes
+    g = g / dbSizeBytes
+    n3 = int((g / f) * float64(upper - lower))
+
+extra = max(n1, n2, n3, 0)
+return min(lower + extra, upper)
+```
+
+取 `max` 而非求和：三个信号测的是**同一压力的不同侧面**（读压力 / 落后字节 / 垃圾占比），任一超阈值都说明需要更多并发；三者取 `max` 后再 `min(·, upper)` 封顶，避免信号抖动直接打满磁盘带宽。
+
+信号 2 的必要性在源码注释里写得很直白：base compaction 结束后那一瞬间 debt 归零，但刚被 compact 出来的字节还没下沉到更低层，此时若并发数立刻回落会造成 LSM 塌陷。
+
+### 27.2 省 IO 的 compaction 捷径
+
+`compactionKind` 枚举了多条**不重写数据**的捷径（`compaction.go`，approx）：
+
+| kind | 触发条件 | IO 成本 | 说明 |
+|------|---------|--------|------|
+| `compactionKindMove`（trivial move） | 输入文件与输出层无 overlap，且 `grandparents.AggregateSizeSum() <= maxOverlapBytes` | **O(1)** | 只改 Version 里的文件引用；输入文件既不重写也不 obsolete |
+| `compactionKindElisionOnly` | 仅最底层 `numLevels-1` 存在 obsolete 记录，且 `candidate.SeqNums.High < env.earliestSnapshotSeqNum` | **O(1)** | 只丢过期记录，**不产生输出文件** |
+| `compactionKindDeleteOnly` | 宽 range tombstone 完全覆盖某些 sstable | **O(1)** | 直接删文件 |
+| `compactionKindCopy` | 跨 shared / local storage，`compactionKindMove` 不可用时 | O(bytes) | 逐字节拷贝并分配新 TableNum，保留原文件 |
+| `compactionKindBlobFileRewrite` / `compactionKindVirtualRewrite` | blob 文件超龄 / 虚拟 SST 需物化 | O(bytes) | 较新引入的 compaction 类型 |
+
+```text
+// pickElisionOnlyCompaction 的等价伪代码
+pickElisionOnlyCompaction(env):
+  if opts.private.disableElisionOnlyCompactions: return nil
+  candidate = elisionOnlyAnnotator.LevelAnnotation(vers.Levels[numLevels-1])
+  if candidate == nil: return nil
+  if candidate.SeqNums.High >= env.earliestSnapshotSeqNum: return nil   // ★ 安全性闸门
+  return pickedCompactionFromCandidateFile(candidate, env,
+                                          numLevels-1, numLevels-1,
+                                          compactionKindElisionOnly)
+```
+
+那条 `SeqNums.High < earliestSnapshotSeqNum` 判断是 elision-only 的**正确性前提**：只有当待丢弃记录的全部版本都早于最老的活跃 snapshot 时，删掉它们才不会让任何一个读者「本应读到 key 却发现缺失」。这也是它被限制在**最底层**的原因——非底层文件的旧版本可能被下层的更新遮蔽，丢错层就等于丢数据。
+
+trivial move 的判据同样值得注意：除了「与输出层无 overlap」，还要检查与**祖父层（grandparents）**的重叠字节总量。看似可以白搬的文件，若很快就会与祖父层产生大量 overlap，搬过去只是把 merge 债推迟而非消除，因此宁可走正规 compaction。
+
+### 27.3 收益与代价
+
+- trivial move / elision-only / delete-only 把这三类 compaction 的 IO 成本从 `O(bytes)` 压到 `O(1)` 元数据操作——这是 LSM 稳态下「绝大部分 compaction 都很便宜」的原因；
+- 并发槽位让 `n` 个 compaction 共享设备带宽：写放大不变，但墙钟时间从 `Σ tᵢ` 降到 `≈ max tᵢ`（实际吞吐受 `RateLimiter` 约束，见 §7.7）；
+- 代价是同一层可能有多个 compaction 在跑，需要额外的 overlap / level 冲突检查（`setupInputs` 接收 `inProgressCompactions` 参数）与更复杂的文件生命周期管理。
+
+## 二十八、MVCC 序列号与 Indexed Batch
+
+Pebble 把 MVCC 收敛成一个 56 位的序列号（SeqNum），内联在 key 尾部；Batch 则是「一段连续 SeqNum 区间的原子提交单位」。
+
+源码：`internal/base/internal.go`（approx）的 `SeqNum` / `SeqNumMax` / `SeqNumBatchBit` / `InternalKey` / `MakeTrailer` / `MakeSearchKey`；`batch.go`（approx）的 `Batch.nextSeqNum()` / `Batch.SeqNum()` / `Batch.setSeqNum()` / `batchIter` / `indexedBatch`；`commit.go`（approx）的 `commitPipeline.AllocateSeqNum()` 与 `commitPipeline.publish()`；`snapshot.go`（approx）的 `Snapshot`；批内索引在 `internal/batchskl/`（approx）。
+
+### 28.1 SeqNum 的位布局
+
+```text
+SeqNumMax      = 1<<56 - 1              // 有效位宽 56 位
+SeqNumBatchBit = 1<<55                  // 标记「batch 内未提交条目」
+
+type InternalKey struct {
+    UserKey []byte                      // 用户 key，按用户比较器升序
+    Trailer InternalKeyTrailer
+}
+
+MakeTrailer(seqNum, kind) = (InternalKeyTrailer(seqNum) << 8) | InternalKeyTrailer(kind)
+//                                     ├──── 56 bit seqnum ────┘    └── 8 bit kind ──┘
+
+kind 取值（internal/base/internal.go，approx）：
+  InternalKeyKindDelete      = 0      InternalKeyKindSingleDelete = 7
+  InternalKeyKindSet         = 1      InternalKeyKindRangeDelete  = 15
+  InternalKeyKindMerge       = 2      InternalKeyKindMax         = 30
+  InternalKeyKindLogData     = 3
+```
+
+排序规则是**用户 key 升序 + 同 key 内 trailer 降序**。由于 seqnum 占高位、kind 占低 8 位，trailer 降序等价于「seqnum 大的在前；seqnum 相同时 kind 大的在前」。于是点查只需在定位到的 user key 分组内取**第一个 seqnum ≤ 可见快照**的记录，天然拿到最新版本，无需额外的版本链指针。
+
+查找时用最大 trailer 作哨兵：`MakeSearchKey(userKey) = MakeInternalKey(userKey, SeqNumMax, InternalKeyKindMax)`，保证搜索键排在同 user key 的所有真实版本之前。
+
+### 28.2 Batch 的 repr 与 SeqNum 区间
+
+Batch 在内存里是一段连续字节缓冲（`batch.go` 顶部注释，approx）：
+
+```text
++-------------+------------+--- ... ---+
+| SeqNum (8B) | Count (4B) |  Entries  |
++-------------+------------+--- ... ---+
+
+每条 record：
++-----------+-----------------+-------------------+
+| Kind (1B) | Key (varstring) | Value (varstring) |
++-----------+-----------------+-------------------+
+
+varstring = varint32 长度前缀 + N 字节数据
+```
+
+`Commit` 时 `commitPipeline` 为整个 Batch 分配**一段连续**的 SeqNum 区间：
+
+```text
+区间 = [ b.SeqNum(), b.SeqNum() + b.Count() )       // 连续 Count() 个 seqnum
+
+// commitPipeline.publish 的核心：单调棘轮
+for {
+    curSeqNum := env.visibleSeqNum.Load()
+    newSeqNum := t.SeqNum() + base.SeqNum(t.Count())
+    if newSeqNum <= curSeqNum: break                 // 已被其它 goroutine 发布
+    if env.visibleSeqNum.CompareAndSwap(curSeqNum, newSeqNum): break
+}
+```
+
+`commitPipeline.pending` 是无锁的单生产者多消费者队列，入队时持有 `commitPipeline.mutex`，保证**发布顺序 == WAL 写入顺序**；`publish` 用 CAS 棘轮只保证 `visibleSeqNum` 单调递增，多个并发 committer 可以互相「代发」，不必串行等待。批内所有条目共享同一段 SeqNum 且在 `apply` 完成（写入 MemTable）之后才 publish，因此**同一个 Batch 的写入要么整体对读者可见、要么整体不可见**。
+
+未提交条目用 batch 内偏移 + batch bit 编码：
+
+```text
+Batch.nextSeqNum() = base.SeqNum(len(b.data)) | base.SeqNumBatchBit
+```
+
+`SeqNumBatchBit`（1<<55）的存在是为了让 batch 内未提交的条目排在所有已提交条目**之后**——否则一个更早提交但排序靠后的写，会被这个 batch 的未提交条目遮蔽。`batchIter` 持有自己的 `snapshot`（同样带 batch bit），遍历时用 `if ikey.SeqNum() >= i.snapshot { ikey = i.iter.Next() }` 跳过偏移之后的条目，从而实现 batch 内的 read-your-writes 可见性。
+
+Snapshot 侧：`DB.NewSnapshot()` 读取 `d.mu.versions.visibleSeqNum.Load()` 存入 `Snapshot.seqNum`，并把 Snapshot 挂进 intrusive 双向链表（`snapshotList`）；compaction 通过 `env.earliestSnapshotSeqNum` 得知最老的活跃快照，据此判断旧版本能否安全丢弃（即 §27.2 中 elision-only 的那道闸门）。
+
+### 28.3 Indexed Batch
+
+普通 Batch 只写不读时，`repr` 就是最省内存的表示。一旦需要在提交前读回自己的写入，就得为其建索引：
+
+```text
+// Batch.Get（batch.go，approx）
+func (b *Batch) Get(key []byte) ([]byte, io.Closer, error) {
+    if b.index == nil { return nil, nil, ErrNotIndexed }
+    return b.db.getInternal(key, b, nil /* snapshot */)
+}
+
+type indexedBatch struct {                    // 走 sync.Pool 复用，避免每次重建
+    batch Batch
+    index batchskl.Skiplist                   // internal/batchskl，按需构建
+}
+// rangeDelIndex / rangeKeyIndex 同理：
+//   batchskl.NewSkiplist(&b.data, comparer.Compare, comparer.AbbreviatedKey)
+```
+
+索引是**懒构建**的：由 `DB.NewIndexedBatch()` 创建的 Batch，只有在调用 `Get` / `NewIter`，或 `Commit` 时需要 flush 的路径上，才会从 `repr` 重建 `batchskl` 跳表；纯写入的 Batch 不会付出索引成本。
+
+| Batch 形态 | 单点读复杂度 | 额外内存 |
+|-----------|------------|---------|
+| 普通（未索引） | O(N)，线性扫描 repr | 0 |
+| Indexed | O(log N)，batchskl 跳表 | O(M)，M = 跳表节点数 |
+
+原子性的边界因此很清晰：Pebble 保证的是**单个 Batch 内的原子性**（共享一段连续 SeqNum），跨 Batch 的原子性需由上层（如 CockroachDB 的事务层）自行实现——见 §10 对「没有跨 key 事务」的说明。
+
+## 二十九、参考资料
 
 - [Pebble GitHub](https://github.com/cockroachdb/pebble)
 - [Pebble 官方文档](https://pkg.go.dev/github.com/cockroachdb/pebble)
