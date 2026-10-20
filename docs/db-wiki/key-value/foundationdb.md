@@ -454,7 +454,165 @@ FDB 集群默认采用**多副本容错 + 多数派协议**：
   - **FDB 严格的分层 + 角色分工**是分布式系统设计的范本；
   - **shard + TLog + Resolver** 三件套是强一致 KV 的标准架构。
 
-## 二十五、参考资料
+## 二十六、MVCC 版本区间与读写冲突检测
+
+FoundationDB 的事务模型在并发控制层面与 §十「事务与一致性」所述「strict serializable」承诺互补，但**真正落地的算法**是**版本区间（version interval）+ 读写冲突范围（read/write conflict range）**机制。这套机制由 commit proxy（`committer`）批量执行，与 Resolver 协作完成。
+
+### 26.1 版本区间语义
+
+每个事务在 `begin` 时从 Proxy 获取一个**读版本（read version）** `m_version`，事务内所有 `get` 操作读 `m_version` 时刻的快照；提交时分配一个**提交版本（commit version）** `c_version > m_version`。事务对外语义是：在 `[m_version, c_version)` 这个**版本区间**内执行了一次原子写入。
+
+```
+read_version  ← commit_proxy.getReadVersion()
+loop:
+    get(key)            → 读 [read_version, +∞) 内的最近可见版本
+    set(key, value)     → 暂存本地 mutation，未下发
+commit_version ← commit_proxy.commit(mutations, read_conflict_ranges, write_conflict_ranges)
+```
+
+关键不变量：**strict serializability** ⇒ 任意事务的 `c_version` 顺序必须与实时顺序一致（external consistency）。
+
+### 26.2 冲突范围（Conflict Range）
+
+事务提交时向 commit proxy 上报两组**冲突范围**（即「哪些 key 区间影响事务结果」）：
+
+- **read conflict range**：事务内所有 `get` 的 key 区间；
+- **write conflict range**：事务内所有 `set` 的 key 区间（含 `clear`）。
+
+伪代码：
+
+```
+commit(read_version, mutations, reads, writes):
+    // 1. Resolver 阶段：read conflict 检测
+    for r in reads:
+        if r 区间在 [read_version, now) 之间被其他事务写过:
+            return CONFLICT  // 触发 client 透明重试
+    // 2. 分配 commit_version
+    commit_version ← resolver.commit(read_version + 1)
+    // 3. 写 mutation log 到 TLog
+    tlog.append(commit_version, mutations)
+    // 4. 通知 SS 应用 mutations
+    ss.apply(mutations, commit_version)
+    return commit_version
+```
+
+冲突检测由 **Resolver**（`fdbserver/Resolver.actor.cpp`，approx，模块未 init 行号需校对）维护的**写冲突窗口（write conflict window）**索引实现：在 `read_version` 之后任何对 `writes` 区间的写入都会导致该事务返回 `transaction_conflict`，client 自动透明重试。
+
+### 26.3 复杂度与权衡
+
+- **冲突检测复杂度**：单事务 commit 在 Resolver 端是 O(K log M)，K = conflict range 个数，M = 该 range 上最近 K 版本数；纯只读事务 O(1) 不走 Resolver；
+- **写放大**：每次 commit 至少 1 个 TLog fsync + N 个 SS 应用，串行化代价是 FDB 的核心权衡；
+- **retry 风险**：高冲突率场景下客户端会经历指数退避，ratekeeper（§7.7）动态限制 commit rate 抑制冲突风暴。
+
+> 源码：`fdbserver/CommitProxyServer.actor.cpp`（approx，模块未 init，行号需校对）`committer` actor；`fdbclient/include/fdbclient/FDBTypes.h`（approx）`Version` 类型定义；冲突范围管理 `fdbserver/Resolver.actor.cpp`（approx）。
+
+## 二十七、确定性模拟与不变量检查
+
+§6.4 已概述 Deterministic Simulation，本节展开其**算法实现**：如何让整个集群在内存中按种子完全可重现地运行，并通过**不变量检查（invariant checking）**捕获分布式系统 bug。
+
+### 27.1 抽象层
+
+模拟的关键是把所有非确定性来源**注入到抽象层**而非业务逻辑：
+
+| 非确定性来源 | 抽象类 | 路径（canonical + approx） |
+|--------------|--------|---------------------------|
+| 时钟 | `SimulatedClock` | `fdbclient/SimulatedClock.actor.cpp`（approx） |
+| 网络 | `SimulatedNetwork` | `fdbclient/SimulationNetwork.actor.cpp`（approx） |
+| 进程 | `SimulatedProcess` | `fdbclient/include/fdbclient/SimulatedProcess.h`（approx） |
+| Actor 调度 | `Sim2_scheduler` | `flow/Sim2.actor.cpp`（approx） |
+
+业务代码（`MasterServer`、`StorageServer`）**完全不知道自己在 simulation 模式**——它们调用 `now()`、`send()`、`recv()` 时实际命中的是上述抽象类，由抽象类按**随机种子 + bugify 选项**返回结果。
+
+### 27.2 模拟运行伪代码
+
+```
+run_simulation(seed, workload, duration):
+    rng ← new Random(seed)
+    installAbstractClock(rng)        // 时钟推进 = 虚拟时间
+    installAbstractNetwork(rng)      // 丢包/延迟/分区由 rng 决定
+    installAbstractProcesses(rng)    // 进程崩溃/重启由 rng 决定
+
+    cluster ← bootCC(clusterFile)    // 与生产代码同一份
+    workload.run(cluster)            // 跑 CPython 测试脚本
+
+    while virtual_time < duration:
+        scheduler.tick()              // 只调度 ready 的 actor
+        if invariant_violated():
+            fail(seed, trace)         // 输出最小重现
+
+    report(seed, metrics, invariants_passed)
+```
+
+### 27.3 Invariant 检查机制
+
+FDB 在模拟中跑两类**不变量**：
+
+1. **结构不变量**：每次 commit 后 B+Tree 仍然是一棵合法树（页指针合法、版本链完整）；
+2. **语义不变量**：对任意 key 的 `get(k) @ version=v` 必须等于当时写入的值；这条由**read-your-writes** + **因果版本检查**保证。
+
+实现路径：`fdbserver/Invariant.h`（approx，模块未 init，行号需校对）声明 invariant 框架；`checkWitness` / `CHECK` 宏在关键路径埋点。违反时输出 trace event + 该 seed 的复现脚本。
+
+### 27.4 工程意义
+
+- **同一份代码**：production 与 simulation 共享 fdbserver 二进制，仅替换抽象实现；
+- **CI 必备**：每次 PR 跑数千个 seed，发现回归立刻定位；
+- **复杂度**：单次模拟可压缩到秒级，但代价是必须用 Actor 模型（共享内存通信的非确定性不可控）。
+
+> 源码：`fdbclient/Simulation.actor.cpp`（approx）`Simulation::run`；测试脚本 `tests/simulation/`（approx，模块未 init）。
+
+## 二十八、B+Tree 存储与版本链
+
+FDB 与 LSM 系（LevelDB / RocksDB / Pebble）的关键差异：**存储引擎是 B+Tree + 版本链**（不是 SSTable + compaction）。本节展开 B+Tree 上的 MVCC 实现细节，补充 §七「存储引擎」中未展开的算法层面。
+
+### 28.1 版本链（Version Chain）
+
+每个 key 在 B+Tree 叶子节点维护一个**版本链**（`LinkedPageMap` 或 `BTree` 上的 versioned leaf）：
+
+```
+leaf[key=K] → [(ver=v1, val=A), (ver=v2, val=B), (ver=v3, val=C), ...]
+              └── oldest ─────────── newest ──┘
+```
+
+读 `get(K) @ version=v` ⇒ 在 leaf 上二分查找**最大的 ≤ v 的版本** ⇒ 时间复杂度 O(log V)，V = 该 key 历史版本数。
+
+写 `set(K, val)` ⇒ 在当前 head 追加 `(commit_version, val)`，**不覆盖**历史。
+
+### 28.2 节点分裂 / 合并伪代码
+
+```
+split(node):
+    if node.size < MAX_KEYS:
+        return
+    mid ← node.size / 2
+    left  ← node.copy(keys[0..mid], children[0..mid+1])
+    right ← node.copy(keys[mid..], children[mid..])
+    parent.insert_split_key(mid_key, left, right)
+    if parent.overflows: split(parent)   // 向上递归
+
+merge(node):
+    if node.size >= MIN_KEYS:
+        return
+    sibling ← node.find_sibling()
+    if sibling.size + node.size <= MAX_KEYS:
+        parent.merge_into_one(node, sibling)
+        parent.delete_split_key()
+```
+
+### 28.3 SQLite vs Native Engine
+
+- **v6.x 默认**：`SqliteDB`（`fdbserver/storage/SqliteDB.cpp`，approx）—— 每 shard 一个 SQLite db，B+Tree + MVCC 版本链由 `keyval` + `versionstamp` 实现；
+- **v7+ 默认**：`Native`（`fdbserver/include/storage/Native`，approx）—— 自研 C++ B+Tree，多线程读写 + sharded page cache + 自定义 WAL；
+- **淘汰机制**：旧版本随 `tlog_pop` 阈值（`versionBytes`）由后台 compaction 清理；保留窗口由 `read_consistency` 配置决定。
+
+### 28.4 复杂度
+
+- **点查**：`get(K) @ version=v` 时间复杂度 O(log N + log V)，N = 总 key 数，V = 单 key 历史版本数；
+- **commit 写**：O(log N) 找到 leaf + O(1) 追加版本链 head；
+- **范围扫描**：`get_range` 在指定 `version=v` 下沿 leaf 顺序读，每节点先二分定位 ≤ v 的版本再向前。
+
+> 源码：`fdbserver/BTree.cpp`（approx，模块未 init，行号需校对）`BTree::insert` / `BTree::find`；`fdbserver/include/storage/SqliteDB.h`（approx）`SqliteDB::commit`。
+
+## 二十九、参考资料
 
 - [FoundationDB 官方文档](https://apple.github.io/foundationdb/)
 - [FoundationDB GitHub](https://github.com/apple/foundationdb)
