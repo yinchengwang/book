@@ -626,7 +626,504 @@ CouchDB 是 **AP 优先** 的多主复制数据库：
 - `engineering/src/db/storage/btree.c`（如有）可参考 `src/couch/src/couch_btree.erl` 的节点分裂/合并算法；
 - **AP 优先的多主复制** 设计模式可应用到 `learning/code-solutions/` 中的分布式存储练习题。
 
-## 二十六、参考资料
+## 二十六、MVCC 修订树与 B+Tree 引擎
+
+CouchDB 的核心数据结构有两层：内存中的 **文档修订树**（`_rev` 版本链）+ 磁盘上的 **append-only B+Tree** 文件。理解这两层是理解 CouchDB MVCC 的关键——它不是关系数据库那种行级 MVCC，而是**文档级 MVCC + 文件级原子提交**。
+
+### 26.1 修订树（Revision Tree）
+
+每个文档对应一棵以 root 为叶、`{Pos, [RevPath]}` 为分支的有序树，结构定义在 `src/couch/src/couch_key_tree.erl:68`：
+
+```erlang
+-type treenode() :: {Key :: term(), Value :: term(), [Node :: treenode()]}.
+-type tree() :: {Depth :: pos_integer(), [treenode()]}.
+```
+
+- **节点**：`{Key, Value, [SubNodes]}`——`SubTree == []` 时为 **leaf**（终末版本），否则为 **branch**（分裂点）；
+- **Key**：形如 `{Pos, Hash}` 的修订号；
+- **Value**：指向 `couch_bt_engine.erl` 中本地节点文件的 `{Pointer, Size}`；
+- **整棵树**：`{Depth, [RootNode]}` 列表，多个 root 表示并发分支（冲突）。
+
+修订树的**合并**在 `couch_key_tree.erl:87-208` 的 `merge/2` → `merge_tree/3` → `merge_at/3` → `merge_extend/2` 中实现。调用方是 `couch_db_updater.erl:484` 的 `merge_rev_tree/4`：
+
+```erlang
+% src/couch/src/couch_db_updater.erl:538-600（节选）
+merge_rev_tree(OldInfo, NewDoc, Client, false) when OldInfo#full_doc_info.deleted ->
+    ...
+    {NewTree1, new_leaf} ->
+        NewInfo#full_doc_info{rev_tree = NewTree1, deleted = NewDeleted};
+merge_rev_tree(OldInfo, NewDoc, Client, false) ->
+    NewTree = couch_key_tree:merge(OldInfo#full_doc_info.rev_tree,
+                                   couch_doc:to_path(NewDoc#doc.revs)),
+    case NewTree of
+        {NewTree, new_leaf} when not NewDeleted ->
+            ...; % 创建新分支
+        {NewTree, new_leaf} when NewDeleted ->
+            ...; % 软删除
+    end.
+```
+
+合并结果有四种语义：`new_leaf`（新版本）/ `new_branch`（创建分支）/ `internal_node`（插入中间节点）/ 失败（`_rev` 冲突，返回 409）。
+
+### 26.2 Stem 修剪（revs_limit）
+
+修订树深度有上限（默认 1000，`revs_limit`），超长历史会被修剪。算法在 `couch_key_tree.erl:477-525`：
+
+```erlang
+% src/couch/src/couch_key_tree.erl:477-491
+stem(Trees, Limit) ->
+    try
+        {_, Branches} = lists:foldl(
+            fun(Tree, {Seen, TreeAcc}) ->
+                {NewSeen, NewBranches} = stem_tree(Tree, Limit, Seen),
+                {NewSeen, NewBranches ++ TreeAcc}
+            end,
+            {#{}, []},
+            Trees
+        ),
+        lists:sort(Branches)
+    catch
+        throw:dupe_keys ->
+            repair_tree(Trees, Limit)  % 容错：去重后重试
+    end.
+```
+
+- **剪枝方向**：自顶向下 DFS，每走过一个 leaf，`Limit - 1`；
+- **Seen map**：避免重复节点被剪两次（`repair_tree` 兜底）；
+- **调用链**：`couch_db_updater.erl:497` 的 `maybe_stem_full_doc_info/2` 每次写入后触发；
+- **配置**：`config:get_boolean("couchdb", "stem_interactive_updates", true)` 控制是否对交互式写入修剪（复制路径不修剪，保留全量历史）。
+
+### 26.3 B+Tree 节点类型与分裂
+
+CouchDB 的 B+Tree 是两类型节点设计，见 `src/couch/src/couch_btree.erl:365-368`：
+
+```erlang
+% src/couch/src/couch_btree.erl:365-370
+case NodeType of
+    kp_node ->                 % 内部节点：Key → {Pointer, Reduction}
+        lookup_kpnode(Bt, list_to_tuple(NodeList), 1, Keys, [], Depth);
+    kv_node ->                 % 叶子节点：Key → Value
+        lookup_kvnode(Bt, list_to_tuple(NodeList), 1, Keys, [], Depth)
+end
+```
+
+- **kp_node**（key-pointer）：内部节点；`[{K, {Pointer, Reduction}}]`；
+- **kv_node**（key-value）：叶子节点；`[{K, Value}]`；
+- **Reduction 缓存**：每个内部节点存孩子子树的 reduce 结果，实现 O(log n) range aggregate（`reduce_node/3` 见 `couch_btree.erl:523-528`，分别对 kp_node 调用 `R(rereduce, ...)`、对 kv_node 调用 `R(reduce, ...)`）。
+
+节点**切分阈值** `?DEFAULT_CHUNK_SIZE = 1279`（字节数，`couch_btree.erl:24`），由 `chunkify/1` 控制：
+
+```erlang
+% src/couch/src/couch_btree.erl:449-477（核心循环）
+chunkify([InElement | RestInList], ChunkThreshold, OutList, OutListSize, OutputChunks) ->
+    case ?term_size(InElement) of
+        Size when (Size + OutListSize) > ChunkThreshold andalso OutList /= [] ->
+            chunkify(RestInList, ChunkThreshold, [], 0,
+                     [lists:reverse([InElement | OutList]) | OutputChunks]);
+        Size ->
+            chunkify(RestInList, ChunkThreshold,
+                     [InElement | OutList], OutListSize + Size, OutputChunks)
+    end.
+```
+
+每次写节点都按 1279B 自动切块（chunk），这就是 brief 提到的 **chunk/stem/node** 的 chunk 概念——并非四级树结构，而是**节点按字节切片 + stem 修剪 + 内部/叶子两型**。
+
+### 26.4 文件级原子提交（commit_data）
+
+CouchDB 的"事务"边界是**整个数据库文件**（不是页级），实现见 `couch_bt_engine.erl:557-576`：
+
+```erlang
+% src/couch/src/couch_bt_engine.erl:557-576
+commit_data(St) ->
+    #st{fd = Fd, header = OldHeader, needs_commit = NeedsCommit} = St,
+    NewHeader = update_header(St, OldHeader),
+    case NewHeader /= OldHeader orelse NeedsCommit of
+        true ->
+            ok = couch_file:write_header(Fd, NewHeader, [sync]),  % 头 fsync
+            couch_stats:increment_counter([couchdb, commits]),
+            {ok, St#st{header = NewHeader, needs_commit = false}};
+        false ->
+            {ok, St}
+    end.
+```
+
+- **append-only 写**：新 kv_node / kp_node 追加到文件末尾，由 `couch_file:append_terms/3` 写入；
+- **头覆盖**：每次提交**覆盖文件头**（`update_seq` 等元信息），头是热路径所以 `couch_file.erl` 会单独缓冲；
+- **fsync 协议**：先 `write_header(Fd, NewHeader, [sync])` 同步刷头，再由 `couch_file.erl` 异步刷数据——崩溃恢复时根据头是否包含某 update_seq 决定重做 / 跳过；
+- **Commit 触发点**：所有写入路径（`update_docs_int/4` 见 `couch_db_updater.erl:737`、`set_security/2`、`set_revs_limit/2` 等）最后都调 `commit_data/1`。
+
+### 26.5 复杂度
+
+| 操作 | 复杂度 | 备注 |
+| --- | --- | --- |
+| `couch_key_tree:find_missing/2` | O(n × m)，n = 修订树分支数、m = 待查 keys（已排序） | 见 `couch_key_tree.erl:211-231`（`splitwith` + 递归） |
+| `couch_key_tree:merge/2` | O(d²)，d = 树深度 | 见 `couch_db_updater.erl:87-208` 的 `merge_at` |
+| `couch_btree:lookup/2` | O(log n) | 二分查找节点 → chunk 内二分 |
+| `couch_btree:fold_reduce/4` | O(log n + k)，k = 命中行数 | 内部节点 reduction 缓存跳过子树 |
+| `commit_data/1` | O(1)（仅头写） + fsync 延迟 | 实际吞吐被 fsync 主导 |
+
+### 26.6 源码路径
+
+- `src/couch/src/couch_key_tree.erl` (588 行) — 修订树所有操作（`find_missing`、`merge`、`stem`、`remove_leafs`、`count_leafs`、`get_key_leafs`、`get_all_leafs`）；
+- `src/couch/src/couch_btree.erl` (1324) — B+Tree 引擎（`query_modify`、`add_remove`、`fold_reduce`、`final_reduce`、`chunkify`）；
+- `src/couch/src/couch_bt_engine.erl` (1266) — 引擎抽象层，`commit_data/1` 在 557 行，`update_header/2` 在 568 行附近；
+- `src/couch/src/couch_db_updater.erl:469-536` — `merge_rev_trees/3` 批量合并循环，:538-636 — `merge_rev_tree/4` 单文档合并；
+- `src/couch/src/couch_bt_engine.hrl` (28 行) — `#st{}` 状态记录（含 `id_tree` / `seq_tree` / `local_tree` 等多个 B+Tree）；
+- `src/couch/src/couch_file.erl` (1068) — append-only 文件 + 头缓存（`write_header/3`、`append_terms/3`、`pread_term/2`）。
+
+## 二十七、MapReduce 视图与并发管道
+
+CouchDB 的视图系统由 `couch_mrview` 应用实现，核心思想：**预计算**（增量更新）+ **B+Tree 索引**（按 `<key, docid>` 排序）+ **并发管道**（Map 与 Write 解耦）。
+
+### 27.1 三角色并发管道
+
+视图更新的主流程在 `src/couch_mrview/src/couch_mrview_updater.erl:22-70` 的 `start_update/4`：
+
+```erlang
+% src/couch_mrview/src/couch_mrview_updater.erl:38-68（节选）
+MapFun = fun() ->
+    erlang:put(io_priority, {view_update, State#mrst.db_name, State#mrst.idx_name}),
+    Progress = case NumChanges of 0 -> 0; _ -> (NumChangesDone * 100) div NumChanges end,
+    couch_task_status:add_task([...]),
+    couch_task_status:set_update_frequency(500),
+    map_docs(Self, InitState)               % 角色 1：Map 进程
+end,
+WriteFun = fun() ->
+    erlang:put(io_priority, {view_update, State#mrst.db_name, State#mrst.idx_name}),
+    write_results(Self, InitState)           % 角色 2：Write 进程
+end,
+spawn_link(MapFun),
+spawn_link(WriteFun),
+{ok, InitState}.
+```
+
+- **Map 进程**（`map_docs/2` 见 `couch_mrview_updater.erl:152-184`）：从 `doc_queue` 取批，对每个非 deleted 文档调 `couch_query_servers:map_doc_raw/2`（QuickJS / Spidermonkey 执行用户 Map 函数），结果扔进 `write_queue`；
+- **Write 进程**（`write_results/2` 见 `couch_mrview_updater.erl:186-199`）：从 `write_queue` 拉批，调 `couch_btree:add_remove/3` 写入 view 的 B+Tree；
+- **协调者**（caller）：持有 `State#mrst`，通过 `receive {new_state, NewState}` 拿到最终状态。
+
+**吞吐优化**：两个 work queue 都按 `max_size + max_items` 双阈值限流（默认 10MB / 500 项，见 `couch_mrview_updater.erl:22-25`）。
+
+### 27.2 Map → Write 数据流
+
+```erlang
+% src/couch_mrview/src/couch_mrview_updater.erl:237-258
+merge_results({DocId, []}, ViewKVs, DocIdKeys) ->
+    {ViewKVs, [{DocId, []} | DocIdKeys]};
+merge_results({DocId, RawResults}, ViewKVs, DocIdKeys) ->
+    JsonResults = couch_query_servers:raw_to_ejson(RawResults),
+    Results = [[list_to_tuple(Res) || Res <- FunRs] || FunRs <- JsonResults],
+    case lists:flatten(Results) of
+        [] -> {ViewKVs, [{DocId, []} | DocIdKeys]};
+        _  ->
+            {ViewKVs1, ViewIdKeys} = insert_results(DocId, Results, ViewKVs, [], []),
+            {ViewKVs1, [ViewIdKeys | DocIdKeys]}
+    end.
+```
+
+`insert_results/5`（`couch_mrview_updater.erl:259-278`）做同一文档同一视图多 key 的去重：
+
+```erlang
+% src/couch_mrview/src/couch_mrview_updater.erl:262-269
+CombineDupesFun = fun
+    ({Key, Val}, {[{Key, {dups, Vals}} | Rest], IdKeys}) ->
+        {[{Key, {dups, [Val | Vals]}} | Rest], IdKeys};
+    ({Key, Val1}, {[{Key, Val2} | Rest], IdKeys}) ->
+        {[{Key, {dups, [Val1, Val2]}} | Rest], IdKeys};
+    ({Key, Value}, {Rest, IdKeys}) ->
+        {[{Key, Value} | Rest], [{Id, Key} | IdKeys]}
+end,
+```
+
+Map 函数 `emit(K, V)` 一次 → B+Tree 一行 `(K, DocId) → V`；同一文档同一 Key 多次 emit → 折叠为 `{dups, [V1, V2, ...]}`，reduce 阶段按 `rereduce` 合并。
+
+### 27.3 二阶段 Reduce
+
+Reduce 是 B+Tree 节点级的**聚合**操作，分两阶段执行：
+
+```erlang
+% src/couch/src/couch_btree.erl:102-112
+final_reduce(#btree{reduce = Reduce}, Val) ->
+    final_reduce(Reduce, Val);
+final_reduce(Reduce, {[], []}) ->
+    Reduce(reduce, []);
+final_reduce(_Bt, {[], [Red]}) ->
+    Red;
+final_reduce(Reduce, {[], Reductions}) ->
+    Reduce(rereduce, Reductions);
+final_reduce(Reduce, {KVs, Reductions}) ->
+    Red = Reduce(reduce, KVs),
+    final_reduce(Reduce, {[], [Red | Reductions]}).
+```
+
+- **第一阶段（reduce）**：叶子节点内的所有 (K, V) → 单值；
+- **第二阶段（rereduce）**：子节点的 reduce 结果列表 → 单值；
+- **递归终止**：当只剩一个 reduction 时直接返回，跳过第三次调用。
+
+每层内部节点缓存 reduction（`reduce_node/3`，`couch_btree.erl:523-528`），查询时无需下沉到叶子即可返回 group / range reduce——这就是视图查询 `reduce=true&group_level=N` 的 O(log n + k) 来源。
+
+### 27.4 批处理与流控
+
+`process_doc/3`（`couch_mrview_updater.erl:122-130`）按 100 个文档一攒批发送：
+
+```erlang
+% src/couch_mrview/src/couch_mrview_updater.erl:122-130
+process_doc(Doc, Seq, #mrst{doc_acc = Acc} = State) when length(Acc) > 100 ->
+    couch_work_queue:queue(State#mrst.doc_queue, lists:reverse(Acc)),
+    process_doc(Doc, Seq, State#mrst{doc_acc = []});
+process_doc(#doc{id = Id, deleted = true}, Seq, #mrst{doc_acc = Acc} = State) ->
+    {ok, State#mrst{doc_acc = [{Id, Seq, deleted} | Acc]}};
+process_doc(#doc{id = Id} = Doc, Seq, #mrst{doc_acc = Acc} = State) ->
+    {ok, State#mrst{doc_acc = [{Id, Seq, Doc} | Acc]}}.
+```
+
+`accumulate_more/2`（`couch_mrview_updater.erl:230-235`）控制 Write 端的 flush 节奏：
+
+```erlang
+% src/couch_mrview/src/couch_mrview_updater.erl:230-235
+accumulate_more(NumDocIds, Acc) ->
+    MinItems = config:get_integer("view_updater", "min_writer_items", 100),
+    MinSize  = config:get_integer("view_updater", "min_writer_size",  16777216),  % 16MB
+    CurrMem  = ?term_size(Acc),
+    NumDocIds < MinItems andalso CurrMem < MinSize.
+```
+
+Write 端不到 100 项 / 16MB 就继续攒批，避免过小的 B+Tree modify。
+
+### 27.5 复杂度
+
+| 操作 | 复杂度 | 备注 |
+| --- | --- | --- |
+| 单文档 Map | O(m)，m = emit 行数 | 用户 JS 函数时间 |
+| 视图增量更新 | O(N × m)，N = 增量文档数 | 每文档 m 次 emit |
+| 视图全量重建 | O(M × m)，M = 总文档数 | `first_build=true` 时 |
+| 视图查询（reduce） | O(log n + k)，k = 输出行 | 利用内部节点 reduction 缓存 |
+| 视图查询（不 reduce） | O(log n + k) | 标准 B+Tree 范围扫描 |
+| `_view` group | O(log n + g)，g = 分组数 | group_level 控制聚合深度 |
+
+### 27.6 源码路径
+
+- `src/couch_mrview/src/couch_mrview_updater.erl` (382) — Map/Write 并发管道；
+- `src/couch_mrview/src/couch_mrview_index.erl` (388) — view indexer 生命周期（`init/2`、`start_update/4`、`process_doc/3`、`finish_update/1`、`commit/1`）；
+- `src/couch_mrview/src/couch_mrview.erl` (807) — view 查询入口（`query_view/3,4,6`、`get_view_index_pid/4`、`validate/2`）；
+- `src/couch_mrview/src/couch_mrview_util.erl` (1403) — view group 状态初始化（`init_state/4`、`ddoc_to_mrst/2`、`make_header/1`）；
+- `src/couch_mrview/src/couch_mrview_compactor.erl` (322) — view compaction（`compact/3`、`swap_compacted/2`）；
+- `src/couch_mrview/src/couch_mrview_update_notifier.erl` (43) — 数据库更新订阅 → 触发 view 增量刷新；
+- `src/couch_mrview/include/couch_mrview.hrl` — `#mrst{}` 视图组状态记录与 `#mrview{}` 单视图记录。
+
+## 二十八、Erlang/OTP 并发模型与差量同步
+
+CouchDB 充分利用 Erlang/OTP 的**进程模型 + 消息传递 + gen_server 模式**实现并发与一致性。本节拆解三个最关键的并发原语：**串行化更新器**、**`_changes` 推送**、**`_revs_diff` 差量同步**。
+
+### 28.1 串行化更新器（`couch_db_updater`）
+
+每个数据库对应一个 **gen_server 进程**——这是 CouchDB 实现 MVCC 单写者语义的物理基础。定义在 `couch_db.erl:168-170`：
+
+```erlang
+% src/couch/src/couch_db.erl:168-170
+start_link(Engine, DbName, Filepath, Options) ->
+    Arg = {Engine, DbName, Filepath, Options},
+    proc_lib:start_link(couch_db_updater, init, [Arg]).
+```
+
+启动后进入 gen_server enter_loop（`couch_db_updater.erl:34-57`）：
+
+```erlang
+% src/couch/src/couch_db_updater.erl:34-53
+init({Engine, DbName, FilePath, Options0}) ->
+    erlang:put(io_priority, {db_update, DbName}),
+    ...
+    NewDb = Db#db{main_pid = self()},
+    proc_lib:init_ack({ok, NewDb}),
+    GenOpts = couch_util:hibernate_after(?MODULE),
+    gen_server:enter_loop(?MODULE, GenOpts, NewDb).
+```
+
+- **单写者**：所有 `PUT /db/<id>` / `POST /db/_bulk_docs` 都通过 `gen_server:call` 或 `cast` 进入此进程的消息队列；
+- **顺序处理**：Erlang 调度器保证同一进程的消息按到达顺序处理；
+- **hibernate**：空闲 1s 后自动 `hibernate`，降低内存占用。
+
+### 28.2 Group Commit（写入批合并）
+
+`couch_db_updater` 在处理一条 `update_docs` 消息时，会**非阻塞地**继续吸收后续消息，合并为一次 commit。实现见 `couch_db_updater.erl:275-296`：
+
+```erlang
+% src/couch/src/couch_db_updater.erl:275-296
+collect_updates(GroupedDocsAcc, ClientsAcc, ReplicatedChanges) ->
+    receive
+        {update_docs, Client, GroupedDocs, [], ReplicatedChanges} ->
+            case ReplicatedChanges of
+                true  -> couch_stats:increment_counter([couchdb, coalesced_updates, replicated]);
+                false -> couch_stats:increment_counter([couchdb, coalesced_updates, interactive])
+            end,
+            GroupedDocs2 = sort_and_tag_grouped_docs(Client, GroupedDocs),
+            GroupedDocsAcc2 = merge_updates(GroupedDocsAcc, GroupedDocs2),
+            collect_updates(GroupedDocsAcc2, [Client | ClientsAcc], ReplicatedChanges)
+    after 0 ->
+        {GroupedDocsAcc, ClientsAcc}
+    end.
+```
+
+伪代码：
+
+```
+ON receive update_docs(Client, GroupedDocs, [], ReplicatedChanges):
+    WHILE mailbox has another {update_docs, C', G', [], ReplicatedChanges}:
+        Stats += coalesced_updates
+        GroupedDocsAcc  = merge_updates(GroupedDocsAcc, G')   // 按 docid 合并
+        ClientsAcc      = [C' | ClientsAcc]
+    AFTER 0ms timeout, drain stops    // 不阻塞，立即返回
+
+ON drain return:
+    {ok, NewDb} = update_docs_int(Db, GroupedDocsAcc, ..., ReplicatedChanges)
+    couch_event:notify(NewDb#db.name, updated)   // 触发 _changes 推送
+    foreach Client in ClientsAcc: Client ! {done, self()}
+```
+
+效果：**N 条并发写入共享一次 fsync**，吞吐量提升 5~10×（受限于 fsync 延迟）。`merge_updates/2`（`couch_db_updater.erl:270-273`）按文档 ID 做线性合并：
+
+```erlang
+% src/couch/src/couch_db_updater.erl:270-273
+merge_updates([], RestB) -> RestB;
+merge_updates(RestA, []) -> RestA.
+merge_updates([#doc{id = A} = DocA | RestA], [#doc{id = B} = DocB | RestB]) when A =< B ->
+    if A == B -> [DocA, DocB | merge_updates(RestA, RestB)];
+       true   -> [DocA | merge_updates(RestA, [DocB | RestB])]
+    end;
+merge_updates([#doc{id = A} = DocA | RestA], [#doc{id = B} = _DocB | _] = RestB) when A > B ->
+    [DocA | merge_updates(RestA, RestB)].
+```
+
+### 28.3 `_changes` seqno 语义
+
+`update_seq` 是 CouchDB 的逻辑时钟，每次 commit 递增（`couch_db_updater.erl:522-533`，`update_seq = Acc#merge_acc.cur_seq + 1`）。`src/couch/src/couch_changes.erl:73-82` 给出起始 seq 的解析：
+
+```erlang
+% src/couch/src/couch_changes.erl:73-82
+Start = fun() ->
+    {ok, Db} = couch_db:reopen(Db0),
+    StartSeq =
+        case Dir of
+            rev -> couch_db:get_update_seq(Db);    % 反向：从当前最新开始
+            fwd -> Since                              % 正向：从 since 参数开始
+        end,
+    {Db, StartSeq}
+end,
+```
+
+- **`since=<seq>`**（fwd 模式）：从该 seq 之后开始（不包含）；
+- **`since=now`**：等价于当前 `update_seq`（订阅模式典型用法）；
+- **`since=0`**：从数据库诞生开始；
+- **dir=rev**：反向流，从最新 seq 倒序；
+- **seq 来源**：`couch_db:get_update_seq/1`（`couch_db.erl:567-568`）从引擎状态读 `St#st.update_seq`。
+
+事件触发由 `couch_db_updater.erl:194-200` 完成：
+
+```erlang
+% src/couch/src/couch_db_updater.erl:194-200
+case {couch_db:get_update_seq(Db), couch_db:get_update_seq(Db2)} of
+    {Seq, Seq} -> ok;
+    _ -> couch_event:notify(Db2#db.name, updated)
+end,
+if LocalDocs2 /= [] ->
+    couch_event:notify(Db2#db.name, local_updated);
+   true -> ok
+end,
+```
+
+`couch_event:notify/2` 是**带 name 的 pub/sub**，所有通过 `couch_event:link_listener/3` 注册的 `_changes` 客户端进程都会被唤醒并消费新事件（见 `couch_changes.erl:69-71` 的 `StartListenerFun`）。
+
+### 28.4 `_revs_diff` 差量同步
+
+复制器用 `_revs_diff` 协议做差量推送：源端告知目标端"我有哪些 `_rev`"，目标端返回"我缺哪些 + 共同的祖先"。**目标端**实现在 `src/couch/src/couch_db.erl:387-400`：
+
+```erlang
+% src/couch/src/couch_db.erl:387-400
+get_missing_revs(Db, IdRevsList) ->
+    FDIs = get_full_doc_infos(Db, [Id || {Id, _Revs} <- IdRevsList]),
+    Results = lists:zipwith(
+        fun
+            ({Id, Revs}, #full_doc_info{rev_tree = RevTree} = FDI) ->
+                MissingRevs = couch_key_tree:find_missing(RevTree, Revs),
+                {Id, MissingRevs, possible_ancestors(FDI, MissingRevs)};
+            ({Id, Revs}, not_found) ->
+                {Id, Revs, []}
+        end,
+        IdRevsList,
+        FDIs
+    ),
+    {ok, Results}.
+```
+
+`couch_key_tree:find_missing/2`（`couch_key_tree.erl:211-231`）通过**树的剪枝遍历**回答"哪些 key 不在树里"：
+
+```erlang
+% src/couch/src/couch_key_tree.erl:211-231
+find_missing(Tree, SearchKeys) ->
+    find_missing_sorted(Tree, lists:sort(SearchKeys)).
+
+find_missing_sorted(_Tree, []) -> [];
+find_missing_sorted([], SearchKeys) -> SearchKeys;
+find_missing_sorted([{Start, {Key, Value, SubTree}} | RestTree], SearchKeys) ->
+    {Impossible, Possible} = lists:splitwith(fun({K, _}) -> K < Start end, SearchKeys),
+    Missing = find_missing_simple(Start, [{Key, Value, SubTree}], Possible),
+    find_missing_sorted(RestTree, Impossible ++ Missing).
+```
+
+- **SearchKeys 必须已排序**（`lists:sort`）；
+- **splitwith**：把"不可能在本子树"（key < Start）和"可能在本子树"分离；
+- **find_missing_simple**：在单个子树中递归查找——能命中就跳过，否则加入 Missing；
+- **possible_ancestors**：从 revtree 中找出可能为祖先的 revision 列表（用于断网恢复时的冲突修复）。
+
+**复制端**发起请求在 `src/couch_replicator/src/couch_replicator_api_wrap.erl:172-199`：
+
+```erlang
+% src/couch_replicator/src/couch_replicator_api_wrap.erl:172-199
+get_missing_revs(#httpdb{} = Db, IdRevs) ->
+    JsonBody = {[{Id, couch_doc:revs_to_strs(Revs)} || {Id, Revs} <- IdRevs]},
+    RawBody = ?JSON_ENCODE(JsonBody),
+    ...
+    send_req(Db, [{method, post}, {path, "_revs_diff"}, ...],
+        fun
+            (200, _, {Props}) ->
+                ConvertToNativeFun = fun({Id, {Result}}) ->
+                    MissingRevs = couch_doc:parse_revs(get_value(<<"missing">>, Result)),
+                    PossibleAncestors = couch_doc:parse_revs(get_value(<<"possible_ancestors">>, Result, [])),
+                    {Id, MissingRevs, PossibleAncestors}
+                end,
+                {ok, lists:map(ConvertToNativeFun, Props)};
+            (ErrCode, _, ErrMsg) ->
+                {error, {revs_diff_failed, ErrCode, ErrMsg}}
+        end
+    ).
+```
+
+完整复制流程见 `src/couch_replicator/src/couch_replicator_worker.erl:381` 的 `attempt_revs_diff/2`——根据 `_revs_diff` 成功率动态调整 bulk_get vs `_revs_diff` 的策略（`update_revs_diff_ratio/4` 见 400 行）。
+
+### 28.5 复杂度
+
+| 操作 | 复杂度 | 备注 |
+| --- | --- | --- |
+| 单文档写入 | O(d²)，d = 修订树深度 | `merge_rev_tree` + stem |
+| Group commit 合并 | O(k × n)，k = 合并条数、n = 文档数 | `after 0` 非阻塞 drain |
+| `_changes` 推送 | O(1)/事件 | 事件总线 pub/sub |
+| `find_missing` 差量 | O(m × log k)，m = 待查 keys、k = 树分支数 | sort + splitwith |
+| 复制 `_revs_diff` | O(1) HTTP + 服务端 O(m × log k) | POST + JSON |
+
+### 28.6 源码路径
+
+- `src/couch/src/couch_db_updater.erl` (1015) — gen_server 主循环：`init/1`(34)、`handle_call/3`(64-130)、`handle_cast/2`(138-167)、`handle_info/2`(174-240)、`collect_updates/3`(275-296)、`update_docs_int/4`(650-737)、`commit_data/1`(908-912)；
+- `src/couch/src/couch_db.erl` (2525) — 数据库 API 门面：`get_missing_revs/2`(387)、`get_update_seq/1`(567)、`start_link/4`(168)、`time_seq_since/2`(584)；
+- `src/couch/src/couch_changes.erl` (821) — `_changes` 实现：`handle_db_changes/3`(57-)、`build_acc/8` 构造累加器、`send_changes/4`、`keep_sending_changes/3`(596-)、`wait_updated/3`(621)；
+- `src/couch/src/couch_key_tree.erl` (588) — `find_missing/2`(211)、`find_missing_sorted/2`(214)、`find_missing_simple/3`(223)、`merge_at/3`(128)、`stem/2`(477)；
+- `src/couch_replicator/src/couch_replicator_api_wrap.erl` — `get_missing_revs/2`(172-199)、`bulk_get/3`(201-)；
+- `src/couch_replicator/src/couch_replicator_worker.erl` — `attempt_revs_diff/2`(381)、`update_revs_diff_ratio/4`(400)、`handle_info(revs_diff_failed,...)`(235)、revs_diff 决策循环(670-707)；
+- `src/couch_replicator/src/couch_replicator_changes_reader.erl` — `_changes` 拉取端（流式 reader）；
+- `src/couch_replicator/src/couch_replicator_doc_processor.erl` — 文档处理（去重 / conflict resolve）；
+- `src/chttpd/src/chttpd_db.erl:26` — HTTP `handle_changes_req/2` 入口；:446-489 — `_missing_revs` / `_revs_diff` HTTP 路由；
+- `src/couch/src/couch_event.erl` + `src/couch_event_sup.erl` — pub/sub 事件总线（`notify/2`、`link_listener/3`）；
+- `src/couch/src/couch_work_queue.erl` — 视图 / 复制管道使用的有界 work queue（`max_size` + `max_items` 双阈值）。
+
+## 二十九、参考资料
 
 1. **CouchDB 官方仓库**：[github.com/apache/couchdb](https://github.com/apache/couchdb)；
 2. **CouchDB 官方文档**：[docs.couchdb.org](https://docs.couchdb.org/en/stable/)；
