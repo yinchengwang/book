@@ -875,7 +875,507 @@ try {
 - **聚合管道**（`src/mongo/db/pipeline/`）是文档数据库的"杀手锏"，`engineering/` 目前没有等价实现；
 - **测试模式**：MongoDB 的 `jstests`（JavaScript 集成测试）+ `Resmoke` 框架值得借鉴到 `engineering/test/`。
 
-## 二十六、参考资料
+## 二十六、BSON 编码与 BSONObj 零拷贝视图
+
+BSON（Binary JSON）是 MongoDB 的物理存储格式，也是 Wire Protocol / oplog / 索引键的统一载体。本节拆解 **字段布局 + 类型系统 + 零拷贝视图** 三层。
+
+### 26.1 BSON 文档字节布局
+
+BSON **不是自描述的 JSON**，而是**前向遍历**的二进制流。整个文档的字节图如下（摘录自 `BSONObj` 头注释）：
+
+```
+<bsonobj.h> // reference/document/mongodb/src/mongo/bson/bsonobj.h:74-100
+
+ BSON object format:
+ code
+ <unsigned totalSize> {<byte BSONType><cstring FieldName><Data>}* EOO
+
+ totalSize includes itself.
+
+ Data:
+ Bool:      <byte>
+ EOO:       nothing follows
+ Undefined: nothing follows
+ OID:       an OID object
+ NumberDouble: <double>
+ NumberInt:    <int32>
+ NumberDecimal:<dec128>
+ String:    <unsigned32 strsizewithnull><cstring>
+ Date:      <8bytes>
+```
+
+**伪代码：BSON 字节流解析（按 `BSONObj` 头规范）**
+
+```
+function BSONObj_Parse(buf):
+    totalSize = LE_U32(buf[0:4])
+    cur = 4
+    while buf[cur] != 0x00 (EOO marker):
+        type_byte = buf[cur]
+        cur += 1
+        field_name = read_cstring(buf, &cur)        // null-terminated UTF-8
+        element = decode_element(type_byte, buf, &cur)
+        yield (field_name, element)
+    assert cur == totalSize                         // 多余字节是 corrupt buffer
+```
+
+**关键不变式**（验证自 `bsonobj.h:126` / `bson_validate.cpp`）：
+
+- 最小对象为空文档 `{"": 5 bytes}` —— `kMinBSONLength = 5`（4 字节 totalSize + 1 字节 EOO）；空文档 `isEmpty()` 的判定即 `objsize() <= 5`（`bsonobj.h:474-506`）。
+- 单文档 totalSize 上限 16 MiB（`BSONObjMaxSize` / `BSONObjMaxInternalSize`，由 `BSONObj::DefaultSizeTrait::MaxSize` 提供，`bsonobj.h:105`）。
+- EOO（end-of-object）是**单字节 `0x00`**，**同时**是类型枚举里的 `BSONType::eoo = 0`（`bsontypes.h:48`）；解析循环以 `buf[cur] == 0` 终止。
+
+### 26.2 BSONType 类型系统
+
+完整类型枚举（验证自 `bsontypes.h:44-91`）：
+
+```
+enum class BSONType : int {
+    minKey      = -1,   // 排序时小于所有类型
+    eoo         = 0,    // 字段结束标记
+    numberDouble= 1,
+    string      = 2,
+    object      = 3,    // 嵌套文档
+    array       = 4,    // 同 object 但语义为数组
+    binData     = 5,    // <int len><byte subtype><bytes>
+    undefined   = 6,    // 已废弃
+    oid         = 7,    // 12 字节 ObjectId
+    boolean     = 8,
+    date        = 9,    // <int64 ms since epoch>
+    null        = 10,
+    regEx       = 11,
+    dbRef       = 12,   // 已废弃
+    code        = 13,
+    symbol      = 14,   // 已废弃
+    codeWScope  = 15,
+    numberInt   = 16,
+    timestamp   = 17,   // Two int32（秒 + ordinal）
+    numberLong  = 18,
+    numberDecimal= 19,  // IEEE 754 decimal128
+    jsTypeMax   = 19,
+    maxKey      = 127   // 排序时大于所有类型
+};
+```
+
+**亮点**：
+
+- **编码字节 = 类型枚举值本身**：写入不需要类型码到字符串的二次映射，省一次跳转（`bsonobjbuilder.cpp` 直接 `_b.appendNum((char)BSONType::date)`）。
+- `minKey` / `maxKey` 用于**区间端点的"无穷大"哨兵**（如索引上界、$bucket 边界）。
+- `string` / `symbol` / `code` / `codeWScope` 字段都是同一个字节（2/14/13/15），序列化时统一走 `string` 布局 `<u32 strsizewithnull><bytes>`，仅在解析端区分语义（影响扩展 JSON 输出）。
+- `isNumericBSONType(type)` 集中定义"数值类型"判定（`bsontypes.h:130-140`），优化器据此统一类型提升规则。
+
+**复杂度**：遍历对象为 **O(n) field count**，类型判定 O(1)，比对 (deepEqual) 退化为 O(n) —— 与字段数成线性，对**浅宽文档**友好，对**深嵌套大对象**仍按字段总数走。
+
+### 26.3 BSONObj 的零拷贝视图设计
+
+`BSONObj` 是一个**指针 + 共享所有权**的轻量句柄（`bsonobj.h:102-185`）：
+
+```
+class BSONObj {
+    const char* _objdata;        // 指向 BSON 字节流首地址（4 字节 totalSize 起始）
+    ConstSharedBuffer _ownedBuffer;  // 可选；持有时为可引用计数共享缓冲
+};
+```
+
+**零拷贝语义**（来自 `bsonobj.h:188-217` `isOwned` / `shareOwnershipWith` 注释）：
+
+| 场景 | 数据来源 | `_ownedBuffer` | 行为 |
+| --- | --- | --- | --- |
+| **未持有（unowned）** | 指向父 BSONObj / mmapped record / 网络包 payload | `nullptr` | **零拷贝**，直接 reinterpret 当前 buffer |
+| **已持有（owned）** | `BSONObjBuilder::obj()` 等构造 | `shared_ptr<char[]>` | 引用计数共享；拷贝共享同一份内存 |
+| **子字段（subobject）** | `_objdata` 指向父 BSON 中某段 | 沿用父的 `_ownedBuffer` | 延寿但**不复制** |
+
+**调用约定**（`bsonobj.h:187-211` 注释原文译义）：
+
+> "Most ways to create `BSONObj`s create 'owned' variants. Unowned versions can be created with: (1) specifying true for the `ifree` parameter in the constructor; (2) calling `BSONObjBuilder::done()`. Use `BSONObjBuilder::obj()` to get an **owned copy**; (3) **retrieving a subobject retrieves an unowned pointer into the parent BSON object**."
+
+→ 第三个特性是性能关键：`{a:1, b:{c:2}}` 中访问 `obj["b"]` 不会拷贝 `{c:2}`，仅返回 `BSONObj` 句柄指向父对象的中间偏移。当父 buffer 还在栈上时，子视图天然安全。
+
+**伪代码：读取嵌套字段（与 `BSONObj::getField` 同语义）**
+
+```
+function BSONObj.getField(dotted_path: str) -> BSONElement:
+    if not dotted_path.contains('.'):
+        return linear_search_field(dotted_path)         # O(N) 字段扫描
+    head, _, rest = dotted_path.partition('.')
+    sub = getField(head).embedded_obj()                  # 零拷贝 subobject view
+    return sub.getField(rest)
+
+# 复合索引 hint (`{a.b: 1}`) 时，查询层把路径扁平化后单次线性扫描
+```
+
+**Builder 写入预分配**（`bsonobjbuilder.h:78-101`）：
+
+```
+BSONObjBuilderBase(int initsize = kDefaultSize, ...)
+    : _buf(initsize), _b(_buf) {
+    _b.skip(sizeof(int));    // 留 4 字节占位 totalSize
+    _b.reserveBytes(1);      // EOO 终止符
+}
+```
+
+→ 构造时立即预留 `4 + 1 = 5` 字节（`kMinBSONLength`），`_done()` 时回填 `totalSize` 并写 `0x00`，**整个构建过程不会触发内存扩张**直至超过初始 hint；调用者可以通过 `initsize` 一次性分配，减少 `malloc`。
+
+**append 复用字节**（`bsonobjbuilder.h:152-155`）：
+
+```cpp
+Derived& append(const BSONElement& e) {
+    // do not append eoo, that would corrupt us. the builder auto appends when done() is called.
+    _b.appendBuf((void*)e.rawdata(), e.size());
+    return static_cast<Derived&>(*this);
+}
+```
+
+→ 把一个 `BSONElement` 整体搬到当前 builder，**只 memcpy 不解析**；这意味着 `$addFields: {x: "$y"}` 等管道算子在拼接文档时不必走"读 → 序列化 → 拷贝"开销。
+
+### 26.4 `bson_validate` 的 O(n) 校验
+
+`src/mongo/bson/bson_validate.cpp` 用一遍游走完成 **类型合法 / 大小匹配 / 字段名 UTF-8 合法 / 不允许字段名包含 `$` 顶字段** 等检查，是 BSON 落盘前的最后一道闸。`reference/document/mongodb/src/mongo/bson/bson_validate.h` 暴露两档严格度：`FullVal`（慢）vs `FastVal`（快，跳过 `codeWScope` 的 JS scope 解析）。
+
+源码：
+
+- 字节布局规范：`reference/document/mongodb/src/mongo/bson/bsonobj.h:74-100`
+- 类型枚举：`reference/document/mongodb/src/mongo/bson/bsontypes.h:44-91`
+- 空对象与大小：`reference/document/mongodb/src/mongo/bson/bsonobj.h:126, 474, 498`
+- 共享所有权语义：`reference/document/mongodb/src/mongo/bson/bsonobj.h:188-217`
+- Builder 预分配：`reference/document/mongodb/src/mongo/bson/bsonobjbuilder.h:78-101`
+- 零拷贝 append：`reference/document/mongodb/src/mongo/bson/bsonobjbuilder.h:152-155`
+
+## 二十七、WiredTiger 快照隔离与 checkpoint
+
+MongoDB 4.0+ 的多文档 ACID 事务依赖 WiredTiger 的 **MVCC + `WT_TIMESTAMP`**；本节拆解 MongoDB 如何在 WiredTiger 上层做 **snapshot 分配、committed snapshot 推进、checkpoint 触发与 cache pressure 监控**。
+
+### 27.1 MongoDB 的时间戳模型
+
+MongoDB 在 WiredTiger 上维护两套时间戳：
+
+- **`_committedSnapshot`**：当前 majority commit 后的稳定时间戳，可用于 `readConcern: "majority"` / `"snapshot"` 的事务的读起点（`wiredtiger_snapshot_manager.h:64-66`）。
+- **`_lastApplied`**：Secondary 应用 oplog 推进到的位置，与 commit 之间夹着 oplog 应用延迟（`wiredtiger_snapshot_manager.cpp:36-42`）。
+
+```
+class WiredTigerSnapshotManager final : public SnapshotManager {
+    mutable std::mutex _committedSnapshotMutex;
+    boost::optional<Timestamp> _committedSnapshot;   // <= _lastApplied, 单调递增
+};
+```
+
+`setCommittedSnapshot` 强制**单调不递减**约束（`wiredtiger_snapshot_manager.cpp:29-34`）：
+
+```cpp
+void WiredTigerSnapshotManager::setCommittedSnapshot(const Timestamp& timestamp) {
+    std::lock_guard<std::mutex> lock(_committedSnapshotMutex);
+    invariant(!_committedSnapshot || *_committedSnapshot <= timestamp);
+    _committedSnapshot = timestamp;
+}
+```
+
+→ 这是 read concern "majority" 的不变量：**已发出的快照不能回退**，否则会让原本可读的旧版本事务返回 OK 然后后续被覆盖 —— 破坏 snapshot isolation 的"读一致性视图"。
+
+### 27.2 majority 事务的快照建立
+
+当客户端发起 `readConcern: "majority"` 或 `readConcern: "snapshot"` 时，`OperationContext` 通过 `_recoveryUnit` 调到 `WiredTigerSnapshotManager::beginTransactionOnCommittedSnapshot`（`wiredtiger_snapshot_manager.cpp:59-92`）：
+
+**伪代码：majority 快照事务开工**
+
+```
+function beginTransactionOnCommittedSnapshot(session, prepareBehavior):
+    committedSnapshot = _committedSnapshotMutex.lock():
+        if _committedSnapshot == None:
+            throw ReadConcernMajorityNotAvailableYet
+        return _committedSnapshot.value()
+
+    WiredTigerBeginTxnBlock txnOpen(session,
+                                    prepareBehavior,
+                                    roundUpPreparedTimestamps = true,
+                                    RoundUpReadTimestamp::kRound)
+    txnOpen.setReadSnapshot(committedSnapshot)   # 调用 WT_SESSION->begin_transaction(...)
+    fassert(30635, status)
+    txnOpen.done()
+    return committedSnapshot
+```
+
+**关键细节**（`wiredtiger_snapshot_manager.cpp:78-87` 注释原文）：
+
+> "We need to **round up our read timestamp** in case the oldest timestamp has advanced past the committedSnapshot we just read."
+
+→ `RoundUpReadTimestamp::kRound`：如果 WT 内部回收了比我们读到的 committedSnapshot 更早的版本（uncommitted oldest 推进），向上对齐到当前"可见版本"，避免读到已经 eviction 掉的 page 而返回 `WT_NOTFOUND`。
+
+**复杂度**：
+
+- `setCommittedSnapshot` / `getMinSnapshotForNextCommittedRead`：**O(1)** 锁内赋值读取；
+- `beginTransactionOnCommittedSnapshot`：**O(1)** 锁内 + 一次 `WT_SESSION::begin_transaction` 系统调用（事务本身 O(log N) 但在 WT 侧）；
+- `clearCommittedSnapshot`：O(1)（rollback / primary step-down 时调用）。
+
+### 27.3 Checkpoint 与 cache pressure
+
+WiredTiger 的 **checkpoint** 把内存脏页原子写入磁盘并切一个稳定点，MongoDB 在 startup recovery 时从最近一次 checkpoint 开始重放 WAL。
+
+MongoDB 的 checkpoint 触发策略位于 `wiredtiger_kv_engine.cpp`（同级目录下），主要路径：
+
+- **周期性触发**：默认每 60s 一次，由 `storage.wiredTiger.engineConfig.checkpointPeriodSecs` 控制（23.x 后可调）；
+- **脏页阈值**：当脏页占 cache 比例超过 `checkpointSizeMB`（默认 1 GiB 写满即触发）；
+- **oplog 推进**：复制集 primary 在 commit 时会通知 WT 推进 stable timestamp（`wiredtiger_recovery_unit.cpp` 中的 `setStableTimestamp`）；
+- **cache pressure 监控**（**`wiredtiger_cache_pressure_monitor.cpp`**）：当 dirty / used 接近 cache 上限时，**减慢** 写节奏并**优先做 checkpoint** 释放内存。
+
+**伪代码：checkpoint 调度循环（与 `WiredTigerKVEngine::checkpoint` / `_ckptProgressMonitor` 行为同构）**
+
+```
+while server_running:
+    now = clock()
+    elapsed = now - lastCheckpoint
+    if elapsed >= checkpointPeriod:
+        WT_SESSION_CHECKPOINT(session, "force=1, name=hot_backup")   # 强制切
+        lastCheckpoint = now
+        cacheHighpressure = cache_pressure_monitor.sample()
+        if cacheHighpressure.dirty_ratio > 0.5:
+            sleep(write_throttle_ms)                                  # 反压
+
+    if dirty_bytes >= checkpointSizeMB * 1024**2:
+        WT_SESSION_CHECKPOINT(session, "force=1")                     # 提前切
+```
+
+**复杂度**：
+
+- Checkpoint 本身是 O(cache_pages) I/O，由 WT 内部采用 snapshot-isolation + block-skip 优化，对运行事务无锁阻塞。
+- Cache 监控采样频率约 1Hz（`wiredtiger_cache_pressure_monitor.cpp`），单次采样 O(1)。
+
+### 27.4 与第二节"Snapshot Isolation" 的耦合
+
+MongoDB 在 WT 上层搭出 `readConcern: "snapshot"` 的语义，关键约束：
+
+| 维度 | MongoDB 语义 | WiredTiger 承载 |
+| --- | --- | --- |
+| 事务可见 | `_committedSnapshot`（majority commit 后的时间戳） | `WT_SESSION.begin_transaction(read_timestamp=...)` |
+| 写冲突 | primary commit 检查最新数据版本 | WT write-conflict 由 `prepare` 协调，两阶段事务通过 `WT_SESSION.prepare_transaction` |
+| 隔离 | snapshot isolation（不读未提交；同一事务内一致性读） | MVCC + rollback stable |
+| 时钟 | `LogicalClock` + `Timestamp` | `WT_TIMESTAMP` (`timespec` / `uint64_t`) |
+
+源码：
+
+- Snapshot manager 类签名：`reference/document/mongodb/src/mongo/db/storage/wiredtiger/wiredtiger_snapshot_manager.h:25-66`
+- 单调不递减的不变量：`reference/document/mongodb/src/mongo/db/storage/wiredtiger/wiredtiger_snapshot_manager.cpp:29-34`
+- 快照事务开工算法（含 round-up）：`reference/document/mongodb/src/mongo/db/storage/wiredtiger/wiredtiger_snapshot_manager.cpp:59-92`
+- Cache pressure 监控入口：`reference/document/mongodb/src/mongo/db/storage/wiredtiger/wiredtiger_cache_pressure_monitor.{h,cpp}`
+- `wiredtiger_begin_transaction_block.cpp`：`RoundUpReadTimestamp::kRound` 控制位，`reference/document/mongodb/src/mongo/db/storage/wiredtiger/wiredtiger_begin_transaction_block.h`
+
+## 二十八、聚合管道算子与查询计划（multi-planning）
+
+MongoDB 的查询/聚合执行由 **plan_ranking** + **multi-planning + trial-and-error** 决定最优执行计划。本节拆解 **`$group` 的 hash-based 分组 + 多 plan 评分机制 + trial period 公式**。
+
+### 28.1 聚合管道的执行模型
+
+聚合管道每个阶段是一个 `DocumentSource`，在管道 `Pipeline::getSources()` 上以 **pull-based** 流式串联（lazy `getNext()`）：
+
+```
+┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
+│ $match  │ ─▶ │ $group  │ ─▶ │  $sort  │ ─▶ │ $limit  │ ─▶ cursor
+└─────────┘    └─────────┘    └─────────┘    └─────────┘
+   pull()        pull()        pull()         pull()
+```
+
+每个 `DocumentSource::getNext()` 实现都不必看整张表，**边读边算**（Volcano 模型）。已在 §八详述的 `$match` 下推、`$project` 后置等优化由 `pipeline::optimizePipeline` 在执行前完成。
+
+### 28.2 `$group` 的 hash-based 分组算法
+
+`$group` 的核心数据结构是一个 `Value` 到 `Accumulators[]` 的 **哈希表**（`group_processor_base.h:23`）：
+
+```cpp
+class GroupProcessorBase {
+public:
+    using Accumulators = std::vector<boost::intrusive_ptr<AccumulatorState>>;
+    using GroupsMap = ValueUnorderedMap<Accumulators>;     // <-- hash map
+    ...
+};
+```
+
+`ValueUnorderedMap` 的类型定义（验证自 `reference/document/mongodb/src/mongo/db/exec/document_value/value_comparator.h:211-212`）：
+
+```cpp
+template <typename T>
+using ValueUnorderedMap =
+    stdx::unordered_map<Value, T, ValueComparator::Hasher, ValueComparator::EqualTo>;
+```
+
+→ 注意：`Hasher` 和 `EqualTo` 都**自定义**（基于 `ValueComparator`）—— 因为 `Value` 既要按 BSON 字段类型比较（numberLong vs numberDouble 类型提升），又要按字符串规范 collation 比较（locale-aware），**不能直接用 `std::hash<Value>` / `operator==`**。
+
+**`GroupProcessor::add()` 主循环**（`group_processor.cpp:96-112`）：
+
+```cpp
+void GroupProcessor::add(const Value& groupKey, const Document& root) {
+    auto [groupIter, inserted] = findOrCreateGroup(groupKey);   // 哈希定位 / 插入
+
+    const size_t numAccumulators = _accumulatedFields.size();
+    auto& group = groupIter->second;
+    for (size_t i = 0; i < numAccumulators; i++) {
+        if (group[i]->needsInput()) {                            // 累加器未饱
+            accumulate(groupIter, i, computeAccumulatorArg(root, i));
+        }
+    }
+
+    if (shouldSpillWithAttemptToSaveMemory() ||                  // 内存超限
+        shouldSpillOnEveryDuplicateId(inserted)) {               // 主动 spill 测试
+        spill();
+    }
+}
+```
+
+**伪代码：`$group` 算子状态机**
+
+```
+state: GroupsMap{groupKey → [accumulator1, ..., accumulatorN]}
+memory: tracked via MemoryUsageTracker
+
+on each input Document d:
+    key = idExpr.evaluate(d)                                     # 计算 $group _id
+    [it, inserted] = groups.emplace(key, fresh Accumulators)
+    for each accumulator Ai in it->second:
+        if Ai.needsInput():
+            arg = accArgExpr[i].evaluate(d)
+            Ai.process(arg)
+
+    if (trackers above memory limit):
+        spill() to sorter files + free memory
+        (groups 字典在 readyGroups 时通过 sorted-merge 重建)
+
+on EOF / readyGroups():
+    if spilled:
+        merge sorted files into iterator (preserves sort order)
+        for each (key, value) in merged:
+            emit final document
+    else:
+        for each (key, accs) in groups:                        # 字典序取决于 hash
+            emit final document
+
+on reset():
+    clear groups; reset every Accumulator
+```
+
+**复杂度**：
+
+- 单条 `add()`：**O(N_accums + hash_op)**，均摊 O(1) 假设哈希均匀；
+- 数据倾斜（某 groupKey 文档数 >> 其他）退化为 **O(N) per key**——`$group` 内存按"group 数 × 单 group 累加器 footprint"计费；100MB 默认上限（`maxMemoryUsageBytes`）触发 spill。
+- **溢写（spill）**：超内存时把 `_groups` 按 key 排序后写到 disk 上的 `Sorter<Value, Value>` files，然后 K-way 归并回 `sorter::merge<Value, Value>(_sortedFiles, ...)`（`group_processor.cpp:124`）；K ≤ 20（`shouldSpillOnEveryDuplicateId` 限定 `_sortedFiles.size() < 20`）。
+
+### 28.3 `$top` / `$bottom` 的二级 hash 索引
+
+当 `$group` 内部使用 `$top(N)` / `$bottom(N)` 时，同一个 `$group` 阶段内还会再开一层 hash：
+
+```cpp
+// document_source_group.cpp:282-290
+Hasher(const ValueComparator& comparator) : hash(&comparator) {}
+
+size_t operator()(const TopBottomAccKey& key) const {
+    uint64_t h1 = std::hash<AccumulatorN::AccumulatorType>()(key.accType);
+    uint64_t h2 = std::hash<std::string>()(key.sortPattern.serialize({}).toString());
+    uint64_t h3 = static_cast<uint64_t>(hash(key.n));
+    return h1 ^ h2 ^ h3;
+}
+ValueComparator::Hasher hash;
+```
+
+→ `(accType, sortPattern, N)` 三元组才决定一个 hash 桶，**保证同一 sort pattern + 同一 N 的 `$top` 实例共享一个窗口堆**（避免每行单独保留 heap）。
+
+### 28.4 Query planner 的 multi-planning
+
+MongoDB 在 `src/mongo/db/query/plan_ranking/` 下用 **MPPlanRankingStrategy** 触发 explicit multi-planning（验证自 `mp_plan_ranking.cpp:13-41`）：
+
+```cpp
+StatusWith<PlanRankingResult> MPPlanRankingStrategy::rankPlans(PlannerData& pd,
+                                                               RankingContext& rctx) {
+    /**
+     * This is a special plan ranking strategy in that it does not actually rank plans, but
+     * rather returns all enumerated plans. This will result in multi-planning being used
+     * to select a winning plan at runtime.
+     */
+    const auto strategy = rctx.solutions.size() > 1
+                              ? PlanSelectionStrategy::kMultiPlanner
+                              : PlanSelectionStrategy::kSinglePlan;
+    PlanRankingResult out{
+        .solutions = std::move(rctx.solutions),
+        .planSelectionStrategy = strategy,
+    };
+    ...
+}
+```
+
+→ **多 plan 流程**：
+
+1. `plan_enumerator` 用 dynamic programming 枚举所有等价的 `QuerySolution`（IXSCAN / COLLSCAN / 复合索引组合 / $or 拆分）；
+2. `cost_based_plan_ranker` 在 **classic engine** 上尝试 cost 估算，否则交给 MPPlanRankingStrategy；
+3. MPPlanRankingStrategy 把所有候选塞给 multi-planner，multi-planner 在 **trial period** 内给每条 plan 各跑 `maxNumWorksPerPlan` 个 work unit；
+4. trial period 后，按 **返回文档数 ÷ 实际 work 数** 选 best plan。
+
+**Trial Period 公式**（`trial_period_utils.h:33-42`）：
+
+```
+maxNumWorksPerPlan = max(maxWorksParam,
+                        collFraction * |collection|)
+```
+
+其中 `collFraction` 由候选数决定（`getCollFractionPerCandidatePlan`）。默认实践：**总预算按候选 plan 数拆分**，避免 plan 越多 → 总开销爆炸。
+
+**伪代码：multi-planner 评分**
+
+```
+function MultiPlanner::pickBestPlan(solutions):
+    K = solutions.size()
+    collFraction = getCollFractionPerCandidatePlan(query, K)
+    worksPer = max(maxWorksParam, collFraction * collection.estimatedCount())
+    for s in solutions:
+        s.runTrial(worksPer)                           # 跑 worksPer 个 work 单元
+        stats[s] = (returned_docs, nReturned / works)
+    best = argmax(stats, key = productivity)            # 产率最高的胜出
+    return best
+```
+
+**Cost-based Plan Ranker（CBR）的代价估算**（`cost_based_plan_ranking.cpp:30-55`）：
+
+```cpp
+CostEstimate estimateCBRCost(const CanonicalQuery& query,
+                             const std::vector<std::unique_ptr<QuerySolution>>& solutions) {
+    const auto& qkc = query.getExpCtx()->getQueryKnobConfiguration();
+    auto sampleSize = ce::SamplingEstimatorImpl::calculateSampleSize(qkc);
+
+    const auto randomSampleInc = makeCostCoefficient(nsec(1400));
+    const auto matchExprInc = makeCostCoefficient(nsec(160));
+    ...
+
+    size_t numPlans = solutions.size();
+    constexpr size_t numNodesPerPlan = 5;
+    constexpr double matchExprChildCount = 2;
+    auto estimationCost =
+        numPlans * numNodesPerPlan * sampleCE * matchExprInc * matchExprChildCount;
+
+    return samplingCost + estimationCost;
+}
+```
+
+→ 估算 CBR 自身代价的公式（CBR 收益 vs 代价），**当估算成本 > CBR 收益时退回 multi-planning**：
+
+```
+CBR_cost = numPlans * 5 * sampleSize * matchExprInc * 2
+        = K * sampleSize * 1.4 µs
+```
+
+**复杂度**：
+
+- `plan_enumerator`：DP 复杂度 `O(2^N)` 候选索引组合，**实际由剪枝（`memo_prune.cpp`）限制到 < 100 个候选**；
+- `cost_based_plan_ranking`：每个 plan 走 **基数采样（sampling CE）** + 简单线性 cost 估算 → 单 plan O(sample_size × expr_count)；
+- `multi-planner.trial`：所有 plan 并发占 CPU，**总耗时** ≈ `worksPer × 一次 work 单元平均时间`（work 单元是 IXSCAN 取一条记录 + 评估 match expr，常数时间）；
+- `ValueUnorderedMap`（`$group` 底层）：**O(1)** 摊销哈希插入，**O(N) on resize / rehash**。
+
+源码：
+
+- `GroupsMap` 类型定义：`reference/document/mongodb/src/mongo/db/pipeline/group_processor_base.h:23`
+- `ValueUnorderedMap` 实现：`reference/document/mongodb/src/mongo/db/exec/document_value/value_comparator.h:211-212`
+- `GroupProcessor::add()` 主循环：`reference/document/mongodb/src/mongo/db/pipeline/group_processor.cpp:96-112`
+- `GroupProcessor::readyGroups()` finalize：`reference/document/mongodb/src/mongo/db/pipeline/group_processor.cpp:114-143`
+- `$top(N)` Hasher：`reference/document/mongodb/src/mongo/db/pipeline/document_source_group.cpp:282-290`
+- MPPlanRankingStrategy（multi-planning 入口）：`reference/document/mongodb/src/mongo/db/query/plan_ranking/mp_plan_ranking.cpp:13-41`
+- CBR 成本估算公式：`reference/document/mongodb/src/mongo/db/query/plan_ranking/cost_based_plan_ranking.cpp:30-55`
+- Trial period 公式：`reference/document/mongodb/src/mongo/db/exec/trial_period_utils.h:33-42`
+
+## 二十九、参考资料
 
 1. **MongoDB 官方仓库**：[github.com/mongodb/mongo](https://github.com/mongodb/mongo)；
 2. **MongoDB 官方文档**：[mongodb.com/docs](https://www.mongodb.com/docs/)；
