@@ -492,7 +492,375 @@ FerretDB **自身不实现复制**——所有 HA/复制逻辑继承自 PostgreS
 - 学习 FerretDB 的 `genwrap` 模式（`internal/documentdb/genwrap/genwrap.go`）：从底层 schema 反射生成高层 API，可应用到 `engineering/src/db/` 的代码生成；
 - 测试模式：`integration/` 9 类分目录与 `engineering/test/` 的 gtest 风格可对比学习。
 
-## 二十六、参考资料
+## 二十六、MongoDB Wire Protocol 的帧解析与命令分发链路
+
+本节细化 §六 架构图中"帧解码 → `middleware.RequestWire` → `middleware.Middleware.Handle`"这条路径的内部算法。
+
+### 26.1 连接级请求循环与帧边界
+
+每条 TCP 连接由一个 goroutine 独占处理。`run`（`internal/clientconn/conn.go:56`）外层套一个 `defer recover()`（`conn.go:60-68`），内层是无终止条件的循环，反复调用 `processRequest`（`conn.go:113-117`）：
+
+```
+func (c *conn) run(ctx) error:
+    ci := conninfo.New()
+    ctx, cancel := context.WithCancelCause(conninfo.Ctx(ctx, ci))
+    defer recover() -> cancel(...); ci.Close()          // conn.go:60-68
+
+    go func() { <-ctx.Done(); c.netConn.SetDeadline(time.Unix(0, 0)) }()   // conn.go:78-83
+    bufr := bufio.NewReader(c.netConn)                  // conn.go:85
+    bufw := bufio.NewWriter(c.netConn)                  // conn.go:111
+    for {
+        if err := c.processRequest(ctx, bufr, bufw); err != nil { return err }
+    }
+```
+
+两个设计点值得注意：
+
+1. **取消靠 deadline 而不是 close**。辅助 goroutine（`conn.go:82`）只把读 deadline 设成 Unix 纪元，任何非零 past 值都会让阻塞中的 `ReadMessage` 立刻返回超时错误；真正关闭 socket 交给上层 `listener`。源码注释（`conn.go:81`）写明这样能"unblock ReadMessage"。
+2. **`processRequest` 永不返回可恢复错误**。`conn.go:120-122` 的注释明确写着 "Any error returned indicates the connection should be closed."。协议错误（帧损坏、未知 OpCode、body 无法解码）没有"回错误帧后继续服务"的路径——因为 wire protocol 的 `requestID`/`responseTo` 配对一旦错乱就无法自愈。
+
+`processRequest`（`conn.go:123-148`）本体只有 5 步：
+
+```
+reqHeader, reqBody, err := wire.ReadMessage(bufr)            // conn.go:124  读一帧
+req, err := middleware.RequestWire(reqHeader, reqBody)       // conn.go:129  帧 -> Request
+resp := c.m.Handle(ctx, req)                                 // conn.go:134  分发（可能返回 nil）
+if resp == nil { return lazyerrors.New(...) }                // conn.go:135-137
+wire.WriteMessage(bufw, resp.WireHeader(), resp.WireBody())  // conn.go:139  回帧
+bufw.Flush()                                                 // conn.go:143
+```
+
+复杂度上，单帧处理是 **O(|frame|)**（一次线性读 + 一次 BSON 解析 + 一次线性写），与集合规模无关；整条连接的累计代价是各帧代价之和。读写各自套了一层 `bufio`（`conn.go:85` / `conn.go:111`），把每帧一次系统调用摊薄成每 4KB 一次。
+
+**帧长恒等式**（`internal/handler/middleware/request.go:98`）：
+
+```
+messageLength = wire.MsgHeaderLen + body.Size()
+```
+
+需要注意 `wire.MsgHeaderLen` / `OpMsg` / `Section0()` 都定义在**外部模块** `github.com/FerretDB/wire v0.1.7`（`go.mod:12`）而非本仓库，因此本仓库只消费帧、不定义帧。若 `flagBits` 的 `checksumPresent` 位（bit 0）置位，body 尾部还会追加 4 字节 CRC32C 并计入 `messageLength`——该规则来自 MongoDB wire protocol 规范（见 §十八），由 `wire` 模块实现，本仓库不可见。
+
+测试模式下（`conn.go:88-109`）还会用 `io.TeeReader(c.netConn, io.MultiWriter(f, h))`（`conn.go:107`）把原始字节流同时写到临时文件并计算 SHA-256，连接正常关闭后按哈希重命名成 `test-records/<hash 前 2 位>/<hash>.bin`，从而得到可重放的协议样本。
+
+### 26.2 OP_MSG 与 OP_QUERY 的 section 抽取
+
+`RequestWire`（`request.go:46-83`）做的是一次"帧类型 ↔ OpCode"双向一致性校验，拿到 section 0 文档后立刻 `Freeze()`（`request.go:80`）：
+
+```
+switch body := body.(type):
+case *wire.OpMsg:                                // request.go:56
+    if header.OpCode != wire.OpCodeMsg: error     // request.go:57   帧类型与 OpCode 必须一致
+    req.doc, err = body.Section0()               // request.go:62   只有 section 0 是命令文档
+case *wire.OpQuery:                              // request.go:66
+    if header.OpCode != wire.OpCodeQuery: error   // request.go:67
+    req.doc, err = body.Query()                  // request.go:72
+default: error("unsupported body type %T")       // request.go:77
+req.doc.Freeze()                                 // request.go:80
+```
+
+对 `OP_MSG`，`DocumentRaw()`（`request.go:129-137`）同样只取 `Section0Raw()`；kind 1 的文档序列（批量写入时每行一个文档）**不进入命令文档**，由 `msg_insert.go` 等处理器另行从 body 提取。`Freeze()` 把 BSON 文档转成只读视图，是为了让同一个 `Request` 能被 docdb 与 proxy 两个 handler **并发只读**（见 §二十七）而无需加锁。
+
+### 26.3 dispatcher 的契约强制与四类结果
+
+每个 handler 外面套一个 `dispatcher`（`middleware.go:169-173` 与 `middleware.go:187-191` 各建一个），`Dispatch`（`internal/handler/middleware/dispatcher.go:47`）的骨架是"一次调用 + 一个 defer"：
+
+```
+func (d *dispatcher) Dispatch(ctx, req) (resp *Response):
+    start := time.Now()
+    defer func() {                                             // dispatcher.go:52
+        if p := recover(); p != nil {                         // dispatcher.go:55
+            res = resultPanic; err = errors.New("panic")
+        }
+        resp, err = d.enforceContract(ctx, req, resp, err)    // dispatcher.go:62
+        // 由 err / resp.OK() / resp.ErrorName() 推导 res      // dispatcher.go:64-86
+        d.responses.With({opcode, command, argument, result}).Inc()   // dispatcher.go:102-107
+        d.endSpan(ctx, resp, res)                              // dispatcher.go:109
+    }()
+    resp, err = d.h.Handle(ctx, req)                           // dispatcher.go:134  唯一一次真正调用
+```
+
+`enforceContract`（`dispatcher.go:140-167`）把 Handler 的三条不变式写成断言，且**违规时降级为 DPanic 日志而不是 panic**：
+
+| 不变式 | 违规条件 | 处置 | 行号 |
+| --- | --- | --- | --- |
+| 二选一 | `resp == nil && err == nil` | 返回 `lazyerrors.New(msg)`，连接终止 | `dispatcher.go:144-149` |
+| 二选一 | `resp != nil && err != nil` | 同上 | `dispatcher.go:151-156` |
+| 错误必须带类型 | `errors.As(err, &mongoErr)` 命中 | 转成 `ResponseErr(req, mongoErr)`，`err` 置 nil | `dispatcher.go:159-164` |
+
+第三条是关键：**Handler 内部可以随便返回 `error`，只要错误链里有 `*mongoerrors.Error`，就一定能在 wire 上还原成合法的 MongoDB 错误帧**。这让 60+ 个 `msg_*.go` 不必各自手工构造 `*Response`。
+
+结果类型 `result` 是 `string` 别名（`internal/handler/middleware/result.go:25`），四类取值定义在 `result.go:27-32`：
+
+```
+resultOK      = result("ok")       // result.go:28
+resultError   = result("error")    // result.go:29   非 MongoDB 错误（网络、handler 违约）
+resultPanic   = result("panic")    // result.go:30
+resultUnknown = result("unknown")  // result.go:31   既非 ok 也无合法 ErrorName
+```
+
+分类规则见 `dispatcher.go:64-86`：`err == nil` 且 `resp.OK()` → `ok`；否则取 `resp.ErrorName()` 作为 label，若该串不在已知集合内则记 `unknown` 并打 DPanic（`dispatcher.go:77-80`）。`Response.OK()`（`internal/handler/middleware/response.go:202-216`）本身还要跨 4 种 BSON 数值类型（`float64` / `bool` / `int32` / `int64`）判断 `ok == 1`——因为不同后端返回的 `ok` 数值类型并不统一。
+
+### 26.4 Prometheus 指标的四标签模型
+
+一个请求会打两个 CounterVec（定义在 `internal/handler/middleware/metrics.go`）：
+
+- `ferretdb_requests_total`，标签 `{opcode, command}`（定义 `metrics.go:52-60`，自增点 `middleware.go:122-126`）；`opcode` 来自 `req.WireHeader().OpCode.String()`，`command` 来自 `req.Document().Command()`（即命令文档的第一个字段名）。
+- `ferretdb_responses_total`，标签 `{opcode, command, argument, result}`（定义 `metrics.go:64-72`，自增点 `dispatcher.go:102-107`）；`argument` 取自 `resp.MongoError().Argument`（`dispatcher.go:92-94`），为空时填 `"unknown"`（`dispatcher.go:96-98`）。
+
+`result` 标签把 MongoDB 错误码拉平成一维，使"某命令失败在哪一种错误上"可以一条 PromQL 回答：
+
+```promql
+rate(ferretdb_responses_total{result!="ok"}[5m])
+  / ignoring(result) group_left rate(ferretdb_requests_total[5m])
+```
+
+代价是标签基数。`result` 无界——`ErrorName()` 随 `mongoerrors` 包的错误码集合增长；`argument` 更危险，若某些错误的 `Argument` 填的是实例相关值（如 cursor id），会直接造成高基数。源码对 `argument == ""` 有兜底，但对内容本身没有采样或截断。
+
+## 二十七、diff 模式：双引擎并发执行与统一差异比对
+
+§十六 只把 `--mode=diff-normal / diff-proxy` 当作 CLI 参数列出。这一节展开它背后的差分测试（differential testing）算法——这是 FerretDB 验证"兼容 MongoDB 子集"声明的主要手段。
+
+### 27.1 四种运行模式
+
+`internal/handler/middleware/mode.go` 定义四种模式（`mode.go:22` / `:25` / `:29` / `:33`，白名单在 `mode.go:38-41`）：
+
+| 模式 | 值 | DocDB handler | Proxy handler | 差异比对 | 返回 |
+| --- | --- | --- | --- | --- | --- |
+| `NormalMode` | `normal` | ✓ | ✗ | ✗ | docdb |
+| `ProxyMode` | `proxy` | ✗ | ✓ | ✗ | proxy |
+| `DiffNormalMode` | `diff-normal` | ✓ | ✓ | ✓ | docdb |
+| `DiffProxyMode` | `diff-proxy` | ✓ | ✓ | ✓ | proxy |
+
+后两种就是差分运行时：同一份请求同时喂给自研引擎和一个真正的 MongoDB wire 兼容服务，事后比对二者响应，把"FerretDB 与真 MongoDB 的行为差异"变成可 grep 的日志。
+
+### 27.2 并发派发
+
+`Middleware.dispatch`（`middleware.go:159-201`）对两个 handler 各起一个 goroutine：
+
+```
+func (m *Middleware) dispatch(ctx, req) (docdb, proxy *Response):
+    var wg sync.WaitGroup
+    if m.opts.DocDB != nil {                       // middleware.go:162
+        wg.Add(1); go func() {                     // middleware.go:165
+            dCtx, _ := otel.Tracer("").Start(ctx, "middleware.Handle/documentdb")
+            d := &dispatcher{h: m.opts.DocDB, l: ..., responses: ...}
+            docdb = d.Dispatch(dCtx, req)          // middleware.go:174
+            wg.Done()
+        }()
+    }
+    if m.opts.Proxy != nil { ... 同构 ... }          // middleware.go:180-196
+    wg.Wait()                                       // middleware.go:198
+    return
+```
+
+时延上从串行的 `T_docdb + T_proxy` 降到 `max(T_docdb, T_proxy)`，即并发度 2：
+
+```
+T_dispatch = max(T_docdb, T_proxy)
+```
+
+代价是**两倍资源**：diff 模式下同一个请求要占两份 PG/代理资源，因此只在测试与兼容性排查时开启。源码自己也承认了指标口径问题——`dispatcher.go:100-101` 有 TODO："When both handlers are used, this metric is counted twice."（issue #4987），即 `ferretdb_responses_total` 在 diff 模式下会翻倍。
+
+**共享 `Request` 的并发安全性**是这里能成立的前提：`Request.doc` 在构造时已 `Freeze()`（§26.2 的 `request.go:80`），两个 goroutine 只读不写，因此无需额外加锁。
+
+### 27.3 统一差异比对
+
+`logDiff`（`middleware.go:265-315`）做两次独立的 unified diff，分别覆盖 header 与 body：
+
+```
+func (m *Middleware) logDiff(ctx, docdb, proxy *Response):
+    if docdb == nil || proxy == nil: return                        // middleware.go:266-268
+    if !L.Enabled(ctx, slog.LevelInfo): return                      // middleware.go:271-273  热路径短路
+    diffHeader = GetUnifiedDiffString({ A: SplitLines(docdb.WireHeader().String()),
+                                        B: SplitLines(proxy.WireHeader().String()),
+                                        Context: 1 })               // middleware.go:275-281
+    diffBody   = GetUnifiedDiffString({ A: SplitLines(docdb.WireBody().StringIndent()),
+                                        B: SplitLines(proxy.WireBody().StringIndent()),
+                                        Context: 1 })               // middleware.go:294-300
+    L.Log(ctx, slog.LevelInfo, "Header diff:" + h + "\nBody diff:" + b)   // middleware.go:313-314
+```
+
+依赖 `github.com/pmezard/go-difflib v1.0.0`（`middleware.go:26` 引入，`go.mod:20` 声明），是 Python `difflib` 的 Go 移植。三个值得学的细节：
+
+1. **`nil` 短路而非崩溃**：任一侧返回 nil（不可恢复错误）直接跳过——否则无法区分"真差异"与"一侧崩了"。
+2. **日志级别即开关**：`slog.LevelInfo`（`middleware.go:270`）是硬编码常量，`Enabled` 检查（`middleware.go:271`）在**生成任何字符串之前**执行。这是把 diff 做成"默认关闭的调试设施"而非常驻开销的标准写法。
+3. **`Context: 1`**（`middleware.go:280` / `middleware.go:299`）：unified diff 只保留差异行前后各 1 行，避免一个字段顺序差异把整个 BSON 文档都打印出来。
+
+### 27.4 复杂度与"文本 diff ≠ 结构 diff"
+
+代价模型（设两侧 body 序列化后共 n 行、其中 d 行有差异）：
+
+```
+文本化：  O(|body_docdb| + |body_proxy|)   —— StringIndent() 每次都完整重新序列化
+比对：    随差异行数 d 增长
+总计：    O(|body| + diff(n, d))
+```
+
+关键是这是**逐行文本 diff，不是 BSON 结构化 diff**（`middleware.go:295-297` 先 `StringIndent()` 再 `SplitLines()`）。后果有三个：
+
+- **假阳性**：字段顺序不同会显示成 n 行差异，实际语义等价；
+- **假阳性（格式）**：Binary / ObjectId 等二进制子文档被 `StringIndent()` 渲染成哪种形式取决于 BSON 类型名表，换版本可能改格式，于是产生"并不存在的差异"；
+- **假阴性**：若两侧恰好在同一行内出现相同子串，纯文本 diff 看不出版本差异。
+
+### 27.5 diff 模式验证不了什么
+
+一个反直觉但重要的事实：**diff 模式比的是 wire 响应，不是 SQL**。因为 FerretDB v2 的 Go 侧根本不生成聚合管线的 SQL：
+
+```
+$ grep -rn '"\$match"|"\$group"|"\$project"|"\$sort"' --include=*.go internal/
+internal/dataapi/dataapi_test.go:168:  "pipeline": [{"$group":{"_id": "$v"}}]
+```
+
+除一个测试用例外，MongoDB 聚合阶段的字面名在 Go 源码里**一次都没出现**。`msg_aggregate.go` 把整条 pipeline 原样 BSON 编码成一个 `bytea` 参数交给 PG 扩展（`internal/documentdb/documentdb_api/documentdb_api.go:32`）：
+
+```sql
+SELECT cursorpage::bytea, continuation::bytea, persistconnection, cursorid
+FROM documentdb_api.aggregate_cursor_first_page($1, $2::bytea, $3)
+```
+
+即 §八 / §九 描述的 MQL→SQL 操作符映射表（`$eq`→`=`、`$in`→`= ANY(...)`、`$elemMatch`→`jsonb_array_elements` 等）**全部实现在 DocumentDB 的 PG 扩展（C 代码）里**，不在本仓库。FerretDB 的 Go 层实质上是"BSON 透传 + 游标生命周期管理 + 协议对拍"的薄层。
+
+这也正好解释了 diff 模式的设计取舍：既然 SQL 侧不可比，就退到**协议响应**这一层做对拍，把 wire 层当作等价的观测面。
+
+## 二十八、游标分页与连接"劫持"（hijack）算法
+
+§八.3 / §九.3 只列出了 `FindCursorFirstPage` / `AggregateCursorFirstPage` 的路径。本节展开游标的完整生命周期算法——这是 FerretDB 里 PG 连接管理最微妙的一块。
+
+### 28.1 首屏 / 续屏协议
+
+MongoDB 的游标命令分两段执行：`find` / `aggregate` / `listCollections` / `listIndexes` 取**首屏**（`cursor.firstBatch`），`getMore` 取**续屏**（`cursor.nextBatch`）。四个首屏入口在 `internal/documentdb/pool_cursors.go`，形状完全一致（`Find` 见 `pool_cursors.go:126-160`，`Aggregate` 见 `:163-197`，`ListCollections` 见 `:89-123`，`ListIndexes` 见 `:200-235`）：
+
+```
+func (p *Pool) Find(ctx, db, spec) (page, cursorID, error):
+    poolConn := p.Acquire(); defer poolConn.Release()                    // pool_cursors.go:130-134
+    page, continuation, persist, cursorID, err :=
+        documentdb_api.FindCursorFirstPage(ctx, conn, p.l, db, spec, 0)  // pool_cursors.go:138
+    if p.shouldStore(ctx, page, continuation, cursorID) {                // pool_cursors.go:149
+        conn = poolConn.hijack()  if persist else nil                  // pool_cursors.go:150-154
+        p.r.NewCursor(ctx, cursorID, continuation, conn)                 // pool_cursors.go:156
+    }
+    return page, cursorID, nil
+```
+
+对应的 PG 函数（`internal/documentdb/documentdb_api/documentdb_api.go:536`）返回四列，其中 `persistconnection` 是本节的关键：
+
+```sql
+SELECT cursorpage::bytea, continuation::bytea, persistconnection, cursorid
+FROM documentdb_api.find_cursor_first_page($1, $2::bytea, $3)
+```
+
+续屏 `GetMore`（`pool_cursors.go:35-72`）是首屏的逆操作：
+
+```
+func (p *Pool) GetMore(ctx, db, spec, cursorID) (page, error):
+    continuation, conn := p.r.GetCursor(cursorID)                       // pool_cursors.go:39
+    if continuation == nil: return ErrCursorNotFound                    // pool_cursors.go:40-45
+    if conn == nil {                                                    // pool_cursors.go:47
+        poolConn := p.Acquire(); defer poolConn.Release()                // 非持久化游标：借一条，用完还回
+        conn = poolConn.Conn()
+    }
+    page, continuation, err := documentdb_api.CursorGetMore(...)        // pool_cursors.go:58
+    if err != nil { p.r.CloseCursor(ctx, cursorID); return err }         // pool_cursors.go:60-62  出错即销毁
+    p.r.UpdateCursor(ctx, cursorID, continuation)                        // pool_cursors.go:69
+    return page, nil
+```
+
+**核心不变量**：`continuation` 非空 ⟺ 游标仍有下一页。`GetMore` 的续屏 SQL（`documentdb_api.go:347`）只返回两列（`cursorpage` + `continuation`），不再返回 `cursorid`——游标 id 从头到尾不变，客户端可以安全地在 `killCursors` 时复用它。
+
+### 28.2 游标注册表：O(1) 操作与锁粒度
+
+`cursor.Registry`（`internal/documentdb/cursor/registry.go:41-50`）就是一个 `map[int64]*cursor` 加一把 `sync.RWMutex`：
+
+```
+type Registry struct {
+    rw      sync.RWMutex          // registry.go:42
+    cursors map[int64]*cursor     // registry.go:43
+    ...
+}
+```
+
+四个操作的复杂度全是 **O(1)**：
+
+| 操作 | 行号 | 锁 | 说明 |
+| --- | --- | --- | --- |
+| `NewCursor` | `registry.go:120` | `Lock` | 同 id 已存在则先摘除旧的（`registry.go:128-135`），解锁后才关（`registry.go:146`） |
+| `GetCursor` | `registry.go:151` | `RLock` | 唯一的读路径，`registry.go:152-153` 用 `RLock` + `defer RUnlock` |
+| `UpdateCursor` | `registry.go:167` | `Lock` | 空 continuation 视为结束，转关闭（`registry.go:179-190`） |
+| `CloseCursor` | `registry.go:207` | `Lock` | 先从表里删（`:210`），**解锁后**才关连接（`:212` → `:218`） |
+
+**值得学的锁粒度手法**：所有可能阻塞的操作（关 PG 连接、写日志）都放到解锁之后——`CloseCursor` 在 `registry.go:212` 解锁，`registry.go:218` 才 `c.close(ctx)`；`NewCursor` 在 `registry.go:143` 解锁，`registry.go:146` 才关旧游标。否则一条慢的 `conn.Close()` 会把整张表的读锁按住，让所有并发 `getMore` 一起阻塞。
+
+`removeCursor`（`registry.go:226-245`）在删除时顺手记一次时长直方图（`registry.go:233` 取 delta、`registry.go:240` 观测），桶边界从 1ms 到 10s 共 12 档（`registry.go:74-87`）——这个直方图是排查"游标泄漏"的直接手段。
+
+### 28.3 hijack：持久化游标独占连接
+
+PG 侧的游标（portal）在扩展实现上有两种形态：
+
+- **非持久化**（`persistconnection = false`）：游标状态完全编码在 `continuation` 这个 BSON 里。每次 `getMore` 都能从池里借任意一条连接（`pool_cursors.go:47-56`），用完 `Release` 还回。池化友好。
+- **持久化**（`persistconnection = true`）：PG 侧的游标还占着某条真实连接的会话状态。必须让这条连接**在整个游标生命周期内不被复用**，否则第二个请求会在同一物理连接上看到被污染的 portal 状态。
+
+FerretDB 的做法是把连接从池里"摘"出来，交给 cursor 对象持有：
+
+```
+func (conn *Conn) hijack() *pgx.Conn {   // internal/documentdb/conn.go:67
+    res := conn.conn.Hijack()             // conn.go:70  从 pgxpool 永久摘除
+    conn.conn = nil                       // conn.go:71  使后续 Release 成为空操作
+    return res
+}
+```
+
+`conn.conn = nil` 这一步是整个技巧的支点：`Release()`（`conn.go:46-53`）开头就是 `if conn.conn != nil`，置 nil 后 `Release` 退化为安全的空操作，于是调用方 `pool_cursors.go:134` 那句 `defer poolConn.Release()` 无需为 hijack 分支写任何特例——**同一个 defer 覆盖"归还"与"摘除"两条路径**。`Conn` 本身还带 `resource.Token`（`conn.go:29`），`Release` 里 `resource.Untrack`（`conn.go:52`）保证 Go 侧对象与 PG 连接的生命周期成对。
+
+`persist` 为真时连接被 cursor 持有（`internal/documentdb/cursor/cursor.go:37`：`conn *pgx.Conn // only if persisted/hijacked`），关闭时走 `cursor.close`（`cursor.go:81-92`），带 3 秒超时（`cursor.go:84`）：
+
+```
+func (c *cursor) close(ctx):
+    if c.conn != nil:
+        ctx, cancel := context.WithTimeout(ctx, 3*time.Second)   // cursor.go:84
+        _ = c.conn.Close(ctx)                                     // cursor.go:87  优雅关闭，发 exit 消息
+        c.conn = nil                                              // cursor.go:88
+    resource.Untrack(c, c.token)                                  // cursor.go:91
+```
+
+源码注释（`cursor.go:76-78`）说明了这个 3s 上限的由来：向 PG 发 exit 消息"could block"，所以必须给 ctx 限流；但底层 `net.Conn.Close()` 无论如何都会被调用。
+
+### 28.4 shouldStore：什么时候不注册游标
+
+`shouldStore`（`pool_cursors.go:243-292`）决定首屏结果要不要进注册表：
+
+```
+if cursorID == 0   -> 不存（结果已在首屏全部返回，无后续页）   pool_cursors.go:281-284
+if len(cont) == 0  -> 不存（同上）                          pool_cursors.go:286-289
+否则                 存                                      pool_cursors.go:291
+```
+
+在 `devbuild.Enabled` 下（`pool_cursors.go:244`）它还额外校验 `page.cursor.id` 与 `cursorID` 是否一致（`pool_cursors.go:263-278`），不一致就打 DPanic——这两处都是针对 issue #5445 的 workaround。
+
+游标类型标签由 `cursor.Type()`（`cursor.go:58-64`）给出：`conn != nil` → `"persistent"`，否则 `"normal"`；该值同时用作 Prometheus label（`registry.go:139` 的 created 计数、`registry.go:240` 的 duration 直方图）。
+
+### 28.5 连接账目与耗尽风险
+
+设 `M` = `pgxpool` 的 `MaxConns`，`P` = 当前活跃的持久化游标数，则每条被劫持的连接永久减少一份可用额度：
+
+```
+可借连接数 = M − P
+耗尽条件：  P ≥ M  ⇒  后续所有 Acquire 阻塞
+```
+
+而 `Pool.Acquire`（`internal/documentdb/pool.go:87-93`）的签名**根本不接收 context**，传给 pgxpool 的是包级 `todoCtx`（`internal/documentdb/documentdb.go:36`：`var todoCtx = context.TODO()`，注释写明"should be used instead of `context.TODO`"）：
+
+```
+func (p *Pool) Acquire() (*Conn, error) {
+    conn, err := p.p.Acquire(todoCtx)     // pool.go:88  无 deadline，且与连接 context 无关联
+    ...
+}
+```
+
+因此一旦持久化游标堆积到 `P ≥ M`，新的 `Acquire` 在代码路径上无法被客户端断连唤醒（`todoCtx` 与 `conn.run` 里的 ctx 无关，`conn.go:78-83` 的 deadline 技巧也够不到这里）。这条路上真正的兜底只有显式的 `killCursors` 命令（`msg_killcursors.go` → `Pool.KillCursor`（`pool_cursors.go:81-86`）→ `Registry.CloseCursor`）以及进程重启。
+
+实践含义：把活跃持久化游标数量纳入容量规划，等价于要从 `max_connections` 里再预留 P 份。§十四 说的"单实例 FerretDB 的连接池大小 = PG `max_connections`"是准确的，但需要补一条限定——**这个等式还要再减去 P**。
+
+## 二十九、参考资料
 
 1. **FerretDB 官方仓库**：[github.com/FerretDB/FerretDB](https://github.com/FerretDB/FerretDB)；
 2. **Microsoft DocumentDB 扩展**：[github.com/documentdb/documentdb](https://github.com/documentdb/documentdb)；
