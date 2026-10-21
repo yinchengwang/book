@@ -840,7 +840,538 @@ ClickHouse **没有强节点角色**，任意节点可作为 coordinator 或 wor
 - **异步 Mutation 模式**：`src/Storages/MergeTree/MutateTask.cpp` 的后台任务调度可借鉴到 `engineering/src/db/` 的异步重写；
 - **Workload Entity 资源隔离**：可应用到 `engineering/src/db/` 的多租户隔离设计。
 
-## 二十四、参考资料
+## 二十四、MergeTree part 生命周期与后台合并调度（算法展开）
+
+> 本节与 §7.1 / §7.3 / §7.6 的分工：那几节只给出**结构清单**（有哪些文件、哪些引擎），本节补上**算法本身**。
+> 源码路径以 ClickHouse **v24.12.x**（实测 tag `v24.12.1.1614-stable`）公开仓库为准；本仓库 `reference/columnar/clickhouse/` 子模块未 init，故一律**只给路径、不给行号**。
+
+### 24.1 part 的身份：目录名就是它的元数据
+
+part 是一个**不可变目录**，目录名编码了它的全部身份信息。v1 命名格式由 `src/Storages/MergeTree/MergeTreePartInfo.cpp` 的 `getPartNameV1()` 生成：
+
+```
+{partition_id}_{min_block}_{max_block}_{level}[_{mutation}]
+例：202401_11_27_0          ← 分区 202401，块区间 [11,27]，层级 0（尚未被合并过）
+    202401_11_28_1_3        ← 同一分区，合并到 level 1，mutation 序号 3
+```
+
+四个字段各有用途：
+
+- `partition_id`：分区键表达式的求值结果（如 `toYYYYMM(ts)` → `202401`），决定 part 落在哪个目录；
+- `min_block` / `max_block`：**块号（block number）区间**，表示 part 在全局单调递增插入序列上占的连续位置。合并后的 part 会消耗掉被合并掉的块号区间；
+- `level`：合并树的层高，第 0 次合并产出 level 1，level 2 由两个 level 1 合并而来……**level 就是 LSM 合并树的深度**；
+- `mutation`：mutation（`ALTER UPDATE/DELETE`）产物的版本序号；普通 INSERT part 不带这一段。
+
+由此得到一条关键不变量：**同一分区内的 part 按 `min_block` 排序即为主键的排序**（因为 part 内的数据已按主键有序，而相邻 part 的主键区间要么相接、要么相交）。合并任务因此永远是**连续区间**的合并，而不是任意集合的合并——这是 MergeSelector 只在 `PartsRange` 上工作的根本原因。
+
+### 24.2 写入：临时 part → 正式 part
+
+一次 `INSERT` 的写入路径由 `src/Storages/MergeTree/MergeTreeDataWriter.cpp` 驱动：
+
+```
+INSERT block
+   │
+   ├─ 按分区键计算 partition_id，分配 block_number
+   ├─ 构造 MergeTreePartInfo(part_id, block_number, block_number, level=0)
+   ├─ part_dir = temp_prefix + part_name      ← 临时目录（tmp_path 前缀）
+   ├─ new_data_part->is_temp = true
+   ├─ 逐列写 *.bin / *.mrk2 / primary.cidx / skp_idx_*.idx / checksums.txt
+   ├─ 写 partition.dat / count.txt 等元数据
+   └─ 原子 rename：临时目录 → data/<partition_id>/<part_name>/
+```
+
+两条要点：
+
+1. **临时 part 与正式 part 落同一套文件格式**，区别只有一个 `is_temp` 标志 + 目录前缀。这样合并逻辑（写新 part）可以完全复用写入逻辑；
+2. **用 rename 而非就地改写做原子发布**。ClickHouse 的 part 一旦可见就永远不可变——这正是它不需要 WAL 的原因（详见 §7.5）。
+
+后台合并写临时 part 时同理，入口在 `src/Storages/MergeTree/MergeTask.cpp` 与 `src/Storages/MergeTree/MergedBlockOutputStream.cpp`（后者负责把多个来源 part 的同名列按主键顺序归并成一列输出流）。
+
+### 24.3 合并选择：两级判定 `allow()` 与 `score()`
+
+调度入口是 `src/Storages/MergeTree/MergeTreeDataMergerMutator.cpp` 的 `selectPartsToMergeFromRanges()`。它按**固定级联顺序**依次尝试，选中即止：
+
+```
+① TTLDropSelector        整个 part 的 TTL 全部过期 → 直接删掉整块
+② TTLDeleteMergeSelector 部分行 TTL 过期 → 合并时删除过期行
+③ TTLRecompressSelector  TTL 触发重压缩
+④ SimpleMergeSelector    常规的「按体积 + 年龄」选择
+```
+
+级联里前三级之所以优先于第四级，是因为 TTL 是**硬约束**（到期数据必须消失），而合并只是资源权衡。
+
+落到 ④ 之后，真正的算法在 `src/Storages/MergeTree/MergeSelectors/SimpleMergeSelector.cpp`，由**两层判定**组成。
+
+**第一层 `allow()`：这一段区间「值得」合并吗？**（决定 `end` 能不能继续往右扩）
+
+```cpp
+// 简化版，源文件 src/Storages/MergeTree/MergeSelectors/SimpleMergeSelector.cpp
+bool allow(sum_size, max_size, min_age, range_size, partition_size, settings)
+{
+    // (1) 年龄硬闸门：全段都够老，无条件可合
+    if (settings.min_age_to_force_merge && min_age >= settings.min_age_to_force_merge)
+        return true;
+    // (2) 最少 part 数闸门
+    if (settings.min_parts_to_merge_at_once && range_size < settings.min_parts_to_merge_at_once)
+        return false;
+
+    // (3) 三个归一化因子，各自映射到 [0,1]
+    size_normalized     = mapToUnit(log(1 + sum_size),
+                          log(1+min_size_to_lower_base), log(1+max_size_to_lower_base));
+    age_normalized      = mapToUnit(min_age,
+                          lerp(min_age_at_min_size, min_age_at_max_size, size_normalized),
+                          lerp(max_age_at_min_size, max_age_at_max_size, size_normalized));
+    num_parts_normalized= mapToUnit(partition_size,
+                          min_parts_to_lower_base, max_parts_to_lower_base);
+
+    // (4) base 随「越老 / part 越多」动态下调，但下限是 2
+    lowered_base = lerp(settings.base, 2.0, min(1.0, age_normalized + num_parts_normalized));
+
+    // (5) 判定式：合并「对数底数」必须达到 lowered_base
+    return (sum_size + range_size * settings.size_fixed_cost_to_add)
+             / (max_size + settings.size_fixed_cost_to_add) >= lowered_base;
+}
+```
+
+第 (5) 步的比值就是源码注释里说的 **base（合并树的对数底数 = 一次合并的「扇出」）**：
+
+$$\text{base} = \frac{\sum |p_i| + n \cdot C}{\max |p_i| + C},\qquad C = \texttt{size\_fixed\_cost\_to\_add} = 5\,\text{MiB}$$
+
+加性常数 `C`（固定合并成本）的意义是：**很小的 part 之间合并也算「有效」**，从而避免小 part 永远攒不起来导致 part 爆炸。实测默认值（`SimpleMergeSelector::Settings`，表级 `merge_selector_*` SETTINGS 可覆盖）：
+
+| 参数 | 默认值 | 作用 |
+| --- | --- | --- |
+| `merge_selector_base` | `5.0` | 写放大与 part 数的主旋钮 |
+| `size_fixed_cost_to_add` | `5 MiB` | 固定成本 `C` |
+| `min_size_to_lower_base` / `max_size_to_lower_base` | `1 MiB` / `100 GiB` | base 下调的体积区间（对数刻度） |
+| `min_age_to_lower_base_at_min_size` / `max_age_to_lower_base_at_min_size` | `10 s` / `3600 s` | 小 part 时的年龄区间 |
+| `min_age_to_lower_base_at_max_size` / `max_age_to_lower_base_at_max_size` | `10 s` / `30 d` | 大 part 时的年龄区间 |
+| `min_parts_to_lower_base` / `max_parts_to_lower_base` | `10` / `50` | base 下调的 part 数区间 |
+| `merge_selector_window_size` | `1000` | 只看最近 N 个 part（防止合并永远轮不到新 part） |
+| `max_parts_to_merge_at_once` | `100` | 单次合并的 part 数上限（不影响 `OPTIMIZE FINAL`） |
+| `min_parts_to_merge_at_once` | `0`（关闭） | 最少凑够几个才合 |
+
+`base` 的**直觉**：连续合并 4 个体积 `5,3,1,1` 的 part，base = `10/5 = 2`，即"树的度是 2"。源码头注释把这件事说得很直白——**合并树完全平衡时写放大正比于 `log_c(数据量)`；退化成单链时正比于数据量本身**。base 就是控制这个形态的旋钮。
+
+**第二层 `score()`：所有候选区间里哪一个最优？**
+
+```cpp
+// SimpleMergeSelector.cpp, file-local struct Estimator
+static double score(count, sum_size, sum_size_fixed_cost)
+{
+    return (sum_size + sum_size_fixed_cost * count) / (count - 1.9);
+}
+```
+
+分母的 `count - 1.9`（**不是** `count - 1`）是刻意的小常数偏置，等价于给"多合一点"一个软奖励，抑制 part 数。源码注释给出了完整的推导假设：*合并耗时 ∝ 区间总字节；查询代价 ∝ 瞬时 part 总数；把"整段时间内 part 数积分"最小化，得到的闭式就是 `sum_size / (count - 1)`*，再加上两项工程修正得到上式。
+
+**区间扩展的搜索过程**（`selectWithinPartition`）：
+
+```
+for begin = [尾部 window_size 个 part 起点] .. parts_count:
+    if !parts[begin].shall_participate_in_merges: continue
+    sum_size, max_size, min_age ← parts[begin]
+    for end = begin+2 .. parts_count:                 // 至少 2 个 part
+        if end-begin > max_parts_to_merge_at_once: break
+        if sum_size > max_total_size_to_merge: break
+        累加 parts[end-1]，更新 sum_size / max_size / min_age
+        if allow(...): estimator.consider(begin, end, ...)   // 记一个候选
+# consider() 内部还做了两个「对齐」修正：
+#   ① 若 begin 前一个 part 很大（size_prev_at_left > sum_size × 比例），按 log2 差距缩放 score；
+#   ② 若区间尾部小 part 比例过高，从右端剔除（enable_heuristic_to_remove_small_parts_at_right，默认开）
+# 最后取 min_score 对应的区间
+```
+
+**复杂度**：外层 `O(window_size)`、内层 `O(max_parts_to_merge_at_once)`，即每次选择 `O(W·N)` 次 `allow()` 判定，每次是常数次浮点运算——因为 W、N 都被配置上限钉死（1000 / 100），最坏也只有 10⁵ 级判定，可在毫秒内完成。真正昂贵的是**合并 I/O**，所以选择阶段干脆不用更聪明的搜索。
+
+### 24.4 引擎家族在合并期的差异化算法
+
+同一个 part 区间，`MergeTree` / `Replacing` / `Summing` / `Aggregating` / `Collapsing` 的差别**只体现在合并用的 `IMergingAlgorithm` 上**，实现在 `src/Processors/Merges/Algorithms/`：
+
+| 引擎 | 算法文件 | 同 ORDER BY key 的一组行如何被折叠 |
+| --- | --- | --- |
+| `MergeTree` | `SortingTransform`（不折叠） | 全部保留 |
+| `ReplacingMergeTree(v)` | `ReplacingSortedAlgorithm.cpp` | 保留 `version` **最大**的那一行，其余丢弃 |
+| `SummingMergeTree` | `SummingSortedAlgorithm.cpp` | 数值列逐列求和，key 列取一 |
+| `AggregatingMergeTree` | `AggregatingSortedAlgorithm.cpp` | 把各行的聚合**状态**逐个喂进 `-Merge` 函数再输出 |
+| `CollapsingMergeTree(sign)` | `CollapsingSortedAlgorithm.cpp` | `sign=+1` 与 `sign=-1` 成对抵消；余下的 `1` 保留（未读） |
+
+`ReplacingSortedAlgorithm.h` 的类注释是权威表述：*"For each group of consecutive identical values of the primary key, keeps row with max `version` value."*
+
+由此得到 §10/§21.1 里那条结论的算法解释：**去重是合并的副产品，不是写入时的保证**。写入路径上可以存在任意多份同 key 的行；只有当后台合并把它们收进同一个 part 时，`ReplacingSortedAlgorithm` 才会折叠。所以"不保证实时唯一"。
+
+`AggregatingMergeTree` 的关键在于 `-State` 函数是**可序列化的中间态**（`src/AggregateFunctions/AggregateFunctionState.h`），合并 = 把这些中间态做结合律结合。这也是它能配 `MATERIALIZED VIEW` 做增量预聚合（§7.3.4）而 `SummingMergeTree` 不能表达 `uniq` 的原因。
+
+### 24.5 `OPTIMIZE FINAL` 与写入节流
+
+**`OPTIMIZE TABLE t FINAL`** 走的是 `MergeTreeDataMergerMutator.h` 的 `selectAllPartsToMergeWithinPartition(..., final, ...)`：它**直接把整个分区的所有 part 视作一个区间**交给合并，绕开 `SimpleMergeSelector` 的 `allow()` 判定。表级 SETTINGS `max_parts_to_merge_at_once = 100` 的描述里明写着 *"Doesn't affect OPTIMIZE FINAL query"*——正是这个意思。
+
+- **幂等性**：对一个已完全合并（level 足够高、每个 key 只剩一行）的分区再跑 `FINAL`，要么无事可做（`optimize_throw_if_noop = 0` 时返回），要么只产生 level 相同的新 part；`optimize_skip_merged_partitions = 1` 会跳过"看起来已经合干净"的分区，避免无谓 I/O。
+- **`final` 是读取侧的对偶**：`SELECT ... FROM t FINAL` 在读取时用同一个 `Replacing/Sorting` 算法做去重，省掉落盘合并，代价是查询期 CPU/内存放大（§21.2 的"`final` 滥用"陷阱）。
+- `MergeTreeDataMergerMutator.cpp` 里还有一条硬约束：常规合并**不允许把单个 part 跟自己合并**（`if (parts_to_merge.size() == 1) throw LOGICAL_ERROR`），只有 `OPTIMIZE FINAL` / TTL 场景才放开。
+
+**写入节流**（`src/Storages/MergeTree/MergeTreeSettings.cpp` 实测默认值）：
+
+| SETTINGS | 默认 | 行为 |
+| --- | --- | --- |
+| `parts_to_delay_insert` | `1000` | 单分区活跃 part 数达到此值 → 对 INSERT **限速**（不是拒绝） |
+| `max_delay_to_insert` | `1` | 单次 INSERT 最多被限速的秒数 |
+| `parts_to_throw_insert` | `3000` | 超过此值 → 直接抛 `TOO_MANY_PARTS` |
+| `max_parts_in_total` | `100000` | 全表所有分区的活跃 part 总数上限 |
+| `max_avg_part_size_for_too_many_parts` | `1 GiB` | 平均 part 体积超过此值时，**前两条检查整体失效**（允许单表单分区 TB 级） |
+
+> ⚠️ 常见误解：所谓 `Too many parts` 的阈值默认是 **1000 / 3000** 这一对，而不是 100。
+
+**并发度与抢占**（24.12 起 `background_pool_size` 等已从 query SETTINGS 迁到 `config.xml`，见 `src/Core/ServerSettings.h`）：
+
+```
+merge 槽位数 ≈ background_pool_size(16) × background_merges_mutations_concurrency_ratio(2) = 32
+```
+
+抢占靠"空闲槽位水位"这一组阈值实现：空闲槽位少于 `number_of_free_entries_in_pool_to_lower_max_size_of_merge = 8` 时，自动调低单次合并的体积上限，让**小合并有机会插队**；少于 `number_of_free_entries_in_pool_to_execute_mutation = 20` 时干脆**暂缓 mutation**，把线程让给常规合并，避免 part 数失控。
+
+### 24.6 复杂度小结
+
+| 环节 | 时间复杂度 | 说明 |
+| --- | --- | --- |
+| part 选择 `allow()` 判定 | `O(W·N)`，`W=1000`，`N≤100` | 上限被配置钉死 |
+| 合并本身 | `O(总字节数)` | 顺序读写 + k 路归并 |
+| 写放大（平衡树） | `≈ log_base(数据量)` 次全量重写 | base 默认 5 |
+| 写放大（退化单链） | `O(数据量)` 次全量重写 | 官方注释明确指出这是要避免的形态 |
+
+---
+
+## 二十五、列式压缩编码算法：DoubleDelta / Gorilla / T64（算法展开）
+
+> §7.2 已给出 codec **清单表**，本节补三个最值得手写的**位级编码算法**及其物理帧格式。
+> 源码路径同样以 v24.12.x 为准（`reference/columnar/clickhouse/` 子模块未 init，只给路径不给行号）。
+
+### 25.1 物理帧：每个压缩块 9 字节头
+
+理解 codec 链的前提是先理解 `src/Compression/ICompressionCodec.cpp` 里 `compress()` / `decompress()` 写出的通用帧：
+
+```
+偏移  长度  内容
+ 0     1    method_byte            标识 codec（CompressionMethodByte 枚举）
+ 1     4    compressed_size        UInt32 小端，含头部长度
+ 5     4    uncompressed_size      UInt32 小端
+ 9     N    payload                codec 私有数据
+ ↑──────── 固定 9 字节头
+```
+
+解压时先校验 `source[0] == getMethodByte()`，不匹配立即抛 `CANNOT_DECOMPRESS` 类错误——codec 是**自描述**的，列的 `*.bin` 不需要额外元数据就能解码。
+
+`src/Compression/CompressionCodecMultiple.cpp` 在这之上再包一层，用于实现 `CODEC(T64, ZSTD)` 这样的链：
+
+```
+[codecs_count: UInt8][method_byte_1][method_byte_2] ... [method_byte_n][data]
+   data 被 codec_1 压过一次 → codec_2 → ... → codec_n
+```
+
+即**列表里越靠前 = 越靠近原始数据 = 越"语义"；越靠后 = 越靠近磁盘 = 越"通用"**。
+
+### 25.2 DoubleDelta：二阶差分的变长前缀码
+
+实现在 `src/Compression/CompressionCodecDoubleDelta.cpp`（其文件头注释本身就是完整算法说明）。注意：源码作者特意吐槽了这个名字——**它不是"对 Delta 变换做两次"**，而是 Gorilla 论文里的 Gorilla 双 Delta 编码，扩展到 64 位。
+
+**编码伪代码**：
+
+```
+输入：a[0..n-1]
+输出：先写 n（4 字节小端），再写 a[0]（sizeof(T) 字节），再写 a[1]-a[0]，最后逐个写 dd
+
+for i in 2 .. n-1:
+    dd = a[i] - 2*a[i-1] + a[i-2]        # 等价于 (a[i]-a[i-1]) - (a[i-1]-a[i-2])
+    if dd == 0:            write 1 bit  : 0
+    elif -63   < dd <  64: write 2 bits : 10   ; 1 sign ;  6 bits |dd-1|
+    elif -255  < dd < 256: write 3 bits : 110  ; 1 sign ;  8 bits |dd-1|
+    elif -2047 < dd < 2048:write 4 bits : 1110 ; 1 sign ; 11 bits |dd-1|
+    elif dd fits in int32: write 5 bits : 11110; 1 sign ; 31 bits |dd-1|
+    else:                  write 5 bits : 11111; 1 sign ; 63 bits |dd-1|
+```
+
+几个设计细节值得拆开看：
+
+- **`|dd - 1|` 而不是 `|dd|`**：变长前缀码里 `0` 已被单独占用（`0` 与 `10`/`110`/… 的前缀关系决定了后续码字的偏移），用 `|dd|-1` 编码可以把有效值域整体左移一位，为前缀腾出空间；
+- **前缀长度单调递增**（1→2→3→4→5）：构成典型的**前缀可辨码**，解码器只需按位读前缀即可定位后续 payload，无需回溯；
+- **步长恒定的序列退化成 1 bit/值**：源码给出的例子——`UInt8 [1,2,3,4,5,6,7,8,9,10]` 中后 8 个值的 `dd` 全是 0，编码结果是 `\x0a\x00\x00\x00\x01\x01\x00`（末尾那个 `0x00` 就是 8 个零比特）。
+
+**复杂度**：时间 `O(n)`（每值一次减法 + 至多 1 次 64-bit 位写），空间 `O(1)`（流式 BitWriter）。最优情况常数极小——**恒定步长序列 1 bit/值，即 8:1 的定长压缩**；最差情况（dd 随机大）反而比原值大，此时需要链上第二级 codec（如 `ZSTD`）补救。
+
+**适用场景**：**单调、步长近似恒定**的整数序列——时间戳（毫秒粒度、规则采样）、自增 ID、累计计数器。**不适合**随机 ID（`ReplacingMergeTree` 的 `event_id` 就别挂 DoubleDelta）。
+
+### 25.3 Gorilla：XOR + 前导零窗口复用
+
+实现在 `src/Compression/CompressionCodecGorilla.cpp`（源自 VLDB 2015 的 Gorilla 论文）。核心洞察：**浮点时序序列相邻值的变化很小，XOR 之后只有低位几个 bit 不同**。
+
+```cpp
+// src/Compression/CompressionCodecGorilla.cpp（化简）
+if (xor == 0) { writer.writeBits(1, 0); }                       // 完全不变，1 bit
+else {
+    (lzb, tzb, data_bits) = getBinaryValueInfo(xor);            // 前导零/尾随零/有效位数
+    if (lzb >= prev_lzb && tzb >= prev_tzb) {                   // 落在上一个窗口内
+        writer.writeBits(2, 0b10);                              //   2 bit 前缀
+        writer.writeBits(prev_data_bits, xor >> prev_tzb);      //   只补有效位
+    } else {                                                    // 新窗口
+        writer.writeBits(2, 0b11);                              //   2 bit 前缀
+        writer.writeBits(LEADING_ZEROES_BIT_LENGTH, lzb);       //   lzb 本身
+        writer.writeBits(DATA_BIT_LENGTH, data_bits);           //   有效位长度
+        writer.writeBits(data_bits, xor >> tzb);                //   有效位内容
+        prev_lzb = lzb; prev_tzb = tzb;
+    }
+}
+```
+
+**窗口复用的收益**：`lzb/tzb/data_bits` 这三个"元数据"只有在新窗口时才写（2+5+6 = 13 bit）；落在旧窗口内只需 2 bit。对缓慢变化的曲线，绝大部分相邻对都落在旧窗口里，摊薄成本后接近 2 bit/值。
+
+**位宽参数**在 `getBitLengthOfLength()` 里，由数据类型宽度决定：
+
+```cpp
+static const UInt8 bit_lengths[] = {0, 4, 5, 0, 6, 0, 0, 0, 7};  // 按 data_bytes_size 索引
+DATA_BIT_LENGTH          = bit_lengths[data_bytes_size];
+LEADING_ZEROES_BIT_LENGTH = DATA_BIT_LENGTH - 1;
+```
+
+即 4 字节（`Float32`/`Int32`）→ `DATA=6, LZ=5`；8 字节（`Float64`）→ `DATA=7, LZ=6`。源码里的上界公式：
+
+$$\text{max\_item\_bits} = 2 + \texttt{LEADING\_ZEROES\_BIT\_LENGTH} + \texttt{DATA\_BIT\_LENGTH} + 8 \cdot \text{bytes}$$
+
+对 `Float32` = `2+5+6+32 = 45 bit`；`Float64` = `2+6+7+64 = 79 bit`。**这也是 Gorilla 不能单独兜底的最坏情形**——必须链一个通用压缩（ZSTD）才划算，与 §7.2 里 `Codec(Gorilla, ZSTD(1))` 的推荐用法一致。
+
+**复杂度**：时间 `O(n)`，空间 `O(1)`（流式）。适用**单调/准单调的浮点序列**（CPU 占用率、内存水位、QPS 指标）。**不适合** NaN/Inf 混杂的序列（XOR 结果会失去窗口局部性，退化为每值 79 bit）。
+
+### 25.4 T64：比特矩阵转置
+
+实现在 `src/Compression/CompressionCodecT64.cpp`。思路完全不同：**不编码数值，只重排 bit 位置**。
+
+对一个 64 值块（64 个 `UInt8` = 64 字节）构造一个 `64×8` 的 bit 矩阵，**行 = 值，列 = bit 位**，然后整体转置成 8 个 `UInt64`：
+
+```cpp
+// src/Compression/CompressionCodecT64.cpp
+void transpose64x8(UInt64 * src_dst)
+{
+    const auto * src8 = reinterpret_cast<const UInt8 *>(src_dst);
+    UInt64 dst[8] = {};
+    for (UInt32 i = 0; i < 64; ++i) {          // i = 值的序号
+        UInt64 value = src8[i];
+        for (int b = 0; b < 8; ++b)            // b = 该值的第 b 个字节
+            dst[b] |= ((value >> b) & 0x1) << i;
+    }
+    memcpy(src_dst, dst, 8 * sizeof(UInt64));
+}
+```
+
+转置后，"64 个值各自的高位"被聚到同一个 `UInt64` 里，**全 0 的高位被直接裁掉**。所以源码注释说：*"if we have UInt8 with only 0 and 1 inside, 64×UInt8 will be compressed into 1×UInt64"*（512 bit → 64 bit，8:1）。
+
+**裁剪靠块级 header**：每块先写 `min`（8 B）+ `max`（8 B）共 16 字节，然后
+
+```cpp
+num_bits = getValuableBitsNumber(min, max);   // 表示 [min,max] 所需的最少有效位数
+// 之后只保留每字节的低 num_bits 位，高位丢弃
+```
+
+`min < 0 && max >= 0`（有符号跨零）时额外多存 1 bit 符号位。
+
+宽类型（`sizeof(T) > 1`）走 `transposeBytes<T>()` 做**字节级转置**，与 `transpose64x8` 组合使用；源码还提供两个变体：`Byte`（默认，字节转置 + 末字节按 bit 转置）与 `Bit`（全 bit 转置，配 ZSTD 更好、配 LZ4 更差）。
+
+**复杂度**：`transpose64x8` 是 64×8 = 512 次移位-or，**每处理 64 个值做一次**，即 `O(n·8)` 次定长操作（`8` = 每值的字节数，编译期常量）→ 视为 `O(n)`；空间 `O(1)`（块内 8 个 `UInt64`）。
+
+**适用场景**：**低基数整数**（状态码、地区码、类别 ID 的数值化）。**不适合**均匀分布的 64 位大整数（转置后无冗余可裁）。注意它与 §7.2 表里的 `Dictionary` codec 目标重叠但机制不同：`Dictionary` 显式建码本，T64 只是"按 bit 位置聚合再裁剪"，无需码本。
+
+### 25.5 选型速查与复杂度总表
+
+| codec | 变换 | 最坏位宽 | 典型位宽 | 时间 | 空间 | 最佳场景 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `DoubleDelta` | 二阶差分 + 前缀码 | 1+5+1+63 = 70 bit | **1 bit**（恒定步长） | `O(n)` | `O(1)` | 单调等步长整数（时间戳、自增 ID） |
+| `Gorilla` | XOR + 零位窗口复用 | `2+LZ+DATA+8B`（F32: 45 / F64: 79） | ~2–4 bit | `O(n)` | `O(1)` | 浮点时序指标 |
+| `T64` | bit 矩阵转置 + 裁剪 | `n`（无冗余时） | `n·log2(基数)` | `O(n)` | `O(1)` | 低基数整数码 |
+| `Delta` | 一阶差分（按 `delta_bytes_size` 分组） | `n + 2B` | ~8 bit | `O(n)` | `O(1)` | 较单调但步长抖动的整数 |
+| `LZ4` / `ZSTD` | 通用字节级 | `n + 9B` | 视数据 | `O(n)` | `O(n)` | 链末兜底 |
+
+三点选型经验（都与 §7.2 的示例互相对应）：
+
+1. **codec 是有向链，不是一个集合**。`Codec(DoubleDelta, ZSTD(3))` 表示"先语义变换，再通用压缩"；反过来写会让通用压缩先去吃掉二阶差分里已消失的字节模式，效果打折。
+2. **`isCompression() == false` 的 codec（`Delta` / `DoubleDelta` / `Gorilla` / `T64`）不能作为链尾**——它们自身不做熵编码，必须后面跟一个真压缩器，否则最坏情况比不压还大。判断依据是 `ICompressionCodec` 里的 `isCompression()` 虚函数。
+3. **压缩率与 CPU 的取舍点**：`ZSTD` 的 level 越高越慢，`LZ4` 反而适合高吞吐写入；`CODEC` 可以按列分别设置——这正是列存相对行存的核心优势，**每列独立选变换**。
+
+---
+
+## 二十六、稀疏主键索引与跳数索引：granule 级查找算法（算法展开）
+
+> §8.1 / §7.4 只描述了"稀疏索引 + 二级索引"的现象，本节给出**查找伪代码**与**索引失效判定**。
+> 源码路径以 v24.12.x 为准（`reference/columnar/clickhouse/` 子模块未 init，只给路径不给行号）。
+
+### 26.1 granule：索引的最小不可分割单位
+
+每个 part 的主键索引不是树，而是**一张有序表**：第 `i` 行 = 第 `i` 个 granule 的**首行主键值**。granule 边界由 `index_granularity`（默认 **8192 行**，表级 SETTINGS，`src/Storages/MergeTree/MergeTreeSettings.cpp`）决定。
+
+```
+part 目录/
+  primary.cidx     ← 主索引：每 granule 一条记录 = 该 granule 首行的主键值
+  <col>.bin        ← 列数据
+  <col>.mrk2       ← mark 文件：granule → .bin 内 byte offset 的映射（O(1) 跳转）
+  skp_idx_*.idx    ← 跳数索引（见 §27.3）
+```
+
+配套的 `index_granularity_bytes`（默认 **10 MiB**，设为 0 关闭）提供**自适应粒度**：当压缩率随数据增长而上升时，改按字节而非按行切 granule。实现见 `src/Storages/MergeTree/MergeTreeIndexGranularityAdaptive.cpp`——它不再存"固定行数"，而是存**每 mark 的累计行数** `marks_rows_partial_sums`：
+
+```cpp
+// src/Storages/MergeTree/MergeTreeIndexGranularityAdaptive.cpp
+size_t getMarkRows(mark_index)  const { return marks_rows_partial_sums[mark_index] - marks_rows_partial_sums[mark_index - 1]; }
+size_t getTotalRows()           const { return marks_rows_partial_sums.back(); }
+bool   hasFinalMark()           const { return getLastMarkRows() == 0; }   // 末尾 mark 行数为 0 = 哨兵
+```
+
+另有 `src/Storages/MergeTree/MergeTreeIndexGranularityConstant.cpp` 实现固定行数粒度。两者统一收敛到接口 `IMergeTreeIndexGranularity`（`getMarkRows` / `getMarksCount` / `getTotalRows` / `hasFinalMark`），上层查找算法对此**完全无感知**。
+
+**两条边界约定**（贯穿所有查找逻辑）：
+
+- 索引表的**最后一条记录代表"右端 +∞"**（`hasFinalMark()` 为真时），因为最后一个 granule 没有"下一个首行值"；
+- 主键含 `NULL` 时，稀疏索引里 `NULL` 被映射为 `+∞`（排序取 `NULLS LAST`），保证 granule 区间 `[left, right)` 的单调性不被 NULL 破坏。
+
+### 26.2 主索引查找：二分 vs 栈式排除搜索
+
+真正的查找在 `src/Storages/MergeTree/MergeTreeDataSelectExecutor.cpp` 的 `markRangesFromPKRange()`。它有**两条完全不同的路径**，这是最容易被误解的地方——**ClickHouse 的稀疏索引查找并不总是二分查找**：
+
+```cpp
+bool key_condition_exact_range = !key_condition_useful
+                              || key_condition.matchesExactContinuousRange();
+if (!key_condition_exact_range || !part_offset_condition_exact_range)
+    → 路径 A：generic exclusion search（排除法搜索）
+else
+    → 路径 B：二分查找（binary search）
+```
+
+**路径 A：排除法搜索（通用，栈式分裂）**
+
+```cpp
+// 简化版，源文件 src/Storages/MergeTree/MergeTreeDataSelectExecutor.cpp
+std::vector<MarkRange> stack = { {0, marks_count - (has_final_mark ? 1 : 0)} };
+while (!stack.empty()) {
+    MarkRange r = stack.back(); stack.pop_back();
+
+    // ① 区间级剪枝：把该区间的 [left, right] 喂给 KeyCondition
+    auto verdict = check_in_range(r);
+    if (!verdict.can_be_true) continue;                  // 整段可跳过，丢弃
+
+    if (r.end == r.begin + 1) {                          // ② 已细到单个 mark
+        if (res.empty() || r.begin - res.back().end > min_marks_for_seek)
+            res.push_back(r);                            //    距离远 → 开新段
+        else
+            res.back().end = r.end;                      //    距离近 → 并入上一段（避免 seek 反而更慢）
+        continue;
+    }
+
+    // ③ 按 coarse granularity 分裂子段压栈（右到左）
+    size_t step = (r.end - r.begin - 1) / merge_tree_coarse_index_granularity + 1;
+    for (size_t end = r.end; end > r.begin + step; end -= step)
+        stack.emplace_back(end - step, end);
+    stack.emplace_back(r.begin, end);
+}
+```
+
+`check_in_range()` 的判定式就是稀疏索引的全部威力所在——**一个 granule 区间 `[begin, end)` 覆盖的主键值域恰好是 `[index[begin], index[end])`**：
+
+```cpp
+// markRangesFromPKRange 内的 check_key_condition lambda（化简）
+if (range.end == marks_count) {          // 右端是哨兵 mark → 值域右开边界 = +∞
+    left  = field(index, range.begin);
+    right = POSITIVE_INFINITY;
+} else {
+    left  = field(index, range.begin);    // 区间左端首行主键
+    right = field(index, range.end);      // 下一 granule 首行主键 = 本 granule 的上界（不含）
+}
+return key_condition.checkInRange(used_key_size, index_left, index_right, key_types, mask);
+```
+
+于是 `WHERE pk BETWEEN a AND b` 的处理变成：把 `[a,b]` 与每个 granule 的 `[left,right)` 求交，无交则整段丢弃。`IS NULL` / `!=` / `IN` 等非连续谓词走同一套机制（`checkInRange` 返回 `BoolMask`，三态 `can_be_true / can_be_false / uncertain`）。
+
+`merge_tree_coarse_index_granularity`（默认 **8**，server SETTINGS）控制每层分裂成几块：设成 1 就退化成纯二分。**为什么默认是 8 而不是 1**——稀疏索引项在内存里是 `Column` 形态，`checkInRange` 会做列比较，批量比较 8 个 mark 比逐个比较更划算（SIMD/缓存友好）。
+
+**路径 B：二分查找（仅当谓词是连续区间）**
+
+```cpp
+// src/Storages/MergeTree/MergeTreeDataSelectExecutor.cpp（化简）
+searched_left = 0; searched_right = last_mark;
+while (searched_left + 1 < searched_right) {              // 找左边界
+    middle = (searched_left + searched_right) / 2;
+    if (check_in_range(MarkRange(0, middle)).can_be_true) searched_right = middle;
+    else                                                    searched_left = middle;
+}
+result_range.begin = searched_left;
+// … 对称地再跑一轮找右边界
+```
+
+**复杂度对比**：
+
+| 路径 | 触发条件 | 判定次数 | 说明 |
+| --- | --- | --- | --- |
+| B 二分 | 谓词 = 连续键区间（`matchesExactContinuousRange()`） | `O(log N)` | 两次二分，`N` = mark 数 |
+| A 排除法 | 通用（含 `IS NULL`、低选择性 `IN`、`!=`） | 期望 `O(C·log_C N)`，最坏 `O(N)` | `C = merge_tree_coarse_index_granularity = 8`；最坏发生在几乎所有 mark 都命中时 |
+
+"最坏 `O(N)`" 不是缺陷而是正确性保证：稀疏索引**只能保证不误删**，命中率高时该读还得读。真正决定性能的不是这一步（`N` 相对总行数极小，通常 `行数/8192`），而是随后 `O(命中行数)` 的解码。
+
+**`_part_offset` 伪列**也走同一条路径：它的"索引值"就是 mark 对应的起始行号与 part 名，`check_part_offset_condition()` 用 `getMarkStartingRow(range.begin)` / `getMarkStartingRow(range.end) - 1` 作为左右界——这也是 `_part` / `_part_offset` 过滤能下推到存储层的原因。
+
+### 26.3 跳数索引：注入、查询、失效
+
+跳数索引与主索引是**同一套接口**下的两种实例：主键索引是 `MergeTreeIndexGranularityConstant/Adaptive` 的一种特殊化，而跳数索引是 `IMergeTreeIndex`（`src/Storages/MergeTree/MergeTreeIndices.h`）+ `IMergeTreeIndexAggregator`（写入时逐 block 累积）+ `IMergeTreeIndexCondition`（查询时判定）。
+
+**注册的类型**（`src/Storages/MergeTree/MergeTreeIndices.cpp` 的 `MergeTreeIndexFactory::MergeTreeIndexFactory()`）：
+
+```
+minmax | set | bloom_filter | tokenbf_v1 | ngrambf_v1 | hypothesis | vector_similarity
+```
+
+每个索引有自己的粒度（DDL 里 `INDEX idx ... GRANULARITY n`），粒度 n 表示**每 n 个主索引 granule**汇总一条索引项。
+
+**写入侧聚合器**（`IMergeTreeIndexAggregator::update(block, pos, limit)`）每读满一个 block 就产出一个 `IMergeTreeIndexGranule`，`limit` 保证索引自身不会失控膨胀：
+
+| 类型 | 写入侧聚合 | 查询侧判定 | 典型压缩效果 |
+| --- | --- | --- | --- |
+| `minmax` | 维护 `[min, max]` 闭区间 | `[min,max] ∩ [lo,hi] = ∅` → 整段丢弃 | 列与排序键相关性高时极强；与排序键负相关时**几乎无效** |
+| `set(N)` | 收集去重值集合，超 N 即**标记为过载** | 谓词值与集合无交 → 丢弃；**过载则必不丢** | 低基数枚举列 |
+| `bloom_filter` | 若干 hash 函数 + 位图 | 谓词值不在位图 → 丢弃（有假阳性） | 高基数等值；`false_positive` 参数控制位图大小 |
+| `tokenbf_v1` / `ngrambf_v1` | 文本按 token / N-gram 灌入位图 | 同上，但作用在分词/字符组上 | `LIKE '%xx%'`、`hasToken()` |
+| `hypothesis` | 在线统计，判是否存在反例 | 若存在反例则**放弃剪枝** | 无压缩收益，换取不误删 |
+
+**`set` 的过载保护是本节最值得记住的细节**（`src/Storages/MergeTree/MergeTreeIndexSet.cpp`）：
+
+```cpp
+// 写入侧：MergeTreeIndexAggregatorSet::update
+if (max_rows && size() > max_rows) { /* 停止收集，标记过载 */ }
+
+// 查询侧：MergeTreeIndexConditionSet::mayBeTrueOnGranule
+size_t size = granule.size();
+if (size == 0 || (max_rows != 0 && size > max_rows))
+    return true;                    // ← 空 granule 或过载：一律「可能命中」，绝不剪枝
+if (!condition.checkInHyperrectangle(granule.set_hyperrectangle, ...).can_be_true)
+    return false;                   // 只有确定无交才允许剪枝
+```
+
+也就是说，**`set(N)` 的 N 是"剪枝能力"与"索引体积"之间的开关**：N 越大索引越小、但过载越频繁、剪枝越弱。**没有 N（0）表示不限，唯一值全存**。这是"索引不能用来做唯一性约束"的技术原因。
+
+`set` 的数据结构是 `set_hyperrectangle`（多列等值谓词的**超矩形**），所以 `set` 索引天然支持 `WHERE a = 1 AND b = 'x'` 的联合等值判定。
+
+### 26.4 三条索引的失效判定与复杂度
+
+| 判定 | 主键索引 | `minmax` | `set` | `bloom_filter` |
+| --- | --- | --- | --- | --- |
+| 判定输入 | granule `[left,right)` 键值域 | `[min,max]` 区间 | 值集合 / 超矩形 | 谓词值 hash 后的位图位 |
+| 剪枝条件 | `checkInRange` 三态 | 区间无交 | 集合无交且未过载 | 位未命中 |
+| 单次判定代价 | `O(k)`，`k` = 参与谓词的主键列数 | `O(1)` | `O(集合大小)` 或 `O(k)`（超矩形） | `O(1)` × hash 函数个数 |
+| 最坏情况 | 命中率高时全部 mark 都要读 | 列与排序键无关时全不剪 | 过载时全不剪 | 假阳性率高时近似不剪 |
+
+**通用失效判据**（工程经验，与 §21.2 的性能陷阱呼应）：
+
+1. **排序键前缀单调性是主索引的前提**——`ORDER BY` 之后追加的列只有在**全局单调**时才能被稀疏索引有效利用，否则稀疏索引退化为"每 granule 一个常量"，剪枝率归零；
+2. **跳数索引对与排序键相关性弱的列无效**——`minmax` 在乱序列上等价于无用；
+3. **跳数索引对 `IS NULL` 无效**（值域下界恒为 NULL），这是文档反复强调"高基数列用 bloom_filter 而低基数列用 set"的原因；
+4. **跳数索引不参与 `FINAL` 的去重判定**，也**不参与 mutation 的谓词下推**，它只是纯粹的读优化旁路。
+
+> **可借鉴到本项目**：`engineering/src/db/btreeam.h` 的 BTree AM 是**聚簇**索引（每个键都存一个 entry），与 MergeTree 的稀疏索引是互补关系——若在 BTree AM 上叠加一层"每 N 页记一次页级 `[min,max]`"的 minmax 摘要，即可零成本获得 §27.3 里 `minmax` 的剪枝能力；其数据结构与 `MergeTreeIndexGranularityConstant` 完全同构。
+
+## 二十七、参考资料
 
 1. **ClickHouse 官方仓库**：[github.com/ClickHouse/ClickHouse](https://github.com/ClickHouse/ClickHouse)；
 2. **官方文档**：[clickhouse.com/docs](https://clickhouse.com/docs)；
