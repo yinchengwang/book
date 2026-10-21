@@ -417,7 +417,555 @@ GROUP BY time(5m), host;
 - **SeriesID 哈希 + 倒排索引**：参考 `tsdb/index/tsi1/log_file.go`，可在 `engineering/src/index/` 添加 `series_card.c` 简易实现；
 - **多语言 SDK**：`engineering/sdk/go/`、`engineering/sdk/python/` 等可借鉴 InfluxDB 客户端 SDK 的 `WriteApiBlocking` / `WriteApi` 双模式设计。
 
-## 十九、参考资料
+## 十九、Series 索引：分片寻址与 TSI1 倒排结构
+
+> 本节与 §八 互补：§八 讲的是 TSI1 的三层文件结构（LogFile / IndexFile / SeriesFile），本节下沉到**字节级**——series key 怎么编码、SeriesID 怎么算出来、一次 `WHERE` 条件怎么变成 SeriesID 集合。全部源码引用指向 `reference/time-series/influxdb/`（**InfluxDB 2.x / Go**，见文末版本判定）。
+
+### 19.1 Series key 的字节编码
+
+一个 series（measurement + 有序 tag 集合）在内存与磁盘上都被序列化成一段 **series key**。编码函数是 `tsdb/series_file.go:313` `AppendSeriesKey`：
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                         SeriesKey                                   │
+├──────────┬──────────┬─────────┬────────┬───────┬──────┬──────┬───┤
+│ TotalLen │ NameLen  │  Name   │ TagCnt │TagKeyL│ TagK │TagValL│ V │
+│ uvarint  │  2 bytes │ N bytes │uvarint │2 bytes│ M    │2 bytes│ … │
+└──────────┴──────────┴─────────┴────────┴───────┴──────┴──────┴───┘
+```
+
+- `TotalLen`（uvarint）只覆盖 `Name` 之后的全部内容，因此**可以从任意偏移 O(1) 切出一条完整 series key**（`tsdb/series_file.go:369` `ReadSeriesKey`）；
+- `NameLen` / `TagKeyL` / `TagValL` 固定 2 字节大端，代价是 measurement 名和 tag key/value 被**限制在 64 KiB 以内**——这是为了让解码可以完全走 `binary.BigEndian.Uint16` 而不做变长解析；
+- tag 必须**按 key 字典序排好**再编码（`tsdb/series_file.go:414` `parseSeriesKeyInto`），否则 `CompareSeriesKeys`（`tsdb/series_file.go:437`）的字节序比较无法与语义序对齐。
+
+**存储层的复合 key**：TSM 文件里一个 key 其实是 `seriesKey + fieldKey`，用 `#!~#` 拼接（`tsdb/engine/tsm1/engine.go:77`），切分见 `tsdb/engine/tsm1/engine.go:3116` `SeriesAndFieldFromCompositeKey`（`bytes.Cut`）。这样**同一个 series 的不同 field 在 TSM 内是相邻的**，compaction 时一次顺序写就能覆盖全部 field。
+
+### 19.2 SeriesID 的编码：8 分片 + 全局单调自增
+
+SeriesID 不是一个哈希值，而是**可反解的分片自增序号**——这是 2.x 与 1.x InvertedIndex 最本质的差异：
+
+```go
+// tsdb/series_file.go:32
+SeriesFilePartitionN = 8
+
+// tsdb/series_file.go:300 —— key 落在哪个分片
+func (f *SeriesFile) SeriesKeyPartitionID(key []byte) int {
+    return int(xxhash.Sum64(key) % SeriesFilePartitionN)
+}
+
+// tsdb/series_file.go:280 —— ID 反推分片（不需要哈希，纯取模）
+func (f *SeriesFile) SeriesIDPartitionID(id uint64) int {
+    return int((id - 1) % SeriesFilePartitionN)
+}
+
+// tsdb/series_partition.go:445 —— 分配：每个分片的计数器按 8 递增
+func (p *SeriesPartition) insert(key []byte) (id uint64, offset int64, err error) {
+    id = p.seq
+    offset, err = p.writeLogEntry(AppendSeriesEntry(nil, SeriesEntryInsertFlag, id, key))
+    ...
+    p.seq += SeriesFilePartitionN
+    return id, offset, nil
+}
+```
+
+**为什么 `+= 8` 而不是 `++`**：设 ID 为 `n`，则其分片必为 `(n-1) % 8`。`p.seq` 每次加 8，保证分片内的 ID **永远不与其它分片撞号**，且任意时刻「已分配 ID 的个数 = `seq/8`」。这是**分片自增序列**，不是哈希桶——代价是 ID 空间有 8 倍空洞（`SeriesFilePartitionN` 默认 8，InfluxDB 官方配置为可调，见 `tsdb/config.go` 与 `cmd/influxd/launcher/cmd.go`）。
+
+**分片内部的三级寻址**：
+
+```
+SeriesKey ──xxhash──> Partition(8)
+                          │
+                          ├─ SeriesIndex (rhh.HashMap 内存 + mmap 磁盘 Robin Hood Hash)
+                          │     keyIDMap:  series key ──> SeriesID
+                          │     idOffsetMap: SeriesID  ──> offset
+                          └─ SeriesSegment[] (append-only mmap log)
+                                offset = (segmentID << 32) | pos   // tsdb/series_segment.go:345 JoinSeriesOffset
+```
+
+`SeriesID → offset` 的打包见 `tsdb/series_segment.go:345` `JoinSeriesOffset` / `tsdb/series_segment.go:350` `SplitSeriesOffset`——把 2 字节 segmentID 与 4 字节段内位置拼成一个 int64，**一个 uint64 走完整条反查路径**，无需 struct。
+
+**查找算法**（`tsdb/series_index.go:185` `FindIDBySeriesKey`）：两级，先查内存 `rhh.HashMap`，miss 再查 mmap 磁盘表：
+
+```go
+// 1) 内存层：Robin Hood Hash（rhh），O(1)
+if v := idx.keyIDMap.Get(key); v != nil { ... return id }
+
+// 2) 磁盘层：mmap 的开放寻址 Robin Hood Hash
+hash := rhh.HashKey(key)
+for d, pos := int64(0), hash&idx.mask; ; d, pos = d+1, (pos+1)&idx.mask {
+    elem := idx.keyIDData[pos*SeriesIndexElemSize:]
+    elemOffset := int64(binary.BigEndian.Uint64(elem[:8]))
+    if elemOffset == 0 { return 0 }                    // 空槽 → 未命中
+    elemKey := ReadSeriesKeyFromSegments(segments, elemOffset+SeriesEntryHeaderSize)
+    // Robin Hood 不变式：探测距离超过当前槽的"应在距离"即可提前终止
+    if d > rhh.Dist(elemHash, pos, idx.capacity) { return 0 }
+    if elemHash == hash && bytes.Equal(elemKey, key) { return id }
+}
+```
+
+**复杂度**：
+
+| 操作 | 平均 | 最坏 | 依据 |
+|------|------|------|------|
+| `key → SeriesID`（内存层命中） | O(1) | O(1) | `rhh.HashMap` 开放寻址 |
+| `key → SeriesID`（磁盘层） | O(1) | O(capacity) | Robin Hood 早停保证期望 O(1) |
+| `SeriesID → offset → SeriesKey` | O(1) | O(1) | 两跳定址，无搜索 |
+| 新建 series | O(1) 摊还 | 摊还 | append-only + 计数分片 |
+| 分片 compaction | O(N log N) | O(N log N) | `SeriesPartitionCompactor.Compact`，`tsdb/series_partition.go:528` |
+
+> ⚠️ **纠正一个常见误解**：InfluxDB 2.x 的 series 索引用的是 **Robin Hood Hash（`pkg/rhh`）** 而**不是 B-tree**。TSM 侧的 compaction 才用 LSM 式的 generation/level 滚动（见 §二十一）。
+
+### 19.3 TSI1：8 分片 × (1 LogFile + N IndexFile)
+
+TSI1（`tsdb/index/tsi1/`）是**独立的倒排索引**，把「measurement → SeriesID 集合」按 **8 个 partition** 水平切开（`tsdb/index/tsi1/index.go:58` `DefaultPartitionN = 8`，可用环境变量 `INFLUXDB_EXP_TSI_PARTITIONS` 覆盖，见 `tsdb/index/tsi1/index.go:34-41`）。每个 partition 内部：
+
+```
+partition_N/
+  ├── NNNNNNNN.log          # LogFile，Level() 恒为 0（tsdb/index/tsi1/log_file.go:231）
+  ├── L1-00000001.tsi       # IndexFile，文件名 = "L%d-%08d" + ext
+  │                          #   （tsdb/index/tsi1/index_file.go:528 FormatIndexFileName）
+  └── L2-00000003.tsi
+```
+
+- **LogFile 是 append-only 的倒排日志**，只有 4 种 entry（`tsdb/index/tsi1/log_file.go:32-36`）：
+
+  ```go
+  LogEntrySeriesTombstoneFlag      = 0x01  // series 级删除
+  LogEntryMeasurementTombstoneFlag = 0x02  // measurement 级删除
+  LogEntryTagKeyTombstoneFlag      = 0x04  // tag key 级删除
+  LogEntryTagValueTombstoneFlag    = 0x08  // tag value 级删除
+  ```
+
+  也就是说**「删除」通过 flag 复用同一个 entry 结构实现，不额外占 entry 类型**；`LogEntry` 本体只有 7 个字段（`tsdb/index/tsi1/log_file.go:1068`），series key 直接复用 §19.1 的 `AppendSeriesKey` 编码，因此 `execSeriesEntry`（`tsdb/index/tsi1/log_file.go:670`）能零拷贝地切出 measurement / tags。
+
+- **IndexFile 是 LogFile compaction 的产物**，是一个 mmap 的 **MeasurementBlock + 每 measurement 一个 TagBlock**（`tsdb/index/tsi1/index_file.go:47-54`）：
+  - `MeasurementBlock`（`tsdb/index/tsi1/measurement_block.go:53`）：measurement → (SeriesID 集合, TagBlock 偏移, sketch)；
+  - `TagBlock`（`tsdb/index/tsi1/tag_block.go:46`）：某 measurement 下 tag key/value → SeriesID 集合的三级表；
+  - compaction 写出顺序见 `tsdb/index/tsi1/log_file.go:808` `CompactTo`：magic → measurement names → 各 measurement 的 tagset block → measurement block → trailer。
+
+- **SeriesID 集合是真·位图**：`SeriesIDSet`（`tsdb/series_set.go:12-14`）内部就是 `roaring.Bitmap`，带 `sync.RWMutex`。因此 §八.2 里 `WHERE host='server01' AND region='us-west'` 的「交集」不是集合遍历，而是 **Roaring Bitmap 的 AND**：
+
+  ```go
+  // tsdb/series_set.go:155
+  func (s *SeriesIDSet) And(other *SeriesIDSet) *SeriesIDSet
+  // tsdb/series_set.go:107 —— 多路合并用 FastOr
+  bms := make([]*roaring.Bitmap, 0, len(others)+1)
+  result := roaring.FastOr(bms...)
+  ```
+
+  **复杂度**（Roaring 的容器分层是核心）：
+  - 全部 SeriesID 落在同一个 16-bit 桶 → 单个 `Bitmap16` 容器，AND 为 O(min(|A|,|B|))；
+  - 跨桶 → 每个桶独立做 AND/OR，再按基数自适应选择 Array（稀疏，≤4096 用有序数组）/Bitmap（稠密）容器；
+  - **高基数下 AND 的复杂度是 O(交集基数)，与总基数无关**——这是选位图而非 `map[uint64]struct{}` 的唯一理由。
+
+### 19.4 取舍：什么时候倒排赢、什么时候 B-tree / 哈希赢
+
+```
+判定伪代码（依据 series 基数 C 与单 measurement 的 SeriesID 集合大小 S）
+
+for each measurement m with cardinality C_m:
+    if C_m <= 1e4:
+        # 集合小，倒排直查即可，无需 bitmap
+        cost_inverted   = O(1) 访问 tag value → S 个 SeriesID
+    else:
+        # 集合大，bitmap AND 相对线性扫描的收益达到
+        cost_inverted   = O(S / 64)   # roaring: 每个 64bit 机器字一次 AND
+        cost_btree_scan = O(log S + S) # 树只能定位区间，仍需遍历
+
+# 写入侧代价对比
+per_new_series:
+    倒排新增 = 在「每个 tag value 节点的 SeriesID 列表」中各追加 1 次 → O(#tags) 次写
+    哈希新增 = 写 1 个 KV → O(1) 次写
+```
+
+**结论**：
+
+| 场景 | 赢家 | 原因 |
+|------|------|------|
+| tag value 基数低（如 `host` 只有几台机器） | 倒排（1.x InvertedIndex / 2.x TSI1） | 每个 tag value 节点挂的 SeriesID 列表极短，查询一次哈希命中即得答案 |
+| 单 measurement SeriesID 集合大（>10⁵） | 位图（TSI1 + Roaring） | 条件交集从 O(S) 降到 O(S/64) |
+| 单 series 全 key 查询 | 正向索引（SeriesFile 哈希） | O(1)，不经过倒排 |
+| 阈值监控类高频 WHERE | 二者都不是瓶颈，瓶颈在**写入侧 series 分配** | 每个新 series 要写 LogFile + Segment + Index 三处 |
+
+### 19.5 ⚠️ 高基数防护：2.x 与 1.x 的行为差异（重要纠偏）
+
+§八.3 提到的 `max-series-per-database` / `max-values-per-tag` **写入拒绝路径在 InfluxDB 2.x 中并不存在**——实测结论：
+
+- 全仓 `grep -rn "max-series-per-database\|MaxSeriesPerDatabase"` **0 命中**；
+- `tsdb/config.go:55` 的 `DefaultMaxValuesPerTag = 100000` **定义了但从未被引用**（全仓仅此一处出现），是 1.x 遗留常量。
+
+2.x 实际做法是**不做硬拒绝，只做观测与告警**：
+
+1. **精确统计**：`tsdb/store.go:1159` `SeriesCardinality` —— 对目标 database 下所有 shard 的 `SeriesIDSet` 做**位图并集**后取 `Cardinality()`，注释明确写了「exact」且「不能与其他结果合并」。
+2. **近似统计（默认走这条）**：每个 partition 维护 HLL（HyperLogLog）sketch，跨 partition 合并——`tsdb/index/tsi1/index.go:397` `updateMeasurementSketches` / `tsdb/index/tsi1/index.go:411` `updateSeriesSketches`，实现在 `pkg/estimator/hll`。**基数为何无法用 roaring 位图精确统计？因为它要跨整个 database 的所有 shard 求并，位图内存随基数线性增长；HLL 只需固定几 KiB，标准误差约 1.04/√m。**
+3. **暴露指标**：`tsdb/store.go:196` `series_cardinality` Gauge（按 bucket），`tsdb/store.go:202` `measurement_cardinality`。
+
+**工程含义**：2.x 面对高基数爆炸时，**不会自动拒绝写入**，只会让写入路径的内存与延迟曲线恶化——因此防护必须靠**外部监控 + 主动治理**（`tsdb/shard.go` 控制 shard 数避免单 shard 过大、降采样、拆分 measurement），而不是指望某个 GUC 挡在前面。这与 §十七.1「~10M 后写入延迟急剧上升」的描述一致，但**触发方式不同**。
+
+## 二十、TSM 块级编码：Gorilla 浮点 XOR 与「delta + Simple8b」时间戳
+
+§七.1 已列出块结构，本节把两个编码器逐行拆开，并纠正一个流传很广的错误。
+
+### 20.1 块的三段式布局
+
+```
+Block = [1 byte BlockType] [uvarint TimeBlockSize] [TimeBlock] [ValueBlock]
+```
+
+- `BlockType`（`tsdb/engine/tsm1/encoding.go:14-30`）：`BlockFloat64=0` / `BlockInteger=1` / `BlockBoolean=2` / `BlockString=3` / `BlockUnsigned=4`；
+- **时间与值分成两个独立块**（`tsdb/engine/tsm1/encoding.go:372` `encodeFloatBlockUsing(buf, values, tsenc, venc)`）——因为同一 series 的所有 point 共享一套时间戳编码器（`TimeEncoder`，可跨字段复用），而值编码器按字段类型独立；
+- **切分粒度**：一个 Block 最多 `DefaultMaxPointsPerBlock = 1000` 个点（`tsdb/config.go:52`）。这个常量同时被 compaction planner 当作「文件是否已写满、能否跳过」的判据（`tsdb/engine/tsm1/compact.go:527`）——**编码层的上限变成了调度层的信号**。
+
+### 20.2 浮点：Gorilla XOR + 前导/尾随零窗口
+
+`FloatEncoder`（`tsdb/engine/tsm1/float.go:29`）的完整决策树（`tsdb/engine/tsm1/float.go:87` `Write`）：
+
+```
+写入首字节控制头：b[0] = floatCompressedGorilla << 4     // float.go:23 / float.go:51
+                    高 4 bit = 压缩算法，低 4 bit = BlockType（由调用方 OR 进去）
+
+first := true
+for each value v:
+    if first:                       // 首值无参考，64 bit 全量
+        writeBits(float64bits(v), 64); first = false; return
+
+    Δbits := float64bits(v) XOR float64bits(prev)      // ★ float.go:101
+    if Δbits == 0:                                       // 完全相同
+        writeBit(0)                                     // ★ float.go:104
+        prev = v; return
+
+    writeBit(1)                                         // 有差异
+    L := leadingZeros64(Δbits); T := trailingZeros64(Δbits)   // float.go:108-109
+
+    if (L_prev 存在 && L >= L_prev && T >= T_prev):     // ★ float.go:118 窗口可复用
+        writeBit(0)                                     //   控制位 0 = "沿用上一窗口"
+        writeBits(Δbits >> T_prev, 64 - L_prev - T_prev)    // 只写有效位
+    else:
+        writeBit(1)                                     //   控制位 1 = "重设窗口"
+        writeBits(L, 5)                                 // ★ float.go:125
+        S := 64 - L - T
+        writeBits(S, 6)                                 // ★ float.go:133（除以 2 后实测为 1/2）
+        writeBits(Δbits >> T, S)                        //   只写有效位
+        L_prev, T_prev = L, T
+
+    prev = v
+
+Flush(): writeBit(1) + 完整重设窗口承载 NaN 作为流结束哨兵   // ★ float.go:77-84
+         解码端见到 NaN 即判定 finished
+```
+
+**逐 bit 的字节账**（`sigbits` 段实测为 `writeBits(S, 6)`）：
+
+| 情况 | 成本 |
+|------|------|
+| 与前值完全相同 | **1 bit** |
+| 沿用上一前导/尾随窗口 | 1 + 有效位（`sigbits`） |
+| 重设窗口 | 1 + 1 + 5 + 6 + `sigbits` = **13 + sigbits** bit |
+
+**为什么 Gorilla 有效**：`float64bits` 的高位是符号位+指数、低位是尾数。**CPU 温度 / 内存占用这类指标在小数位上高度稳定**，因此相邻值的 XOR 结果前导零极多（典型 20+ bit）、尾随零也稳定 → 绝大多数点落在「沿用窗口」分支，实测压缩率 **1.37 bit/point**（Gorilla 论文原文数据）。而 `uvnan = 0x7FF8000000000001`（`tsdb/engine/tsm1/float.go:26`）作为哨兵，保证 NaN 不可能是合法写入值（`float.go:89-92` 显式拒绝）。
+
+### 20.3 ⚠️ 时间戳：InfluxDB 用的是「一阶 delta + 10 的幂约分 + Simple8b」，不是 delta-of-delta
+
+这是最常见的误传。**delta-of-delta `(t[i] - t[i-1]) - (t[i-1] - t[i-2])` 是 Prometheus（以及 Gorilla 论文里被讨论后放弃的备选方案）的做法；InfluxDB TSM 从未采用。** 实测 `tsdb/engine/tsm1/timestamp.go` 的 `reduce()`（`timestamp.go:85`）是三段式：
+
+```go
+// tsdb/engine/tsm1/timestamp.go:85 —— 就地一阶差分 + 约分 + RLE 判定
+func (e *encoder) reduce() (max, divisor uint64, rle bool, deltas []uint64) {
+    deltas = e.ts
+    max, divisor = 0, 1e12        // divisor 从 10^12 往下试
+    rle = true
+    for i := len(deltas) - 1; i > 0; i-- {
+        deltas[i] = deltas[i] - deltas[i-1]     // ① 一阶差分（倒序，就地做）
+        v := deltas[i]
+        if v > max { max = v }
+        for divisor > 1 && v%divisor != 0 {    // ② 找「最大的公共 10 的幂」
+            divisor /= 10
+        }
+        rle = i == len(deltas)-1 || rle && (deltas[i+1] == deltas[i])  // ③ 全等 → RLE
+    }
+    return
+}
+```
+
+然后 `Bytes()`（`timestamp.go:119`）做**三分支决策**：
+
+```go
+max, div, rle, dts := e.reduce()
+
+if rle && len(e.ts) > 1 {                       // 分支 A：等间隔 → RLE，最省
+    return e.encodeRLE(e.ts[0], e.ts[1], div, len(e.ts))
+}
+if max > simple8b.MaxValue {                    // 分支 B：delta 过大 → 存原始绝对时间
+    return e.encodeRaw()
+}
+return e.encodePacked(div, dts)                 // 分支 C：Simple8b 位打包
+```
+
+三种编码的控制字节统一为「**高 4 bit = 编码类型，低 4 bit = log₁₀(divisor)**」（`timestamp.go:43-50` 定义 `timeUncompressed=0` / `timeCompressedPackedSimple=1` / `timeCompressedRLE=2`）：
+
+| 分支 | 字节布局 | 典型场景 |
+|------|----------|----------|
+| RLE（`timestamp.go:194`） | `b[0]=2<<4 \| log10(div)` + 8B 首值 + uvarint(delta/div) + uvarint(重复次数) | 每秒/每分钟一个点的规则采样 |
+| Packed（`timestamp.go:141`） | `b[0]=1<<4 \| log10(div)` + 8B 首个 delta + Simple8b 流 | 不规则上报但 delta 分布集中 |
+| Raw（`timestamp.go:181`） | `b[0]=0<<4` + N × 8B 绝对纳秒 | 乱序 / 时间跳变 |
+
+**解码是对称的**：`decodePacked`（`timestamp.go:295`）先读低 4 bit 还原 `div = 10^(b[0]&0xF)`，读出首个 delta，再把 Simple8b 流逐个取出，**最后做前缀和还原绝对时间**：
+
+```go
+last := deltas[0]
+for i := 1; i < len(deltas); i++ {
+    dgap := deltas[i] * div       // 先乘回约掉的 10 的幂
+    deltas[i] = last + dgap       // 再前缀和
+    last = deltas[i]
+}
+```
+
+**复杂度与压缩比**：
+
+| 编码 | 编码复杂度 | 解码复杂度 | 每点字节 | 适用 |
+|------|-----------|-----------|---------|------|
+| Raw | O(1)/点 | O(1)/点 | **8 B** | 兜底 |
+| RLE | O(1)/点（只需头尾） | O(1)/点 | **≈ 0**（整段共用一组头） | 等间隔 |
+| Packed + Simple8b | O(1)/点 | O(1)/点 | 典型 **1.3–2 B**（视 delta 方差） | 通用 |
+
+一阶差分对等间隔序列已经给出**常数** delta，再经 `divisor` 约掉 10 的幂（1s=10⁹ns、1min=6×10¹⁰ns 之类）后 delta 常常降到个位数，Simple8b 就能把 60 个值塞进 8 字节——**这正是 delta-of-delta 想解决的问题，但 InfluxDB 用「约分 + Simple8b」达到了同等效果且解码成本更低（无二阶前缀和的两层依赖）**。
+
+### 20.4 其余类型的差异化策略
+
+| 类型 | 编码 | 特点 |
+|------|------|------|
+| `Integer` (`int.go`) | Simple8b RLE，deltas 以 **1e18 为模**处理 | 计数器天然单调，delta 小 |
+| `Unsigned` (`int.go`) | 同 Integer，但不做负数处理 | 节省符号位 |
+| `Boolean` (`bool.go`) | Bit-packed + delta-of-delta（位级抖动极小） | 1 bit/点 |
+| `String` (`string.go`) | Snappy + LZ4 | 唯一需要通用压缩器的类型 |
+
+> ⚠️ 注意：只有 **Boolean** 用了 delta-of-delta 思路（连续布尔值天然二阶平坦），Float 与 Integer 都没有。
+
+## 二十一、Compaction 调度与查询侧下推
+
+### 21.1 文件名即层级：generation-sequence
+
+TSM 文件名由 `tsdb/engine/tsm1/file_store.go:1258` 生成：
+
+```go
+func DefaultFormatFileName(generation, sequence int) string {
+    return fmt.Sprintf("%09d-%09d", generation, sequence)   // 如 000000001-000000003
+}
+```
+
+- **generation（前半）**：文件「代」，由 `FileStore.NextGeneration()`（`tsdb/engine/tsm1/file_store.go:379`）单调递增，同一 generation 的多个文件是同一批 snapshot 被 2GB 上限切开的分片；
+- **sequence（后半）**：直接就是 **level**。`tsdb/engine/tsm1/compact.go:183`：
+
+```go
+func (t *tsmGeneration) level() int {
+    // Level 0 永远由 cache compaction 产生：1 个文件、sequence = 1
+    // Level 2 由多个 level 1 文件合并而来，level 3 由 level 2 合并而来
+    // Level 4 及其它
+    _, seq, _ := t.parseFileName(t.files[0].Path)
+    if seq < 4 { return seq }
+    return 4
+}
+```
+
+snapshot 落盘时写死 `sequence = 1`（`tsdb/engine/tsm1/engine.go:1206`），即**所有新写入都从 level 0 出发**。
+
+### 21.2 CompactionPlanner：三个 Plan 函数各管一件事
+
+`tsdb/engine/tsm1/compact.go:95` 定义了 planner 接口，`tsdb/engine/tsm1/compact.go:113` 的 `DefaultPlanner` 实现它（在 `tsdb/engine/tsm1/engine.go:189` 由 `NewDefaultPlanner(fs, CompactFullWriteColdDuration)` 构造）：
+
+```go
+type CompactionPlanner interface {
+    Plan(lastWrite time.Time) ([]CompactionGroup, int64)  // level ≥ 4 的常规合并
+    PlanLevel(level int) ([]CompactionGroup, int64)       // level 1/2/3 的逐级滚动
+    PlanOptimize() ([]CompactionGroup, int64)              // level 4 的索引重排优化
+    Release(group []CompactionGroup)
+    FullyCompacted() (bool, string)
+    ForceFull()
+    SetFileStore(fs *FileStore)
+}
+```
+
+**共同的第一步**：`findGenerations(skipInUse bool)`（`compact.go:628`）把磁盘文件按 generation 分组，**倒序（最新在前）**返回，并**跳过已在别的 plan 里占用的文件**：
+
+```go
+genTime := c.FileStore.LastModified()
+if !last.IsZero() && c.FileStore.LastModified().Equal(last) {
+    return lastGen              // 文件系统 mtime 未变 → 直接复用上次结果，O(1)
+}
+for _, f := range tsmStats {
+    gen, _, _ := c.ParseFileName(f.Path)
+    if _, ok := c.filesInUse[f.Path]; skipInUse && ok { continue }
+    ...
+}
+if !orderedGenerations.IsSorted() { sort.Sort(orderedGenerations) }
+```
+
+`filesInUse` 是**互斥集**，由 `acquire`（`compact.go:672`）占有、`Release`（`compact.go:696`）归还——保证**同一个文件不会被两个并发 compaction 同时改写**。
+
+**三种 Plan 的门槛对比**：
+
+| Plan | 作用范围 | 最小合并单位 | 关键跳过规则 |
+|------|---------|-------------|-------------|
+| `PlanLevel(L)` `compact.go:241` | level 1/2/3 | `minGenerations = 4`；**level 1 放宽到 8**（`compact.go:300-303`） | 组内若混有 level ≤ 3 的文件则整组跳过（交给 level planner） |
+| `Plan` `compact.go:428` | level ≥ 4 | `step = 4`（`compact.go:544`） | ① 满 2GB 且满 1000 点/块 → 跳过（`compact.go:527`）② **大小回退启发式**：`g.size()*2 < generations[i-1].size()` 则从这里截断（`compact.go:535`） |
+| `PlanOptimize` `compact.go:337` | **只 level 4**（`compact.go:397`） | `< 4` 个 generation 且无 tombstone → 跳过（`compact.go:405`） | 满 2GB 满块且无 tombstone → 跳过（`compact.go:366`） |
+
+`Plan` 里最值得抄的是那条**大小回退启发式**（`compact.go:531-539`）：
+
+```go
+// 多次 compaction 后头部文件会比尾部涨得快得多；只 compact 小的那些，让它们追上来
+if i > 0 {
+    if g.size()*2 < generations[i-1].size() {
+        start = i
+        break
+    }
+}
+```
+
+它让**文件大小沿时间轴保持单调递减**（新文件小、旧文件大），从而让查询端「时间范围 → 文件集合」的裁剪命中率最大化——LSM 最难调的部分，InfluxDB 用一条 `×2` 的比较就解决了。
+
+### 21.3 调度循环：每秒一轮 + 优先级队列
+
+`tsdb/engine/tsm1/engine.go:1994` `compact()` 是整个调度器：
+
+```go
+func (e *Engine) compact(wg *sync.WaitGroup) {
+    t := time.NewTicker(time.Second)               // ① 固定 1s tick
+    for {
+        select { case <-quit: return; case <-t.C:
+            // ② 每一轮同时向四个 plan 要任务
+            level1Groups, len1 := e.CompactionPlan.PlanLevel(1)
+            level2Groups, len2 := e.CompactionPlan.PlanLevel(2)
+            level3Groups, len3 := e.CompactionPlan.PlanLevel(3)
+            level4Groups, len4 := e.CompactionPlan.Plan(e.LastModified())
+
+            // ③ 全局 compaction 没活干时，才做索引重排
+            if len(level4Groups) == 0 {
+                level4Groups, len4 = e.CompactionPlan.PlanOptimize()
+            }
+
+            // ④ 把队列深度交给优先级调度器（level 1 优先级高于 level 4）
+            e.scheduler.setDepth(1, len(level1Groups))
+            ...
+            e.scheduler.setDepth(4, len(level4Groups))
+
+            // ⑤ 只启动优先级最高的那一个
+            if level, runnable := e.scheduler.next(); runnable {
+                switch level {
+                case 1: e.compactLevel(level1Groups[0], 1, false, wg)
+                ...
+                case 4: e.compactFull(level4Groups[0], wg)
+                }
+            }
+            // ⑥ 没启动的全部归还文件锁
+            e.CompactionPlan.Release(level1Groups)
+            ...
+        }
+    }
+}
+```
+
+注意 **④⑤⑥ 三步**：调度器只看队列深度选一个 level，本轮只启一个 compaction，其余 plan 立即 `Release`。这保证了 **单个 shard 同时最多一个 level compaction 在跑**，把 compaction 对写入延迟的干扰压到最低。
+
+另一条独立的循环负责 **snapshot**（`tsdb/engine/tsm1/engine.go:1980` `ShouldCompactCache`）：
+
+```go
+func (e *Engine) ShouldCompactCache(t time.Time) bool {
+    sz := e.Cache.Size()
+    if sz == 0 { return false }
+    if sz > e.CacheFlushMemorySizeThreshold { return true }              // 内存水位
+    return t.Sub(e.Cache.LastWriteTime()) > e.CacheFlushWriteColdDuration // 冷写超时
+}
+```
+
+触发后走 `WriteSnapshot`（`tsdb/engine/tsm1/engine.go:1820`）：
+
+```
+Cache.Snapshot()            // cache.go:375 —— 原子换出一个新 cache
+  └─ snapshot.Deduplicate()  // engine.go:1874 + cache.go:424 —— 去重 + 排序（最贵的一步）
+  └─ Compactor.WriteSnapshot() // compact.go:833 —— 多 reader + iterator 归并，按 key 分块写
+       └─ 新文件：generation = NextGeneration(), sequence = 1  ⇒ level 0
+  └─ 成功后才清 cache 段并删对应 WAL 段   // engine.go:1941
+```
+
+### 21.4 查询侧下推：三层裁剪
+
+聚合不在本仓（`mean`/`sum` 实现于外部模块 `github.com/influxdata/flux v0.194.4`，见 `go.mod`），但**下推的三层裁剪全在 TSM 仓内**，这才是性能来源：
+
+```
+查询「measurement=cpu, field=usage_idle, host∈S, t ∈ [t0,t1]」
+
+第 1 层 · Series 裁剪（倒排）
+    TSI1 → 每个 host 的 Roaring Bitmap → AND → SeriesID 集合
+    复杂度 O(Σ S_i / 64)
+
+第 2 层 · 文件裁剪（generation/level 顺序 + Min/Max Time）
+    文件名按 generation 有序；BlockIterator 逐 key 取该 key 的全部 IndexEntry
+    IndexEntry{MinTime, MaxTime, Offset, Size}  → 与 [t0,t1] 不交则不解码
+    判定：IndexEntry.Contains(t)                 // tsdb/engine/tsm1/writer.go:223
+    定位：directIndex.Entry(key, t)              // tsdb/engine/tsm1/writer.go:357
+
+第 3 层 · 块内裁剪（二分定位）
+    游标 reset 时用 sort.Search 对已解码的 block 做 O(log N) 二分定位
+    // tsdb/engine/tsm1/array_cursor.gen.go:45（cache）与 :51（tsm block）
+    c.cache.pos = sort.Search(len(c.cache.values), func(i int) bool {
+        return c.cache.values[i].UnixNano() >= seek
+    })
+```
+
+之后才是 **Cache 与 TSM 的归并**（`tsdb/engine/tsm1/array_cursor.gen.go:73` `Next()`）——两路都按时间升序，用双指针线性归并，**不做比较-排序**：
+
+```go
+for pos < cap && c.tsm.pos < len(tvals.Timestamps) && c.cache.pos < len(cvals) {
+    ckey := cvals[c.cache.pos].UnixNano()      // cache 路
+    tkey := tvals.Timestamps[c.tsm.pos]         // tsm block 路
+    if ckey == tkey { res[pos] = ckey; cache.pos++; tsm.pos++ }   // 同点：TSM 覆盖 cache
+    else if ckey < tkey { res[pos] = ckey; cache.pos++ }          // cache 更早
+    else              { res[pos] = tkey; tsm.pos++ }              // tsm 更早
+    pos++
+    if c.tsm.pos >= len(tvals.Timestamps) { tvals = c.nextTSM() }  // 换下一个块
+}
+// 收尾优化：整块都能塞进结果 buffer 时直接 memcpy（array_cursor.gen.go:108-114）
+```
+
+**复杂度总账**（设命中 S 个 series、每 series P 个点、块大小 B=1000）：
+
+| 阶段 | 复杂度 | 相对「全量解码」 |
+|------|--------|----------------|
+| Series 裁剪 | O(Σ S_i / 64) | 决定读多少个 series |
+| 文件/块裁剪 | O(命中块数)，**不解码被跳过的块** | 决定读多少字节 |
+| 块内二分 | O(log P) 每 series | 仅定位起点 |
+| Cache×TSM 归并 | O(输出点数) | 两路有序，无排序 |
+| **合计** | **O(输出点数 + 命中块数)**，与库中总点数**无关** | — |
+
+**这就是 TSM 的核心复杂度承诺**：查询成本只与**结果集大小**成正比，与**存量数据总量**无关。对比之下，若每个点都要先反序列化解码再过滤，成本是 O(存量点数)。
+
+### 21.5 Predicate 剪枝：compaction 时的额外一层过滤
+
+除了时间与 series 裁剪，`tsdb/engine/tsm1/predicate.go:129` 的 `predicateMatcher.Matches` 提供了一条**「喂 tag 直到有定论就早退」**的短路匹配：
+
+```go
+func (p *predicateMatcher) Matches(key []byte) bool {
+    p.state.Reset()
+    key, _ = SeriesAndFieldFromCompositeKey(key)     // 拆出 series key
+    popTag := predicatePopTag
+    if bytes.IndexByte(key, '\\') != -1 { popTag = predicatePopTagEscape }  // 有转义字符走慢路径
+    for len(key) > 0 {
+        tag, value, key = popTag(key)
+        if tag == nil || !p.state.Set(tag, value) { continue }
+        resp := p.root.Update()                       // 布尔谓词树增量求值
+        if resp == predicateResponse_true  { return true }   // 立刻返回
+        if resp == predicateResponse_false { return false }
+    }
+    return false
+}
+```
+
+**复杂度**：谓词是 tag 的合取时，最坏需读完整个 key（O(#tags)）；但**任一 tag 判定为假即可短路返回**（期望 O(1~2) 次 pop）。谓词树结构见 `predicateNodeAnd`（`predicate.go:426`）/ `predicateNodeOr`（`predicate.go:467`）/ `predicateNodeComparison`（`predicate.go:509`），状态做 **per-cursor 克隆**（`predicate.go:118` `Clone`）以支持并发。
+
+---
+
+## 二十二、参考资料
 
 1. InfluxDB v2.7 官方文档：<https://docs.influxdata.com/influxdb/v2.7/>
 2. TSM1 Design：<https://github.com/influxdata/influxdb/blob/0ccd35c253/tsdb/engine/tsm1/DESIGN.md>
