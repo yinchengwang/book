@@ -873,7 +873,437 @@ Druid V1 是 **scatter-gather 风格**的多阶段：
 - **ZK 协调** 与 `engineering/apps/` 的多副本协调可对比；
 - **MSQ 多阶段执行** 与 `engineering/src/db/` 的执行器可对比；
 
-## 二十四、参考资料
+## 二十四、MSF 列存储与 AppendableIndex → 不可变 Segment 的摄入流水线
+
+> 本节深化 §7 的「Segment 是不可变列存文件」结论，落到**写盘侧**的两条关键链：(a) `MSF`（MiddleManager Storage Format）的列式布局与列的两种 encoding 取舍；(b) `AppendableIndex`（可追加）→ index task 满槽 → 通过 `AppendableIndexSpec` 刷盘成不可变 segment 的完整流程。
+>
+> ⚠️ **版本基线**：本节所有源码路径来自 `apache/druid` **当前 master**（版本族 v40，pom.xml `<version>40.0.0-SNAPSHOT</version>`，**显著新于 wiki §2 声明的 v30.x**）。本次任务守「不修改已有章节」红线，未更新 §2 的版本声明；本节路径以实测为准并以「approximate」标注。模块随版本演进可能迁位，Druid 重构频繁，跨大版本尤须注意。
+
+### 24.1 MSF 的两段式文件布局
+
+每个不可变 segment 在 Deep Storage 中实质由两份产物构成：**元数据 JSON + 二进制 data 目录**：
+
+```
+segment_root/
+  ├─ descriptor.json        ← 原名 meta（旧版）/ descriptor（新版），含 interval、列、滚动规约、bitmap 配置
+  └─ factory/persist/...    ← IndexMergerV9 序列化出的列块（LayoutVersionedIndexedStorage 协议）
+```
+
+- **`descriptor.json`**：记录 interval 起止、维度列、指标列、`queryGranularity`、bitmap 类型（`roaring` / `concise`）、压缩策略（`LZ4` / `DEFAULT`/`DICTIONARY`/`RLE`）、`rollup` 标志等。
+- **列块二进制**：按列拆开、按**块（block）**写入。每一列有独立的列文件，列文件内部用 `GenericIndexed`（通用 `Indexed<T>` 落盘协议）封存多条记录，每条记录再按列的 encoding 选择不同 layout。
+- **mmap 加载**：Historical 节点用 mmap 加载列块，零拷贝即可交给 `Cursor` 与 `ColumnValueSelector` 直接访问；这一段在 wiki §6 / §7.8 已经提到，本节不复述。
+- **关键源码路径**（同 §基线版本族）：
+  - `processing/src/main/java/org/apache/druid/segment/IndexIO.java`（approximate，下同）—— Segment 的反/序列化入口；
+  - `processing/src/main/java/org/apache/druid/segment/IndexMergerV9.java` —— 多列并行合并的写出器；
+  - `processing/src/main/java/org/apache/druid/segment/IndexMergerV9Factory.java` —— Builder 模式的入口；
+  - `processing/src/main/java/org/apache/druid/segment/QueryableIndex.java` / `Segment.java` —— 读侧抽象。
+
+### 24.2 列的两种 Layout 取舍：字典编码 vs RLE
+
+Druid 对**字符串列（`TYPE_STRING`）** 与 **整数列（`TYPE_LONG`）** 走截然不同的列存路径，这是 MSF 的核心选择：
+
+#### (a) `TYPE_STRING`：字典 + 索引
+
+字符串列的核心思想是**一次性字典化**，把字符串值映射成 `int` 字典 id，列体只存 id 流：
+
+```
+strings/dictionary:  ["US", "CN", "UK", "JP", ...]      ← GenericIndexed<String> 落盘
+strings/index:      [0, 1, 2, 0, 3, 1, 0, ...]           ← GenericIndexed<int> 落盘
+```
+
+- **写盘侧**：`DictionaryEncodedColumnIndexer`（位于 `processing/src/main/java/org/apache/druid/segment/`）维护 `Map<String, Integer>`，写入时 `computeIfAbsent`，列体只追加 `int id`；
+- **读盘侧**：`DictionaryEncodedColumn` 把 `genericIndexed(int)` 解释为 id 流，配合 `dictionary.get(id)` 完成字符串反解；
+- **压缩**：字典本身可走 `FrontCodedIndexed`（**前向公共前缀编码**，适合排序后高度共享前缀的字典字符串集；同目录 `data/FrontCodedIndexed.java` / `FrontCodedIndexedWriter.java`）。
+
+#### (b) `TYPE_LONG`：列存原始整数 + 块布局
+
+整数列**不强制字典**（整数空间巨大，字典爆炸），直接以**列存原始 long** 落盘：
+
+- **块布局**：`BlockLayoutColumnarLongsSerializer`/`Supplier`（同包，约 16k 整数一个 block）；
+- **压缩策略**：`CompressionStrategy.DEFAULT`（byte-level + Frame-of-Reference，自动识别常量区间零长度编码）/ `LZ4`（默认，字节级）/ `NONE`（无压缩，用于已经预处理的 metric 列）。
+
+#### (c) 复杂度对比
+
+| 列类型 | 写盘开销 | 读盘开销 | 适合场景 | 不适合 |
+| --- | --- | --- | --- | --- |
+| 字典编码 | `O(N log U)`（U=unique） | 字典反解 + int 流扫描 | 低基数字符串、`equality`/`range`/`in` 谓词快路径 | 高基数（爆字典） |
+| 块布局 + LZ4 | `O(N)` 写 + 块压缩 | mmap + 块解压 | metric 列、时间戳、单调 id | 多值/嵌套 |
+
+**关键源码路径**：
+- `processing/src/main/java/org/apache/druid/segment/data/GenericIndexed.java` —— `Indexed<T>` 通用落盘协议；
+- `processing/src/main/java/org/apache/druid/segment/data/ColumnarLongs.java` + `BlockLayoutColumnarLongsSerializer.java` / `BlockLayoutColumnarLongsSupplier.java` —— 整数列存原语；
+- `processing/src/main/java/org/apache/druid/segment/data/ColumnarDoubles.java` / `ColumnarFloats.java` —— 同族浮点原语；
+- `processing/src/main/java/org/apache/druid/segment/data/CompressionStrategy.java` —— 压缩策略枚举；
+- `processing/src/main/java/org/apache/druid/segment/data/FrontCodedIndexed.java` —— 前缀编码字典（**字符串排序 prefix sharing**）。
+
+### 24.3 AppendableIndex → IndexTask → 不可变段刷盘的流程伪代码
+
+实时摄入的入口是 `MiddleManager + Peon` 上跑的 index task（`IndexingService` 在 master 重构后已演化为基于 task + worker 的资源模型），task 内部**先在内存里跑 `AppendableIndex` 聚事实，达到 `maxRowsInMemory` / `maxBytesInMemory` / `maxSegmentSize` 任一阈值时触发 persister**，把内存里的事实系列化成 1 个不可变 segment 并上传到 Deep Storage，再把 segment 注册到 metadata store（MySQL/PostgreSQL），由 Coordinator 通知 Historical mmap 加载。
+
+伪代码（**简化为单 task 单 dataSource**）：
+
+```
+on InputRow row:
+  AppendableIndex.add(row)               # 内部: FactsHolder.put(key, metric)
+  if shouldFlush():
+      segment = AppendableIndexSpec.buildIncrementalIndex(...).persist(file)
+      upload(segment_file) -> DeepStorage
+      metaDb.insertSegment(segment_descriptor)
+      announceSegmentToCoordinator(segment_descriptor)
+      AppendableIndex = AppendableIndexSpec.newBuilder(...).build()
+
+shouldFlush():
+  return len(facts) >= maxRowsInMemory                 \
+      or bytes(facts) >= maxBytesInMemory               \
+      or currentSize >= maxSegmentSize                  \
+      or interval(now) > interval(currentSegment)      \
+      or idleTime >= idleThreshold
+
+AppendableIndex 内部事实表核心（FactsHolder 实测接口）:
+  facts: Map<IncrementalIndexRow_key, AggregateResult[]>
+  # rollup=true 时合并同一维度组合的指标
+  # key 由 时间戳(按 queryGranularity 桶) + 维度列字典 id 拼接
+```
+
+**Roll-up 触发与开销**：当 `dataSchema.granularitySpec.rollup = true`（默认）时，`FactsHolder` 在 `put` 阶段合并 `metric` 列（**`longSum` / `doubleSum` / `count` / `hyperUnique` 分别用 `HyperLogLogCollectorAggregateCombiner` / `DoubleSumAggregator` / `LongSumAggregator` 等**），相当于**「摄入即 GROUP BY」**；rollup=false 时按行追加，等价于无聚合的明细列存。
+
+**Flush 阈值的三级回退链（实测路径）**：实际任务配置来自 `tuningConfig` → `appendToExisting` / `segmentGranularity`：
+
+```
+maxRowsInMemory      ← IndexTask.tuningConfig 默认 75000（行级）
+maxBytesInMemory     ← IndexTask.tuningConfig 默认 104857600（100MB）
+maxTotalRows         ← IndexTask.tuningConfig 默认 20_000_000（v22+ 引入，全任务累计行级）
+intermediatePersistPeriod ← ISO 8601 duration，到点强 flush（防止 GC 压力）
+```
+
+任意阈值触发即 `IncrementalIndex.persist(merger)`，再走 §24.1 描述的 MSF 落盘路径。
+
+**关键源码路径**：
+- `processing/src/main/java/org/apache/druid/segment/incremental/IncrementalIndex.java` —— 可追加内存索引核心（**注意：当前名字是 `AppendableIndex` 接口，is-A `IncrementalIndex` 的事实存储**，**`IncrementalIndex` 抽象类 + `OnheapIncrementalIndex` 实现**，brief 中提到的「`AppendableIndexSpec` builder / `IncrementalIndexStorageAdapter`」等符号在 master 中实为 `AppendableIndexBuilder` / `IncrementalIndexAdapter` / `IncrementalIndexCursorFactory`，可对照，但**严禁照抄 brief 路径名**）；
+- `processing/src/main/java/org/apache/druid/segment/incremental/AppendableIndexSpec.java` + `AppendableIndexBuilder.java` —— Builder 协议（用 builder pattern 而非直接构造，`spec` 通过 `@JsonTypeName` 多态注册 `OnheapIncrementalIndex` 实现）；
+- `processing/src/main/java/org/apache/druid/segment/incremental/IncrementalIndexAdapter.java` + `IncrementalIndexCursorFactory.java` + `IncrementalIndexCursorHolder.java` —— 把内存事实暴露给 `Cursor` 的适配层（**这就是 brief 说的「IncrementalIndexStorageAdapter」的现代路径**）；
+- `processing/src/main/java/org/apache/druid/segment/incremental/FactsHolder.java` —— 实事实表抽象接口；
+- `indexing-service/src/main/java/org/apache/druid/indexing/common/task/IndexTask.java`（approximate）—— batch / index task 标准入口；
+- `extensions-core/kafka-indexing-service/src/main/java/org/apache/druid/indexing/kafka/` + `.../kinesis/...` —— 实时摄入的 task 适配器（Kafka offset → `InputRow` 流）。
+
+### 24.4 主二进制 / 块布局的复杂度
+
+#### 24.4.1 块布局的字节复杂度
+
+```
+N 行整数列, 块大小 B (典型 B=65536 ints/block):
+  块数        ceil(N / B)
+  单块大小   4·B 至 8·B 字节 (long)
+  LZ4 后     通常压缩到 1-3 字节/值的量级
+```
+
+#### 24.4.2 多列并行写的复杂度
+
+`IndexMergerV9.persist()` 内部按列并行写，每列独立 `ColumnMerger`。并行度 = `processing.numThreads`（默认 `max(1, CPU/2)`），故**单段落盘总开销 = O(Σ_columns column_size / numThreads + merge_overhead)**，可近似等价为 `O(N · Σ_columns encoding_cost)` 在单线程视角。
+
+#### 24.4.3 注意事项
+
+- **mmap 后不可写**：segment 一旦落盘即不可变，rollup 调整、维度变更须走 §26 的 **Compaction** 而不是就地更新；
+- **descriptor.json 与二进制必须同步上传**：经典坑是先 binary 上传成功、descriptor 失败，导致 Historical 加载了一个「孤儿 binary」；
+- **GeneratorColumnSchema** / `AutoTypeColumnSchema` 等列式子包（master 中新增）会引入嵌套 / 复杂类型的列存路径，本节不展开。
+
+### 24.5 关键源码路径速查（本节）
+
+| 角色 | 路径（master 版本族，approximate） |
+| --- | --- |
+| Segment 读 / 写 | `processing/src/main/java/org/apache/druid/segment/IndexIO.java` |
+| 段合并 | `processing/src/main/java/org/apache/druid/segment/IndexMergerV9.java` + `IndexMergerV9Factory.java` |
+| 字典列索引 | `processing/src/main/java/org/apache/druid/segment/DictionaryEncodedColumnIndexer.java` + `DictionaryEncodedColumn.java` |
+| 列存原语 | `processing/src/main/java/org/apache/druid/segment/data/ColumnarLongs.java` 等 |
+| 块布局 / 压缩 | `processing/src/main/java/org/apache/druid/segment/data/BlockLayoutColumnarLongsSerializer.java` 等 |
+| 通用落盘 | `processing/src/main/java/org/apache/druid/segment/data/GenericIndexed.java` + `GenericIndexedWriter.java` |
+| 前缀编码字典 | `processing/src/main/java/org/apache/druid/segment/data/FrontCodedIndexed.java` |
+| 实时可追加 | `processing/src/main/java/org/apache/druid/segment/incremental/IncrementalIndex.java` + `OnheapIncrementalIndex.java` |
+| Builder | `processing/src/main/java/org/apache/druid/segment/incremental/AppendableIndexSpec.java` + `AppendableIndexBuilder.java` |
+| 实事实表 | `processing/src/main/java/org/apache/druid/segment/incremental/FactsHolder.java` |
+| Adapter | `processing/src/main/java/org/apache/druid/segment/incremental/IncrementalIndexAdapter.java` + `IncrementalIndexCursorFactory.java` |
+
+---
+
+## 二十五、Bitmap 索引族：BitmapSerde、DictionaryScanningBitmapIndex 与 Boolean Filter
+
+> 本节深化 §8.1 「Bitmap Index（Inverted Index，必备）」，落到**读侧**的判定与组合：(a) `BitmapSerdeFactory` 的两种 bitmap 编码选择；(b) `DictionaryScanningBitmapIndex` / `DictionaryRangeScanningBitmapIndex` 的快路径判定；(c) `BooleanFilter`（AND/OR/NOT）的 bitmap 递归组合；(d) 多值列的 `Concat` 合并。
+
+### 25.1 BitmapSerde：Roaring vs Concise
+
+Druid 把「bitmap 怎么编码」做成可插拔 `BitmapSerdeFactory`：
+
+```
+@JsonTypeInfo(use = Id.NAME, property = "type", defaultImpl = DefaultBitmapSerdeFactory.class)
+@JsonSubTypes({
+  @Type(name = "concise", value = ConciseBitmapSerdeFactory.class),
+  @Type(name = "roaring", value = RoaringBitmapSerdeFactory.class)})
+public interface BitmapSerdeFactory { ... }
+```
+
+- **`concise`**：`ConciseBitmapSerdeFactory`（同包），基于 Concise 压缩位图，对**稀疏场景**（局部 1 聚集）有较好的空间效率；
+- **`roaring`**（生产默认）：`RoaringBitmapSerdeFactory`，把位图切成 65536 整数一个 chunk，对应**三种底层容器**（数组 / 位图 / RLE），按密度自动选择；查询求交 / 并集通常借助 chunk 级跳表式剪枝，**几乎是事实标准**。
+
+> ❗ **brief 标注的 `RoaringBitmapDictionary` / `GenericRoaringBitmapDictionary` 类名**：当前 master 实测均**不存在**。Druid 的字符串字典与 bitmap 是**两层结构**（字典存 string，bitmap 存 dict-id 流），「字典附带 roaring」的设计目前在 Druid 中并不存在类名层级的对应物。本节以 `dictionary/index` 两层模型为准，**不引用 brief 的类名**。
+
+#### 复杂度对比（对 1 亿行 segment 量级）
+
+| 编码 | 单 bitmap 存储（随机） | `bitmap AND bitmap` 求交 | 适合场景 |
+| --- | --- | --- | --- |
+| `concise` | 几十 MB（密集）至几 MB（稀疏） | 字面 AND + 字面 LZ 解压，慢 | 极少使用 |
+| `roaring` | 1-10 MB（典型 rolling up 后） | 容器级跳表式剪枝，**P99 << 100ms** | 生产默认 |
+
+### 25.2 DictionaryScanningBitmapIndex 的快路径判定
+
+Druid **不在每个 unique value 上预置 bitmap**（那样字典化字符串列的存储会爆），而是在查询期**按需扫描字典**判断是否做 bitmap 计算。当 selectionRowCount（filter 已选定的行数）很小、字典项很多时，**直接遍历剩余 N 行比给 N 个 dict-id 算 bitmap 还要快**，因此它**主动放弃 bitmap**。
+
+伪代码（基于实测 `DictionaryScanningBitmapIndex` 类逻辑）：
+
+```
+class DictionaryScanningBitmapIndex extends SimpleImmutableBitmapIterableIndex:
+  field dictionarySize: int
+  field scaleThreshold: double = 1.0
+
+  function computeBitmapResult(selectionRowCount: int, totalRowCount: int):
+      if selectionRowCount == totalRowCount:
+          # 全选无须过滤，直接返回全 1 bitmap
+          return allOnesBitmap
+      if selectionRowCount < dictionarySize * scaleThreshold:
+          # 选剩的少：放弃 bitmap，对剩余 selectionRowCount 逐行 predicate 即可
+          # 此时若再算 bitmap，IO 反而多于行扫描
+          return null  # 触发 cursor 走行遍历
+      else:
+          # 字典项更少：走 bitmap（每个字典值算一次 predicate，O(dictionarySize) 求得 bitmap）
+          bitmap = 逐字典值执行 predicate，得到 row-id bitmap
+          return bitmap
+```
+
+复杂度：
+
+- `estimatedComputeCost() = O(dictionarySize)`（逐字典项一次 predicate）
+- 当 `selectionRowCount` 极大时（即大部分行已被其他 filter 选剩），bitmap 总开销 = `O(dictionarySize)` + bitmap 合并的开销，**整体仍是线性的**；
+- 当 `selectionRowCount` 极小时（精度项严苛过滤），**放弃 bitmap** 直接行遍历的复杂度 = `O(selectionRowCount)`，**优于** `O(dictionarySize + bitmap_or_cost)`。
+
+#### 25.2.1 范围变体：`DictionaryRangeScanningBitmapIndex`
+
+`DictionaryRangeScanningBitmapIndex`（同包）针对 `BoundDimFilter`（数值/字典范围）优化：先按**值排序后的字典**做**二分定位**，把查询值域 `low..high` 映射到 `[i, j)`，**只扫描这段连续字典子集**，再合并 bitmap。复杂度从 `O(dictionarySize)` 降到 `O(log U + (j-i))`（U=unique, j-i 通常 << U）。
+
+### 25.3 BooleanFilter 的 AND / OR / NOT 组合
+
+`BooleanFilter`（位于 `processing/src/main/java/org/apache/druid/query/filter/`）是 Druid 自顶向下 AND/OR 树的根；其核心规则为：
+
+- **AND 子 filter 全部用 bitmap**：把各子 filter 的 bitmap 一一 `bitmap AND`，全程 `O(bitmap_cost)`；
+- **OR 子 filter**：把各子 filter 的 bitmap `bitmap OR`；
+- **NOT**：单参数取反（NegateFilter）。
+
+任意子 filter 若 `selectionRowCount` 极小可走 selection-based，**结果需回到 cursor 行遍历而非纯 bitmap**，这是 Druid 与传统 RLE 列存（如 Pinecone）的一个**根本差异点**。
+
+伪代码（**简化后的 boolean evaluation**）：
+
+```
+function apply(filter, rows):
+    if filter is null:                 return rows
+    if filter is NoopFilter / TrueDimFilter: return rows
+    if filter is FalseDimFilter:        return emptySet
+    if filter is AndFilter:
+        for child in filter.children:
+            rows = apply(child, rows)   # 自顶向下递归
+            if rows is emptySet: break  # 短路
+        return rows
+    if filter is OrFilter:
+        result = emptySet
+        for child in filter.children:
+            result = result ∪ apply(child, rows)
+        return result
+    if filter is NotFilter (1 child):
+        sub = apply(child, rows)
+        return 全集(N) − sub            # 或 bitmap 取反
+    else (叶子 filter，如 EqualityFilter / BoundDimFilter / LikeDimFilter):
+        if selectionRowCount >= dictionarySize:
+            return child.computeBitmap(...).and(rows)  # bitmap 路径
+        else:
+            return [r for r in rows if child.matches(rowAt(r))]  # 行遍历
+```
+
+### 25.4 多值列与 `Concat` 合并
+
+字符串列可能取多值（`string-array`）：Druid 把行内多值转成**整段 position 流 + 行偏移**。两个多值列做**等值 join**时，需要把多值 bitmap 间的"字面值"对齐：
+
+- 单值的 bitmap 结果是一个 `bitmap<row_id>`；
+- 多值的 bitmap 是 `bitmap<row_id>`，**且列体本身是 id 流**，所以仍然可以按 dict-id 求交；
+- **跨 segment 合并**：上游 segment 的 bitmap 偏移 + 本地的 bitmap 偏移 = 复合 bitmap，公共子路径叫 `ConcatIndexedInts` / `ConcatBitmap`，实测入口散落在 `processing/src/main/java/org/apache/druid/segment/data/` 的若干 `*Columnar*Supplier` 与 `processing/src/main/java/org/apache/druid/segment/index/` 的 `*BitmapIndex` 子类中。
+
+### 25.5 关键源码路径（本节）
+
+| 角色 | 路径（master 版本族，approximate） |
+| --- | --- |
+| Bitmap serde | `processing/src/main/java/org/apache/druid/segment/data/BitmapSerde.java` + `BitmapSerdeFactory.java` |
+| Concise 实现 | `processing/src/main/java/org/apache/druid/segment/data/ConciseBitmapSerdeFactory.java` |
+| Roaring 实现 | `processing/src/main/java/org/apache/druid/segment/data/RoaringBitmapSerdeFactory.java` |
+| 字典扫描式 index（等值） | `processing/src/main/java/org/apache/druid/segment/index/DictionaryScanningBitmapIndex.java` + `SimpleBitmapColumnIndex.java` |
+| 字典范围 index（数值） | `processing/src/main/java/org/apache/druid/segment/index/DictionaryRangeScanningBitmapIndex.java` |
+| 语义接口 | `processing/src/main/java/org/apache/druid/segment/index/semantic/DictionaryEncodedStringValueIndex.java` + `NumericRangeIndexes.java` |
+| Filter 表达式 | `processing/src/main/java/org/apache/druid/query/filter/AndDimFilter.java` + `BooleanFilter.java` + `DimFilter.java` + `Filter.java` |
+| Equality filter | `processing/src/main/java/org/apache/druid/query/filter/EqualityFilter.java` |
+| Bound (范围) filter | `processing/src/main/java/org/apache/druid/query/filter/BoundDimFilter.java` |
+
+---
+
+## 二十六、查询执行入口、Segment Timeline 剪枝与 Compaction Duty
+
+> 本节深化 §9（查询 / 计算层）和 §11（Coordination），落到**查询入口**与**后台维护**：(a) `QuerySegmentWalker` 接口与 `ServerManager` 的实现；(b) `VersionedIntervalTimeline` 的 segment 时间窗剪枝；(c) Timeseries / TopN / GroupBy / Scan 四类查询引擎接口差异；(d) Coordinator 的 `CompactSegments` duty 周期调度。
+
+### 26.1 QuerySegmentWalker 与 ServerManager 的入口链
+
+`QuerySegmentWalker` 是 Druid 查询的**唯一入口接口**（位于 `processing/src/main/java/org/apache/druid/query/QuerySegmentWalker.java`），由 **Broker 端实现**（`BrokerSegmentWalker`/`BrokerServerView`）和 **Historical 端实现**（`ServerManager`）**共同实现**：
+
+```
+Broker 端: SQL/Native Query
+   ↓
+QuerySegmentWalker.walk(Query, walkConfig)
+   ↓                              ↑
+BrokerSegmentWalker ── selects historicals ──┘
+                            ↓
+                   broker → historical RPC
+                            ↓
+                ServerManager.getQueryRunnerForIntervals()
+                            ↓
+                VersionedIntervalTimeline<String, DataSegment>
+                            ↓
+                Curable buildCursor(interval, segment, ...)
+                            ↓
+                QueryRunner<T>.run()
+```
+
+#### 关键 call 链代码（实测 ServerManager.java 摘录）
+
+```
+public <T> QueryRunner<T> getQueryRunnerForIntervals(Query<T> query, Iterable<Interval> intervals) {
+    final VersionedIntervalTimeline<String, DataSegment> timeline;
+    final Optional<VersionedIntervalTimeline<String, DataSegment>> maybeTimeline =
+        segmentManager.getTimeline(ExecutionVertex.of(query).getBaseTableDataSource());
+    if (maybeTimeline.isPresent()) {
+        timeline = maybeTimeline.get();
+        // ... 根据 query.getIntervals() 与 timeline 求交，构造 PartitionHolder<Segment>
+        // 对每个被选中的 segment 调用 buildCursor -> QueryRunner<T>.run()
+    }
+}
+```
+
+要点：
+- **Timeline 把 segment 索引下来**：segment 一进入 Historical，就放入 `VersionedIntervalTimeline<String, DataSegment>`（key = version，value = segment 列表）；
+- **查询期只检索时间窗覆盖**：基于 query intervals（必有）和 segment intervals（time‑bound）求交；
+- **Coordinator 维护副本均衡**：Historical 上每个 segment 的副本数由 Coordinator 的 Load Rules 控制。
+
+### 26.2 VersionedIntervalTimeline 的剪枝伪代码
+
+```
+VersionedIntervalTimeline<String, DataSegment>:
+  // key = segment 版本号 + interval
+  // 实现上以 Interval 为 sortedBy 的主索引
+
+function lookup(intervals: Iterable<Interval>):
+    candidates = []
+    for qint in intervals:
+        # 二分查找 qint.start 在 timeline 主索引的位置
+        # 完全在 [segment_start, segment_end) 之外的 segment 跳过
+        for segment in timeline.lookup(qint):   # O(log K + M)
+            if segment.isLoadable() and segment.belongsToHistorical(thisServer):
+                candidates.append(segment)
+    return candidates
+```
+
+#### 复杂度
+
+- `timeline.lookup(interval)` = `O(log K + M)`，K = 同时间区间版本总数，M = 命中的 segment 数；
+- 全 `intervals` 遍历总开销 = `O(|intervals| · log K + total_chosen_segs)`；
+- **剪枝收益**：超出 query interval 的 segment 不会被反序列化为 bitmap，更不会被打开为 `Cursor`；
+- **配合 `BitmapColumnIndex` 的 row-skip**：即便段被选中，行级上 `DictionaryScanningBitmapIndex` 还会按 §25 的判定决定是否遍历。
+
+### 26.3 四大查询引擎接口与适用面
+
+Druid 把查询分四类**引擎**，每类一个 `QueryRunnerFactory` + 自己的 `(Query, Segment) -> QueryRunner` 实现。**注意：wiki §9.3 把这些都默认挂在 GroupBy 上是不准确的，本节做精确切分**：
+
+| 引擎 | 入参接口 | 输出 | 在 segment 上单线程扫描 | 跨 segment 合并 |
+| --- | --- | --- | --- | --- |
+| **Timeseries** | `TimeseriesQuery` | `Result<TimeseriesResultValue>`，带 timestamp + 聚合结果 | `TimeseriesQueryEngine.process`（拉 `Cursor`，按 `granularity` 桶归并） | `TimeseriesBinaryFn`（左右子段左连接，⚠️ **必须单调左连接**） |
+| **TopN** | `TopNQuery` | top‑N 排序后 N 行 | `TopNQueryEngine.process`：堆排序阈值 + 字典前缀 | `TopNBinaryFn`：左右 merge heap |
+| **GroupBy** | `GroupByQuery` | N 行 `GroupByResultRow` | `GroupByQueryEngine`（`epinephelinae` 内部）：`BufferHashGrouper` + `ByteBufferHashTable`，全哈希；新版本入口改用 `GroupingEngine` | `GroupByResultMergeFn`（子类 `epinephelinae.GroupByMergingQueryRunner` 二段合并） |
+| **Scan** | `ScanQuery` | row 流（每行 N 列） | `ScanQueryEngine.process`：返回 row-id 流的 `Sequence`，轻量 | 拼接/全局排序 |
+
+#### 26.3.1 入口共性（List 接口）
+
+```
+sequence<Cursor> = cursorsForSegment(query, segment)
+for cursor in sequence:
+    for row in cursor:
+        aggregator.aggregate(row.getLong(metric_col))
+result = aggregator.get()  # -> Sequence<Result>
+```
+
+每类引擎对外都是 `Sequence<T>`（Druid 自家的 lazy seq），Broker 端做**最终 binary merge**：`TimeseriesBinaryFn`/`TopNBinaryFn`/`GroupByResultMergeFn` 分别对应三种合并协议。
+
+#### 26.3.2 GroupBy 的两阶段拆分
+
+`GroupByQueryConfig` 实测有两阶段策略：
+- **单阶段**：query 无 subquery / JOIN / 子聚合；本地 segment 直接聚合 + 排序；
+- **两阶段**：有子聚合 / JOIN → `GroupByMergingQueryRunner` 由 Broker 端二次合并；
+- 两阶段 + streaming merge 走 `epinephelinae.GroupByMergingQueryRunner`。
+
+### 26.4 Coordinator 的 CompactSegments Duty
+
+Druid 的 Compaction 不是离线 ETL，而是 Coordinator **后台周期 duty**（`server/src/main/java/org/apache/druid/server/coordinator/duty/CompactSegments.java`）：
+
+```
+Coordinator 每轮 duty 周期：
+  candidates = DataSourceCompactibleSegmentIterator
+                 .findCompactionCandidates(timeline, config)  # 选段
+  for each group of segments to compact (per dataSource):
+      if (#segments == 1 && isAlreadyCompacted(targetSpec, segment)):
+          skip   # 单段且已对齐目标 schema，无需压缩
+      if strategy is APPEND:
+          targetInterval := union(segments.intervals)
+          inputs := segments where interval ⊆ targetInterval
+          # 走 IndexTask 重建为新的「metadata 一致、合并入一个 segment」的版本
+      if strategy is MERGE:
+          # 把跨时间的多个 segment 全量重写到单一新段
+      else:
+          skip
+```
+
+#### 26.4.1 触发条件（实测）
+
+- `CoordinatorDynamicConfig.compactionConfigs`（管理员配置）；
+- `CompactSegmentsConfig` 默认 enable；
+- 一组 segment 满足：**时间窗可拼接（APPEND）/ 时间窗相交不可拼接（MERGE）** + 满足 `targetCompactionSizeBytes` + `targetCompactionRowsPerSegment` 等阈值；
+- **跳过条件**：single segment 且已对齐 `targetSpec`（实测 `isAlreadyCompacted`）。
+
+#### 26.4.2 复杂度与开销
+
+- 单次 compaction 实际是**多个存量 segment 重新做一次 §24.3 的 ingestion pipeline**（`IndexTask` 重新跑 `AppendableIndex → IndexMergerV9.persist`），故总开销 = `O(Σ segments_input_N · Σ_columns encoding_cost)`；
+- Coordination 自身开销（选段、构造 spec、提交 task）= `O(K log K)`（K=候选段数），可忽略；
+- **线上影响**：当 MERGE 跨长时窗，**会产生大到几十 GB 的新段**，Historical 加载它需要一次「整段重 mmap」，通常**伴随显著短时内存与 IO 抖动**。这是 wiki §13 中「§21.2 Coordinator Compaction 卡死」的微观原因。
+
+### 26.5 关键源码路径（本节）
+
+| 角色 | 路径（master 版本族，approximate） |
+| --- | --- |
+| 查询入口接口 | `processing/src/main/java/org/apache/druid/query/QuerySegmentWalker.java` |
+| Historical 实测入口 | `server/src/main/java/org/apache/druid/server/ServerManager.java` |
+| Segment timeline | `server/src/main/java/org/apache/druid/server/SegmentManager.java` |
+| Timeline 数据结构 | `org.apache.druid.timeline.VersionedIntervalTimeline`（参考路径随版本变化，已从 `processing` 迁出到独立模块） |
+| Timeseries 引擎 | `processing/src/main/java/org/apache/druid/query/timeseries/TimeseriesQueryEngine.java` + `TimeseriesQueryRunnerFactory.java` |
+| TopN 引擎 | `processing/src/main/java/org/apache/druid/query/topn/TopNQueryEngine.java` + `TopNQueryRunnerFactory.java` |
+| GroupBy 引擎（哈希） | `processing/src/main/java/org/apache/druid/query/groupby/epinephelinae/GroupByQueryEngine.java` + `GroupByMergingQueryRunner.java` |
+| GroupBy 引擎（新入口） | `processing/src/main/java/org/apache/druid/query/groupby/GroupingEngine.java` |
+| GroupBy 排序 | `processing/src/main/java/org/apache/druid/query/groupby/orderby/DefaultLimitSpec.java` |
+| GroupBy 配置 | `processing/src/main/java/org/apache/druid/query/groupby/GroupByQueryConfig.java` |
+| Scan 引擎 | `processing/src/main/java/org/apache/druid/query/scan/ScanQueryEngine.java` |
+| Compaction duty | `server/src/main/java/org/apache/druid/server/coordinator/duty/CompactSegments.java` |
+| Compaction 候选选段 | `server/src/main/java/org/apache/druid/server/compaction/DataSourceCompactibleSegmentIterator.java` |
+| Compaction 优先级 | `server/src/main/java/org/apache/druid/server/compaction/PriorityBasedCompactionSegmentIterator.java` |
+
+## 二十七、参考资料
 
 1. **Apache Druid 官方仓库**：[github.com/apache/druid](https://github.com/apache/druid)；
 2. **官方文档**：[druid.apache.org/docs](https://druid.apache.org/docs)；
