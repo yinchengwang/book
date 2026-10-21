@@ -581,7 +581,493 @@ POST /_aliases
 - **聚合框架的 Two-Pass 模型**：可借鉴 partial_agg → reduce 流程在 `engineering/src/algo/groupby.c` 引用；
 - **REST API + JSON DSL 解析**：参考 `server/src/main/java/org/elasticsearch/rest/RestController.java`，可在 `engineering/src/algo/json_dsl.c` 简化版；不引入大依赖。
 
-## 十八、参考资料
+## 十八、Lucene 倒排索引的存储布局与编码算法（算法展开）
+
+> **版本锚点**：本节源码路径以 **Elasticsearch 8.19 + Lucene 9.12.2** 为准 —— ES 8.19 的 `build-tools-internal/version.properties` 明确写着 `elasticsearch = 8.19.24` 与 `lucene = 9.12.2`，两者严格配对。本仓库 `reference/search/elasticsearch/` 子模块未 init（目录内除 `.git` 外 0 个条目），故**一律只给 canonical 路径、不给行号**，行号需对照上述版本自行校对。
+>
+> ⚠️ **与已有章节的版本差异**（按骨架保护原则，旧节原文一字未改）：§7.1 与 §8.1 引用的 `lucene/core/src/java/org/apache/lucene/codecs/lucene90/Lucene90PostingsFormat.java` 在 **lucene-core 9.12.2 中已不存在** —— Lucene 9.12 起默认倒排 codec 换成了 `Lucene912PostingsFormat`。旧节路径对应的是 Lucene 9.0~9.11 时代的默认格式。本节按 9.12.2 实测结果书写。
+
+### 18.1 一个 segment 落盘成哪些文件
+
+Lucene 9.12.2 的默认 codec 是 `Lucene912Codec`，它把每个 segment 拆成「一组列式文件 + 一棵词典树」：
+
+| 扩展名 | 默认 codec | 内容 | 访问模式 |
+|--------|-----------|------|---------|
+| `.fnm` | `Lucene94FieldInfosFormat` | 字段元数据（字段名、`IndexOptions`、doc_values 类型） | 打开 segment 时读一次 |
+| `.tim` | `Lucene90BlockTreeTermsWriter` | 词项字典（BlockTree：分块 + 前缀/后缀压缩） | 顺序 / 二分定位 |
+| `.tip` | `Lucene90BlockTreeTermsWriter` | 词项索引：**每字段一棵 FST**，词项前缀 → 块的文件指针 | 常驻内存随机访问 |
+| `.tmd` | `Lucene90BlockTreeTermsWriter` | 词项元数据（每字段统计量、FST 元信息） | 打开 segment 时读一次 |
+| `.doc` | `Lucene912PostingsFormat` | docId 增量 + 词频（分块打包） | 顺序扫描 / 分块随机定位 |
+| `.pos` | `Lucene912PostingsFormat` | position 增量 | 短语查询、slop |
+| `.pay` | `Lucene912PostingsFormat` | payload / offset | 高亮、词向量 |
+| `.psm` | `Lucene912PostingsFormat` | 倒排表元数据：每个 term 一条，指向它在 `.doc` 中的偏移 | 随机定位某个 term |
+| `.nvd` | `Lucene90NormsFormat` | 长度归一化因子（**每文档 1 字节**） | 随 docId 顺序读 |
+| `.dvd` / `.dvm` | `Lucene90DocValuesFormat` | doc_values 数据 / 元数据 | 按 docId 直接寻址（列存） |
+| `.fdt` / `.fdx` / `.fdm` | `Lucene90StoredFieldsFormat` | stored fields 文档原文 / 稀疏索引 / 元数据 | 按需取字段 |
+| `.liv` | `Lucene90LiveDocsFormat` | 删除位图 | 位运算 |
+| `.vem` / `.vex` | `Lucene99HnswVectorsFormat` | 向量元数据 / HNSW 图 | 图遍历 |
+
+关键设计：**倒排（词 → doc）与正排（doc → 词）物理分离**。查询时只需要打开其中一侧的文件，这就是 §7.3「doc_values 与 posting list 互补」的物理原因。
+
+ES 侧的包装层（负责决定 mapping 如何映射成 Lucene `FieldInfo`）：
+
+- `server/src/main/java/org/elasticsearch/index/mapper/FieldMapper.java`
+- `server/src/main/java/org/elasticsearch/index/mapper/KeywordFieldMapper.java`（`keyword`：只有倒排，默认开 doc_values）
+- `server/src/main/java/org/elasticsearch/index/mapper/NumberFieldMapper.java`（数值：倒排 + doc_values + points）
+- `server/src/main/java/org/elasticsearch/index/codec/CodecService.java`（注册 codec）
+
+> **一个反直觉的事实**：ES 的 `_source` **不是 Lucene 的独立格式**。它由 `server/src/main/java/org/elasticsearch/index/mapper/SourceFieldMapper.java`（`NAME = "_source"`）作为**一个 stored field 写进去**。所以 `_source` 的压缩行为完全由 stored fields codec 决定（ES 8.19 另有私有的 `server/src/main/java/org/elasticsearch/index/codec/zstd/Zstd814StoredFieldsFormat.java`），而不是由 `_source` 自己的开关决定。
+
+### 18.2 BlockTree 词项字典：为什么不是「一词一条记录」
+
+如果每个词项写一条「词长 + 词字节 + 偏移」记录，词典会被词条自身撑爆。BlockTree 的做法是**先按词典序把词项切成块，再让块内词项只存「相对块首词的前缀公共部分之后的增量后缀」**。
+
+**块大小的工程取值**（`Lucene90BlockTreeTermsWriter` 实测常量）：
+
+| 常量 | 值 | 含义 |
+|------|----|------|
+| `DEFAULT_MIN_BLOCK_SIZE` | **25** | 建议的最小块内词项数 |
+| `DEFAULT_MAX_BLOCK_SIZE` | **48** | 建议的最大块内词项数 |
+
+**块内记录的字节布局**（写入侧实测）：
+
+```
+每块先写一个 vLong 作为「token」：
+  token = (suffixLength << 3) | (isLeafBlock ? 0x04 : 0) | compressionAlgorithmCode
+  ├─ 高位：块内所有词项的「后缀」总字节数（不是单个词的）
+  ├─ bit2  ：本块是否为叶子块（块内再无下级块）
+  └─ 低 3 位：后缀压缩算法编号
+                 ├─ NO_COMPRESSION  : 原样写后缀字节
+                 ├─ LOWERCASE_ASCII : 1 字节/词的上下文编码（大量小写 ASCII 时显著变小）
+                 └─ LZ4             : 仅当 LZ4 比原文省 > 25% 时才启用
+随后依次写：
+  1) 后缀字节（按上面选定的算法压缩后写入）
+  2) 后缀长度数组（每词 1 字节）
+       └─ 若所有长度相同 → 特殊编码：writeVInt((numSuffixBytes << 1) | 1) 再写 1 个字节
+       └─ 否则            → writeVInt(numSuffixBytes << 1) 后跟 numSuffixBytes 个字节
+  3) 统计量（docFreq / totalTermFreq 等）字节块
+  4) term metadata 字节块（指向 .doc 的偏移等）
+```
+
+**「后缀长度全相同」的特判**（上面的 `<< 1 | 1`）是典型的工程优化：像 ID 这类结构化字段，同一块里词项长度往往一致，用 1 个字节替代 N 个字节几乎零成本。
+
+**`.tip` 里的 FST 索引 + floor blocks**：FST 把「词项前缀」映射到「磁盘块」。但当一个前缀下的词项多到超过 `DEFAULT_MAX_BLOCK_SIZE` 时，这个块会被再切成若干 **floor block**，此时 FST 的输出值里额外编码了每个 floor block 的首字节与文件指针。这样 FST 的大小始终与「块数」而非「词项数」成正比。
+
+源码：`lucene/core/src/java/org/apache/lucene/codecs/lucene90/blocktree/Lucene90BlockTreeTermsWriter.java`、`.../blocktree/Lucene90BlockTreeTermsReader.java`、`.../blocktree/SegmentTermsEnumFrame.java`。
+
+### 18.3 FST 的状态转移压缩：把词典再压一层
+
+`.tip` 的 FST 由 `lucene/core/src/java/org/apache/lucene/util/fst/FST.java` 与 `FSTCompiler.java` 实现，它是一个**最小化确定有限状态自动机**（DAWG 化），输出压缩为一个 `byte[]`。三条关键性质：
+
+1. **最小化**：构建时把同构子状态合并（要求输入按 UTF8 码点**字典序**喂入，乱序会直接抛异常）；
+2. **字节寻址**：整棵树就是一个 `byte[]`，每条弧的 flag/label/target 都按字节偏移读取，**无需反序列化对象**，可 mmap 常驻；
+3. **弧的目标相对编码**：`BIT_TARGET_NEXT` 表示「目标就是 `bytes.get(pos + 1)`」——即下一个节点紧接着当前节点存放，把「随机访问」退化成「顺序前进」。
+
+**节点的三种弧存储布局**（由节点 flags 决定，`FST.java` 实测常量）：
+
+| 布局 | flags 值 | 含义 | 查标号成本 |
+|------|---------|------|-----------|
+| 稀疏定长 + 二分 | `ARCS_FOR_BINARY_SEARCH` | 定长弧数组，按 label 二分 | `O(log 出度)` |
+| 稠密 + 位表直接寻址 | `ARCS_FOR_DIRECT_ADDRESSING` | 位表判存在性 + 连续数组 | `O(1)` |
+| 连续弧 | `ARCS_FOR_CONTINUOUS` | 稠密 + `ARCS_FOR_DIRECT_ADDRESSING`，且 `label - firstLabel` 直接作下标 | `O(1)` |
+
+其余弧标志位：`BIT_FINAL_ARC = 1<<0`、`BIT_LAST_ARC = 1<<1`、`BIT_TARGET_NEXT = 1<<2`、`BIT_STOP_NODE = 1<<3`、`BIT_ARC_HAS_OUTPUT = 1<<4`、`BIT_ARC_HAS_FINAL_OUTPUT = 1<<5`。
+
+**这就是 ES 通配符 / 前缀 / 自动补全查询能跑得动的原因**：查询不是对词典做全量扫描，而是从 FST 根节点按查询串逐字节下钻，只访问匹配的路径；`seekCeil` 语义保证「≥ 目标的最小词项」在 `O(|查询串|)` 次弧跳内定位（多带一个块的线性/二分收敛）。
+
+> ⚠️ **与 §7.2 / §8.1 的表述差异**：旧节把「FST + Skip List」并列为 posting 的编码，且称 postings 格式实现为 `Lucene90PostingsFormat`。实测 9.12.2 中 **FST 只服务词项字典（`.tim` / `.tip`），skip data 服务倒排表（`.doc`）**，两者分属不同文件、不同结构；`Skip List` 一词在实测源码里对应的是 skip data 的**两级层次**（见 18.5），不是独立的一张表。
+
+### 18.4 倒排表的分块编码：d-gap + PackedInts + VInt 尾巴
+
+`.doc` 文件的组织（`Lucene912PostingsFormat` 实测常量与 javadoc）：
+
+| 常量 | 值 | 含义 |
+|------|----|------|
+| `BLOCK_SIZE` | **128** | 每个 packed block 打包 128 个 docId（等于 `ForUtil.BLOCK_SIZE`） |
+| `LEVEL1_FACTOR` | **32** | 每 32 个 block 额外插一级 skip data |
+| `LEVEL1_NUM_DOCS` | **4096** | `LEVEL1_FACTOR × BLOCK_SIZE`，即 level-1 skip 的 doc 跨度 |
+
+**两级块结构**：
+
+```
+TermFreqs = <PackedBlock32>^(PackedDocBlockNum / 32) , VIntBlock?
+PackedBlock32 = Level1SkipData , <PackedBlock>^32
+PackedBlock   = Level0SkipData , PackedDocDeltaBlock , PackedFreqBlock?
+其中 PackedDocBlockNum = floor(DocFreq / 128)
+```
+
+**docId 用「差分 + 位打包」**：先算相邻 docId 的差（d-gap），每 128 个差值按 PackedInts 打包进一个 block。两种 block 的差别是精心设计的：
+
+| block | 编码方式 | 原因 |
+|-------|---------|------|
+| `PackedDocDeltaBlock` | PackedInts，**不做 patching** | 文档数天然近似均匀分布，极端值很少，paying 不划算 |
+| `PackedFreqBlock` | PackedInts，**使用 patching**（`PForUtil`） | 词频分布长尾严重（绝大多数 tf=1，少数 tf=上千），把超阈值的大值单独记为「exception」，主体用更窄的位宽 |
+
+`PackedInts` 本身在 `lucene/core/src/java/org/apache/lucene/util/packed/PackedInts.java`：
+- `Format.PACKED` 是紧凑连续位（`byteCount = ceil(count × bits / 8)`）；
+- 旧的 `PACKED_SINGLE_BLOCK`（补齐到 64 位对齐）**已废弃**，解包时由 `ForUtil.expand8 / expand16 / expand32` 用「掩码左移展开」把打包位摊开到整条 64 位 lane（`expandMask8/16/32`），这是位级解包的核心技巧。
+
+**VInt 尾巴的 `DocDelta × 2` 编码**（不足一个 block 的残余 docId/freq）：若索引了词频，则
+- `DocDelta` 为**奇数** → 该 doc 的 tf 恒为 **1**；
+- `DocDelta` 为**偶数** → 紧接着再读一个 VInt 作为 tf；
+- 若未索引词频（`IndexOptions.DOCS`），则不乘 2，直接就是 docId 差值。
+
+实测 javadoc 给的样例：某 term 在 doc 7 出现 1 次、在 doc 11 出现 3 次，编码为 VInt 序列 **`15, 8, 3`**（`7×2+1=15`；`4×2=8` 随后 3 是 tf）；若关闭词频则编码为 `7, 4`。这是一个「用 1 个多余比特换掉一整条 VInt 读」的设计。
+
+**Singleton 优化**：若某 term 只在一个文档里出现，写入端不再往 `.doc` 写指针 + block，而是把该 docId **直接写进词项字典**（`.psm`/`.tim` 中的 `SingletonDocID`）。
+
+源码：`lucene/core/src/java/org/apache/lucene/codecs/lucene912/Lucene912PostingsFormat.java`、`Lucene912PostingsWriter.java`、`Lucene912PostingsReader.java`、`.../lucene912/ForUtil.java`、`.../lucene912/PForUtil.java`。
+
+### 18.5 两级 skip data 与 block-max 的原料（Impacts）
+
+每个 block 头部挂一段 skip data，**level-0 每 128 个 doc 一份，level-1 每 4096 个 doc 一份**。实测字段布局：
+
+```
+Level1SkipData = DocDelta, DocFPDelta, Skip1NumBytes?, ImpactLength?, Impacts?,
+                 PosFPDelta?, NextPosUpto?, PayFPDelta?, NextPayByteUpto?
+Level0SkipData = Skip0NumBytes, DocDelta, DocFPDelta, PackedBlockLength,
+                 ImpactLength?, Impacts?, PosFPDelta?, NextPosUpto?, PayFPDelta?, NextPayByteUpto?
+```
+
+三个设计点：
+
+1. **`Skip0NumBytes`**：记录本块 skip data 自身的长度。只用 `nextDoc()` 顺序扫描时可以**整段跳过 skip data 都不读**；只关心前几个字段时也能跨过剩余字段。
+2. **`DocFPDelta`**：本 term 的词频数据与**上一个 term** 数据的文件偏移之差（块内相对编码），使 term 之间可以「相对跳转」而不用每 term 存绝对 8 字节指针。
+3. **`Impacts`（`ImpactLength` + `Impacts`）**：仅当索引了词频时才写。它是 **block-max 提前终止算法的全部原料** —— 一个 `Impact` 就是一对 `(int freq, long norm)`（见 `lucene/core/src/java/org/apache/lucene/index/Impact.java`），代表「这个块里至少有一条 doc 的词频 ≥ freq，且长度因子 norm ≤ 该值」。用最小 norm + 最大 freq 就能给整块算出一个**分数上界**，见 §十九。
+
+源码：`lucene/core/src/java/org/apache/lucene/index/Impact.java`、`Impacts.java`、`ImpactsEnum.java`、`ImpactsSource.java`。
+
+### 18.6 存储布局各环节的复杂度
+
+| 操作 | 复杂度 | 依据 |
+|------|--------|------|
+| 定位一个 term | `O(|term 字节数|)` 弧跳 + 1 次块定位 | FST 常驻内存、按字节下钻；`.tip` 的每字段一棵 FST |
+| 块内定位 posting | `O(1)` | `.psm` 给出 term 在 `.doc` 的文件指针 + 块内偏移 |
+| 解码一个 block 的 128 个 docId | `O(BLOCK_SIZE) = O(128)` | `ForUtil.expand8/16/32` 位展开 |
+| `advance(target)` 跳块 | `O(跨过的块数)` 次常数级读 + 一次 `O(128)` 解码 | level-0 每 128 doc、level-1 每 4096 doc 各一份 skip |
+| 顺序扫完一个 term 的 posting | `O(df)` | 全量读取是下界 |
+| doc_values 随机读第 N 行 | `O(1)` | `.dvm` 元数据 + 直接寻址块表 |
+| `_source` 取一个字段 | `O(定位字节数)` | `.fdx` 稀疏索引给出字节偏移 |
+| `.liv` 判活 | `O(1)` | `O(N/8)` 字节位图 + `BitSet` |
+
+**空间账**：`.tip`（FST）大小 ∝ **块数** ∝ 词项数 / 25~48，与词项总数呈平方根级以下的关系；这是「词典可以常驻内存而词项本身不能」的根本原因。
+
+---
+
+## 十九、BM25 评分与 Block-Max 提前终止（算法展开）
+
+> **版本锚点与免责**：同 §十八，以 **Elasticsearch 8.19.24 + Lucene 9.12.2** 实测源码为准；本仓库 `reference/search/elasticsearch/` 子模块未 init，故**只给 canonical 路径、不给行号**。
+>
+> ⚠️ **重要纠偏（brief 与旧节的常见误区）**：Lucene 9.12 的 `lucene-core` 里**已经没有** `MaxScoreScorer` 与 `BlockMaxWANDScorer` 这两个类（实测 `find` 结果为空）。论文里的「MaxScore / Block-Max WAND」是算法名；9.12 的实现落到了 `WANDScorer`、`BlockMaxConjunctionScorer`、`MaxScoreCache`、`ImpactsDISI` 四个类上，由 `Boolean2ScorerSupplier` 按查询形状选择。本节按 9.12.2 的真实实现书写。
+
+### 19.1 BM25 的真实公式：idf 不是教科书的 `log(N/df)`
+
+`lucene/core/src/java/org/apache/lucene/search/similarities/BM25Similarity.java` 实测：
+
+```
+score(q, d) = Σ_{t ∈ q}  idf(t) × ( freq(t,d) × (k1 + 1) ) / ( freq(t,d) + k1 × (1 − b + b × |d| / avgdl) )
+
+默认参数：k1 = 1.2f,  b = 0.75f（discountOverlaps = true）
+avgdl     = sumTotalTermFreq / docCount          ← 实测 avgFieldLength()
+idf(t)    = log(1 + (N − df + 0.5) / (df + 0.5))  ← 实测 idf()，非 log(N/df)
+```
+
+`idf` 用 `log(1 + …)` 而不是 `log(N/df)` 的原因很实际：`log(N/df)` 在 `df > N/2` 时会变**负数**，把常见词（出现在过半文档里）的分数拉到负值以下。`log(1 + x)` 保证 `idf ≥ 0`。源码里 `idfExplain` 的解释文本原样写着 `idf, computed as log(1 + (N - n + 0.5) / (n + 0.5))`，用 `?explain=true` 就能在响应里看到它。
+
+ES 侧可换 `similarity`（`BM25Similarity` / `ClassicSimilarity` / LTR），入口是 `server/src/main/java/org/elasticsearch/index/similarity/SimilarityService.java`；ES 自带的「最小竞争分」包装器在 `server/src/main/java/org/elasticsearch/common/lucene/search/function/MinScoreScorer.java`。
+
+### 19.2 长度因子被压成 1 字节：256 档查表
+
+`|d|` 是每个文档都可能不同的量，不可能逐 doc 存一个 float。Lucene 的做法是**把长度因子预先折进 norm 的倒数、量化成 1 个字节**：
+
+```
+// BM25Similarity.scorer() 实测
+float[] LENGTH_TABLE = new float[256];
+for (int i = 0; i < 256; i++) LENGTH_TABLE[i] = SmallFloat.byte4ToInt((byte) i);   // 解码出长度
+
+float[] cache = new float[256];                                                    // 预计算长度归一化的倒数
+for (int i = 0; i < 256; i++)
+    cache[i] = 1f / (k1 * ((1 - b) + b * LENGTH_TABLE[i] / avgdl));
+```
+
+于是打分退化成**一次数组查表 + 一次乘加**。norm 本体存在 `.nvd`（`Lucene90NormsFormat`）里，每文档 1 字节。
+
+**一个容易被忽略的工程细节**（`BM25Scorer.score()` 实测注释）：
+
+```
+// 教科书写法：freq / (freq + k1*(1-b+b*dl/avgdl))
+// Lucene 实际写成：
+float normInverse = cache[((byte) encodedNorm) & 0xFF];
+return weight - weight / (1f + freq * normInverse);        // weight = boost × idf
+```
+
+源码注释解释了原因：`freq / (freq + norm)` 在 float 精度下**对 freq 和 norm 都不保证单调**，可能因为舍入而出现「文档更长、分数反而更高」的逆序；改写成 `1 − 1/(1 + freq × 1/norm)` 后，单调性由「乘除各自就近舍入 → `x ↦ 1+x`、`x ↦ 1−1/x` 复合保持单调」严格保证。**这是排序型数据库里「浮点单调性即正确性」的典型写法。**
+
+### 19.3 剪枝阈值从哪来：minCompetitiveScore
+
+提前终止不是猜一个阈值，而是由 top-N 收集器**动态回灌**的（`lucene/core/src/java/org/apache/lucene/search/TopScoreDocCollector.java`）：
+
+```
+收集器维护一个大小为 N 的最小堆：
+  if (score > minCompetitiveScore):
+      入堆
+      minCompetitiveScore = 堆顶分数          # 第 N 名
+      scorer.setMinCompetitiveScore(minCompetitiveScore)   # 回灌给 scorer
+
+实测还有一个 docId tie-break 的细节：
+  docBase >= maxMinScore.docBase ? Math.nextUp(maxMinScore.score) : maxMinScore.score
+```
+
+`Math.nextUp` 那一行值得注意：Lucene 的 top-N 在分数相同时**按 docId 升序 tie-break**，且收集本身按 docId 顺序进行，所以「分数等于堆顶」的文档**一定比堆顶更晚出现、不可能进入结果**。因此可以把阈值**上调一个 ULP**（`nextUp`）换取更激进的剪枝，且不会漏召回。这是典型的「用浮点表示的上确界换剪枝率」。
+
+### 19.4 块级上界从哪来：Impacts → MaxScoreCache
+
+有了阈值 τ，还需要「这一段文档的分数上界」。上界来自 §18.5 写进 skip data 的 `Impacts`：
+
+```
+// lucene/core/src/java/org/apache/lucene/search/MaxScoreCache.java 实测
+globalMaxScore = scorer.score(Float.MAX_VALUE, 1L)      # 字段级最乐观上界
+
+getMaxScore(upTo):
+    level = 第一个满足 impacts.getDocIdUpTo(level) >= upTo 的 level   # 找不到返回 -1
+    return level == -1 ? globalMaxScore : getMaxScoreForLevel(level)
+
+getMaxScoreForLevel(level):    # 结果按 level 缓存，块内不重复算
+    return max over impacts.getImpacts(level) of scorer.score(impact.freq, impact.norm)
+```
+
+因为一个 `Impact` 记的是「块内 (最大 tf, 最小 norm)」这一对极值，而 BM25 对 `freq` 单调递增、对 `norm`（长度）单调递减（b>0 时），所以「取块内最大 tf 配最小 norm 算一次」得到的就是**块内任意文档分数的上界**。缓存以 level 为粒度，块内反复查询不再重算。
+
+`TermScorer` 把这套能力打包成两个接口方法（`getMaxScore(upTo)` / `advanceShallow(target)`），由 `ImpactsDISI` 提供近似迭代器。
+
+### 19.5 WAND：双堆 + 24 位定点缩放
+
+`lucene/core/src/java/org/apache/lucene/search/WANDScorer.java` 的算法骨架（实测字段与流程）：
+
+```
+输入：一组 scorer（每个 term 一个）、τ（minCompetitiveScore）、minShouldMatch
+
+【第 0 步：定点化】
+  常量 FLOAT_MANTISSA_BITS = 24,  MAX_SCALED_SCORE = (1<<24) − 1
+  maxScoreSum = Σ_t scorer_t.getMaxScore(NO_MORE_DOCS)
+  scalingFactor = 能把 maxScoreSum 的量级映射到 2^24 的 2 的幂
+  scaleMaxScore(f) = ceil(f × 2^scalingFactor)        # 向上取整 → 上界永不低于真值
+
+【第 1 步：lead / tail 两个按 doc 排序的小顶堆】
+  lead = 已经定位到当前 doc 的 scorer（论文里的 pivot）
+  tail = 其余 scorer，按 maxScore 排序的小顶堆
+  leadMaxScore = Σ_{t∈lead} scaledMax(t)
+  tailMaxScore = Σ_{t∈tail} scaledMax(t)
+
+【第 2 步：updateMaxScores(target)，实测核心】
+  if lead 为空:
+      upTo = tail.top().advanceShallow(target)        # 用最大分贡献者当 lead
+  else:
+      upTo = min over lead of advanceShallow(lead.doc) # 取 lead 集合中最早的块边界
+  对每个 tail 元素：advanceShallow(target)，重算 scaledMaxScore，tailMaxScore 累加
+
+  while (tailSize > 0 && tailMaxScore >= τ):           # tail 自己就够进 top-N
+      t = popTail(); t.doc = t.advance(target); lead.add(t)
+
+  # 退出时若 tailMaxScore < τ ⇒ 「剩下的 tail 全算上也不够 τ」⇒ 可整段跳过
+
+【第 3 步：收束为下一个候选】
+  若 leadMaxScore < τ：跳到 upTo 之后（不逐 doc 打分）
+  否则：pivot = lead 中 doc 最小者，只需验证 pivot 所在的候选文档
+```
+
+**为什么要定点化**（源码注释原话大意）：阈值比较发生在循环最内层，用 float 会因累加误差而「剪过头」漏召回。把分数缩放到 long 并保留 24 位有效位（恰好是 float 的尾数位数），既能保证 long 运算不溢出（`MAX_SCALED_SCORE = 2^24 − 1`），又不会比 float 更精确到「反而跳过本该命中的文档」；所有上界一律 `ceil`（向上取整）以保证保守。
+
+**lead 边界不取 tail 参与的原因**（源码注释）：tail 是分数贡献最小的一批，把它们的块边界纳入取 min 会让 `upTo` 推进得太慢，导致反复重算块边界反而更费 CPU。
+
+### 19.6 Boolean 查询到底选哪个剪枝器
+
+`lucene/core/src/java/org/apache/lucene/search/Boolean2ScorerSupplier.java` 实测选择规则：
+
+| 查询形状（且处于顶层评分） | 选用的 Scorer | 剪枝方式 |
+|---------------------------|---------------|---------|
+| 多个 `must`/`filter` 参与打分（`ScoreMode.TOP_SCORES`） | `BlockMaxConjunctionScorer` | 交集的块级 max 之和 < τ 时整块跳过 |
+| 多个 `should`（纯析取，`minShouldMatch ≤ 1`） | `WANDScorer` | 上面的 lead/tail 双堆 |
+| 纯析取但不需要 top-N 分数（`COMPLETE`）或非顶层 | `DisjunctionSumScorer` | 不剪枝，穷举打分 |
+
+源码里明确写了「WANDScorer 理论上能处理上面三种情况，但为了纯穷举析取更快，仍保留 `DisjunctionSumScorer`」。
+
+`BlockMaxConjunctionScorer`（`lucene/core/src/java/org/apache/lucene/search/BlockMaxConjunctionScorer.java`）的三个取舍：
+
+1. 构造时按 `iterator().cost()` 排序，最便宜的当 **lead**；
+2. 存在 `TwoPhaseIterator` 的 scorer 只用它的 **approximation**（不下钻到打分层）；
+3. `advanceShallow(target)` **只采用 lead 的块边界**（注释明确：纳入其他子句的边界能给出更紧的上界，但有「推进过慢、反而更慢」的风险）。
+
+另外 `BooleanQuery` 在 `minimumNumberShouldMatch <= 1` 时会**扁平化嵌套的纯析取子句**，源码注释直言「这对 block-max WAND 跑得好很重要」——因为 lead/tail 机制要求析取列表是**扁平的 term 级 scorer**，嵌套 BooleanQuery 会把剪枝机会藏起来。
+
+ES 侧的对应物：`server/src/main/java/org/elasticsearch/search/query/QueryPhase.java`（把 `search_after` 转成 filter，见 §17 提到的深分页路径）与 `server/src/main/java/org/elasticsearch/search/internal/ContextIndexSearcher.java`（ES 自有的 IndexSearcher 子类，在 `searchLeaf` 里叠加 ES 层的过滤/超时）。
+
+### 19.7 剪枝强度与代价对照
+
+| 剪枝方式 | 上界粒度 | 上界计算代价 | 最坏退化情形 |
+|---------|---------|-------------|-------------|
+| 无剪枝（穷举打分） | 无 | — | 必须对 `Σ df` 条 posting 全部打分 |
+| 动态阈值（minCompetitiveScore） | 单 term 全局 max | 极低 | 所有 term 的 max 都很高 → τ 抬不动，剪枝几乎无效 |
+| MaxScore / lead-tail 判定 | 单 term 全局 max + 求和 | 一次堆操作 | 同上；上界过松导致无法整段跳过 |
+| Block-Max（impacts + `MaxScoreCache`） | block 级（level-0 = 128 doc，level-1 = 4096 doc） | 每 level 一次 `score(maxFreq, minNorm)`，结果缓存 | 词频在块内分布均匀时，块级 max 逼近真实值 → 退化为不剪枝（这正是罕见词的典型情形） |
+
+一句话总结三者的关系：**阈值回答「还值不值得打分」，block-max 回答「这一段最多能打多少分」，WAND 用 lead/tail 回答「现在能不能整段跳过」**。三者叠加才构成 Block-Max WAND。
+
+---
+
+## 二十、Segment 合并策略与 DocValues 分工（算法展开）
+
+> **版本锚点与免责**：同 §十八，以 **Elasticsearch 8.19.24 + Lucene 9.12.2** 实测源码为准；子模块未 init，**只给 canonical 路径、不给行号**。
+
+### 20.1 合并要解决什么：允许段数的几何分层计算
+
+每 refresh 产生一个小 segment；段太多会让「一次查询要开 N 个 Searcher + N 棵词典 FST」。`TieredMergePolicy` 的判定第一步是算出**当前索引允许存在多少个段**（`lucene/core/src/java/org/apache/lucene/index/TieredMergePolicy.java` 实测）：
+
+```
+输入：所有段的 (sizeInBytes, maxDoc, delCount)，按 size 降序排好
+
+1) 统计量
+   totalMaxDoc = Σ maxDoc ;  totalDelDocs = Σ delCount
+   totalDelPct = 100 × totalDelDocs / totalMaxDoc
+   allowedDelCount = deletesPctAllowed × totalMaxDoc / 100        // 默认 20%
+
+2) 豁免两类「本轮不参与合并」的段
+   (a) 超大段：sizeInBytes > maxMergedSegmentBytes/2 且 (整体删除率 ≤ 20% 或自身删除率 ≤ 20%)
+       → tooBigCount++，并从 totIndexBytes 中扣除
+   (b) 前 targetSearchConcurrency−1 个最大的段整段保留（为检索并发留副本）
+   allowedSegCount += concurrencyCount
+
+3) 几何分层求剩余配额（核心循环，实测）
+   mergeFactor    = min(maxMergeAtOnce, segsPerTier)              // 默认 min(10, 10) = 10
+   levelSize      = max(minSegmentBytes, floorSegmentBytes)        // 默认 2 MB
+   bytesLeft      = totIndexBytes
+   while (true):
+       segCountLevel = bytesLeft / levelSize
+       if (segCountLevel < segsPerTier || levelSize == maxMergedSegmentBytes):
+           allowedSegCount += ceil(segCountLevel);  break
+       allowedSegCount += segsPerTier
+       bytesLeft     -= segsPerTier × levelSize
+       levelSize      = min(maxMergedSegmentBytes, levelSize × mergeFactor)
+   allowedSegCount = max(allowedSegCount, max(segsPerTier, targetSearchConcurrency))
+
+4) 若 eligible 段数 ≤ allowedSegCount → 本轮不合并
+```
+
+**关键洞察**：段越大，允许的段数越少，但**不是线性递减** —— 每放大 `mergeFactor`（10 倍）才允许段数**再涨 `segsPerTier`（10 个）**。所以长期稳态是「少量大段 + 若干小段」的金字塔，而不是所有段一样大。
+
+**实测默认值**：
+
+| 常量 | 默认值 | ES 侧 setting |
+|------|-------|--------------|
+| `maxMergeAtOnce` | **10** | `index.merge.policy.max_merge_at_once` |
+| `segsPerTier` | **10.0** | `index.merge.policy.segments_per_tier` |
+| `floorSegmentBytes` | **2 MB** | `index.merge.policy.floor_segment` |
+| `maxMergedSegmentBytes` | **5 GB** | `index.merge.policy.max_merged_segment` |
+| `deletesPctAllowed` | **20.0 %** | `index.merge.policy.deletes_pct_allowed` |
+| `forceMergeDeletesPctAllowed` | **10.0 %** | `index.merge.policy.expunge_deletes_allowed` |
+| `targetSearchConcurrency` | **1** | 无（随副本数变化） |
+| `DEFAULT_NO_CFS_RATIO` | **0.1** | 段小于 `maxCFSSegmentSize` 的 10% 时不打包成复合文件（ES 侧 `index.compound_format` 默认 `1gb`） |
+
+辅助函数也一并实测：`floorSize(bytes) = max(floorSegmentBytes, bytes)`；`getMaxAllowedDocs(totalMaxDoc, totalDelDocs) = (totalMaxDoc − totalDelDocs + targetSearchConcurrency − 1) / targetSearchConcurrency`（把存活文档数摊到并发份数上）。
+
+### 20.2 候选合并怎么打分：skew × size^0.05 × nonDelRatio²
+
+从排好序的段列表里**贪心**取窗口作为候选，逐个打分，**取分数最小者**（`score()` 实测）：
+
+```
+对候选段集合 C：
+  totAfterMergeBytes         = Σ sizeInBytes(i)                    // 估算输出大小
+  totAfterMergeBytesFloored  = Σ floorSize(sizeInBytes(i))
+  totBeforeMergeBytes        = Σ info.sizeInBytes(i)               // 含已删空间的原始大小
+
+  if hitTooLarge:              // 已撞到 5 GB 上限，此次合并不会「级联」，skew 无所谓
+      skew = 1 / mergeFactor
+  else:
+      skew = floorSize(C 中最大段的 sizeInBytes) / totAfterMergeBytesFloored
+
+  nonDelRatio = totAfterMergeBytes / totBeforeMergeBytes           // ≤ 1，回收删除的比例
+  mergeScore  = skew
+              × (totAfterMergeBytes) ^ 0.05
+              × (nonDelRatio) ^ 2
+  # 取 mergeScore 最小者执行
+```
+
+三个因子的意图（源码注释）：
+
+- **`skew`（强偏好）**：`1/numSegs` 最好（完全均衡），`1.0` 最差（一个巨无霸吃掉整个合并）。skew 接近 1 意味着「反复重写最大段」，会产生 **`O(N²)` 级合并成本**。
+- **`size^0.05`（弱偏好）**：只轻轻偏好小合并。指数刻意取 0.05 而非更大，是为了**避免为了躲大合并而去做糟糕的小段合并**。
+- **`nonDelRatio²`（强偏好回收删除）**：平方项让「回收删除」的候选获得压倒性优势。
+
+### 20.3 反退化护栏与 forcemerge
+
+实测中有三道护栏，都不是打分能覆盖的：
+
+1. **「输出至少要比最大输入段大 50%」**：`bytesThisMerge < maxCandidateSegmentSize.sizeInBytes × 1.5` 且该最大段删除率未超阈值时，**直接放弃这次候选**。注释写得很直白：不加这道护栏就会出现「合并结果只比最大段大一点点 → 下轮又被选上 → `O(N²)`」的病态路径。
+2. **「单段零删除不合并」**：`candidate.size() == 1 && delCount == 0` 直接跳过（forcemerge 循环里会反复撞到这个条件）。
+3. **「撞到 5 GB 上限的合并同一时刻只允许一个在跑」**：`(!hitTooLarge || !maxMergeIsRunning)`，避免并发多个超大合并把 IO 打满。
+
+`findForcedMerges`（`index.optimize.max_num_segments` / ILM 的 forcemerge）走另一条路径：直接按「把索引压到 ≤ maxSegmentCount 个段」反推合并集合，仍复用上面的候选构造与打分。
+
+ES 侧的合并执行：`server/src/main/java/org/elasticsearch/index/engine/InternalEngine.java`（Lucene `IndexWriter` 的 ES 包装，持有 MergeScheduler）。
+
+### 20.4 ES 的接线：8 个设置 + TSDB 专用策略
+
+Lucene 的 `TieredMergePolicy` 是通用策略，但**ES 在 `server/src/main/java/org/elasticsearch/index/MergePolicyConfig.java` 里做了一层重要改写**，这是与「直接用 Lucene 默认」最容易踩的差异：
+
+| ES setting | 默认值 | 作用 |
+|------------|-------|------|
+| `index.merge.policy.type` | `UNSET` | `TIERED` / `TIME_BASED` / `LOG_BYTE_SIZE` |
+| `index.merge.policy.max_merge_at_once` | **10** | 单次合并的段数上限 |
+| `index.merge.policy.max_merge_at_once_explicit` | — | 显式设置后的只读标记（防止被静默调回） |
+| `index.merge.policy.max_merged_segment` | **5 GB** | 合并产物上限 |
+| `index.merge.policy.segments_per_tier` | **10.0** | 每层允许段数 |
+| `index.merge.policy.floor_segment` | **2 MB** | 小段下限 |
+| `index.merge.policy.deletes_pct_allowed` | **20.0 %** | 触发合并的删除率 |
+| `index.merge.policy.expunge_deletes_allowed` | **10.0 %** | forcemerge 纯删段合并的删除率阈值 |
+| `index.merge.policy.merge_factor` | **32**（仅 TIME_BASED） | 见下 |
+| `index.merge.enabled` | `true` | 可关闭自动合并 |
+| `indices.merge.policy.max_time_based_merged_segment` | **100 GB** | TSDB 的合并产物上限 |
+
+**两个分层参数是互斥的**（实测 `MergePolicyConfig` 的 setter 注释）：`setSegmentsPerTier` 只写进 `tieredMergePolicy`（注释原文「LogByteSizeMergePolicy ignores this parameter, it always tries to have between 1 and `merge_factor` − 1 segments per tier」），`setMergeFactor` 只写进 `timeBasedMergePolicy`（注释原文「TieredMergePolicy ignores this setting, it configures a number of segments per tier instead, which has different semantics」）。**所以 `segments_per_tier` 只对 `TIERED` 生效、`merge_factor` 只对 `TIME_BASED` 生效**，两个都调不会叠加。
+
+另外 ES 在构造时会做一次**隐式钳制**：`adjustMaxMergeAtOnceIfNeeded()` —— 若 `segments_per_tier < max_merge_at_once`，就把 `max_merge_at_once` 降为 `floor(segments_per_tier)`（下限 2），并打一条 debug 日志（对应 Lucene `TieredMergePolicy#setMaxMergeAtOnce` 的约束）。
+
+**`TIME_BASED` 分支值得单独记住**：ES 对**时序索引（`index.mode: time_series`）**不用 `TieredMergePolicy`，而改用 Lucene 的 `LogByteSizeMergePolicy`（**只合并相邻段**），并把 `mergeFactor` 默认从 Lucene 的 10 改成 **32**、把产物上限从 5 GB 提到 **100 GB**。实测注释给出的理由：时序数据按时间顺序摄入，**只合并相邻段 ⇒ 各段的 `@timestamp` 区间天然不重叠**，时间范围查询时大多数段要么整体命中要么整体不命中，即使段数很多也很高效；而人为抬高上限是为了**减少合并次数、降低写放大**。
+
+源码：`server/src/main/java/org/elasticsearch/index/MergePolicyConfig.java`、`server/src/main/java/org/elasticsearch/index/IndexSettings.java`（`getMergePolicy(boolean isTimeBasedIndex)` 是唯一的取用入口）。
+
+### 20.5 doc_values / _source / stored fields / script_fields 的分工
+
+这是「同一份数据为什么要存四遍」的答案（ES 侧实现路径已逐个在 8.19 核实）：
+
+| 存储形式 | 物理位置 | 解决的问题 | 代价 | ES 侧路径 |
+|---------|---------|-----------|------|----------|
+| **倒排索引** | `.tim` / `.doc` / `.pos` / `.pay` | 「哪些文档含 term t」（全文检索 + 短语 + 高亮） | 写放大最大；聚合/排序用不了 | `FieldMapper.java` / `KeywordFieldMapper.java` |
+| **doc_values**（列存） | `.dvd` / `.dvm` | 「文档 N 的 price 是多少」（排序、聚合、脚本、runtime field） | 额外一份列存；**不可搜索** | `server/src/main/java/org/elasticsearch/index/codec/perfield/XPerFieldDocValuesFormat.java`、`server/src/main/java/org/elasticsearch/index/mapper/BlockDocValuesReader.java` |
+| **stored fields** | `.fdt` / `.fdx` / `.fdm` | 「按需取回原文的某几个字段」（`fields` 参数、高亮取原串、reindex） | 与 `_source` 重复存一份时纯属浪费 | `server/src/main/java/org/elasticsearch/search/fetch/subphase/FetchSourcePhase.java`、`FetchFieldsPhase.java` |
+| **`_source`** | **就是 stored fields 里的一项** | 文档原始 JSON（重建文档、reindex、update） | 大；重复存储大字段 | `server/src/main/java/org/elasticsearch/index/mapper/SourceFieldMapper.java` |
+| **script_fields** | **不落盘** | 「按需用 painless 现算一个值」 | **每篇命中文档执行一次脚本**，无批量、无向量化 | `server/src/main/java/org/elasticsearch/search/fetch/subphase/ScriptFieldsPhase.java` |
+
+三条容易被忽略的机制：
+
+1. **doc_values 的五种类型**：`XPerFieldDocValuesFormat` 按 `Numeric` / `Binary` / `Sorted` / `SortedNumeric` / `SortedSet` 五类分别路由到不同 codec，**并把同类的字段分组后再统一 merge**（源码里按 consumer 身份做 identity map 分组）。
+2. **`keyword` 的 doc_values 默认开、`text` 默认不开**：这是 ES 里「能用聚合/排序就别用 text」的根本原因 —— 不是语义问题，是物理存储问题。另有 `server/src/main/java/org/elasticsearch/index/fielddata/StoredFieldSortedBinaryIndexFieldData.java`：当某字段的 doc_values 不可用时，可以**降级到 stored fields 做排序**，代价是要解压原文。
+3. **`script_fields` 的真实代价**：它在 **fetch 阶段**执行，**只有命中的那 `size` 篇文档**会跑脚本。所以「用 script_fields 代替 doc_values 排序」在 `size=10` 时看着便宜，一旦要排序全部命中文档就会退化成全量脚本执行 —— 这是 ES 官方反复强调「别用脚本代替 doc_values 做排序/聚合」的实现层原因。
+
+### 20.6 合并策略的复杂度与取舍
+
+| 环节 | 复杂度 | 说明 |
+|------|--------|------|
+| 选段排序 | `O(S log S)` | `S` = 段数 |
+| 允许段数计算 | `O(S + log_{mergeFactor}(总字节/floorSegmentBytes))` | 几何分层的循环次数 ≈ 段数位数的对数级 |
+| 候选构造 + 打分 | `O(S × mergeFactor)` | 每个起点窗口最多装 `mergeFactor` 个段 |
+| 一次合并的 IO | `O(Σ 输入段字节)` | 重写全部 posting / doc_values / stored fields |
+| 全生命周期写放大 | 稳态约 `O(log_{mergeFactor}(总字节/floorSegmentBytes))` 级别的重写层数 | 因为几何分层保证每放大 10 倍只需多容纳 10 个段 |
+| TSDB（`TIME_BASED`） | 相邻合并，时间区间天然不重叠 | 范围查询友好、合并次数少（`mergeFactor = 32`、上限 100 GB） |
+
+---
+
+## 二十一、参考资料
 
 1. Elasticsearch 8.x 官方文档：<https://www.elastic.co/guide/en/elasticsearch/reference/current/>
 2. Elasticsearch GitHub：<https://github.com/elastic/elasticsearch>
