@@ -414,7 +414,287 @@ VM 默认 **接受乱序写入**，数据按 `timestamp` 直接落到对应 Bloc
 - **集群路由**：`engineering/src/db/dist/router.c` 可参考 VM 的 hash 路由 + 副本策略；
 - **VMAgent / vmauth**：`engineering/apps/` 下若做轻量采集器，可参考 VM 的 `-remoteWrite.url` 设计。
 
-## 十八、参考资料
+## 十八、Storage Part 文件布局与四层剪枝索引
+
+> 本节全部行号对应 `reference/time-series/victoriametrics/` 子模块，commit `278d7db2c9`。
+>
+> ⚠️ **版本提示**：VM 早期版本（v1.x）的 `lib/storage/tsdb/` 目录与「每个 metric name 一对 index/data 文件」的布局，在当前 commit 中**已完全不存在**（`ls lib/storage/tsdb/` → No such file or directory）。现行结构是「按月分区的 Storage Part（4 个二进制文件）+ 三级索引」。本节只描述当前代码。
+
+### 18.1 目录与文件布局
+
+```
+-data/
+  ├─ small/2026_10/            # small part 目录，按自然月分桶
+  │   ├─ 0000000000000000/     # part 目录（16 位十六进制 merge index）
+  │   │   ├─ metadata.json     # partHeader: RowsCount/BlocksCount/Min+MaxTimestamp/MinDedupInterval
+  │   │   ├─ metaindex.bin     # 索引层 1: metaindexRow 数组，整体 ZSTD 压缩
+  │   │   ├─ index.bin         # 索引层 2: blockHeader 数组，分块 ZSTD 压缩
+  │   │   ├─ timestamps.bin    # 数据层 1: 各 block 编码后的 timestamps
+  │   │   └─ values.bin        # 数据层 2: 各 block 编码后的 values
+  │   └─ parts.json            # part 名列表
+  ├─ big/2026_10/              # big part 目录，同结构
+  └─ indexdb/2026_10/          # 该月活跃 metricID 集合
+```
+
+- 分区按**自然月**切分，目录名格式 `2006_01`（`lib/storage/time.go:73-76` `timestampToPartitionName`）；时间范围由 `fromPartitionTime`（`lib/storage/time.go:95-101`）精确算成 `[当月 1 日 00:00:00, 次月 1 日 00:00:00 − 1ms]`。
+- 4 个文件名常量定义在 `lib/storage/filenames.go:4-7`：`metaindexFilename` / `indexFilename` / `valuesFilename` / `timestampsFilename`；`small` / `big` 目录名在 `lib/storage/filenames.go:24-25`。
+- 打开 part 时 4 个文件**并行 open**（`lib/storage/part.go:50-84` `mustOpenFilePart`，用 `fs.ParallelReaderAtOpener`）——NFS / Ceph 上串行 open 的固定延迟不可忽略。
+- v1.90.0 之前 part 目录名本身就编码了元数据，格式为 `RowsCount_BlocksCount_MinTimestamp_MaxTimestamp_Garbage`（`lib/storage/part_header.go:88-90`）；新版本改用 `metadata.json`，`MustReadMetadata`（`lib/storage/part_header.go:134-167`）在文件缺失时才回退到旧解析。
+
+### 18.2 两级索引记录
+
+**metaindexRow**（`lib/storage/metaindex_row.go:14-33`）——语义是「指向一个 index block」：
+
+| 字段 | 作用 |
+|------|------|
+| `TSID` | 该 index block 内**最小**的 TSID（块内其余 TSID 必 `>=` 它，注意是下界不是区间上界） |
+| `MinTimestamp` / `MaxTimestamp` | 该 index block 内所有 blockHeader 时间范围的并集 |
+| `IndexBlockOffset` / `IndexBlockSize` | 在 `index.bin` 中的字节区间 |
+| `BlockHeadersCount` | 该 index block 内 blockHeader 条数（解码时用于校验） |
+
+**blockHeader**（`lib/storage/block_header.go:19-82`）——语义是「指向一个 block 的数据」：
+
+- **定位类**：`TSID`、`MinTimestamp`、`MaxTimestamp`、`TimestampsBlockOffset`、`ValuesBlockOffset`、`TimestampsBlockSize`、`ValuesBlockSize`、`RowsCount`；
+- **解码类**：`Scale`（value 的 $10^{\text{Scale}}$ 定点缩放因子）、`TimestampsMarshalType`、`ValuesMarshalType`、`PrecisionBits`；
+- `FirstValue` 之所以从编码 payload 里单独提出来，是因为首值与后续 delta 差异大，单独存可提升压缩率（`lib/storage/block_header.go:34-39` 的注释明确说明这一点）。
+
+**Block 形状**：单 block 上限 `maxRowsPerBlock = 8 * 1024 = 8192` **行**，字节上限 `maxBlockSize = 8 * maxRowsPerBlock = 65536`（`lib/storage/block.go:13-19`）。这是行数上限，**不是**「8192 series × 120 timestamps」——brief 给的旧常量在本 commit 中不存在。写入侧由 `Block.tooBig()`（`lib/storage/block.go:142-150`）判定；归并侧由 `len(tmpBlock.timestamps) <= maxRowsPerBlock`（`lib/storage/merge.go:127`）判定。
+
+**Index block 形状**：`len(bsw.indexData) + len(headerData) > maxBlockSize` 时强制刷盘（`lib/storage/block_stream_writer.go:152`），刷盘时整块 ZSTD 压缩写入 `index.bin`，同时向 `metaindex.bin` 追加一条 metaindexRow（`lib/storage/block_stream_writer.go:185-207` `flushIndexData`）。因此 `metaindexRow` 条数 ≈ `block 数 × sizeof(blockHeader) / maxBlockSize`。
+
+### 18.3 四级剪枝伪代码
+
+```text
+search(tr, tagFilters):
+  L1  Partition 剪枝: table.GetPartitions(tr) 只返回 tr.overlapsWith(pt.tr) 的月分区
+                      (lib/storage/table.go:629-643) —— 通常只打开 1~2 个月
+  L2  Part 剪枝:     partSearch.Init() 比较 partHeader 的 [Min,Max] 与 tr;
+                      不相交则 tsids 置空, 整个 part 直接跳过
+                      (lib/storage/part_search.go:64-81)
+  L3  metaindex 剪枝: nextBHS() 先按 TSID 二分定位 mr, 再按 mr 的 [Min,Max] 与 tr
+                      相交剪枝; 命中才 ReadAt + ZSTD 解压出整个 index block
+                      (lib/storage/part_search.go:150-202)
+  L4  blockHeader 剪枝: searchBHS() 在已解压的 blockHeader 数组上继续剪枝
+                      (lib/storage/part_search.go:254-309)
+
+L3 的两个关键细节:
+  a) 定位必须回退一行. 目标 tsid 可能落在"上一个 index block 的尾部",
+     因为 mr.TSID 是块内最小值而非区间上界.
+     skipSmallMetaindexRows() 返回 sort.Search 结果的 n-1 行
+     (lib/storage/part_search.go:223-234, 注释里给了 [tsid10,tsid20,tsid30]
+      的完整对照表).
+  b) L4 的时间剪枝用线性扫描而非二分: 同一 TSID 的多个 block 时间范围
+     可能重叠, 不满足二分的单调性 (lib/storage/part_search.go:282-298).
+```
+
+### 18.4 时间戳块去重（VM 针对高基数的独特优化）
+
+`blockStreamWriter.WriteExternalBlock` 在写 `timestamps.bin` 之前，先比对当前 block 的**编码后** timestamps 与上一个 block 是否逐字节相同（`lib/storage/block_stream_writer.go:143-153`）：
+
+```go
+usePrevTimestamps := len(bsw.prevTimestampsData) > 0 &&
+                    bytes.Equal(timestampsData, bsw.prevTimestampsData)
+if usePrevTimestamps {
+    // 把 TimestampsBlockOffset 指回上一个块, 物理上不再写第二份
+    headerData, timestampsData, valuesData =
+        b.MarshalData(bsw.prevTimestampsBlockOffset, bsw.valuesBlockOffset)
+    timestampsBlocksMerged.Add(1)
+    timestampsBytesSaved.Add(uint64(len(timestampsData)))
+}
+```
+
+动机很直接：高基数场景下大量 series 以固定 15s / 60s 抓取，**相邻 series 的 timestamps 块完全一致**，物化一次即可被 N 个 block 共享。注意比较发生在**编码之后**（`MarshalData` 已返回 `timestampsData`），所以「相同」是字节级严格相等，不受 scale / marshalType 差异影响。对应指标为 `vm_timestamps_blocks_merged_total` / `vm_timestamps_bytes_saved_total`（`lib/storage/block_stream_writer.go:169-172`）。
+
+### 18.5 复杂度
+
+设某 partition 内有 `B` 个 block、`I` 条 metaindexRow、查询命中 `S` 个 series、覆盖 `P` 个月分区：
+
+| 层级 | 定位方式 | 代价 |
+|------|----------|------|
+| L1 Partition | 线性扫描 | `O(P)`，`P` ≈ 保留月数 |
+| L2 Part | 常数比较 | `O(1)` |
+| L3 metaindexRow | 二分 + 线性 | `O(log I + 命中行数)` |
+| L4 blockHeader | 二分 + 线性 | `O(log B_block + 命中 block 数)` |
+| 数据读取 | 按 offset `ReadAt` | `O(命中 block 字节数)` |
+
+关键性质：**L1~L4 的剪枝全部只读内存中的 `metaindex` 切片和已解压的 index block，不触碰 `timestamps.bin` / `values.bin`**；后者只在最终命中的 block 上按 `TimestampsBlockOffset` / `ValuesBlockOffset` 做 `ReadAt`。且 index block 走 `blockcache`（`lib/storage/part_search.go:178-193`）复用，避免重复 ZSTD 解压。
+
+## 十九、数值编码：定点化 + nearest-delta 家族 + ZSTD 自适应回退
+
+> ⚠️ **重要纠正**：VM 早期以 Gorilla 论文的 **float64 XOR + 前导/尾随零计数** 作为主力编码。当前 commit 中已**完全移除**——`grep -rn "XOR\|xor" --include=*.go lib/encoding/ lib/storage/`（排除测试）返回 **0 行**。本 wiki §六「Gorilla 编码」一节描述的是旧版本行为。
+
+### 19.1 定点化：float64 → int64 × 10^Scale
+
+磁盘上**不存 float64**。写入时 `decimal.AppendFloatToDecimal`（`lib/decimal/decimal.go:173`）把一段 float64 序列**整体**缩放成 int64 并返回公共指数 `Scale`（调用点 `lib/storage/raw_row.go:137,147`），使得：
+
+$$\text{scale} = \min_i e_i, \qquad \text{int}_i = \operatorname{round}\!\big(f_i \cdot 10^{\,e_i - \text{scale}}\big)$$
+
+其中 $e_i$ 是 $f_i$ 的十进制指数。若某些点强行放大到 `minExp` 会溢出 int64，代码会下调 `downExp`（`lib/decimal/decimal.go:212-224`）后重算。`Scale` 写进 blockHeader，读取时由 `decimal.AppendDecimalToFloat`（`lib/decimal/decimal.go:100`，调用点 `lib/storage/block.go:327`）还原。对典型监控值（整数计数、1 位小数百分比），缩放后仍是小整数——**这正是 delta 编码能压得动的前提**；若 scale 过大（值本身很碎），delta 编码反而退化。
+
+### 19.2 六种 MarshalType 与选择顺序
+
+`lib/encoding/encoding.go:20-43` 定义 6 种 `MarshalType`：
+
+| 值 | 名称 | 适用场景 |
+|----|------|----------|
+| 1 | `MarshalTypeZSTDNearestDelta2` | counter（单调递增） |
+| 2 | `MarshalTypeDeltaConst` | 等差数列（如匀速爬坡的 gauge） |
+| 3 | `MarshalTypeConst` | 常量序列 |
+| 4 | `MarshalTypeZSTDNearestDelta` | gauge（任意波动） |
+| 5 | `MarshalTypeNearestDelta2` | 同 1，但 ZSTD 无收益时回退 |
+| 6 | `MarshalTypeNearestDelta` | 同 4，但 ZSTD 无收益时回退 |
+
+`marshalInt64Array`（`lib/encoding/encoding.go:119-171`）是**同一段代码同时负责 timestamps 和 values**——`MarshalTimestamps` / `MarshalValues`（`:82-105`）都只是它的薄封装。决策顺序：
+
+```text
+marshalInt64Array(a, precisionBits):
+  if isConst(a):        return Const, first=a[0]                        # payload 0 字节
+  if isDeltaConst(a):   return DeltaConst, first=a[0], varint(a[1]-a[0])
+  if isGauge(a):                                                        # encoding.go:331-369
+      pb = precisionBits < 6 ? precisionBits + 2 : precisionBits      # gauge 补偿 2 bit
+      payload = nearestDelta(a,  pb)                                   # 一阶差分
+      mt = ZSTDNearestDelta
+  else:
+      payload = nearestDelta2(a, precisionBits)                        # 真正的 delta-of-delta
+      mt = ZSTDNearestDelta2
+  if len(payload) < 128:              # minCompressibleBlockSize，压了也是白压
+      mt = 对应的非 ZSTD 版本
+  else:
+      out = zstd(payload, getCompressLevel(len(a)))
+      if len(out) > 0.9 * len(payload):   # 压缩收益 < 10%, 丢弃压缩结果
+          out = payload; mt = 对应的非 ZSTD 版本
+  return out, mt, first
+```
+
+**gauge / counter 判别**（`isGauge`，`lib/encoding/encoding.go:331-369`）不查元数据，纯靠数值形态推断：
+
+1. 首值为负 → 必是 gauge（counter 不会为负）；
+2. 任一点 $v < 0$ → gauge；
+3. 任一点 $v < v_{prev} \gg 3$（即掉到 1/8 以下）→ 判为 gauge 的「下降」，立即返回 true；
+4. 否则记一次「counter reset」，`resets > len(a)/8` 才判 gauge；`resets <= 2` 判 counter（容忍进程重启）。
+
+源码注释明确说明这个偏向是刻意的：**误把 counter 判成 gauge 无所谓**（delta 码对单调序列仍然有效），所以只在证据充分时才升级为 gauge。
+
+### 19.3 nearest-delta 与 precisionBits：可控有损压缩
+
+`nearestDelta`（`lib/encoding/nearest_delta.go:83-121`）**不是无损的**。做法是：设当前值的有效位数为 `originBits = bits.Len64(|origin|)`，若 `originBits > precisionBits`，则把 delta 的低 `originBits − precisionBits` 位直接抹零：
+
+$$d' = d \mathbin{\&} \Big( (2^{64}-1) \ll \text{tz} \Big), \qquad \text{tz} = \text{originBits} - \text{precisionBits}$$
+
+抹零让后续 varint 少编几个字节，代价是引入相对误差。为避免把「计数器重置」误判成「低位可抹」，代码用 `prevTrailingZeros` 跟踪上一轮抹了多少位：若本次 `tz` 比上次多 4 位以上（或少 4 位以上），判定为计数器重置，**放弃抹零并返回全精度**（`lib/encoding/nearest_delta.go:101-110`）；gauge 路径则用 `decIfNonZero` 让 trailingZeros 单调衰减。
+
+`nearestDelta2`（`lib/encoding/nearest_delta2.go:15-51`）在 nearest-delta 之上再加一层 **delta-of-delta**：
+
+```text
+d1 = a[1] - a[0]                              # 首个 delta 单独用 varint 存
+prev_d1 = d1
+for i in 2..n-1:
+    d2 = nearestDelta(a[i] - a[i-1], prev_d1) # 对"delta 的差分"再做一次 nearest-delta
+    prev_d1 += d2
+    emit varint(d2)
+```
+
+解码端（`lib/encoding/nearest_delta2.go:57-100`）是纯前缀累加 `d1 += d2; v += d1`——**O(n) 时间、O(1) 额外空间**（除输出缓冲）。
+
+`precisionBits` 由启动参数 `-precisionBits` 给出，默认 64（即无损），定义在 `app/vmstorage/vmstorage.go:24-25`，经 `Storage.AddRows(mrs, precisionBits)`（`lib/storage/storage.go:1670`）传到每一行。语义在 `lib/storage/block_header.go:71-81` 有完整说明：`n` 位精度 ⇒ 最大相对误差 $100/2^n\ \%$，`64` 表示精确值；降 precisionBits 同时改善压缩率与速度。
+
+### 19.4 ZSTD 层级与压缩等级
+
+`getCompressLevel`（`lib/encoding/encoding.go:371-385`）按行数分档返回 1~5 级：≤ 64 行用 level 1，≤ 256 用 2，≤ 1024 用 3，≤ 4096 用 4，更多用 5。行数少时熵不足，高等级 ZSTD 收益有限而 CPU 开销显著。
+
+**兜底阈值**：ZSTD 作用在已经 delta 化的 int64 varint 流上，两者信息高度重叠，收益有限。VM 用保守的 **0.9 阈值**（`lib/encoding/encoding.go:156`）做兜底——若压缩后仍超过原始 payload 的 90%，就整体回退到不压缩并改写 `MarshalType`，宁可多占一点磁盘，也不让解码路径每读一个 block 都多一次 ZSTD 调用。这个「编码期自适应 + 回退」的设计比固定用 ZSTD 更适合监控数据（大量 series 只有寥寥几个点，压缩不划算）。
+
+### 19.5 复杂度与与 Gorilla 的对比
+
+| 编码 | 编解码时间 | 额外空间 | 典型 counter@1m 的字节/点 |
+|------|-----------|----------|---------------------------|
+| `Const` | `O(n)` | `O(1)` | **0** |
+| `DeltaConst` | `O(n)` | `O(1)` | ≈ 1 |
+| `NearestDelta` | `O(n)` | `O(n)` varint 缓冲 | ≈ 1~2 |
+| `NearestDelta2` | `O(n)` | `O(n)` | ≈ 0.3~1 |
+| 任一 + ZSTD | `O(n)`，常数更大 | `O(n)` | 再降 20~40% |
+
+与 Gorilla 的本质差异：Gorilla 的 XOR 路径**严格无损**且专为 float64 的尾数结构设计；VM 的 nearest-delta 路径作用在**定点化后的 int64** 上，**默认无损**（`precisionBits=64` 时不抹零，走 `nearest_delta.go:26-32` 的 fast path）、**可配置有损**。在单调计数序列上 VM 通常更优（delta-of-delta 对计数器天然友好），但依赖定点化成功——`Scale` 过大时反而退化。
+
+## 二十、LSM 分层合并：写放大最优的 Part 选择与归并流水线
+
+### 20.1 三级 tier 与目标体积
+
+每个 partition 内的 part 分三类（均在 `lib/storage/partition.go`）：
+
+| tier | 位置 | 后台 worker | 目标体积 |
+|------|------|-------------|----------|
+| inmemory | 进程内存 | `inmemoryPartsMerger`（`lib/storage/partition.go:535`） | 受 `maxInmemoryParts = 60`（`:34`）约束 |
+| small | `data/small/<月>/` | `smallPartsMerger`（`:568`） | `getMaxSmallPartSize`（`:1149-1160`） |
+| big | `data/big/<月>/` | `bigPartsMerger`（`:601`） | `getMaxBigPartSize`（`:1162-1167`） |
+
+后两者都用 `getMaxOutBytes(path, workersCount)`（`lib/storage/partition.go:1169-1177`）按**剩余磁盘空间 / 并发合并数**动态定容，并硬顶 `maxBigPartSize = 1e12`（`lib/storage/partition.go:28`，注释说明这个上限是为了「限制构建单个 big part 所需时间不应超过几天」）。small tier 的并发数取 `len(smallPartsConcurrencyCh)`，big tier 固定 4 个 worker（源码注释指向 issue #4915）。这里刻意**不**预先扣掉 `freeDiskSpaceLimitBytes`——注释解释扣掉会导致「一堆小 part 永远合并不掉」。
+
+### 20.2 写放大最优的合并窗口选择
+
+朴素做法是「取最小的 N 个 part 合并」。VM 改用**穷举搜索最小化写放大**（`appendPartsToMerge`，`lib/storage/partition.go:1672-1728`）：
+
+```text
+输入: src[]  已按 size 升序、同 size 按 MinTimestamp 降序
+              (sortPartsForOptimalMerge, lib/storage/partition.go:1735-1745)
+      maxPartsToMerge = defaultPartsToMerge = 15     (partition.go:36-40)
+      maxOutBytes
+
+1. 过滤掉 size > maxOutBytes / 1.7 的 part        # minMergeMultiplier, partition.go:1663-1669
+   —— 先压缩候选空间, 抑制后面 O(N^2) 的搜索规模
+2. 枚举合并窗口大小 i ∈ [ max( (15+1)/2, 2 ), min(15, len(src)) ]
+3. 对每个 i, 枚举所有长度为 i 的连续窗口 a = src[j : j+i], 要求:
+     - 尺寸均衡: a[0].size * i >= a[i-1].size   否则 skip (避免大小悬殊导致合并后仍失衡)
+     - 体积可行: getPartsSize(a) <= maxOutBytes   否则 break (已排序, 后面只会更大)
+4. 记录 m = outSize / a[i-1].size, 取 m 最大者作为选中集合
+5. 兜底: 若 maxM < max(15/2, 1.7) = 7.5, 本轮不合并
+   —— 倍数太小说明合并省下的空间抵不上重写全部数据的磁盘 IO
+```
+
+写放大的定义为：
+
+$$\text{WA} = \frac{\sum_{p \in a}\text{size}(p)}{\text{size}(\text{out})} = \frac{\text{outSize}}{\text{outSize} - \text{bytesSaved}} \approx \frac{\text{outSize}}{\max_{p \in a}\text{size}(p)}$$
+
+算法在**最大化** $m = \text{outSize} / \max\text{size}(a)$，等价于**最小化**写放大。`minMergeMultiplier = 1.7` 的注释把权衡写得很直白：「Higher value reduces write amplification ... while increases the number of unmerged parts」。`defaultPartsToMerge = 15` 的注释同样写明是「empirically 给出的最低开销」。
+
+**复杂度**：过滤后为 `O(N² × 15)`，其中 `N` 是第一步过滤后的 part 数。因为分区按月分桶、part 数又受体量上限约束，`N` 实际在几十量级，穷举完全可行——而相比贪心「取最小 15 个」能显著降低长期写放大。
+
+### 20.3 归并流水线
+
+`mergeBlockStreamsInternal`（`lib/storage/merge.go:42-157`）是实际的 k 路归并。`blockStreamMerger.NextBlock`（`lib/storage/block_stream_merger.go:72`）每次吐出一个已按 `(TSID, MinTimestamp)` 排序的 block：
+
+```text
+pendingBlock = 空
+for b in bsm.NextBlock():                    # k 路归并输出, 按 (TSID, MinTs) 有序
+    if b.TSID.MetricID ∈ dmis (已删除 metric):  localRowsDeleted += b.RowsCount; continue
+    if b.MaxTimestamp < retentionDeadline:      localRowsDeleted += b.RowsCount; continue
+    if pendingBlock 为空: pendingBlock = b; continue
+    if pendingBlock.TSID ≠ b.TSID:             flush(pendingBlock); pendingBlock = b; continue
+    if pendingBlock.tooBig() 且 与 b 不重叠:     flush(pendingBlock); pendingBlock = b; continue
+    # 同一 series —— 真正合并
+    unmarshalAndCalibrateScale(pendingBlock, b)        # merge.go:227-239, 统一 Scale
+    tmpBlock = mergeBlocks(pendingBlock, b)            # merge.go:160-203
+    if len(tmpBlock) <= 8192:  swap(tmpBlock, pendingBlock); continue
+    flush(tmpBlock[0:8192]); pendingBlock = tmpBlock[8192:]   # 溢出切块
+flush(pendingBlock)
+```
+
+- **两路归并**（`mergeBlocks`，`lib/storage/merge.go:160-203`）：先用 `ib1.Max < ib2.Min` / `ib2.Max < ib1.Min` 两条 fast path 整块拼接（`:168-179`），否则进入 `swap` 式双指针归并——`merge.go:201` 的 `ib1, ib2 = ib2, ib1` 是它省掉显式 while 循环的技巧，代价 `O(m + n)`。
+- **retention 剪枝**（`skipSamplesOutsideRetention`，`lib/storage/merge.go:205-220`）：retention **不删除文件**，只在归并时跳过过期行（整块判断在 `merge.go:85-90`）。所以收缩 retention 是 O(1) 的元数据操作，磁盘回收推迟到下一次 merge 发生——这修正了本 wiki §9.1「Storage Part 整体过期则删除」的简化说法。
+- **Scale 校准**（`unmarshalAndCalibrateScale`，`lib/storage/merge.go:227-239`）：不同 flush 批次独立定点化，`Scale` 可能不同；合并前用 `decimal.CalibrateScale`（`lib/decimal/decimal.go:13`）求公共指数并双向重标，否则 int64 直接相加会得到错误值。
+- **去重**（`DeduplicateSamples`，`lib/storage/dedup.go:30-92`）：按 `-dedupInterval` 对齐时间桶，同桶内**取最大值**（`dedup.go:50-62`，对应 issue #3333），并且 `StaleNaN` 被特殊对待——只要同桶内有非 StaleNaN 的值就优先用它（issue #10196）。这**修正了本 wiki §9.4 / §十一 中「last-write-wins」的描述**。
+
+### 20.4 复杂度汇总
+
+| 操作 | 时间 | 空间 |
+|------|------|------|
+| 合并窗口选择 | `O(N² · 15)` | `O(N)` |
+| k 路归并（全量） | `O(R log k)`，`R` = 总行数，`k` = 输入 part 数 | `O(k)` 个读流 + 1 个 block 缓冲 |
+| 单 series 内两路归并 | `O(m + n)` | `O(m + n)` |
+| Scale 校准 | `O(m + n)` | `O(1)` |
+| 去重 | `O(n)` | 原地（复用 `src` 切片，零分配） |
+
+## 二十一、参考资料
 
 1. VictoriaMetrics 官方文档：<https://docs.victoriametrics.com/>
 2. VM GitHub：<https://github.com/VictoriaMetrics/VictoriaMetrics>
