@@ -432,7 +432,458 @@ TDengine v3.x 支持乱序写入，但**默认假设数据顺序到达**：
 - **多级存储**：`engineering/src/db/storage/` 可参考 Level 0/1/2 自动迁移策略；
 - **Super Table 模式**：`engineering/src/db/catalog/` 可参考设备元数据 + 子表模式。
 
-## 十九、参考资料
+## 十九、分片与存储文件体系：固定区间哈希与 fileset 组织
+
+本节补 §六 / §七 只画了架构图、没有给算法的部分：**表名怎么落到 vgroup**、**一个 vnode 里的文件怎么命名和分层**。
+
+### 19.1 表名 → vgroup：固定区间哈希分片（不是一致性哈希）
+
+TDengine 的分片算法是**「把 32 位哈希空间等分成 N 段，每段绑定一个 vgroup」**，和 Redis / DragonflyDB 用的**一致性哈希环**是两回事。
+
+mnode 建库时一次性把区间切好（`source/dnode/mnode/impl/src/mndVgroup.c:1141-1157`，函数 `mndAllocVgroup` 起于 `:1118`）：
+
+```c
+uint32_t hashMin     = 0;
+uint32_t hashMax     = UINT32_MAX;
+uint32_t hashInterval = (hashMax - hashMin) / pDb->cfg.numOfVgroups;   // :1143
+
+for (uint32_t v = 0; v < pDb->cfg.numOfVgroups; v++) {
+  pVgroup->hashBegin = hashMin + hashInterval * v;                     // :1153
+  if (v == pDb->cfg.numOfVgroups - 1) {
+    pVgroup->hashEnd = hashMax;                                        // 末段吃掉余数
+  } else {
+    pVgroup->hashEnd = hashMin + hashInterval * (v + 1) - 1;            // :1157
+  }
+}
+```
+
+客户端 / catalog 侧的查表路径（`source/libs/catalog/src/ctgUtil.c:1397` 的 `ctgGetVgInfoFromHashValue`，函数起于 `:1365`）：
+
+```text
+fullName = dbName + SEP + tbName
+h        = taosGetTbHashVal(fullName)                 # MurmurHash3_32
+vg       = 二分查找 vgArray 中满足 hashBegin <= h <= hashEnd 的那个
+# 比较器 ctgHashValueComp（ctgUtil.c:1352，判定体 :1356）
+```
+
+复杂度：**定位 O(log V)**（`taosArraySearch` 在按 `hashBegin` 升序排好的数组上二分），**建表 O(1)** 追加。
+
+与一致性哈希的取舍：
+
+| 维度 | 固定区间哈希（TDengine） | 一致性哈希（Redis Cluster） |
+|------|------------------------|---------------------------|
+| 环结构 | 线性等分，无虚拟节点 | 哈希环 + 虚拟节点 |
+| 扩容 | 必须重建区间 + 触发数据迁移 | 只搬 1/N 数据 |
+| 负载均衡 | **天然均匀**（区间等长） | 靠虚拟节点逼近 |
+| 查表复杂度 | O(log V) 二分 | O(1) 但要维护环 |
+
+由于时序库是**按时间持续写入**的、扩容本来就要伴随数据搬迁，TDengine 用「迁移成本换均衡性」是合理取舍。
+
+### 19.2 哈希函数与可裁剪前后缀
+
+哈希函数固定为 **MurmurHash3_32**（实现 `source/util/src/thashutil.c:74`，声明 `include/util/thash.h:40`）。
+
+`taosGetTbHashVal`（`include/util/tutil.h:297`）支持裁掉表名前后缀再哈希：
+
+```c
+if ((prefix == 0 && suffix == 0) || tblen <= (prefix + suffix) || prefix * suffix < 0) {
+  return MurmurHash3_32(tbname, tblen);              // :301  全名哈希
+} else if (prefix > 0 || suffix > 0) {
+  return MurmurHash3_32(tbname + prefix, tblen - prefix - suffix);   // :303  掐头去尾
+} else {
+  /* prefix<0 掐头 / suffix<0 去尾，拼到临时缓冲 tbName 上再哈希 */   // :305-330
+  return MurmurHash3_32(tbName, offset);             // :330
+}
+```
+
+**这解决了 IoT 表名的天然倾斜问题**：设备命名若是 `site01_sensor_0001 … site01_sensor_9999`，设 `prefix=7, suffix=0` 后这 9999 张表哈希的是同一段 `sensor_0001…sensor_9999`，落到同一 vgroup 的概率被大幅拉平，单 vnode 不会被打爆。
+
+> 细节：形参 `method`（`SDbCfg.hashMethod`）目前**未参与任何分支**，算法被硬编码为 MurmurHash3_32；读代码时不要以为改 `hashMethod` 能换算法。
+
+### 19.3 vnode 目录、fid（fileset）与文件后缀
+
+**目录形态**（`tsdbTFileName`，`source/dnode/vnode/src/tsdb/tsdbFile2.c:359`）：
+
+```text
+<diskPath>/<SEP>vnode<SEP>vnode<vid>/<SEP><tsdbName>/<SEP>v<vid>f<fid>c<cid>ver<ver>.<suffix>
+                                     ^^^^^^^^^^^^^^^ mount 分支格式串 tsdbFile2.c:369
+<diskPath>/<SEP><tsdbPath>/<SEP>v<vid>f<fid>c<cid>ver<ver>.<suffix>              普通分支 :385
+<diskPath>/<SEP><tsdbPath>/<SEP>v<vid>f<fid>c<cid>ver<ver>.m<mid>.<suffix>      迁移分支 :397
+```
+
+其中 `<tsdbName>` 由 vnode 建目录时写入（`source/dnode/vnode/src/tsdb/tsdbOpen.c:64`），默认值常量是 `VNODE_TSDB_DIR "tsdb"`（`source/dnode/vnode/src/inc/vnodeInt.h:100`，名字缓冲长度 `VNODE_TSDB_NAME_LEN 6` 见同文件 `:98`）。
+
+**5 种文件后缀**（表驱动，`source/dnode/vnode/src/tsdb/tsdbFile2.c:38-42`）：
+
+```c
+[TSDB_FTYPE_HEAD] = {"head", ...};   // memtable 落盘缓冲
+[TSDB_FTYPE_DATA] = {"data", ...};   // 旧版行/列存数据文件
+[TSDB_FTYPE_SMA]  = {"sma",  ...};   // 流式聚合（rollup）结果
+[TSDB_FTYPE_TOMB] = {"tomb", ...};   // 删除墓碑
+[TSDB_FTYPE_STT]  = {"stt",  ...};   // Sorted Time Table，主力时序文件
+```
+
+**一个 fid = 一个 fileset = 一个时间片**，这是 TDengine 存储层最核心的抽象。`STFileSet`（`source/dnode/vnode/src/inc/tsdb.h:676`）同时挂 4 个单例文件（head/data/sma/tomb）和一个 STT 层级数组：
+
+```c
+struct SDFileSet {                       // tsdb.h:676
+  SDiskID    diskId;
+  int32_t    fid;
+  SHeadFile *pHeadF;
+  SDataFile *pDataF;
+  SSmaFile  *pSmaF;
+  uint8_t     nSttF;
+  SSttFile  *aSttF[TSDB_STT_TRIGGER_ARRAY_SIZE];   // :683
+};
+```
+
+**fid 的 O(1) 换算**（`tsdbKeyFid`，`source/dnode/vnode/src/tsdb/tsdbUtil.c:555`）：
+
+```text
+fid = floor(ts / tsTickPerMin[precision] / days)     // days = keepCfg.days
+反查： tsdbFidKeyRange(fid, days, precision, &minKey, &maxKey)   // tsdbUtil.c:566
+      minKey = tsTickPerMin[precision] * fid * days
+      maxKey = minKey + tsTickPerMin[precision] * days - 1
+```
+
+查询时直接用时间窗两端夹出要碰的 fid 区间，**不做目录遍历**（`source/dnode/vnode/src/tsdb/tsdbScan.c:391`）：
+
+```c
+int32_t minFid = tsdbKeyFid(tw->skey, tsdb->keepCfg.days, tsdb->keepCfg.precision);   // :391
+int32_t maxFid = tsdbKeyFid(tw->ekey, tsdb->keepCfg.days, tsdb->keepCfg.precision);   // :392
+TARRAY2_FOREACH(tsdb->pFS->fSetArr, fset) {
+  if (fset->fid < minFid || fset->fid > maxFid) continue;   // :396  O(|fSetArr|) 直接跳
+  ...
+}
+```
+
+fileset 之间按 `fid` 升序排序，比较函数 `tsdbTFileSetCmprFn`（`source/dnode/vnode/src/tsdb/tsdbFSet2.c:776`，声明 `tsdbFSet2.h:59`）：
+
+```c
+if (fset1[0]->fid < fset2[0]->fid) return -1;
+if (fset1[0]->fid > fset2[0]->fid) return 1;
+return 0;
+```
+
+### 19.4 超级表与 tag 不在 tsdb 文件里
+
+一个常见误解：以为 2.x 的 `.stb`（超表定义）/ `.tsd`（tag 数据）/ `.tsu`（tag 索引）文件还在。在当前 main 分支里**这些后缀已不存在**，超表定义、tag 值、tag 索引、子表列表全部搬进了 **vnode meta**（`source/dnode/vnode/src/meta/`），底层是一组 `tdb` B-tree。
+
+tag 索引的键结构（`source/dnode/vnode/src/inc/meta.h:145-151`）：
+
+```c
+#pragma pack(push, 1)
+typedef struct {
+  tb_uid_t suid;          // 超级表 uid
+  int32_t  cid;           // tag 列 id
+  uint8_t  isNull : 1;
+  uint8_t  type  : 7;     // 值类型
+  uint8_t  data[];        // tag 值 + 命中的子表 uid 列表
+} STagIdxKey;
+#pragma pack(pop)
+```
+
+比较器 `tagIdxKeyCmpr`（`source/dnode/vnode/src/meta/metaOpen.c:946`）的键序是 **suid → cid → isNull（NULL 最小，`:976`）→ type → data 值比较**，所以「某超级表某 tag 列的某个取值」在 B-tree 里是一个连续区间，等值条件可直接做范围扫描——这是 §二十一 裁剪算法的基础。
+
+同族的兄弟索引键也在 `source/dnode/vnode/src/inc/meta.h` 里：`SCtbIdxKey`（suid+uid 子表索引，`:139-142`）、`SBtimeIdxKey`（btime+uid，`:166-169`）、`SNcolIdxKey`（列数+uid，`:171-174`）。
+
+## 二十、WAL、提交与 Compaction：从内存表到 STT 层级
+
+### 20.1 写入路径：RAFT 日志 → WAL → 内存表
+
+vnode 的写入**不是**「client → taosd → 直接进 TSDB」，而是先过 Raft 日志持久化（`source/dnode/vnode/src/vnd/vnodeSvr.c:4004` 的 `vnodeProcessSubmitReq` 拆成三步）：
+
+```text
+vnodeProcessSubmitReq (vnodeSvr.c:4004)
+  ├─ vnodeScanSubmitReq          扫描请求，校验 schema version
+  ├─ vnodeHandleAutoCreateTable  (vnodeSvr.c:3047) 超级表自动建子表
+  └─ vnodeHandleDataWrite        (vnodeSvr.c:3179) 逐子表写数据
+        └─ raftLogAppendEntry    (source/libs/sync/src/syncRaftLog.c:255)
+              ├─ walAppendLog    (syncRaftLog.c:266 → walWrite.c:876) 先写 WAL log 文件
+              └─ walFsync        (syncRaftLog.c:283 → walWrite.c:903) 再 fsync
+```
+
+WAL 层有自己的 log/idx 双文件：`walCommit`（`source/libs/wal/src/walWrite.c:105`）推进提交点，`walChangeWrite`（`walWrite.c:114`）在版本跳跃时关闭旧文件、按 `firstVer` 二分定位新文件对。
+
+写成功后才异步提交（`vnodeSyncCommit`，`source/dnode/vnode/src/vnd/vnodeCommit.c:381`）：
+
+```c
+int32_t vnodeSyncCommit(SVnode *pVnode) {
+  int32_t code = vnodeAsyncCommit(pVnode, false);     // 丢到 commitTask
+  vnodeAWait(&pVnode->commitTask);                    // 等它落地
+  return code;
+}
+```
+
+实际干活的 `vnodeCommitImpl`（`vnodeCommit.c:397`）顺序是：
+
+```text
+walPersist(vnode->pWal)               ← 先确保 WAL 落盘
+syncBeginSnapshot(vnode->sync, committed)
+tsdbCommitBegin(vnode->pTsdb, pInfo)  ← 进入 TSDB 提交（见 20.2）
+tsdbCacheCommit(vnode->pTsdb)         ← last cache 持久化
+bseCommit(vnode->pBse)                ← blob 存储引擎提交
+```
+
+### 20.2 提交 = 内存表与存量 STT 文件的 k 路归并
+
+内存表 `SMemTable`（`source/dnode/vnode/src/inc/tsdb.h:463`）内部是 **hash 桶 + 红黑树 + 每子表一个跳表**：`STbData`（`tsdb.h:450`）持有 `SMemSkipList sl`（`tsdb.h:441`），`SMemTable` 用 `aBucket` + `tbDataTree` 两级定位子表（`tsdb.h:476-477`），桶数不够时由 `tsdbMemTableRehash`（`source/dnode/vnode/src/tsdb/tsdbMemTable.c:366`）扩容。建表入口 `tsdbMemTableCreate` 在 `tsdbMemTable.c:52`，写入入口 `tsdbInsertTableData` 在 `tsdbMemTable.c:119`。
+
+提交某个 fileset 时，`tsdbCommitFileSet`（`source/dnode/vnode/src/tsdb/tsdbCommit2.c:373`）按 Begin → 写 TS → 写 tomb → End 四步走。关键在 `tsdbCommitOpenIter`（`tsdbCommit2.c:267`）：它把**内存表和该 fileset 下所有 STT 文件**各开一个迭代器，然后用同一套归并器合流：
+
+```c
+config.type = TSDB_ITER_TYPE_MEMT;  config.memt = committer->tsdb->imem;   // :275-288 内存表 data/tomb
+TARRAY2_FOREACH(committer->sttReaderArray, sttReader) {
+  config.type = TSDB_ITER_TYPE_STT;      ...                            // :297  每个 STT 一个 reader
+  config.type = TSDB_ITER_TYPE_STT_TOMB; ...                            // :304
+}
+tsdbIterMergerOpen(committer->dataIterArray, &committer->dataIterMerger, false);  // :313
+tsdbIterMergerOpen(committer->tombIterArray, &committer->tombIterMerger, true);   // :314
+```
+
+归并器本体 `tsdbIterMergerOpen`（`source/dnode/vnode/src/tsdb/tsdbIter.c:677`）是经典的 **k 路归并 + RB-tree 小顶堆**：
+
+```c
+tRBTreeCreate(merger[0]->iterTree, isTomb ? tsdbTombIterCmprFn : tsdbIterCmprFn);  // :688/:690
+TARRAY2_FOREACH(iterArray, iter) {  /* 每个迭代器先塞一条进堆 */ }                // :692-704
+return tsdbIterMergerNext(merger[0]);
+```
+
+比较键是 **`(suid, uid, ts)` 三元组**：`tsdbIterCmprFn`（`tsdbIter.c:639`）→ `tRowInfoCmprFn`（`source/dnode/vnode/src/tsdb/tsdbCommit.c:18`，先比 suid `:22-26`、再比 uid `:28-32`、最后 `tsdbRowCompare` `:34`）。
+
+**复杂度**：k 个输入、总 N 行 → **时间 O(N log k)**，空间 O(k)（每路只需驻留 1 行 + 堆内指针）。
+
+### 20.3 Compaction 触发条件与 STT 层级
+
+Compaction 不是独立定时器，而是**挂在文件系统编辑提交钩子上**——`tsdbFSEditCommit`（`source/dnode/vnode/src/tsdb/tsdbFS2.c:932`）在提交完一次 edit 之后反向扫描所有 fileset：
+
+```c
+int32_t sttTrigger = fs->tsdb->pVnode->config.sttTrigger;              // :946
+if (sttTrigger > 1 && !fs->tsdb->bgTaskDisabled) {
+  TARRAY2_FOREACH_REVERSE(fs->fSetArr, fset) {
+    SSttLvl *lvl = TARRAY2_FIRST(fset->lvlArr);                        // :955 只看第 0 层
+    if (lvl->level != 0) { tsdbFSSetBlockCommit(fset, false); continue; }   // :956
+    int32_t numFile = TARRAY2_SIZE(lvl->fobjArr);
+    if (numFile >= sttTrigger && !vnodeATaskValid(&fset->mergeTask)) {
+      vnodeAsync(MERGE_TASK_ASYNC, EVA_PRIORITY_HIGH, tsdbMerge, ...); // :973 异步起 merge
+    }
+    if (numFile >= sttTrigger * BLOCK_COMMIT_FACTOR) {                  // :977
+      tsdbFSSetBlockCommit(fset, true);     // 文件堆太高，顺带把该 fid 的新写入堵住
+    } else {
+      tsdbFSSetBlockCommit(fset, false);
+    }
+  }
+}
+```
+
+三个关键常量 / 判据：
+
+| 项 | 值 / 位置 | 含义 |
+|----|----------|------|
+| `sttTrigger` | 默认 `TSDB_DEFAULT_SST_TRIGGER = 2`（`include/util/tdef.h:620`），落在 `SVnodeCfg.sttTrigger`（`source/dnode/vnode/inc/vnode.h:389`） | 第 0 层攒到几个 STT 文件就合并 |
+| `BLOCK_COMMIT_FACTOR` | `3`（`source/dnode/vnode/src/tsdb/tsdbFS2.c:22`） | 文件数达 `sttTrigger * 3` 时触发 block commit 反压 |
+| 兜底判据 | `tsdbDoMerge`（`source/dnode/vnode/src/tsdb/tsdbMerge.c:430`）`lvl->level != 0 \|\| 文件数 < sttTrigger` 直接 return（`:437`） | 双保险，防止重复调度 |
+
+后台线程入口 `tsdbMerge`（`tsdbMerge.c:483`）：先把 fileset **拷贝一份快照**再干活（`tsdbMergeGetFSet`，`:455`），避免和并发写入打架；`sttTrigger <= 1` 时直接返回（`:495`），即**关掉 compaction**。真正干活的是 `tsdbMergeFileSet`（`tsdbMerge.c:372`）：open reader → open iter → open writer → 归并 → `TSDB_FEDIT_MERGE` 编辑文件系统。
+
+合并时的排序同样用堆：`tMergeTreeNext`（`source/dnode/vnode/src/tsdb/tsdbMergeTree.c:1234`）每次取堆顶、推进后与新堆顶比较：
+
+```c
+pIter = (SLDataIter *)tRBTreeMin(&pMTree->rbt);                    // :1254
+if (pMTree->pIter && pIter) {
+  int32_t c = pMTree->rbt.cmprFn(&pMTree->pIter->node, &pIter->node);   // :1256
+  if (c > 0) { tRBTreePut(&pMTree->rbt, (SRBTreeNode *)pMTree->pIter);  // :1258
+               pMTree->pIter = NULL; }
+  else if (!c) { continue; }   // 键相等 → 跳掉重复行（合并去重）      // :1260-1261
+}
+```
+
+`else if (!c) { continue; }` 就是 **compaction 去重的关键**：同 `(suid, uid, ts)` 只保留一条。多路合并仍为 **O(N log k)**。
+
+### 20.4 KEEP 0/1/2 → level 的映射公式
+
+注意区分：§九 讲的 **storage level（内存 / SSD / 对象存储）** 是「数据搬到哪」，而 `tsdbFidLevel`（`source/dnode/vnode/src/tsdb/tsdbUtil.c:571`）算的是**「这个 fid 属于第几代保留策略」**，直接决定合并输出写到哪个 `SSttLvl`。
+
+```c
+nowSec = nowSec - keepTimeOffset * tsTickPerHour[precision];                       // :586
+aFid[0] = tsdbKeyFid(nowSec - keep0 * tsTickPerMin[precision], days, precision);   // :588-589
+aFid[1] = tsdbKeyFid(nowSec - keep1 * tsTickPerMin[precision], days, precision);   // :590-591
+aFid[2] = tsdbKeyFid(nowSec - keep2 * tsTickPerMin[precision], days, precision);   // :592-593
+
+if      (fid >= aFid[0]) return 0;      // :595  最新一段 → level 0（原始精度）
+else if (fid >= aFid[1]) return 1;      // :597
+else if (fid >= aFid[2]) return 2;      // :599
+else                    return -1;     // :601  已超出总保留期，等 TTL 删
+```
+
+调用点有两处，都把它写进 commit/merge 的上下文：提交侧 `committer->ctx->expLevel = tsdbFidLevel(...)`（`tsdbCommit2.c:333`），合并侧 `.expLevel = tsdbFidLevel(merger->ctx->fset->fid, ...)`（`tsdbMerge.c:278`）。
+
+- **单次计算 O(1)**（3 次除法 + 3 次比较）；
+- 效果：越老的数据合并后落在越深的 level，越新的数据在 level 0 保持高压缩比原始精度——这就是 `ALTER DATABASE ... KEEP 90,365,3650` 的**存储层实现**。
+
+## 二十一、TAG 索引裁剪与窗口推进算法
+
+### 21.1 WHERE 条件的四分类切分
+
+TDengine 的一条 `WHERE` 里混着时间戳条件、tag 条件、tag 值下推条件和普通列条件。执行计划需要先把它们拆开，各自交给不同层。
+
+`filterPartitionCond`（`source/libs/scalar/src/filter.c:6330`）就是拆解器，四个输出分别是 **primary key / tag index / tag / other**：
+
+```c
+if (是 AND 逻辑节点) {
+  return partitionLogicCond(...);                        // :6332-6335  递归拆 AND 链
+}
+switch (filterClassifyCondition(*pCondition)) {          // :6346
+  case COND_TYPE_PRIMARY_KEY:  *pPrimaryKeyCond = *pCondition; break;      // :6347
+  case COND_TYPE_TAG_INDEX:    *pTagIndexCond = *pCondition;               // :6353
+                               /* 同时 clone 一份给 pTagCond，保证即使索引不可用也能全表校验 */
+                               nodesCloneNode(*pCondition, &pTempCond);   // :6362
+  case COND_TYPE_TAG:          *pTagCond = *pCondition; break;            // :6371
+  default:                     *pOtherCond = *pCondition; break;          // :6377-6382
+}
+```
+
+`COND_TYPE_TAG_INDEX` 分支的**双写**（`filter.c:6358-6368`）是整个裁剪链路的保险丝：tag 值既推给索引做候选集，也留一份在扫描阶段逐表复验。索引可能因为**类型不支持、索引缺失、统计信息过期**而返回 `SFLT_NOT_INDEX`（`include/libs/index/index.h:242` 定义了三态：`SFLT_NOT_INDEX / SFLT_COARSE_INDEX / SFLT_ACCURATE_INDEX`），此时仍能靠 `pTagCond` 保证结果正确。
+
+### 21.2 两段式裁剪：索引预筛 + 逐表校验
+
+拿到切分好的条件后，`metaGetChildUidsByTagCond`（`source/dnode/vnode/src/meta/metaTable2.c:3470`）用**三步法**把「超级表下符合条件的所有子表 uid」缩成一个小数组：
+
+```text
+Step 1  索引预筛（pTagIndexCond != NULL 时）
+        candidates = doFilterTag(pTagIndexCond, ...)            // :3500
+        if 失败 或 status == SFLT_NOT_INDEX:
+            candidates = NULL                                    // :3501-3508 回退
+
+Step 2  索引没命中 → 全量枚举子表
+        cur = metaOpenCtbCursor(pVnode, suid, 1, 0)            // :3518
+        while ((uid = metaCtbCursorNext(cur)) != 0) push(candidates, uid)   // :3524-3532
+
+Step 3  逐表复验 pTagCond
+        if (pTagCond == NULL): 直接 swap，全部通过           // :3538-3540
+        else: for uid in candidates:
+                  metaIsChildTableQualified(pMeta, uid, pTagCond, &qualified)  // :3546
+                  if qualified: push(pUidList, uid)                          // :3553
+```
+
+索引入口 `doFilterTag`（`source/libs/index/src/indexFilter.c:1318`）先探测能力再执行：
+
+```c
+SIdxFltStatus st = idxGetFltStatus(pFilterNode, pAPI);   // :1320
+if (st == SFLT_NOT_INDEX) { *status = st; return 0; }   // :1321-1324  短路，不做任何工作
+int32_t code = sifCalculate((SNode *)pFilterNode, &param);   // :1334  真正下推求候选 uid
+taosArrayAddAll(result, param.result);                       // :1345  并入结果集
+```
+
+`idxGetFltStatus`（`indexFilter.c:1354`）内部是 `sifGetFltHint` 的能力探测：判断这个 SNode 条件树里有没有「索引能回答的原子谓词」。
+
+**复杂度对比**（N = 该超级表下子表数，K = 索引筛出的候选数）：
+
+| 场景 | 时间 | 说明 |
+|------|------|------|
+| 索引命中且无需复验（`pTagCond == NULL`） | **O(log N + K)** | 直接取 `doFilterTag` 结果 |
+| 索引命中 + 复验 | O(log N + K · c) | c = 单表 tag 判定成本 |
+| 索引不可用（`SFLT_NOT_INDEX`） | **O(N · c)** | 全量枚举 + 全量复验，退化但正确 |
+
+索引为什么能只花 `O(log N)`：§19.4 讲过，`STagIdxKey` 的键序是 `(suid, cid, isNull, type, data)`（`tagIdxKeyCmpr`，`source/dnode/vnode/src/meta/metaOpen.c:946`），等值条件 `tag_col = 'cpu0'` 正好对应一段连续 B-tree 区间。
+
+对外的统一入口是 `metaGetChildUidsByWhere`（`source/dnode/vnode/src/meta/metaTable2.c:3571`），它把「克隆 WHERE（`metaTable2.c:3583`）→ `filterPartitionCond`（`metaTable2.c:3589`）→ `metaGetChildUidsByTagCond`（`metaTable2.c:3595`）」打包成一次调用。**先克隆再拆**是必须的，因为 `filterPartitionCond` 会把原节点置空（`source/libs/scalar/src/filter.c:6387`），直接传会破坏调用方的计划树。
+
+### 21.3 session window：按 gap 推进的单遍扫描
+
+session window（会话窗口）没有预定义边界，边界由**相邻两行时间戳的间隔**决定：间隔 ≤ gap 就并进当前窗口，超过 gap 就开新窗口。
+
+逻辑节点 `SSessionWindowNode`（`include/libs/nodes/querynodes.h:571`）只有三个字段，`pGap` 注释明确单位是**微秒**：
+
+```c
+typedef struct SSessionWindowNode {     // querynodes.h:571
+  ENodeType    type;
+  SColumnNode* pCol;    // session window 使用的时间戳列
+  SValueNode*  pGap;    // gap between two session window(in microseconds)   :574
+} SSessionWindowNode;
+```
+
+执行侧 `doSessionWindowAggImpl`（`source/libs/executor/src/timewindowoperator.c:2586`）是**一次遍历、零回看**的推进算法：
+
+```text
+prevTs = INT64_MIN                                        // :2604 首行哨兵
+for j in [0, block.rows):                                 // :2613
+    ts = tsList[j]
+    if (换表 gid != groupId) 或 prevTs == INT64_MIN:       // :2618
+        开新窗口; keepTuple(ts)
+    elif ts == prevTs:                                    // :2621 重复时间戳 → 同窗口
+        keepTuple(ts)
+    else:
+        absDiff = |ts - prevTs|                           // :2625 绝对差，兼容倒序扫描
+        if absDiff <= gap:                                // :2626
+            keepTuple(ts)                                 //   并入当前窗口
+        else:                                             // :2629
+            flush(当前窗口)                                //   产出聚合结果
+            开新窗口; keepTuple(ts)
+    prevTs = ts
+flush(最后一个窗口)                                        // :2665-2680 块尾窗口必落
+```
+
+伪代码：
+
+```c
+prevTs = INT64_MIN; win = NULL;
+for (ts : rows) {
+  if (ts - prevTs > gap) { flush(win); win = newWin(ts); }   // 差值 > gap → 切窗
+  win.add(ts); prevTs = ts;
+}
+flush(win);
+```
+
+- **复杂度 O(n)**（每行只做一次减法 + 一次比较 + 一次入列），无二分、无回溯；
+- `absDiff` 用绝对值而非 `ts - prevTs`（`:2625`），是为了让**倒序扫描**（`TDSDB_ORDER_DESC`）复用同一套代码；
+- `prevTs` 跨块保留（只在 `!pInfo->reptScan` 的首次进入时重置，`:2602-2605`），保证**跨数据块的窗口不会被误切断**；
+- 块尾窗口在 `:2665` 强制 flush，避免最后一个窗口丢失。
+
+### 21.4 周期/滑动窗口：窗口推进 + 二分定位
+
+周期窗口（interval / tumbling）与滑动窗口（sliding）走另一条路。物理节点 `SIntervalPhysiNode`（`include/libs/nodes/plannodes.h:1064`）同时带 **interval / offset / sliding / slidingUnit / firstDayOfWeek / timezone**：
+
+```c
+typedef struct SIntervalPhysiNode {   // plannodes.h:1064
+  SWindowPhysiNode window;
+  int64_t interval;  int64_t offset;  int64_t sliding;
+  int8_t  intervalUnit; int8_t slidingUnit;
+  int8_t  firstDayOfWeek;  void* timezone;  ...
+} SIntervalPhysiNode;
+```
+
+推进与定位在 `getNextQualifiedWindow`（`source/libs/executor/src/timewindowoperator.c:415`）：
+
+```text
+① 窗口是否与当前数据块有交集？
+   inCalSlidingWindow: interval != sliding 且 (win.ekey < calStart || win.skey > calEnd) → 不合格  :403-404
+② 定位窗口首行位置
+   若 sliding == interval（tumbling 特例）且已知上次位置 → startPos = prevPosition + 1   :436-437  O(1)
+   否则 → binarySearchForKey(primaryKeys, rows, skey, order)                          :442      O(log rows)
+③ 窗口尾部推进（跨越当前窗口尾部时整格跳）
+   ekey += ceil((next - ekey) / sliding) * sliding     :466
+   skey -= ceil((skey - next) / sliding) * sliding     :476
+```
+
+`interval == sliding` 即 tumbling window，是 sliding window 的特例（`:435` 注释写得很直白），此时相邻窗口不重叠，可以用 `prevPosition + 1` 常数级续扫；一旦 `sliding < interval`，窗口重叠，必须二分回退定位——**这条分叉正是周期窗口 O(n)、滑动窗口 O(n log n) 的根源**。
+
+流式查询侧对应的窗口类型枚举在 `include/common/streamMsg.h:1679`：
+
+```c
+typedef enum EWindowType {
+  WINDOW_TYPE_INTERVAL = 1,   // 周期
+  WINDOW_TYPE_SESSION,        // 会话
+  WINDOW_TYPE_STATE,
+  WINDOW_TYPE_EVENT,
+  WINDOW_TYPE_COUNT,
+  WINDOW_TYPE_ANOMALY,
+  WINDOW_TYPE_EXTERNAL,
+  WINDOW_TYPE_PERIOD
+} EWindowType;
+```
+
+## 二十二、参考资料
 
 1. TDengine 官方文档（中文）：<https://docs.taosdata.com/>
 2. TDengine 官方文档（英文）：<https://docs.tdengine.com/>
