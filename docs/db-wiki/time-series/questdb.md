@@ -392,7 +392,301 @@ QuestDB 支持乱序写入（`LATEST ON` 按 timestamp 排序），但**默认�
 - **PostgreSQL Wire Protocol**：`engineering/src/db/net/pg_proto.c` 可参考 `PgWireContext` 的协议实现；
 - **Griffin SQL 编译**：`engineering/src/db/sql/parser.c` 可参考 `SqlParser` + `SqlOptimiser` 的解耦。
 
-## 十九、参考资料
+## 十九、Page Frame 向量化执行
+
+§6 与 §7.3 只提到「PageFrame 4096 行一批」，这一节拆开讲：QuestDB 的查询执行**没有「逐行游标」这一层**，filter 与 aggregate 的最小工作单位不是一行，而是一个 **PageFrame**（列式分批）。三段：帧的表示、帧的分发与并行 reduce、以及零分配的原因。
+
+### 19.1 PageFrame 的表示：裸地址而非 Java 数组
+
+`PageFrame`（`core/src/main/java/io/questdb/cairo/sql/PageFrame.java:66` 起）是一个只读接口，描述「某一个 partition 的一段连续行区间 × 表里的若干列」：
+
+| 方法 | 位置 | 语义 |
+|------|------|------|
+| `getColumnCount()` | `PageFrame.java:66` | 帧内列数（允许为 0） |
+| `getPageAddress(int col)` | `PageFrame.java:156` | 该列本帧的**连续内存起始地址**（`long`，由 mmap 得到） |
+| `getPageSize(int col)` | `PageFrame.java:166` | 该列本帧的字节长度 = 行数 × `pow2SizeOf(type)` |
+| `getAuxPageAddress(int col)` | `PageFrame.java:48` | 变长列（String / Varchar / Binary）的 offset 副向量地址 |
+| `getPartitionLo()` / `getPartitionHi()` | `PageFrame.java:202` / `:192` | 所属 partition 的时间下界 / 上界 |
+| `getFormat()` | `PageFrame.java:73` | `PartitionFormat.NATIVE` 或 `PARQUET` |
+
+关键在返回类型是 `long` 而不是 `long[]`：一帧的数据本来就是一段连续的 mmap 地址，`Unsafe.getLong(addr + (row << 3))` 就能读任意一行，**中间没有任何对象、没有任何拷贝、没有任何装箱**。变长列走「主向量 + aux 向量」双地址结构，aux 里存相对偏移，于是变长列同样能被无指针解引用地顺序读。
+
+### 19.2 惰性游标 → 帧序列 → 分片队列 → 并行 reduce
+
+```
+PageFrameCursor（惰性，next() 一次一帧）
+   │  逐帧把地址写进 PageFrameAddressCache（扁平 DirectLongList）
+   ▼
+PageFrameSequence —— of(...) 绑定查询计划 + 帧缓存
+   │  next() / next(dispatchLimit, countOnly) 按帧发任务
+   ▼
+MessageBus：分片 RingQueue<PageFrameReduceTask>
+   │  N 个 PageFrameReduceJob（每 worker 一个 clone）轮流抢
+   ▼
+PageFrameReducer.reduce(workerId, record, task, ...)  ← filter / aggregate 在这里跑
+```
+
+- 帧缓存 `PageFrameAddressCache`（`cairo/sql/PageFrameAddressCache.java:54`）用**一张扁平表**存所有帧所有列的地址，索引公式就写在文件注释里（`:56`）：`frameIndex * columnCount + columnIndex`；`:108` 的 `add(frameIndex, frame)` 追加一帧，`:364` 的 `getPageAddresses()` 取出整个 `DirectLongList`。没有 per-frame 对象，也没有哈希表。
+- 分片队列是**多条**而非一条（`MessageBus.java:146` `getPageFrameReduceQueue(int shard)`、`:144` `getPageFrameReducePubSeq(int shard)`），分片数来自 `getPageFrameReduceShardCount()`。分片的意义是压 CAS 竞争：worker A 正在抢 shard 0 的 CAS 时，shard 1 完全不受影响。
+- worker 侧 `PageFrameReduceJob.run()`（`cairo/sql/async/PageFrameReduceJob.java:179`）从自己那份随机洗牌过的 shard 列表开始轮转——构造函数里先填 `shards[i] = i`，再用 Fisher-Yates 打乱（`PageFrameReduceJob.java:67`-`:85`），源码注释写得很直白：*shuffle shard indexes such that each job has its own pass order over the shared queues*。`consumeQueue`（`:196`）取任务，取到后：
+  - `:220` 先判 `frameSequence.isActive()`——查询已被 cancel 的序列，任务直接丢弃（这是查询取消能快速响应的原因）；
+  - `:274` `frameSequence.getReducer().reduce(...)` 真正干活；
+  - `:243` 在 `finally` 里 `getReduceFinishedCounter().incrementAndGet()`——无论成功、异常还是被取消计数都会加，主线程的 `PageFrameSequence` 据此判断是否全部收齐。
+
+### 19.3 零分配：worker 侧 filter + aggregate 伪代码
+
+```java
+// 伪代码：一次 reduce 只处理一帧，全程不在堆上 new 任何对象
+void reduce(int workerId, PageFrameMemoryRecord record, PageFrameReduceTask task, ...) {
+    final long[] addrs = addrCache.getPageAddresses();          // 复用，off-heap DirectLongList
+    final int    fi    = task.getFrameIndex();                  // 帧号，不是行号
+    final long   tsBase= addrs.getQuick(fi * colCount + tsIdx); // 扁平寻址
+    final long   n     = addrCache.getFrameSize(fi);           // 本帧行数
+
+    long m = 0;                                                 // 选出行号，写进复用的 DirectLongList
+    for (long r = 0; r < n; r++) {
+        long ts = Unsafe.getLong(tsBase + (r << 3));            // 直接读 mmap 地址
+        if (ts >= lo && ts < hi) sel[m++] = r;                 // 时间范围谓词
+    }
+    // 把 m 个行号喂给分组聚合；聚合状态在 off-heap map 里，同样跨任务复用
+    for (long i = 0; i < m; i++) agg.update(record, sel[i]);
+}
+```
+
+复杂度：设帧数 F、每帧行数 R、总行数 N = F·R，则时间 O(N)，P 个 worker 并行后 O(N/P)；
+空间 O(C)（C 是常量：地址表 + 选中行号缓冲 + 聚合状态），**与 N 无关**；
+GC 压力 O(0)——`addrs` / `sel` / `map` 都是 off-heap 的 `DirectLongList` / `DirectMap`，跨任务复用。
+
+### 19.4 与逐行游标的复杂度对比
+
+| 维度 | 逐行 RecordCursor | PageFrame |
+|------|------------------|-----------|
+| 每行代价 | N 次虚调用 `record.getLong(col)`，内联失败即退化为接口分派 | 每列一段地址，谓词可整段交给 `Vect.*` 原语 |
+| cache 局部性 | 按行取列 → 跨列跳跃 | 按列取段 → 顺序预取 |
+| 跨线程 | 需要拷 row id 列表或重放过滤 | 直接派发帧号，worker 自己重算谓词 |
+| 取消响应粒度 | 受限于已派发行的批次 | 受限于单帧大小 |
+
+## 二十、乱序（O3）写入：commitLag 自适应与三路归并
+
+§10.3 说「乱序写入会触发 partition split / 数据搬迁」。这一节讲清代价从哪来，以及 QuestDB 用两个机制把它压下去：**提交滞后（commitLag）反馈控制** + **只对重叠区做三路归并**。
+
+### 20.1 commitLag：把「乱序尾巴」留在内存里等下一批
+
+配置项是 `CAIRO_COMMIT_LAG`，默认 10 分钟（`PropServerConfiguration.java:1884`），实际传给 writer 的是 `CAIRO_O3_MAX_LAG`（`:1885`，单位微秒），最终进 `TableWriter.o3Commit(long o3MaxLag)`（`cairo/TableWriter.java:8582`）。
+
+滞后值不是固定常量，而是**带滑动窗口的反馈控制器**（`TableWriter.java:8634`-`:8679`）：
+
+```
+// 伪代码（对照 TableWriter.o3Commit）
+lagError = 表内已提交 maxTimestamp - 本批最小时间戳    // > 0 说明本批与已有数据重叠
+if (lagError > 0)  effLag += lagError * INCREASE(=1.5);  effLag = min(effLag, o3MaxLag)  // TableWriter.java:8648
+else               effLag += lagError * DECREASE(=0.5);  effLag = max(effLag, 0)        // TableWriter.java:8652
+
+// 窗口内取最大值，避免一次异常批次把 effLag 抬上去又迅速回落
+for i in 0..n-1: spreads[i] = spreads[i+1]; m = max(m, spreads[i])
+spreads[n] = effLag;  effLag = max(effLag, m)     // 数组长度见 TableWriter.java:619
+
+threshold       = o3TimestampMax - effLag
+lagThresholdRow = lower_bound(sortedTimestamps, threshold)   // 有界二分，TableWriter.java:8672
+lagRowCount     = min(o3RowCount - lagThresholdRow - 1, maxUncommittedRows)
+```
+
+两个系数是接口默认实现：`getO3LagIncreaseFactor()` = 1.5（`cairo/CairoConfiguration.java:590`）、`getO3LagDecreaseFactor()` = 0.5（`:586`）。窗口长度是 `CAIRO_O3_LAG_CALCULATION_WINDOW_SIZE`，默认 4（`PropServerConfiguration.java:1873`）。
+
+**取舍**：落在 `lagRowCount` 之上的行**不落盘**，留在内存 O3 缓冲（`CAIRO_O3_COLUMN_MEMORY_SIZE`，默认 8 MB，`PropServerConfiguration.java:1879`）等下一批合并。所以——
+
+- 写入保序（时间戳单调递增）时 `lagError ≤ 0` 恒成立，`effLag → 0`，全部行直接落盘，走最快路径；
+- 写入乱序且跨度大时 `effLag` 顶到 `o3MaxLag` 上限，最多只能压住尾部固定时长，其余部分必须真归并；
+- 控制器的稳态是**不对称**的（1.5 涨 / 0.5 跌），意味着系统倾向于快速放大容忍度、快速收回，避免一批偶发乱序就把后续所有写入都拖进 lag 缓冲。
+
+`maxUncommittedRows` 是硬上限：即使 `effLag` 允许留更多行，超过它的部分也会被截断（`TableWriter.java:8680`-`:8696`）；极端情况下（`o3MaxLag` 与 `maxUncommittedRows` 都盖不住）直接提交一半 lag 行（`:8692`）。
+
+### 20.2 排序：阈值决定 radix sort 还是 quicksort
+
+排序对象是 **16 字节的 (timestamp, rowId) 定长条目数组**。选择逻辑在 `TableWriter.java:8606`：
+
+```
+if (o3RowCount > 600 || !o3QuickSortEnabled)
+    Vect.radixSortLongIndexAscInPlace(addr, n, scratch);  // TableWriter.java:8608  O(k·n)，k 固定 8 字节 → 线性
+else
+    Vect.quickSortLongIndexAscInPlace(addr, n);            // TableWriter.java:8610  O(n log n)，小 n 常数更小
+```
+
+`CAIRO_O3_QUICKSORT_ENABLED` 默认 `false`（`PropServerConfiguration.java:1887`），所以默认恒走基数排序。基数排序能线性是因为 key 是定长 8 字节——这跟变长字符串排序完全不同，后者做不到。
+
+### 20.3 三路归并：prefix / merge / suffix
+
+排序完成后，`O3PartitionJob.processPartition`（`cairo/O3PartitionJob.java:735`）把结果切成三段，用三个常量标记每段的来源（`cairo/TableWriter.java:168` `O3_BLOCK_NONE = -1`、`:169` `O3_BLOCK_O3 = 1`、`:166` `O3_BLOCK_DATA = 2`）：
+
+```
+已落盘 DATA:  [.................................]
+本批 O3:                       [.......]
+结果:            [prefix DATA][ merge ][suffix O3]
+                              ↑ 只有这一段需要真归并
+```
+
+分支判定（源码里用 ASCII 画了四张示意图）：
+
+| 情形 | 处理 | 源码位置 |
+|------|------|----------|
+| O3 整体落在已有数据之后 | `prefix = DATA` 全量、`suffix = O3`，**零归并** | `O3PartitionJob.java:1012` |
+| O3 落在已有数据中间 | 二分切出 prefix，其余进 merge | `O3PartitionJob.java:1031` |
+| O3 落在已有数据之前 | `prefix = O3`、`suffix = DATA`，**零归并** | 同函数另一分支 |
+
+有个容易漏掉的细节：`mergeEquals`（`O3PartitionJob.java:990`）只在 **dedup / replace 模式**下才为 1——此时 `timestamp == o3TimestampHi` 的行必须被拉进 merge 区，否则去重会漏；非 dedup 时留 0，因为把这些相等行并进去会导致无谓的 partition 重写。
+
+三段的执行分工是：`prefix` / `suffix` 走纯 memcpy，只有 `merge` 段进入归并。归并按列并行，分派入口是 `O3OpenColumnJob.openColumn`（`cairo/O3OpenColumnJob.java:1445`），按区间位置落到 `appendNewPartition`（`:2149`，分区还不存在）/ `appendFixColumn`（`:1802`，纯追加）/ `appendMidPartition`（`:1956`，追加到已有分区中间）/ `mergeFixColumn`（`:2410`，真正的重叠归并）/ `mergeMidPartition`（`:2818`）/ `mergeLastPartition`（`:2678`）。
+
+### 20.4 归并索引：bit63 当来源标记
+
+重叠区的归并**只做一次**，之后所有列共享这一个索引：
+
+```
+// 伪代码（对照 O3PartitionJob.createMergeIndex，cairo/O3PartitionJob.java:1806）
+long idx = malloc((m + n) * 16);
+Vect.mergeTwoLongIndexesAsc(
+        srcDataTimestampAddr, mergeDataLo, mergeDataHi - mergeDataLo + 1,     // 已落盘的一段（裸 int64 数组）
+        sortedTimestampsAddr + mergeOOOLo * 16, mergeOOOHi - mergeOOOLo + 1,    // O3 的一段（16 字节条目）
+        idx);
+```
+
+`Vect.mergeTwoLongIndexesAsc` 声明在 `std/Vect.java:266`，落到 native 的 `binary_merge_ts_long_index`（`core/src/main/c/share/ooo.cpp:456`）。核心是一个**双指针归并**，`ooo.cpp:470` 是整个设计的关键一行：
+
+```c
+dest[r++].i = (1ull << 63) | its;   // bit63 = 1 → 这一行来自已落盘的 data
+```
+
+O3 条目的 `rowId` 是纯行号（bit63 = 0）。于是归并索引里的 16 字节条目自带「我该去哪个源取第几行」的信息，**不需要额外的 source 数组**。
+
+每列的搬运是一次无分支 gather（`core/src/main/c/share/ooo_dispatch.h:168`）：
+
+```cpp
+const T *sources[] = {src2, src1};                    // ooo_dispatch.h:169  0 = O3 缓冲, 1 = 已有数据
+for (int64_t i = 0; i < count; i++) {
+    MM_PREFETCH_T0(index + i + 64);                   // 软件预取
+    const auto r    = reinterpret_cast<uint64_t>(index[i].i);
+    const auto pick = r >> 63u;                       // ooo_dispatch.h:173  取出 bit63
+    const auto row  = r & ~(1ull << 63);
+    dest[i] = sources[pick][row];                     // ooo_dispatch.h:175
+}
+```
+
+`O3CopyJob.mergeCopy`（`cairo/O3CopyJob.java:402`）按列类型选具体原语：变长列（String / Varchar / Array / Bin）走 `ColumnType.getDriver(...).o3ColumnMerge`（`:415`-`:424`）；designated timestamp 列直接 `Vect.oooCopyIndex`——归并索引本身就是输出，索引即数据（`:427`）；其余定长列按字节宽度选 `Vect.mergeShuffle{8,16,32,64,128,256}Bit`（`:430` 起，BOOLEAN/BYTE→8Bit、SYMBOL/INT→32Bit 等）。
+
+复杂度：归并区 m 行已有数据 + n 行 O3 → 双指针建索引 O(m + n)，逐列 gather 也是 O(m + n)，额外空间 O(m + n) × 16 字节索引。与「整分区重写」的 O(partitionSize) 相比，非重叠部分完全不动。
+
+### 20.5 列版本 MVCC 与 TxnScoreboard
+
+QuestDB 的 MVCC 是**列级**而非行级：`_cv` 文件里每条记录是 `(partitionTimestamp, columnIndex) → (txn, columnTop)`，写入接口是 `ColumnVersionWriter.upsert`（`cairo/ColumnVersionWriter.java:241`）。`columnTop` 表示该列在这个 partition 里从第几行开始才有数据（后加的列、被删过的列），查询时 `[0, columnTop)` 读作 NULL。
+
+读侧的一致性判定交给 `TxnScoreboard`（接口 `cairo/TxnScoreboard.java:56`，实现 `cairo/TxnScoreboardV2.java:226`）。算法是**位图 + CAS 槽位**：
+
+```
+// 伪代码（对照 TxnScoreboardV2.isRangeAvailable，cairo/TxnScoreboardV2.java:226）
+updateMax(toTxn);                         // 先把 toTxn 推到最新，堵住与 acquireTxn 的竞态
+if (activeReaderCount == 0) return true;  // 没人持锁 → 直接可读
+
+for i in 0..bitmapCount:
+    b = volatileRead(bitmapMem[i])        // 稀疏：只扫置了位的字
+    while b != 0:
+        id = i * 64 + ctz(b)              // Long.numberOfTrailingZeros
+        t  = volatileRead(entriesMem[id])
+        if (t > UNLOCKED && fromTxn <= t && t < toTxn) return false
+        b &= b - 1                        // 清最低位
+return true
+```
+
+写侧是 CAS 抢槽位（`TxnScoreboardV2.java:206` 的 `incrementTxn`：`Unsafe.cas(..., UNLOCKED, txn)` 成功才置位图）；`isOutdated(txn)` 就是 `txn < getMax()`（`:221`）。
+
+复杂度 O(k)，k 是当前活跃 reader 数，**与槽位总数无关**——位图字内的 `ctz` 循环天然跳过空槽。槽位总数由 `CAIRO_O3_TXN_SCOREBOARD_ENTRY_COUNT` 决定，默认 16384 并向上取 2 的幂（`PropServerConfiguration.java:1956`）。
+
+## 二十一、SQL 编译优化与 SAMPLE BY 分桶填充
+
+§11.1 列了 `SAMPLE BY` / `LATEST ON` / `ASOF JOIN` 这些时序扩展。这一节讲它们在编译器里到底被改写成了什么。
+
+### 21.1 编译链路与「英式拼写」
+
+```
+SqlCompiler（接口）
+  → SqlCompilerImpl 实现               core/.../griffin/SqlCompilerImpl.java:159
+      → SqlParser 解析成 QueryModel 树   griffin/SqlParser.java:107
+      → SqlOptimiser.optimise(...)       griffin/SqlOptimiser.java:116 类声明 / :13140 方法
+      → SqlCodeGenerator 生成游标工厂树   griffin/SqlCodeGenerator.java:413
+```
+
+**注意类名是 `SqlOptimiser`（英式 -ise），不是 `SqlOptimizer`**（`SqlOptimiser.java:116`）。
+
+QuestDB 的优化器不是「规则匹配 + 代价估计」，而是**对 QueryModel 树做结构改写**，每个 `rewriteXxx` 返回一棵新树：`rewriteSampleBy`（`:9540`）、`rewriteSampleByFromTo`（`:9971`）、`rewriteSelectClause`（`:10482`）、`rewriteOrderBy`（`:9063`）、`rewriteDistinct`（`:8672`）。
+
+### 21.2 SAMPLE BY → GROUP BY timestamp_floor
+
+`SAMPLE BY 5m` 本身不进入执行器，它被改写成普通的 `GROUP BY timestamp_floor('5m', ts)`。改写入口 `SqlOptimiser.rewriteSampleBy`（`SqlOptimiser.java:9540`）有几道硬门槛（`:9592`-`:9600`）：
+
+- 必须显式给出 `sampleByOffset`——`ALIGN TO FIRST OBSERVATION`（offset 为 null）走不了快路径；
+- `!hasLinearFill(fill)`——`FILL(LINEAR)` 被踢回遗留 SAMPLE BY 路径（判定函数在 `:545`，逐项扫 fill 列表找 `linear` 关键字）；
+- `FROM` / `TO` 不能是绑定变量或函数调用（`:9599` 排除了 `BIND_VARIABLE` / `FUNCTION` / `OPERATION` 三种 node type）。
+
+另有几条直接报错的规则：`GROUP BY` 与 `SAMPLE BY` 不能并存（`:9563`）、`SAMPLE BY` 不能配 `WINDOW JOIN` / `HORIZON JOIN`、select 列不允许通配符 `*`。
+
+改写后的形态：
+
+```
+-- 用户写的
+SELECT avg(usage) FROM cpu WHERE ts IN '2026-07' SAMPLE BY 5m FILL(NULL);
+
+-- rewriteSampleBy 之后的模型（伪代码，非字面 SQL）
+SELECT avg(usage), timestamp_floor('5m', ts) AS ts     ← bucket key 提升为 group-by key
+  FROM cpu WHERE ts IN '2026-07'
+ GROUP BY 1 ALIGN TO CALENDAR
+-- 再由 generateFill 在 groupBy 工厂外面套一层填充游标（见 21.3）
+```
+
+桶边界由 `timestampSampler.round(ts + tzOffset)` 算出（`griffin/engine/groupby/AbstractNoRecordSampleByCursor.java:252`）。这个 `+ tzOffset` 不是装饰：桶是**本地日历桶**，DST 切换日「一天」可能是 23h 或 25h。`nextSamplePeriod`（`:258`）专门处理回拨——`round` 向下取整可能把新桶的边界落在切换点之前，于是要按边界时刻的偏移量修正（`:267`）。
+
+### 21.3 FILL 补空桶
+
+聚合只会产出**有数据的桶**。`FILL` 负责在空桶上补值，这一层是独立套在 groupBy 外面的游标。入口 `SqlCodeGenerator.generateFill`（`griffin/SqlCodeGenerator.java:3867`）先做三件事：
+
+1. `:3912` `FILL(NONE)` 短路——直接把底层 groupBy 工厂原样返回，一个包装游标都不建；
+2. `:3922` 断言 `LINEAR` 不会走到这里（它必须留在遗留路径，否则会静默退化成 PREV 语义）；
+3. `:3923` `PREV` 在快路径里只是个占位 `NullConstant.NULL`，真正的填充交给游标自己按行判断。
+
+工厂选择分两代：
+
+| 代 | 工厂 | 触发条件 |
+|----|------|----------|
+| 新（快路径） | `SampleByFillRecordCursorFactory`（`SqlCodeGenerator.java:4565`） | 走 `generateFill`，每列一个 `fillModes`：`FILL_CONSTANT=-1` / `FILL_PREV_SELF=-2` / `FILL_KEY=-3`（`griffin/engine/groupby/SampleByFillRecordCursorFactory.java:89`-`:91`） |
+| 旧（按 FILL 类型分派） | 全部在 `SqlCodeGenerator` 里直接 `new`：`SampleByFillPrevRecordCursorFactory`（`SqlCodeGenerator.java:8923`）/ `SampleByFillNoneRecordCursorFactory`（`:9002`）/ `SampleByFillNullRecordCursorFactory`（`:9119`）/ `SampleByFillValueRecordCursorFactory`（`:9201`），keyed 与 not-keyed 各一份 | `FILL(LINEAR)` 等遗留路径 |
+
+补桶有**两种策略**：
+
+```
+// keyed 路径（griffin/engine/groupby/SampleByFillPrevRecordCursor.java:149 buildMap）
+// 一次扫描把整个时间域的桶建进 Map，然后线性 emit
+buildMap();  for (bucket in map) emit(bucket);
+// 时间 O(N + G)，内存 O(G)，G = 桶数
+
+// not-keyed 单序列路径（griffin/engine/groupby/SampleByFillNoneRecordCursor.java:102 hasNext）
+initTimestamps();
+if (mapCursor.hasNext()) return true;    // 上一批还没吐完
+if (baseRecord == null)    return false; // 底游标耗尽 → 结束
+buildMap();                               // 边扫边建，吐空即回收
+return mapCursor.hasNext();
+```
+
+`FILL(LINEAR)` 的插值是一次线性公式（`griffin/engine/groupby/InterpolationUtil.java:46`）：
+
+```java
+public static double interpolate(long x, long x1, double y1, long x2, double y2) {
+    return (y1 * (x2 - x) + y2 * (x - x1)) / (x2 - x1);
+}
+```
+
+每个空桶 O(1)，但需要记住左右两个已知桶 `(x1,y1)` / `(x2,y2)`；左侧没有左邻时走 `interpolateBoundary`（`:155`），由各 `GroupByFunction` 自己定义边界策略，不支持的函数直接抛 `CairoException`。
+
+**整体复杂度**：`SAMPLE BY 5m FILL(NULL)` 查一个月 = O(N) 分桶聚合 + O(G) 补桶，其中 G ≈ 时间域 / 5min ≈ 8640。所以 bucket 宽度是补桶成本的主导项——想省这块开销应该加大 bucket，而不是关掉 FILL。
+
+## 二十二、参考资料
 
 1. QuestDB 官方文档：<https://questdb.io/docs/>
 2. QuestDB GitHub：<https://github.com/questdb/questdb>
