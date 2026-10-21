@@ -831,7 +831,462 @@ V2 MSQE 支持 **多阶段聚合**：
 - **REST API 设计** 与 `engineering/apps/web/` 的 REST 设计可对比；
 - **Segment 元数据**（startTime / endTime）与 `engineering/src/db/heapam.c` 的页面元数据设计类似；
 
-## 二十四、参考资料
+## 二十四、Segment 构建流水线与 StarTree 多维预聚合
+
+本节把 §7 的「有哪些索引」推进到「索引怎么被造出来、查询时怎么被用上」。本节所有源码路径均经 apache/pinot `master`（`1.7.0-SNAPSHOT`，属 §2 的 v1.x 系列）sparse checkout 逐条核对；Pinot 迭代很快，跨大版本路径可能微调（approximate）。
+
+### 24.1 Segment 构建的两趟扫描
+
+离线 Segment 的生成不是单趟，而是**统计 → 构建**两趟：
+
+```text
+// 伪代码：SegmentIndexCreationDriverImpl.build()
+collectStatsAndIndexCreationInfo();      // 第 1 趟：只统计，不写索引
+indexCreator.init(config, totalDocs, columnStatsMap, tempIndexDir);
+for (row : recordReader) {                // 第 2 趟：逐行灌索引
+    transformPipeline.processRow(row) -> indexCreator.indexRow(row);
+}
+handlePostCreation();                     // 补建非 DURING_SEGMENT_CREATION 的索引
+```
+
+第 1 趟由 `StatsCollector` 产出每列的 `ColumnStatistics`，其中 `getUniqueValuesSet()` 携带去重值集合、`getCardinality()` 给出基数；`BaseSegmentCreator` 用它**先建字典**（`dictionaryCreator.build(columnStatistics.getUniqueValuesSet())`），再进入逐行写入。这样倒排索引、Range Index（min/max）这类**依赖全列统计**的索引，才能在数据流过之前就确定长度并预分配缓冲。
+
+代价与收益：读取量翻倍（`O(2·N)`），换来字典 / min-max / 基数这些**一次性即可算出的元信息**。Pinot 源码对此留有显式 TODO：`_columnStatisticsMap` 在整个构建期间通过 `ColumnStatistics` 让每列唯一值**常驻堆内存**，构建大 Segment 时这是主要的堆压力来源。
+
+### 24.2 索引类型是 SPI 注册的，不是硬编码分支
+
+「某列要建哪些索引」不写死在 switch 里，而是遍历注册表：
+
+```text
+// 伪代码：BaseSegmentCreator.getIndexCreatorsByColumn()
+Map<IndexType, IndexCreator> creatorsByIndex = new HashMap<>();
+for (IndexType t : IndexService.getInstance().getAllIndexes()) {
+    if (t.getIndexBuildLifecycle() != IndexType.BuildLifecycle.DURING_SEGMENT_CREATION) continue;
+    tryCreateIndexCreator(creatorsByIndex, t, context, config);
+}
+```
+
+`IndexService` 是**唯一权威容器**（源码注释原话 "the ultimate container ... and the source of truth"），`StandardIndexes` 只提供类型安全的取用入口，避免调用方硬编码字符串 ID。实测已注册的标准索引 ID：`forward_index`、`dictionary`、`nullvalue_vector`、`bloom_filter`、`fst_index`、`ifst_index`、`inverted_index`、`json_index`、`range_index`、`text_index`、`vector_index`、`open_struct_index`。
+
+`BuildLifecycle` 的意义在于：**只有 `DURING_SEGMENT_CREATION` 的索引才能在逐行数据流里被喂数据**，其余生命周期的索引由构建后的离线 pass 在 `handlePostCreation()` 阶段补齐。这也是 Pinot 能插入第三方自定义索引类型（`IndexPlugin`）的扩展点。
+
+索引创建器按类型分目录而非平铺（相对 `pinot-segment-local/src/main/java/org/apache/pinot/segment/local/`）：
+
+| 索引 | 路径 |
+| --- | --- |
+| 正排 forward | `segment/creator/impl/fwd/`（`SingleValueSortedForwardIndexCreator` 等） |
+| 倒排 inverted / range | `segment/creator/impl/inv/`（`BitmapInvertedIndexWriter` / `RangeIndexCreator` / `BitSlicedRangeIndexCreator`） |
+| 空值向量 | `segment/creator/impl/nullvalue/NullValueVectorCreator.java` |
+| 文本 text | `segment/creator/impl/text/LuceneTextIndexCreator.java` |
+| Bloom | `segment/creator/impl/bloom/OnHeapGuavaBloomFilterCreator.java` |
+| 单列打包 | `segment/creator/impl/ColumnIndexCreators.java` |
+
+`ColumnIndexCreators` 把一列的全部状态打包成一个对象：`SegmentDictionaryCreator`（可为 null = raw 列）+ `NullValueVectorCreator`（可空 = 非 nullable）+ `List<IndexCreator>`，`seal()` 用 `_isSealed` 标志保证幂等。
+
+### 24.3 逐行的「一次解码、多索引扇出」
+
+真正吃性能的内核在 `SegmentColumnarIndexCreator`：**一个值只从 ColumnReader 取一次，字典 id 只算一次，然后广播给该列所有索引创建器**。
+
+```java
+// SegmentColumnarIndexCreator 的 INT 列类型化快路径（源码结构化改写）
+for (int docId = 0; docId < numDocs; docId++) {
+    if (columnReader.isNull(docId)) { /* 走 Object 路径 + 标记空值向量 */ continue; }
+    int value  = columnReader.getInt(docId);                     // 类型化取值，免装箱
+    int dictId = (dictionaryCreator != null)
+                 ? dictionaryCreator.indexOfSV(value) : -1;      // 字典只查一次
+    for (IndexCreator creator : creatorsByIndex) {                // 扇出到所有索引
+        creator.addInt(value, dictId);
+    }
+}
+```
+
+两个要点：
+
+- **免装箱**：`getValue(docId) → indexOfSV(Object) → add(Object, ...)` 会为每行每列分配一个 `Integer`；类型化路径直接走 `getInt/getLong/getFloat/getDouble`。源码注释明确标注该路径 allocation-free，并且在 reader 返回的物理类型与 schema 声明不一致时**在读取任何值之前**退回 Object 路径（`return false`，不产生任何副作用）。
+- **dictId 与原值双通道**：`addInt(value, dictId)` 同时给出两样东西 —— 正排索引要 `value`，倒排索引要 `dictId`。低基数列的倒排因此退化成对小整数 id 集合求交，完全不碰原始字节。
+
+单列代价 `O(N·I)`（`I` = 该列启用的索引个数），整个 Segment 累加为 `O(N · Σᵢ Iᵢ)`。`build()` 入口会检测 `_dataSource instanceof ColumnarSegmentCreationDataSource` 并切到列式构建路径。
+
+### 24.4 特殊优化：仅为 text index 存在的常量正排
+
+`SameValueForwardIndexCreator` 是包在真实 forward creator 外的常量壳，`isDictionaryEncoded()` 固定返回 `false`。它只在**该列只需要 text index**时启用：此时正排没有读取需求，`BaseSegmentCreator` 用 `calculateRawValueForTextIndex(...)` 造一个占位值替换掉真正的正排创建器，逐行不落任何数据。
+
+### 24.5 StarTree v2：排序驱动的星型拓扑生成
+
+⚠️ **重要版本事实**：**StarTree v1（`StarTreeBuilder` / `StarTreeIndexViewer` / `StarTreeIndexSpec`）已在当前 master 下线**。`pinot-segment-local/.../segment/local/startree/` 下现存 `OffHeapStarTree.java`、`OffHeapStarTreeNode.java`、`StarTreeBuilderUtils.java` 与 `v2/` 子包。§7.3 / §7.7 引用的 `StarTreeBuilder.java`、`StarTreeIndex.java` 属旧版本路径，读当前源码应改看 `v2/`。
+
+拓扑**不是**「DFS 枚举所有维度组合」，而是「一次排序 + 递归切区间」：
+
+1. **记录表示**：每条记录 = `int[numDimensions]`（各维度的**段内字典 id**）+ 指标值，定义在 `BaseSingleTreeBuilder` 的 `Record` 内。
+2. **全量排序**：比较器逐维比 `o1._dimensions[i]` 与 `o2._dimensions[i]`，`i` 从 0 到 `numDimensions-1`，即**字典序**。排序后把相同维度前缀的记录聚成一条（`sortAndAggregateSegmentRecords`）。
+3. **递归切分**：
+
+```text
+// 伪代码：BaseSingleTreeBuilder.constructStarTree(node, startDocId, endDocId)
+childDim = node._dimensionId + 1;
+if (childDim == numDimensions) return;                  // 维度用尽，停止
+
+children = constructNonStarNodes(start, end, childDim); // 按 childDim 的 id 切连续同值块
+node._children = children;
+
+if (!skipStarNodeCreationForDimensions.contains(childDim) && children.size() > 1) {
+    children.put(ALL, constructStarNode(start, end, childDim));   // 星节点只在"有分叉"时才建
+}
+
+for (child : children.values()) {                     // 超阈值才继续往下裂
+    if (child._endDocId - child._startDocId > maxLeafRecords) {
+        constructStarTree(child, child._startDocId, child._endDocId);
+    }
+}
+```
+
+三个反直觉但关键的判定：
+
+- **星节点只在 `children.size() > 1` 时创建**。若某维度在当前前缀内只有一个取值，星节点只是那份数据的另一份副本，没有任何过滤/聚合收益。
+- **`skipStarNodeCreationForDimensions` 允许对指定维度强制不建星节点**。典型场景是某维度基数极高且几乎不被过滤/分组，为它建星节点会让节点数爆炸；代价是该维度永远无法被星节点覆盖。
+- **`maxLeafRecords` 是递归深度闸门**，不是叶子容量上限 —— 区间里超过阈值就继续裂。`StarTreeV2BuilderConfig.DEFAULT_MAX_LEAF_RECORDS = 10_000`。
+
+4. **聚合文档回填**决定每个内部节点对应哪条预聚合记录：
+
+```text
+// 伪代码：BaseSingleTreeBuilder.createAggregatedDocs(node)
+if (node 是叶子) {
+    if (区间只有 1 条)  直接复用该条原始记录;            // 单文档直通，省一次聚合
+    else                逐条 mergeStarTreeRecord(...) 后落盘;
+} else {
+    if (存在 star 子节点) 直接复用 star 子节点的聚合记录;  // 命中即短路，父节点不用重算
+    else                  合并全部非 star 子节点的聚合记录后落盘;
+}
+// 所有分支共同的后处理：把 node._dimensionId 之后的维度置为 STAR 占位
+for (i = node._dimensionId + 1; i < numDimensions; i++) {
+    record._dimensions[i] = StarTreeV2Constants.STAR_IN_FORWARD_INDEX;   // 常量值 = 0
+}
+```
+
+`STAR_IN_FORWARD_INDEX = 0` 是**保留的字典 id**：0 号槽恒为星节点占位，普通维度值不会撞上它（源码注释显式声明这条不变量）。空值处理上，null 维度值被分配到**最后一个真实 id 之后**的保留槽，使 null 排在一切实值之后并自成一个树节点，而不是折进该列的默认空值里。
+
+5. **多树 → 单文件**：一份表配置可产出多套去重后的 builder config（`StarTreeBuilderUtils.generateBuilderConfigs`）。`MultipleTreesBuilder.build()` 把每棵树写到临时目录，`StarTreeIndexSeparator` 再把它们从共用文件里拆出来，`StarTreeIndexCombiner` 合并成最终的 `star_tree.index` + `star_tree_index_map`（文件名取自 `StarTreeV2Constants.INDEX_FILE_NAME` / `INDEX_MAP_FILE_NAME`）。对应元数据键：`split.order`、`function.column.pairs`、`max.leaf.records`、`skip.star.node.creation`、`null.handling.enabled`（统一挂在 `startree.v2.*` 前缀下）。
+
+### 24.6 查询时的星树 traversal
+
+读取侧在 `pinot-core/.../core/startree/`。`ImmutableSegmentImpl.getStarTrees()` 返回 `List<StarTreeV2>`；`StarTreeFilterPlanNode.run()` 产出 `StarTreeFilterOperator`。核心思想是**用星树把满足谓词的行压缩成 bitmap，剩下的谓词交给常规索引**：
+
+```text
+// 伪代码：StarTreeFilterOperator 的遍历（对齐源码类注释的七步）
+// 输入：Map<column, List<CompositePredicateEvaluator>> filters、Set<String> groupByColumns
+DFS(node):
+    if (当前维度有谓词) {
+        // 1) 算匹配的字典 id，只下钻这些子节点
+        matched = { id : any(p.apply(id)) for id in node 的字典 id }
+        visit(matched)
+    } else if (当前维度 ∈ groupByColumns) {
+        // 2) 无谓词但要分组 → 下钻全部非星子节点（星节点无法表达该维度分组）
+        visit(所有非 star 子节点)
+    } else {
+        // 3) 既无谓词也不分组 → 直接用星节点；没有星节点才展开全部非星子节点
+        if (存在 star 子节点) 累加该节点的预聚合文档
+        else                  visit(所有非 star 子节点)
+    }
+    if (谓词全部匹配 && groupBy 全部匹配) { 累加 node 的 aggregatedDocId; return; }
+    if (是叶子) 累加 [startDocId, endDocId) 的全部 docId;
+    if (叶子仍有剩余谓词) 把该列记入 remainingColumns（需单独 BaseFilterOperator 兜底）
+
+// 收尾
+matching = BitmapBasedFilterOperator(docs, exclusive=false, numDocs);
+result   = matching AND (对每个 remainingColumn 各建一个 BaseFilterOperator);
+```
+
+第 1 步的 `p.apply(id)` 是 `CompositePredicateEvaluator.apply(int dictId)`：它把多个谓词 evaluator **OR** 起来，每个元素自带一个取反位标志，从而支持形如 `(d1 > 10 OR NOT d1 > 50)` 的组合（源码注释给的正是这个例子）。
+
+复杂度收益：设原始段 `N` 行、压缩后命中 `M` 个 docId、剩余谓词列 `R` 个。星树遍历为 `O(V_tree + M)`（`V_tree` 为树节点数，与 `N` 无关），逐谓词的字典求值为 `O(cardinalityᵢ)`；对比无星树的 `O(N·R)`。**加速比上限就是 `N/M`**，所以星树只对高选择性、高重复度的 GROUP BY 有效 —— 这正是 §13.2「10-100x」数字的来源，也是 §21.2「GROUP BY 维度过多 → Star-Tree 空间爆炸」告警的技术根因。
+
+### 24.7 空间/精度权衡
+
+树节点数与聚合记录数的粗略上界：
+
+$$
+\text{nodes} \;\lesssim\; \sum_{d=0}^{D-1} b(d)\cdot \min\!\big(\text{card}(D_d),\; N / \text{maxLeafRecords}^{\,D-d}\big)
+$$
+
+其中 `b(d) ∈ {0,1}` 是第 `d` 层是否建星节点的系数（由 `children.size() > 1` 与 `skipStarNodeCreationForDimensions` 共同决定）。`maxLeafRecords` 越小 → 树越深、节点越多、扫描越短但空间与构建时间线性上升；越大 → 叶更肥、省空间但要回落到原始记录。
+
+| 旋钮 | 收紧（值变小 / 维度加多） | 放松（值变大 / 维度去掉） |
+| --- | --- | --- |
+| `maxLeafRecords` | 树更深、节点更多、命中更早短路 | 叶更肥、省空间、查询回落原始扫描 |
+| `dimensionsSplitOrder` | 前置高基数维度 → 每层分叉多、树大 | 前置低基数维度 → 树小，但高基数维度只能落在叶子 |
+| `skipStarNodeCreationForDimensions` | 树更小 | 该维度可被星节点覆盖，覆盖更早 |
+
+**排序由 `dimensionsSplitOrder` 决定，而非配置中 `dimensions` 的书写顺序**：`_numDimensions = dimensionsSplitOrder.size()`，比较器严格按 `i = 0..numDimensions-1` 逐维比较，因此该顺序**直接决定树的形状与高度**。这是 StarTree 调优中最容易踩的一环。
+
+源码路径（本节，approximate，同 §24 引言的版本基线）：
+
+- `pinot-segment-local/src/main/java/org/apache/pinot/segment/local/segment/creator/impl/SegmentIndexCreationDriverImpl.java`
+- `.../segment/creator/impl/SegmentColumnarIndexCreator.java`
+- `.../segment/creator/impl/BaseSegmentCreator.java`
+- `.../segment/creator/impl/ColumnIndexCreators.java`
+- `.../segment/local/startree/v2/builder/{BaseSingleTreeBuilder, OnHeapSingleTreeBuilder, OffHeapSingleTreeBuilder, MultipleTreesBuilder, StarTreeIndexCombiner, StarTreeIndexSeparator, StarTreeV2BuilderConfig}.java`
+- `.../segment/local/startree/{StarTreeBuilderUtils, OffHeapStarTree, OffHeapStarTreeNode}.java`
+- `pinot-segment-spi/src/main/java/org/apache/pinot/segment/spi/index/startree/{StarTreeV2, StarTreeNode, StarTreeV2Constants, StarTreeV2Metadata}.java`
+- `pinot-segment-spi/src/main/java/org/apache/pinot/segment/spi/index/{IndexService, IndexType, StandardIndexes}.java`
+- `pinot-core/src/main/java/org/apache/pinot/core/startree/{StarTreeFilterOperator, StarTreeUtils, CompositePredicateEvaluator}.java`
+- `pinot-core/src/main/java/org/apache/pinot/core/startree/plan/StarTreeFilterPlanNode.java`
+
+## 二十五、实时摄入、Flush 阈值与 Upsert 可见性模型
+
+§10 只说了「Upsert 基于 PK」；本节给出摄入侧的真实控制流。源码路径同样按 §24 引言的版本基线核对。
+
+### 25.1 可变段 → 不可变段的边界由三级阈值决定
+
+`_segmentMaxRowCount`（可变段的行数上限）在 server 侧按三级回退确定：
+
+```text
+// 伪代码：RealtimeSegmentDataManager 初始化（源码结构化改写）
+int n = segmentZKMetadata.getSizeThresholdToFlushSegment();  // ① ZK 元数据（由 Controller 按段定制）
+if (n <= 0) n = streamConfig.getFlushThresholdRows();        // ② 表配置里的流级阈值
+if (n <= 0) n = StreamConfig.DEFAULT_FLUSH_THRESHOLD_ROWS;   // ③ 内置默认
+_segmentMaxRowCount = n;
+mutableSegmentConfig.setCapacity(n);                         // 可变段按此容量预分配
+```
+
+⚠️ **命名陷阱**：ZK 字段名是 `Segment.Realtime.FLUSH_THRESHOLD_SIZE`，getter 是 `getSizeThresholdToFlushSegment()`，但它存的**是行数不是字节数** —— `SizeBasedSegmentFlushThresholdComputer` 里 `int rowsThreshold = committingSegmentZKMetadata.getSizeThresholdToFlushSegment();` 紧接着就以 "rows threshold" 打日志。按名字理解会算错容量。
+
+同一行的 `.setCapacity(_segmentMaxRowCount)` 说明阈值不只是「什么时候封段」，还**决定可变段各索引的初始容量**——所以阈值设小会让可变段频繁重建。
+
+### 25.2 seal 判定：五条件或
+
+```text
+// 伪代码：RealtimeSegmentDataManager.shouldStopWaitingForOomProtection()（源码结构化改写）
+if (_shouldStop || _state != State.INITIAL_CONSUMING) return true;
+return now() >= _consumeEndTime                  // ① 时间阈值（streamConfig.getFlushThresholdTimeMillis()）
+    || _numRowsIndexed >= _segmentMaxRowCount    // ② 行数阈值
+    || _endOfPartitionGroup                      // ③ 消费组内所有分区都已被本段覆盖
+    || _forceCommitMessageReceived               // ④ Controller 强制提交
+    || !canAddMore();                            // ⑤ 内存 / 配额保护
+```
+
+注意 `_numRowsIndexed`（已**入索引**的行数）与 `_numRowsConsumed`（已消费行数）是两个量：畸形数据会在消费与入索引之间被丢弃，因此实际封段点由 `Indexed` 决定。
+
+### 25.3 自适应阈值：按上一段实测「行数/字节」比反推
+
+固定阈值在高吞吐表上要么封出过多小段、要么封出超大段。Controller 侧的 `SizeBasedSegmentFlushThresholdComputer` 用上一段的实测数据反推本段阈值：取 `segmentRowsToSizeRatio`（行/字节）与目标 `desiredSegmentSizeBytes`，导出 `rowsThreshold`。两条退路：
+
+- 上一段缺少「行数/大小」比（老版本段）→ 直接沿用其 `getSizeThresholdToFlushSegment()`；
+- 当前段 `rowsIndexed < rowsThreshold && size < desiredSegmentSizeBytes` → 判定为「没吃满」，直接复用上一段阈值，不重新计算。
+
+阈值算完后写回 ZK（`SegmentZKMetadata.setSizeThresholdToFlushSegment`），并通过 `PinotLLCRealtimeSegmentManager` 打点到 `ControllerGauge.NUM_ROWS_THRESHOLD`。策略接口是 `FlushThresholdUpdater`，有 `Default` / `Fixed` / `SegmentSizeBased` 三种实现，由 `FlushThresholdUpdateManager` 按 stream config 选择。
+
+### 25.4 消费串行化与「封段前提前放行」
+
+同一消费组内**任何时刻只允许一个 Segment 处于 `INITIAL_CONSUMING`**，由 `ConsumerCoordinator` 的信号量保证（构造参数 `enforceConsumptionInOrder`）。若要 seal 正在消费的段，先要拿到其 `UnsealedRelease(segmentName, stoppedAtOffset)` 记录 —— 这条记录同时服务于后续的「段完成协议」，让被 seal 的段在 ZK 上留下确定的 offset 边界。
+
+超时与容错常量（`RealtimeSegmentDataManager` 侧实测）：`MINIMUM_CONSUME_TIME_MINUTES = 10`（消费不足此时长会被视为异常）、`BUILD_TIME_LEASE_SECONDS = 30`（构建期租约）、`MAX_CONSECUTIVE_ERROR_COUNT = 5`、`CONSUMER_THREAD_INTERRUPT_INTERVAL_MS = 10000`。Controller 侧另有 `MAX_SEGMENT_COMPLETION_TIME_MILLIS`（默认 300_000，即 5 分钟）。
+
+### 25.5 Upsert：哈希表 + RoaringBitmap 失效，**不是 MVCC**
+
+⚠️ **纠正一个常见误解**：Pinot 的 Upsert **不维护 `validFrom` / `validTo` 的 MVCC 版本链**。它的可见性模型是「**PK → 最新记录位置**的哈希表 + `validDocIds` 位图失效」：
+
+```text
+// 核心状态（ConcurrentMapPartitionUpsertMetadataManager）
+ConcurrentHashMap<hashedPrimaryKey, RecordLocation> _primaryKeyToRecordLocationMap;
+RecordLocation = (IndexSegment segment, int docId, Comparable comparisonValue)
+
+// 伪代码：addRecord 简化（源码结构化改写）
+for (RecordInfo r : recordInfoIterator) {           // RecordInfo = (PK, docId, comparisonValue, isDeleteRecord)
+    newValue = r.getComparisonValue();
+    map.compute(hash(r.getPrimaryKey()), (pk, cur) -> {
+        if (cur == null) return new RecordLocation(segment, r.getDocId(), newValue);   // 新 PK
+        if (cur.segment() == segment) {               // 同段：新旧 docId 都在内存可变段里
+            if (newValue.compareTo(cur.comparisonValue()) >= 0) {   // 相等也取新的（保持 docId 单调）
+                replaceDocId(segment, validDocIds, queryableDocIds, cur.docId(), r.getDocId(), r);
+                return new RecordLocation(segment, r.getDocId(), newValue);
+            }
+            return cur;                               // 乱序旧值，丢弃
+        }
+        // 跨段：新记录胜出时，把旧段对应 docId 从旧段的 validDocIds 里摘掉
+        if (newValue.compareTo(cur.comparisonValue()) >= 0) {
+            invalidate(oldSegment, cur.docId());
+            return new RecordLocation(segment, r.getDocId(), newValue);
+        }
+        return cur;
+    });
+}
+
+// 失效动作（BasePartitionUpsertMetadataManager.replaceDocId）
+UpsertUtils.doRemoveDocId(oldSegment, oldDocId);                       // 旧段 validDocIds 清位
+UpsertUtils.doAddDocId(validDocIds, queryableDocIds, newDocId, info);  // 新段置位
+```
+
+由此推出四条**工程性质**：
+
+- **比较器是「大于等于取新」**：乱序到达的旧事件被直接丢弃（`_largestSeenComparisonValue` 记录见过的最大值），因此 Upsert 表要求上游提供单调的比较列（event time / sequence），否则旧事件会污染结果。
+- **可见性是位图级 O(1)**：`ThreadSafeMutableRoaringBitmap` 上摘一位即可，代价与「该 PK 历史上出现过多少次」无关 —— 这是它比 MVCC 便宜得多的原因，也是 §10「Pinot 放弃强事务」的具体兑现方式。
+- **元数据本身有 TTL**：`doRemoveExpiredPrimaryKeys()` 以 `_largestSeenComparisonValue` 为原点，用 `_metadataTTL` / `_deletedKeysTTL` 剪掉过期条目，防止哈希表无限增长。
+- **一致性删除是独立变体**：`ConcurrentMapPartitionUpsertMetadataManagerForConsistentDeletes` 处理 `RecordInfo.isDeleteRecord()`，语义更强。
+
+**Partial upsert** 走另一条路：`PartialUpsertHandler` 用配置好的 merge 策略把新行与旧行合并（可用 `PartialUpsertMerger` 实现整行级自定义合并，行级 merger 优先级高于列级 merger）。去重（dedup）同理但不维护 comparison value，见 `segment/local/dedup/`。
+
+### 25.6 可变段的可变索引
+
+可变段位于 `pinot-segment-local/.../indexsegment/mutable/MutableSegmentImpl.java`，其索引实现全在 `pinot-segment-spi/.../index/mutable/`：`MutableDictionary`、`MutableForwardIndex`、`MutableInvertedIndex`、`MutableTextIndex`、`MutableJsonIndex`，以及承载可见性的 `ThreadSafeMutableRoaringBitmap`。封段后由 `MultipleTreesBuilder` / `BaseTableDataManager` 走 §24 的离线构建路径落成不可变段。
+
+源码路径（本节）：
+
+- `pinot-core/src/main/java/org/apache/pinot/core/data/manager/realtime/{RealtimeSegmentDataManager, ConsumerCoordinator, RealtimeTableDataManager, SegmentCommitterFactory}.java`
+- `pinot-controller/src/main/java/org/apache/pinot/controller/helix/core/realtime/PinotLLCRealtimeSegmentManager.java`
+- `pinot-controller/src/main/java/org/apache/pinot/controller/helix/core/realtime/segment/{FlushThresholdUpdater, DefaultFlushThresholdUpdater, FixedFlushThresholdUpdater, SegmentSizeBasedFlushThresholdUpdater, SizeBasedSegmentFlushThresholdComputer}.java`
+- `pinot-controller/src/main/java/org/apache/pinot/controller/validation/RealtimeSegmentValidationManager.java`
+- `pinot-common/src/main/java/org/apache/pinot/common/metadata/segment/SegmentZKMetadata.java`
+- `pinot-segment-local/src/main/java/org/apache/pinot/segment/local/upsert/{BasePartitionUpsertMetadataManager, ConcurrentMapPartitionUpsertMetadataManager, RecordInfo, UpsertUtils, UpsertContext, PartialUpsertHandler}.java`
+- `pinot-segment-local/src/main/java/org/apache/pinot/segment/local/dedup/PartitionDedupMetadataManager.java`
+- `pinot-segment-local/src/main/java/org/apache/pinot/segment/local/indexsegment/mutable/MutableSegmentImpl.java`
+- `pinot-segment-spi/src/main/java/org/apache/pinot/segment/spi/index/mutable/`
+
+## 二十六、MSQE 规划器规则链与 Filter/GroupBy 执行优化
+
+§9.5 只列了优化项的名字，本节补上**规则链怎么装配**与**判定条件**。
+
+### 26.1 规则集是 SPI：6 个 Phase 的分阶段优化
+
+V2 MSQE 不用自研 `RuleExecutor`，而是把规则集做成了可插拔的 SPI。装配链是三段：
+
+```text
+META-INF/services/org.apache.pinot.query.planner.spi.RuleSetCustomizer
+        │  ServiceLoader 发现（context classloader + 插件 classloader 双通道，按类名去重）
+        ▼
+PinotRuleSet.loadFromServiceLoader()  →  PinotRuleSet(rulesFor(Phase))
+        │  按 Phase 分发
+        ▼
+DefaultRuleSetCustomizer.customize(phase, rules)  →  填充 PinotQueryRuleSets.{PHASE}_RULES
+        │  按序交给 Calcite VolcanoPlanner（FILTER_PUSHDOWN / PROJECT_PUSHDOWN 用 RuleCollection 单指令多规则）
+        ▼
+VolcanoPlanner 各优化阶段
+```
+
+实测的 6 个 Phase 与规则来源：
+
+| Phase | 规则集常量 | 职责 |
+| --- | --- | --- |
+| `BASIC` | `BASIC_RULES` | Calcite 通用算子改写 |
+| `FILTER_PUSHDOWN` | `FILTER_PUSHDOWN_RULES` | 谓词下推（单条 HepInstruction 尽量推到底） |
+| `PROJECT_PUSHDOWN` | `PROJECT_PUSHDOWN_RULES` | 投影下推与合并 |
+| `PRUNE` | `PRUNE_RULES` | 消除冗余 Project/Filter/Aggregate |
+| `POST_LOGICAL` | `POST_LOGICAL_RULES` | 插入 Exchange、消除 Exchange、Literal 求值 |
+| `POST_LOGICAL_PHYSICAL_OPT` | `PINOT_POST_RULES_V2` | 物理优化器开启时的 Pinot 后置规则 |
+
+`PinotRuleSet` 在 Phase 缺失默认值时**显式抛异常**而非静默降级（`DefaultRuleSetCustomizer` 的 `default:` 分支抛 `IllegalStateException`），新增 Phase 时强制补齐规则。
+
+### 26.2 实测规则清单（节选，均为当前 master）
+
+**FILTER_PUSHDOWN**：`PinotFilterIntoJoinRule`、`FilterAggregateTransposeRule`、`FilterSetOpTransposeRule`、`FilterProjectTransposeRule`。
+
+**PROJECT_PUSHDOWN**：`ProjectFilterTransposeRule`、`PinotProjectJoinTransposeRule`、`ProjectMergeRule`。
+
+**PRUNE**：`AggregateProjectMergeRule`、`ProjectMergeRule`、`ProjectRemoveRule`、`FilterMergeRule`、`AggregateRemoveRule`、`AggregateProjectPullUpConstantsRule.Config.ANY`。最后一条值得单独一提：当 Aggregate 输入可证某列为常量（典型来自等值过滤）时，把它从 GROUP BY key 里摘掉，**直接缩窄 shuffle key 宽度**；源码注释给的场景就是 `WHERE tenant_id = 'X' GROUP BY tenant_id, ...` 这类多租户查询。
+
+**POST_LOGICAL**（顺序即优先级）：
+
+```text
+PinotSortExchangeNodeInsertRule, PinotSortExchangeCopyRule,
+PinotSingleValueAggregateRemoveRule,
+PinotJoinExchangeNodeInsertRule,
+PinotAggregateExchangeNodeInsertRule.{SortProjectAggregate, SortAggregate, WithoutSort},
+PinotWindowSplitRule, PinotWindowExchangeNodeInsertRule, PinotSetOpExchangeNodeInsertRule,
+PinotJoinToDynamicBroadcastRule,          // exchange 插入之后再判定能否降级为广播
+PinotExchangeEliminationRule,             // 存在重复数据时消除 exchange
+CoreRules.FILTER_REDUCE_EXPRESSIONS,      // 常量求值
+PinotTableScanConverterRule               // 最后才转成物理扫描节点
+```
+
+`PinotAggregateExchangeNodeInsertRule` 的三个变体对应三种聚合形态（带排序的聚合 / 排序聚合 / 无排序聚合），这是 MSQE 把「排序 + 聚合」下推到 leaf 阶段的关键；而 `PINOT_POST_RULES_V2` 用 `PinotLogicalAggregateRule` 的对应变体取代它们，用于启用物理优化器的路径。
+
+「先插 Exchange 再消除 Exchange」的两段式是有意设计：`PinotExchangeEliminationRule` 的存在说明存在可以省掉的 shuffle —— 广播已覆盖全数据的 join 就不必再发一次。
+
+### 26.3 执行侧：Filter 的优先级重排
+
+`pinot-query-runtime/.../query/runtime/operator/` 是 MSQE 的运行时算子树（`OpChain`、`LeafOperator`、`FilterOperator`、`MailboxSendOperator` / `MailboxReceiveOperator`、`exchange/`、`groupby/`、`join/`，以及 `MultistageAggregationExecutor` / `MultistageGroupByExecutor`）。谓词的物理下推发生在 server 侧 `pinot-core/.../core/operator/filter/`。
+
+**核心优化：AND 的多个叶子算子按代价重排，索引算子优先**，从而让后续算子处理尽可能少的 docId：
+
+```text
+// 伪代码：FilterOperatorUtils.reorderAndFilterChildOperators()（源码结构化改写）
+sort by getPriority(o):
+    if (o instanceof PrioritizedFilterOperator && 有显式优先级) return 该优先级;   // 0
+    SortedIndexBasedFilterOperator          -> HIGH_PRIORITY      = 0
+    BitmapBasedFilterOperator | InvertedIndexFilterOperator -> MEDIUM_PRIORITY = 100
+    RangeIndexBased | TextMatch | JsonMatch | H3Index | H3Inclusion -> LOW_PRIORITY = 200
+    AndFilterOperator                       -> AND_PRIORITY      = 300
+    OrFilterOperator                        -> OR_PRIORITY       = 400
+    ScanBasedFilterOperator                 -> SCAN_PRIORITY     = 500 + (多值 ? 50 : 0)
+    ExpressionFilterOperator                -> EXPRESSION_PRIORITY = 1000
+    兜底                                    -> UNKNOWN_FILTER_PRIORITY = 10000
+
+// 常量出处：PrioritizedFilterOperator
+```
+
+`+ 50` 是多值列惩罚项（`getScanBasedFilterPriority`），可用 `queryContext.isSkipScanFilterReorder()` 整体关掉重排。重排前会先剔除 `MatchAllFilterOperator` / `EmptyFilterOperator` 这类零成本算子。
+
+### 26.4 `BitmapBasedFilterOperator`：三值语义的位图
+
+```text
+// 伪代码：BitmapBasedFilterOperator（按源码类注释结构化改写）
+状态：_docIds（真值集合）、_exclusive（取反标志）、_nullBitmap（UNKNOWN 集合）
+不变量：三者必须划分全集 —— _nullBitmap ⊆ _docIds（exclusive 时）或 ∩ _docIds = ∅（非 exclusive 时）
+
+// FilterPlanNode.constructPhysicalOperator 中的典型用法
+IS_NULL 谓词 → new BitmapBasedFilterOperator(nullValueVector.getNullBitmap(), false, numDocs)
+//                空值向量直接就是一个 RoaringBitmap，无需逐行求值
+
+// 能力接口
+canOptimizeCount()  -> 该算子可被上层「提前终止计数」的优化命中
+getNumMatchingDocs() -> O(1) 计数（缓存的 cardinality）
+canProduceBitmaps()  -> 可作为位图生产者参与 §26.3 的重排
+getBitmaps()         -> 交出内部位图
+```
+
+这解释了 §7.4 表格里为什么 Bloom Filter 标「高基数等值」、Bitmap 标「低基数倒排」：`BitmapBasedFilterOperator` 走的是**结果缓存**路线，而 `InvertedIndexFilterOperator` 走的是**在线求交**路线，两者在 §26.3 的优先级表里同为 `MEDIUM_PRIORITY`，由具体谓词决定谁胜出。
+
+### 26.5 GroupBy：容量启发式、trim 阈值与有序/无序双路径
+
+Pinot 的 GroupBy **始终是哈希表（`IndexedTable`）**，不存在「sort-based 还是 hash-based」的二选一；真正的分岔在**是否带 `ORDER BY`**：
+
+```text
+// 伪代码：SimpleIndexedTable.upsert()（源码结构化改写）
+if (_hasOrderBy) {                        // SELECT ... GROUP BY ... ORDER BY ...
+    addOrUpdateRecord(key, record);        // 全量保留，先排序再截断
+    if (_lookupMap.size() >= _trimThreshold) resize();
+} else {                                  // 无 ORDER BY
+    if (_lookupMap.size() < _resultSize) addOrUpdateRecord(key, record);
+    else                                  updateExistingRecord(key, record);   // 只更新已有 key
+}
+```
+
+无 `ORDER BY` 路径是**提前停止接纳新 key**（`_resultSize` 即 `numGroupsLimit`）：一旦分组数触顶，后来出现的全新 key 直接丢弃，已有的 key 继续累加。这让无序聚合的内存严格有界，代价是高基数场景下结果不再精确 —— 想保精度就得调大 `numGroupsLimit`。
+
+两个容量公式（`GroupByUtils`，实测常量）：
+
+$$
+\text{tableCapacity}(limit, minNumGroups) = \max(5 \cdot limit,\; minNumGroups),\quad \text{DEFAULT\_MIN\_NUM\_GROUPS} = 5000
+$$
+
+$$
+\text{trimThreshold} = \max(\text{configured},\; 2 \cdot \text{trimSize});\quad
+\text{若 } \text{configured} \le 0 \text{ 或 } > 10^{9} \text{ 或 } \text{trimSize} > 5\times10^{8} \;\Rightarrow\; \text{trim 关闭}
+$$
+
+`5·limit` 的余量是为「分组数最终超过 limit 后还要继续累加已有分组」留的；`2·trimSize` 的下限是为「resize 时的拷贝不致抖动」留的。可用的表实现：`SimpleIndexedTable`（单线程）、`ConcurrentIndexedTable`（读写锁 + 批量 resize）、`DeterministicConcurrentIndexedTable`（结果顺序确定）、`UnboundedConcurrentIndexedTable`。
+
+源码路径（本节）：
+
+- `pinot-query-planner/src/main/java/org/apache/pinot/query/planner/rules/{PinotRuleSet, DefaultRuleSetCustomizer}.java`
+- `pinot-query-planner/src/main/java/org/apache/pinot/calcite/rel/rules/PinotQueryRuleSets.java`
+- `pinot-query-planner/src/main/java/org/apache/pinot/calcite/rel/rules/{PinotAggregateExchangeNodeInsertRule, PinotExchangeEliminationRule, PinotLogicalAggregateRule, PinotTableScanConverterRule}.java`
+- `pinot-query-runtime/src/main/java/org/apache/pinot/query/runtime/operator/{OpChain, LeafOperator, FilterOperator, MailboxSendOperator, MailboxReceiveOperator}.java`
+- `pinot-core/src/main/java/org/apache/pinot/core/plan/FilterPlanNode.java`
+- `pinot-core/src/main/java/org/apache/pinot/core/operator/filter/{FilterOperatorUtils, PrioritizedFilterOperator, BitmapBasedFilterOperator}.java`
+- `pinot-core/src/main/java/org/apache/pinot/core/data/table/{SimpleIndexedTable, ConcurrentIndexedTable, DeterministicConcurrentIndexedTable}.java`
+- `pinot-core/src/main/java/org/apache/pinot/core/util/GroupByUtils.java`
+
+## 二十七、参考资料
 
 1. **Apache Pinot 官方仓库**：[github.com/apache/pinot](https://github.com/apache/pinot)；
 2. **官方文档**：[docs.pinot.apache.org](https://docs.pinot.apache.org)；
