@@ -611,7 +611,314 @@ CALL db.index.fulltext.queryNodes("idx", "Alice")
 - **多语言绑定**：Kuzu 的"纯 C + 多语言绑定"模式适合本项目 Qt / Lua / Python 拓展。
 - **本项目潜在应用**：在 Snippet Lab / Sandbox 中嵌入 Kuzu 做 graph-based 演示。
 
-## 二十四、参考资料
+## 二十四、列式存储的层次结构与 Zone Map 剪枝
+
+### 24.1 与 DuckDB 的同源关系（源码级证据）
+
+Kuzu 的作者团队出自 DuckDB（DuckDB 论文作者群体，同属 CMU Database Group 血脉），因此 Kuzu 的存储与执行层大量沿用 DuckDB 的结构与函数命名。这一点在源码里有直接可查的证据，而不只是宣传口径：
+
+- `src/common/checksum.cpp:2` 的文件头注释写明 checksum 实现 "taken from DuckDB"，并给出 `v1.3-ossivalis` 分支的源码链接与 LICENSE 链接；
+- `src/include/storage/stats/hyperloglog.h:1` 的首行注释是 "This HyperLogLog implementation is taken from duckdb."，并直接给出 DuckDB 仓库对应头文件的链接；
+- `src/include/common/types/date_t.h:52` 注明日期类型实现 "copied from DuckDB's source code"，`src/common/types/date_t.cpp:264` 进一步记录了 Kuzu 相对 DuckDB **删掉**了哪些特性（不解析负年份、不解析以 "BC" 结尾的日期）；
+- `src/catalog/catalog_entry/sequence_catalog_entry.cpp:69` 的序列取值实现标注 "referenced from DuckDB"；
+- `src/binder/bind/bind_file_scan.cpp:51` 直接说明 "we use duckdb to read from iceberg/delta/azure" —— 外部表（Iceberg / Delta / Azure）走 DuckDB 的文件扫描层。
+
+理解这条同源链有一个实用价值：**DuckDB 执行层的结论（因子化表、链式哈希 HashJoin、Filter/Projection 下推、矢量化）在 Kuzu 里几乎一一对应地存在**，读 Kuzu 源码时可以把 DuckDB 的结论放心迁移过来；而**图特有的部分（邻接表即 CSR、遍历 Extend）才是 Kuzu 的自有设计**。
+
+### 24.2 存储层次：Vector → Node Group → Column Chunk → Segment
+
+Kuzu 的列存粒度由 CMake 生成的 `system_config.h` 决定（模板见 `cmake/templates/system_config.h.in`，默认值在 `CMakeLists.txt`）：
+
+| 级别 | 常量 | 默认值 | 源码位置 |
+|------|------|--------|----------|
+| 向量（每次求值单位） | `VECTOR_CAPACITY_LOG_2` | 11 → 2048 值 | `CMakeLists.txt:119` |
+| 文件页 | `PAGE_SIZE_LOG2` | 12 → 4 KB | `CMakeLists.txt:114` |
+| 临时文件页（大块溢写） | `TEMP_PAGE_SIZE_LOG2` | 18 → 256 KB | `cmake/templates/system_config.h.in:34` |
+| 节点组（存储单元） | `NODE_GROUP_SIZE_LOG2` | 17 → 131072 行 | `CMakeLists.txt:126` |
+| 列块段大小上限 | `MAX_SEGMENT_SIZE_LOG2` | 18 → 256 KB | `CMakeLists.txt:132` |
+
+`NodeGroup` 是列存的基本分配单位（`src/include/storage/table/node_group.h:85`），容量默认取 `StorageConfig::NODE_GROUP_SIZE`（`src/include/storage/table/node_group.h:87`）。节点 ID 到节点组的映射是**纯位运算**，没有除法：
+
+```
+startOffset(nodeGroupIdx) = nodeGroupIdx << NODE_GROUP_SIZE_LOG2    # src/include/storage/storage_utils.h:56
+nodeGroupIdx(nodeOffset)  = nodeOffset  >> NODE_GROUP_SIZE_LOG2    # src/include/storage/storage_utils.h:59
+```
+
+`ColumnChunk` 内部是**一个 `vector<unique_ptr<ColumnChunkData>>`**——即"列块 = 若干不可变段（segment）"，构造函数在 `src/storage/table/column_chunk.cpp:59`。段的切分目的是把超过页大小的列拆成可独立读写的块，`MAX_SEGMENT_SIZE` 是其上界。更新不走原地改，而是追加到 chunk 附带的 `updateInfo` 链上（`src/storage/table/update_info.cpp:17`），因此 **segment 本身始终不可变** —— 这正是 zone map 统计得以成立的前提。
+
+### 24.3 Zone Map：块级 min/max 与剪枝判据
+
+每个列块维护一对 `[min, max]`。`ColumnChunkStats::update` 只对"可存储值类型"或内部 ID 采集统计（`src/storage/table/column_chunk_stats.cpp:11`），合并进已有 min/max 的逻辑在 `src/storage/table/column_chunk_stats.cpp:31`；字符串、列表等嵌套类型的统计始终为空，因此**永不剪枝**（保守正确）。
+
+剪枝判据在 `checkZoneMapSwitch`（`src/storage/predicate/constant_predicate.cpp:22`）里是一组**否定式**区间判定。记谓词为 `col OP c`，块统计为 `[min, max]`：
+
+| 谓词 | 剪枝（SKIP_SCAN）条件 | 直觉 |
+|------|----------------------|------|
+| `col = c` | `c ∉ [min, max]` | 常量落在值域外 |
+| `col <> c` | `c = min 且 c = max` | 整块都等于 c |
+| `col > c` | `c ≥ max` | 常量不小于块内最大值 |
+| `col ≥ c` | `c > max` | 常量严格大于块内最大值 |
+| `col < c` | `c ≤ min` | 常量不大于块内最小值 |
+| `col ≤ c` | `c < min` | 常量严格小于块内最小值 |
+
+注意每一条都"贴边才剪"，例如 `col > c` 是在 `c ≥ max` 时才剪（`src/storage/predicate/constant_predicate.cpp:42`）——只要块里可能存在大于等于 `max` 的值就必须扫。这保证了**漏剪率为 0**（false-positive 剪枝不存在），代价是剪枝率保守：一块 131072 行只要有 1 行落在值域里就整块读入。
+
+一组谓词用 AND 串联（`ColumnPredicateSet::checkZoneMap`，`src/storage/predicate/column_predicate.cpp:14`）：任一谓词返回 SKIP 即整块跳过。
+
+```
+function zoneMapScan(chunks, columnIDs, predicateSets):
+    for i in 0..len(columnIDs):
+        cid = columnIDs[i]
+        if cid 是 INVALID 或 ROW_IDX: continue
+        if chunks[cid] 的 min 或 max 无值:            # 嵌套类型 / 全 NULL
+            return SCAN
+        for p in predicateSets[i]:
+            if p 命中上表的剪枝条件:
+                return SKIP
+    return SCAN
+```
+
+**剪枝的实际位置**在扫描的最内层。`ChunkedNodeGroup::scan` 先算 zone map 结果，若返回 SKIP 就把输出选择向量置空并立即返回（`src/storage/table/chunked_node_group.cpp:293`、`src/storage/table/chunked_node_group.cpp:298`）：
+
+```
+getZoneMapResult(scanState, chunks):                 # src/storage/table/chunked_node_group.cpp:268
+    for i in 0..len(scanState.columnIDs):
+        cid = scanState.columnIDs[i]
+        if cid 是 INVALID_COLUMN_ID 或 ROW_IDX: continue
+        if chunks[cid]->hasUpdates():                # src/storage/table/chunked_node_group.cpp:278
+            return ALWAYS_SCAN                        # 保守：有更新的块统计不准，整体放弃剪枝
+        if chunks[cid]->getMergedColumnChunkStats() 被 predicateSets[i] 任一谓词剪掉:
+            return SKIP_SCAN
+    return ALWAYS_SCAN
+```
+
+`hasUpdates` 的放弃分支（`src/storage/table/chunked_node_group.cpp:278`）是这段代码里最重要的工程折衷，源码注释也明说了原因：把增量更新合并进统计"可能很慢"，于是直接放行。**这解释了为什么高频 UPDATE 的表 zone map 收益会塌掉**——剪枝粒度是 131072 行的列块，块内只要有一行被更新过，整块 131072 行都失去剪枝资格。
+
+复杂度：剪枝发生在节点组粒度上，代价是每组 O(#谓词) 次整型比较。设选择率为 s、谓词数为 p，扫描代价从 O(N) 降到 O(s·N)，剪枝开销为 O((N / 131072) · p)；当 s·131072 ≫ p 时净收益为正。
+
+### 24.4 选择率估计：HyperLogLog 精确基数
+
+`TableStats` 维护表基数与每列 `ColumnStats`（`src/storage/stats/table_stats.cpp:9`）。`ColumnStats` 内嵌一个 HyperLogLog（构造时 `if (!isNested) hll.emplace()`，`src/storage/stats/column_stats.cpp:8`），更新时先对整列做向量化 hash，再把 hash 逐个喂给 HLL（`src/storage/stats/column_stats.cpp:14`），哈希分布用"取低 P 位定桶、剩余高位前导零数定寄存器高度"的经典算法（`src/include/storage/stats/hyperloglog.h:25`），参数 `P = 6`、`M = 2^6 = 64`、`ALPHA = 1/(2 ln 2)`（`src/include/storage/stats/hyperloglog.h:16`、`src/include/storage/stats/hyperloglog.h:18`、`src/include/storage/stats/hyperloglog.h:19`）。
+
+基数读出走标准 HLL 修正公式（`src/storage/stats/hyperloglog.cpp:63`，入口 `src/storage/stats/hyperloglog.cpp:11`）：
+
+```
+估计基数 = round(ALPHA · M² / z)，其中
+  z = M·τ((M − c[Q])/M) + Σ_{k=1..Q} c[k]·2^(−k) + M·σ(c[0]/M)
+```
+
+实现中 `Σ c[k]·2^(−k)` 用等价递推（`z += c[k]; z *= 0.5` 逐项累加）写出。相对误差约 `1.04/√m`，代价是每列 64 字节。
+
+**HLL 的用途不是剪枝而是基数估计**：`getNumDistinctValues`（`src/include/storage/stats/column_stats.h:19`）直接喂给规划器做 `card / NDV` 的等值选择率计算（详见 §二十六.4）。
+
+## 二十五、关系存储：CSR 节点组、双向分裂与校准树重分布
+
+### 25.1 关系表的方向分裂
+
+**这一版的 Kuzu 不再提供"CSR / CSRStar / FA"三种可选关系表示**。核心枚举只剩两种，且 CSR 是关系表的唯一格式（`src/include/storage/table/chunked_node_group.h:37`）：
+
+```
+enum class NodeGroupDataFormat : uint8_t { REGULAR = 0, CSR = 1 };
+```
+
+- `REGULAR` 用于节点表（`NodeGroup` 构造函数的 format 默认参数即 `REGULAR`，`src/include/storage/table/node_group.h:90`），节点表本质就是列存，不需要邻接结构；
+- `CSR` 用于关系表，`NodeGroupCollection::getOrCreateNodeGroup` 按 format 二选一实例化（`src/storage/table/node_group_collection.cpp:168`），且 `RelTableData::getOrCreateNodeGroup` 无条件请求 CSR 格式（`src/include/storage/table/rel_table_data.h:92`）。
+
+方向处理不是"一份数据两种访问顺序"，而是**按方向拆成两套物理表数据**。`RelTable` 持有按 `RelDataDirection`（FWD / BWD）索引的 `RelTableData`，取列时先按方向选表数据再取列（`src/include/storage/table/rel_table.h:177`）：
+
+```
+getCSROffsetColumn(direction) = getDirectedTableData(direction)->getCSROffsetColumn()
+```
+
+扫描状态初始化时方向决定读哪一侧的 offset/length 列（`src/storage/table/rel_table.cpp:45`）：
+
+```
+RelTableScanState::setToTable(..., direction):
+    columns[i]       = RelTable::getColumn(columnIDs[i], direction)     # 按方向选列
+    csrOffsetColumn  = RelTable::getCSROffsetColumn(direction)          # src/storage/table/rel_table.cpp:45
+    csrLengthColumn  = RelTable::getCSRLengthColumn(direction)
+```
+
+方向是否双向存储是**编译期**开关：`KUZU_DEFAULT_REL_STORAGE_DIRECTION` 默认 `BOTH`（`CMakeLists.txt:109`），生成头里对应 `DEFAULT_REL_STORAGE_DIRECTION` 与 `DEFAULT_EXTEND_DIRECTION`（`cmake/templates/system_config.h.in:37`）。**只存单向能把关系表列存体积砍到约一半，代价是反向遍历要现场转置** —— 这是图数据库最典型的空间/查询权衡，Kuzu 把它做成了构建期选项而非运行期语法。
+
+关系表的列序是固定的：邻居 ID 列恒为 0 号列、关系 ID 列恒为 1 号列（`src/include/storage/table/csr_node_group.h:162`），属性列从 2 号起。
+
+### 25.2 CSRNodeGroup：持久段 + 内存索引的两层结构
+
+`CSRNodeGroup`（`src/include/storage/table/csr_node_group.h:172`）的注释直接写明了它的两层组织（`src/include/storage/table/csr_node_group.h:165`）：
+
+- **持久段** `persistentChunkGroup`：已 checkpoint 或已 flush 的数据，按 CSR 排列，是真正的列存；
+- **瞬时段** `chunkedGroups`：正在提交但尚未 checkpoint 的数据，按普通节点组追加，并额外挂一个 `csrIndex` 记录每个绑定节点对应的行号向量。
+
+两个成员声明在 `src/include/storage/table/csr_node_group.h:286`。`CSRIndex` 是一个**定长数组**，长度等于节点组大小（`src/include/storage/table/csr_node_group.h:82`）：
+
+```
+std::array<NodeCSRIndex, StorageConfig::NODE_GROUP_SIZE> indices;   // 131072 项
+```
+
+每个 `NodeCSRIndex`（`src/include/storage/table/csr_node_group.h:30`）带一个**顺序性压缩开关** `isSequential`：若该节点的邻居行号在瞬时段里连续，只存 `(startRow, length)` 两个数；一旦被更新打散就 `turnToNonSequential()` 展开成显式下标数组。这让"刚 append 未打散"的常见情形下每节点只花 2 个整数。
+
+### 25.3 遍历扫描算法：连续区间 + 前缀 offset/length
+
+CSR 头 `InMemChunkedCSRHeader`（`src/include/storage/table/csr_chunked_node_group.h:59`）就是两条列：`offset` 与 `length`。邻居定位是 O(1)：
+
+```
+start = header->getStartCSROffset(nodeOffset)   # 邻居行在 CSR 数组中的起点
+deg   = header->getCSRLength(nodeOffset)        # 邻居数量
+neighbors = persistentChunkGroup[nbrIDColumn][start .. start + deg - 1]
+```
+
+对应实现见 `src/storage/table/csr_node_group.cpp:26` 与 `src/storage/table/csr_node_group.cpp:27`。
+
+物理算子侧的入口是 `ScanRelTable::getNextTuplesInternal`（`src/processor/operator/scan/scan_rel_table.cpp:74`）：先在已提交数据上反复 `scan`，返回空才向下游要下一批绑定节点并重置扫描状态（`src/processor/operator/scan/scan_rel_table.cpp:77`）。这实现了 Cypher 的"惰性展开"语义 —— 绑定节点不足一个向量（2048）时不会把整张关系表拉出来。
+
+`tryScanCachedTuples`（`src/storage/table/csr_node_group.cpp:18`）是这段扫描里最精巧的一环：**一次 I/O 服务多个绑定节点**。若绑定节点按 offset 递增、且它们的 CSR 区间在缓存窗口内相邻，就不必为每个节点单独发一次列读：
+
+```
+tryScanCachedTuples(scanState):
+    off    = nodeOffset(boundNode) % NODE_GROUP_SIZE
+    start  = header->getStartCSROffset(off)          # src/storage/table/csr_node_group.cpp:26
+    len    = header->getCSRLength(off)               # src/storage/table/csr_node_group.cpp:27
+    nextCachedRowToScan = max(nextCachedRowToScan, start)
+    if 起点落在已缓存窗口之外: return false            # 缓存失效，退回逐节点读
+    n = min(nextRowToScan, start + len) - nextCachedRowToScan
+    if 有「已扫描向量位图」: 用位图把尚未产出过的行挑出来组成选择向量
+    else: 输出选择向量直接设为连续区间 [startCachedRow, +n)
+    nextCachedRowToScan += n
+    if start + len == nextCachedRowToScan: 切到下一个绑定节点并复位游标
+```
+
+缓存命中判定用的 `cachedScannedVectorsSelBitset` 是**按输出向量位（2048 位）标记哪些行已被产出过**，从而做到"多绑定节点 → 一次读盘 → 位图去重"。这正是 Kuzu"遍历 + 列存"融合的收益点：传统邻接表实现里 N 个绑定节点要 N 次指针追逐，这里退化成近似一次顺序读 + 位图过滤。
+
+复杂度：单次 hop 展开 O(1) 定位 + O(deg) 连续读；随机访问单个绑定节点时走 `randomLookup` 分支，只读 1 个 offset 和 1 个 length（`src/storage/table/csr_node_group.cpp:86` 起的 `initScanForCommittedPersistent`），避免整组 header 扫描。
+
+### 25.4 校准树：checkpoint 时的 CSR 区域重分布
+
+高扇出图上会出现极端不均衡：少数 hub 节点度数上百万，多数节点度数个位数。若按节点组线性排 CSR，hub 所在组的存储密度会塌到极低，一页只装得下几条边。Kuzu 的解法是一棵**校准树（calibrator tree）**。`PackedCSRInfo`（`src/include/storage/table/csr_node_group.h:100`）定义树高与密度步长：
+
+```
+calibratorTreeHeight = NODE_GROUP_SIZE_LOG2 − CSR_LEAF_REGION_SIZE_LOG2 = 17 − 10 = 7
+                                                                        # src/include/storage/table/csr_node_group.h:103
+highDensityStep = (LEAF_HIGH_CSR_DENSITY − PACKED_CSR_DENSITY) / calibratorTreeHeight
+                = (1.0 − 0.8) / 7 ≈ 0.02857
+```
+
+两个端点常量定义在 `src/include/common/constants.h:78`（`PACKED_CSR_DENSITY = 0.8`）与 `src/include/common/constants.h:79`（`LEAF_HIGH_CSR_DENSITY = 1.0`）。每个层级 `level` 的允许密度线性插值（`src/storage/table/csr_node_group.cpp:1166`）：
+
+```
+highDensity(level) = 1.0                                     若 level = 0（叶区）
+                   = 0.8 + highDensityStep · (7 − level)     否则
+```
+
+即 level=7（顶层）要求 80% 填充，level=1 要求约 97.1%，叶区放宽到 100%。checkpoint 时合并相邻 region 的密度判定（`src/storage/table/csr_node_group.cpp:1177`）：
+
+```
+ratio = (旧 region 内各节点 CSR 长度之和 + 待合并 region 的 sizeChange 之和)
+        / (region 右端 CSR 结束偏移 − region 左端 CSR 起始偏移)
+若 ratio ≤ highDensity(level) 则允许合并                     # src/storage/table/csr_node_group.cpp:1193
+```
+
+叶区粒度由 `CSR_LEAF_REGION_SIZE = 2^10 = 1024` 决定（`cmake/templates/system_config.h.in:50`）。这套"自底向上按密度合并"的策略在效果上等价于一次 **best-fit 装箱**：稀疏区被并入高密度区，树的每一层对应一轮装箱，把 hub 的边集中到少数几个节点组，从而让 zone map 与列压缩都工作在高密度数据上。
+
+代价写在源码的 TODO 里：`CSRIndex` 仍是每节点一个定长槽的平铺数组，作者注明应拆成"每叶区一层 + 每节点一层"两级以省空间（`src/include/storage/table/csr_node_group.h:79`）。
+
+## 二十六、执行引擎：优化器规则序列、图专用基数估计与哈希表链式探测
+
+### 26.1 优化器的规则序列（顺序即语义）
+
+`Optimizer::optimize`（`src/optimizer/optimizer.cpp:22`）是一条**线性、可读的规则流水线**；`enablePlanOptimizer` 关闭时（`src/optimizer/optimizer.cpp:24`）整条流水线跳过，只跑 `SchemaPopulator` 补 schema（`src/optimizer/optimizer.cpp:75`）：
+
+| # | 规则 | 源码行 | 作用 |
+|---|------|--------|------|
+| 1 | `RemoveFactorizationRewriter` | `src/optimizer/optimizer.cpp:26` | 先拆平因子化结构，否则后续规则无法处理 |
+| 2 | `CorrelatedSubqueryUnnestSolver` | `src/optimizer/optimizer.cpp:29` | 相关子查询去相关 |
+| 3 | `RemoveUnnecessaryJoinOptimizer` | `src/optimizer/optimizer.cpp:32` | 去掉恒等连接 |
+| 4 | `FilterPushDownOptimizer` | `src/optimizer/optimizer.cpp:35` | 谓词下推 |
+| 5 | `ProjectionPushDownOptimizer` | `src/optimizer/optimizer.cpp:39` | 列裁剪 |
+| 6 | `LimitPushDownOptimizer` | `src/optimizer/optimizer.cpp:42` | LIMIT 下推 |
+| 7 | `HashJoinSIPOptimizer` | `src/optimizer/optimizer.cpp:47` | Semi Masker 半连接剪枝（在 build 侧节点 ID 上建 Roaring 位图，probe 侧先过筛；可配置开关 `enableSemiMask`） |
+| 8 | `TopKOptimizer` | `src/optimizer/optimizer.cpp:51` | `ORDER BY … LIMIT` → TopK |
+| 9 | `FactorizationRewriter` | `src/optimizer/optimizer.cpp:54` | 重新插入因子化结构 |
+| 10 | `AggKeyDependencyOptimizer` | `src/optimizer/optimizer.cpp:59` | 聚合键依赖消除（不改因子化结构，故置于 9 之后） |
+
+第 1 条与第 9 条是一对：规则 1–8 都在"扁平行式"表示上工作，规则 9 再统一做因子化（factorization）—— 把若干列打包进一个 data chunk，遍历时只解包真正被扩展的那一列。`FactorizationRewriter::visitHashJoin`（`src/optimizer/factorization_rewriter.cpp:43`）演示了这一点：在 join 的 probe / build 两侧按需插 `Flatten`。图上 `(a)-[e]->(b)` 展开后，同一批行的 `b.id / b.name / e.weight` 会被打包在一起，下一跳只解 `b.id` 一列 —— **这是"只解包被访问列"而非"拆成独立元组"的关键**。
+
+### 26.2 谓词下推：两个性质完全不同的下推目标
+
+`FilterPushDownOptimizer` 对不同算子做**两种语义完全不同**的下推：
+
+**（a）下推成属性谓词集（只给 zone map 当提示，不改变语义）**。`visitScanNodeTableReplace`（`src/optimizer/filter_push_down_optimizer.cpp:180`）在 `enableZoneMap` 打开时把谓词转成 `ColumnPredicateSet` 挂到扫描算子上（`src/optimizer/filter_push_down_optimizer.cpp:185`）。这些谓词**不改变结果**，纯粹是给存储层剪枝的提示 —— 即使所有谓词都没命中块统计，数据仍会被扫描后过滤。
+
+**（b）改写成主键索引扫描（改变执行方式）**。若谓词是"节点 ID = 常量"，就把它从谓词集中弹出，并把扫描类型改成 `PRIMARY_KEY_SCAN`（`src/optimizer/filter_push_down_optimizer.cpp:199`）；若右侧不是常量（LITERAL / PARAMETER / `CAST(常量)`），则**把谓词原样塞回去**（`src/optimizer/filter_push_down_optimizer.cpp:204`），保证语义不回退。识别逻辑在 `isNodePrimaryKey`（`src/optimizer/filter_push_down_optimizer.cpp:285`）与 `popNodePKEqualityComparison`（`src/optimizer/filter_push_down_optimizer.cpp:298`）。
+
+对 Extend 同理：非递归 extend 的属性谓词也可下推成 zone map 提示，但**递归 extend 被明确排除**（`src/optimizer/filter_push_down_optimizer.cpp:219`）。
+
+### 26.3 TopK 改写
+
+`ORDER BY → (PROJECTION →) MULTIPLICITY_REDUCER → LIMIT` 这条固定模式被折叠为单个 TopK 算子（`src/optimizer/top_k_optimizer.cpp:32`）。语义等价性来自两点：**排序键与 limit / skip 合并**（`orderBy->setLimitNum(...)` 与 `setSkipNum(...)`），以及**去掉了 multiplicity reducer** —— 去重可以推迟到 TopK 之后，因为 TopK 只保留前 K 行，对前 K 行去重不会改变前 K 行的集合。
+
+复杂度收益是 `O(M log M) → O(M log K)`（M 为输入行数，K 为 LIMIT）。Kuzu 还设了"输入太小就不排序"的阈值 `OrderByConfig::MIN_SIZE_TO_REDUCE`（`cmake/templates/system_config.h.in:62`）。
+
+### 26.4 图专用基数估计：扩展率
+
+图查询的基数估计与关系型不同 —— **遍历不改变因子化基数，而是改变组的乘数（multiplier）**。`appendNonRecursiveExtend` 里写得很清楚（`src/planner/plan/append_extend.cpp:87`）：
+
+```
+extend->setCardinality(plan.getLastOperator()->getCardinality())   # 基数不变
+group->setMultiplier(extensionRate)                                # src/planner/plan/append_extend.cpp:91
+```
+
+扩展率本身由**平均出度**导出（`src/planner/join_order/cardinality_estimator.cpp:219`）：
+
+```
+oneHopExtensionRate = numRels / max(1, numBoundNodes)
+```
+
+其中 `numRels` 取自关系表统计（`src/planner/join_order/cardinality_estimator.cpp:204`）、`numBoundNodes` 取自节点表统计。再按关系类型放大（`src/planner/join_order/cardinality_estimator.cpp:214`）：
+
+| 关系类型 | 扩展率 |
+|---------|-------|
+| `NON_RECURSIVE` | `oneHop` |
+| `VARIABLE_LENGTH_WALK` / `TRAIL` / `ACYCLIC` | `oneHop × max(upperBound, 1) × scaleFactor` |
+| `SHORTEST` / `ALL_SHORTEST` / `WEIGHTED_SHORTEST` / `ALL_WEIGHTED_SHORTEST` | `min(oneHop × max(upperBound,1), numRels) × scaleFactor` |
+
+最短路类用 `min(…, numRels)` 封顶是对的：最短路径的解空间不会超过关系总数。变长模式则再乘一个 `scaleFactor`（`src/planner/join_order/cardinality_estimator.cpp:214`），它来自客户端配置 `recursivePatternCardinalityScaleFactor`（`src/include/main/client_config.h:52`），默认值 `RECURSIVE_PATTERN_FACTOR = 100`（`src/include/main/client_config.h:21`）。注意方向：这个系数是**放大**估计值而不是调低 —— `oneHop × upperBound` 对变长模式是极端高估的朴素上界，但真实的路径数量远低于上界（同一批边被反复复用），放大 100 倍是在补偿这种系统性低估，代价是让规划器对变长模式更保守、更倾向于选 HashJoin 而非嵌套循环。
+
+对照普通算子的估计：等值谓词默认选择率 0.01、非等值 0.1（`src/include/common/constants.h:159` 与 `src/include/common/constants.h:160` 的 `PlannerKnobs`）；若谓词命中单标签属性，则改用 HLL 的 NDV 做 `card / NDV`（`src/planner/join_order/cardinality_estimator.cpp:174`）；非 ID 连接的哈希连接退化为 `|probe| × |build| × 0.01^#cond`（`src/planner/join_order/cardinality_estimator.cpp:85`）。**图模式的连接键几乎总是节点 ID**，因此走的是除法分支 `(|probe| × build 侧键基数) / Σ NDV`，这正是图查询的 join 基数估计比通用 SQL 准得多的原因。
+
+### 26.5 哈希表：分块槽数组 + 元组内分离链
+
+Join / Aggregate 共用 `BaseHashTable`（`src/include/processor/result/base_hash_table.h:39`）。槽数组是**分块**的，每块大小固定为一个 `HASH_BLOCK_SIZE`（等于 `TEMP_PAGE_SIZE` = 256 KB）：
+
+```
+HASH_BLOCK_SIZE  = TEMP_PAGE_SIZE                                    # src/include/processor/result/base_hash_table.h:39
+numSlotsPerBlock = HASH_BLOCK_SIZE / sizeof(uint8_t*) = 262144 / 8 = 32768
+                                                                  # src/processor/operator/hash_join/join_hash_table.cpp:17
+slotIdx          = hash % maxNumHashSlots                            # src/include/processor/result/base_hash_table.h:41
+槽地址 = hashSlotsBlocks[slotIdx >> numSlotsPerBlockLog2] + (slotIdx & slotIdxInBlockMask)
+                                                                  # src/processor/operator/hash_join/join_hash_table.cpp:189
+```
+
+分块的好处是槽数组按需增长（`allocateHashSlots` 按需追加新的 `DataBlock`，`src/processor/operator/hash_join/join_hash_table.cpp:107`），不预先分配整个数组；且槽地址计算是两次位运算、无分支。
+
+**冲突处理用分离链（chaining），且链表指针直接内嵌在元组里**：`prevPtrColOffset` 被固定为表 schema 的最后一列（`src/processor/operator/hash_join/join_hash_table.cpp:20`）。建表阶段把每个元组头插进桶，并把旧桶头写回新元组的 prev 字段（`src/processor/operator/hash_join/join_hash_table.cpp:116`）。探测阶段先算 hash 拿到候选头指针，再沿 `prev` 链逐个比对（`src/processor/operator/hash_join/join_hash_table.cpp:154`）：
+
+```
+for i in 0..hashSelVec.getSelSize():
+    probedTuples[i] = getTupleForHash(hashVector[hashSelVec[i]])   # src/processor/operator/hash_join/join_hash_table.cpp:150
+while probedTuples[0] != null:
+    matched += matchFlatVecWithEntry(keyVectors, probedTuples[0])
+    probedTuples[0] = *getPrevTuple(probedTuples[0])      # src/processor/operator/hash_join/join_hash_table.cpp:164
+    if matched == DEFAULT_VECTOR_CAPACITY: break           # 输出向量满即停
+```
+
+`matchFlatKeys` 的 `DEFAULT_VECTOR_CAPACITY` 截断（`src/processor/operator/hash_join/join_hash_table.cpp:154`）保证单个 probe 向量的输出不超过 2048 行，剩余匹配留给下一批 —— **"链可以很长，但一批只吐 2048 个"的背压**。
+
+槽位数按 `nextPowerOfTwo(numTuples × 2)` 分配（`src/processor/operator/hash_join/join_hash_table.cpp:108`），即**负载因子 α 恒定 0.5**；因为槽数是 2 的幂，取模退化为掩码。分离链在这个负载下链表平均长度约 α = 0.5，成功查找的期望指针追逐次数约 `1 + α/2 = 1.25`，未命中约 `α = 0.5` —— 也就是说**绝大多数探测在一次指针解引用后就判定不匹配**，真正的成本落在链上的键字段比对上。
+
+⚠️ **这一版没有外排溢写的 HashJoin**：`src/processor/operator/hash_join/` 下只有 build / probe / hash table 三个实现文件，全库检索 `spill` 在 `src/processor/` 下零命中。溢写能力存在于基础设施层（`Spiller`，`src/include/storage/buffer_manager/spiller.h:17`），供其他算子使用。**建侧过大时 Kuzu 的选择是让整条计划在小向量上跑完，而不是写临时文件** —— 这是与 Spark / Flink 显著不同的设计取向。
+
+## 二十七、参考资料
 
 1. Kuzu 官方文档 — `https://docs.kuzudb.com/`。
 2. Kuzu 源码 — `https://github.com/kuzudb/kuzu`。
