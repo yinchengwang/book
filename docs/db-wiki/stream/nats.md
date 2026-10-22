@@ -561,7 +561,118 @@ NATS 没有 Kafka 的 partition 概念，但有类似的并行度：
   - 本项目若需轻量消息集成（IoT、边缘），NATS 比 Kafka 更适合；
   - 本项目 RPC 通信：NATS Request/Reply 比 HTTP REST 更快；
 
-## 二十四、参考资料
+## 二十四、FileStore 的Block 切分、写入缓存与每 Subject 索引
+
+> 本节源码路径：`server/filestore.go`、`server/stree/`。§8.1 用一句话描述了「Append-only Block + Index + Snapshot」，§17.1 把 `server/filestore.go` 列为进阶阅读材料，但**都没有展开三个决定 FileStore 行为的内部机制**：Block 大小如何按配额反推、写入如何通过 cache + flush 落盘、每 Subject 状态（`fss`）如何维护。本节补齐这三处。
+
+### 24.1 Block 大小反推：`dynBlkSize` 的 25% 开销与三段夹逼
+
+NATS JetStream 的 Stream 只需给定**总配额** `maxBytes`，Block（对应 Kafka 的 segment）大小由它反推。`dynBlkSize`（`server/filestore.go:840`）是唯一的计算入口：
+
+```
+dynBlkSize(retention, maxBytes, encrypted):# server/filestore.go:840
+    if maxBytes > 0:
+        blkSize = (maxBytes / 4) + 1                # ① 25% 开销，server/filestore.go:842
+        if blkSize % 100 != 0:                # ② 向上取整到 100 的倍数
+            blkSize += 100 - (blkSize % 100)
+        if   blkSize <= FileStoreMinBlkSize: blkSize = FileStoreMinBlkSize      # ③ 下界
+        elif blkSize >= FileStoreMaxBlkSize: blkSize = FileStoreMaxBlkSize      #    上界
+        else:                                blkSize = defaultMediumBlockSize#    中段
+        if encrypted and blkSize > maximumEncryptedBlockSize:                # ④ 加密上限
+            blkSize = maximumEncryptedBlockSize
+        return blkSize
+    # maxBytes <= 0 时走另一分支（按 retention 推算）
+```
+
+四个常量的实际取值（`server/filestore.go:375`、`server/filestore.go:383`、`server/filestore.go:387`、`server/filestore.go:391`）：
+
+| 常量 | 值 | 作用 |
+|------|-----|------|
+| `defaultMediumBlockSize` | 4 MB | 中段区间的取值 |
+| `maximumEncryptedBlockSize` | 2 MB | 加密流量的硬上限 |
+| `FileStoreMinBlkSize` | 32 KB（`32 * 1000`） | 下界 |
+| `FileStoreMaxBlkSize` = `maxBlockSize` | = `defaultLargeBlockSize` | 上界 |
+
+三点值得注意：
+
+- **`+ 1` 是为了让 `maxBytes/4` 整除时不落到区间外的下界**。`maxBytes = 4` 时 `blkSize = 2`，若无 `+1` 则为 1，会被下界夹到 32KB；这里 1 让极小配额也能得到一个非零值。
+- **向上取整到 100 的倍数**（`server/filestore.go:844`）纯粹为了可读性与日志对齐，代价是最多 99 字节的浪费。
+- **`else` 分支（中段）直接返回 `defaultMediumBlockSize` 而非 `blkSize`**（`server/filestore.go:851`）。也就是说：只要计算值落在 (32 KB, MaxBlkSize) 区间内，**就一律取 4 MB，配额再小也不用计算值**。这是刻意的产物收敛——Block 数量直接决定元数据开销与查找开销，让中等配额都统一为 4 MB 可以避免 Block 碎片化。副作用是：小配额场景下 4 MB 的 Block 意味着**极少几个 Block 就会写满**（例如配额 16 MB 只切出 4 个 Block），配额越大 Block 才逐渐逼近上界。
+
+**为什么加密场景要额外压到 2 MB**：`server/filestore.go:383` 的注释与 `dynBlkSize` 的第④ 步说明，加密是**每个 Block 独立**做的（chacha20-poly1305 之类），Block 越大意味着单个密文块越大，而密钥轮换以 Block 为单位会放大重写代价；压到 2 MB 是在加密强度与重写粒度之间的取舍。
+
+> **工程含义**：调`--max-bytes` 时 Block 数量并非线性增长，而是"阶梯式"的。若观察到 Block 数远少于预期（元数据偏少、单Block 偏大），通常就是踩中了中段统一 4 MB 的规则，而不是配置没生效。
+
+### 24.2 写入路径：cache 先行、flush 后落
+
+`writeMsgRecordLocked`（`server/filestore.go:7598`）是每条消息写入的入口，它的执行顺序体现了几层独立的考虑：
+
+```
+writeMsgRecordLocked(rl, seq, subj, mhdr, msg, ts, flush, kick):   # server/filestore.go:7598
+    if mb.werr != nil: return mb.werr                    # ① 粘滞错误：一次失败后永久拒绝写入
+    defer: 若出错且非读错误 → mb.werr = rerr             # ② 区分「写失败」与「读旧数据失败」
+    if mb.mfd == nil: mb.enableForWriting(...)            # ③ 惰性打开文件描述符
+    if len(subj) > 0 and not mb.noTrack:                  # ④ 每 Subject 状态先于 cache 变更
+        mb.ensurePerSubjectInfoLoaded()
+        if ss, ok := mb.fss.Find(subj); ok: ss.Msgs++; ss.Last = seq
+        else: mb.fss.Insert(subj, SimpleState{1, seq, seq})
+    mb.setupWriteCache(nil)                # ⑤ 准备写缓存（可能已被上一步带入）
+    mb.ecache.Strengthen()                            # ⑥ 强化弹性引用，阻止 GC 抢走未落盘数据
+    ...追加到 cache.buf / cache.idx...
+```
+
+三个设计要点：
+
+- **①/② 的错误分类很有讲究**。`server/filestore.go:7605` 起的 `defer` 块用 `isReadErr(rerr)` 把错误分成两类：**读旧数据出错**（如某个历史 Block 损坏）只`rateLimitWarn` 后继续，**不置 `werr`**；只有真正的写入失败才设置 `mb.werr`。而 `werr` 一旦非nil，**后续所有写入立即返回该错误**（`server/filestore.go:7600`）。这意味着一个历史 Block 的局部损坏不会让整个 Stream 停止服务——这是个相当克制的数据可用性设计。
+- **④ 的顺序是刻意的**：`ensurePerSubjectInfoLoaded` 可能触发 cache 的换入/重建，若放在 cache 变更之后就会踩到源码注释指出的问题——"Do this before changing the cache that would trigger a flush pending msgs call if we needed to regenerate the per subject info"（`server/filestore.go:7637`）。
+- **⑥ `ecache.Strengthen()` 是 JetStream 的生命周期基石**：缓存块在未被 flush 前以**强引用**挂住，防止 Go 的 GC 判定它可回收导致未落盘数据丢失；只有当 flusher 决定写入完成后才"弱化"。这是典型的「用引用语义兜住持久化窗口」。
+
+落盘的收口在 `flushPendingMsgs`（`server/filestore.go:8623`）：
+
+```
+flushPendingMsgs():                                   # server/filestore.go:8623
+    mb.mu.Lock(); fsLostData, err = mb.flushPendingMsgsLocked(); mb.mu.Unlock()
+    if fsLostData != nil and fs != nil:
+        fs.rebuildState(fsLostData)                   # 丢数据时重建 Stream 级状态
+```
+
+注意它返回的 `*LostStreamData` —— 若 flush 过程中发现已有数据不可恢复，**不是只返回错误，而是把丢失范围上报给 `fileStore` 触发 `rebuildState`**，让 Stream 的 `first/last seq` 等内存状态与磁盘重新对齐。这类"写路径发现损坏 → 反向驱动状态重建"的闭环，是单进程嵌入式存储能做到自愈的关键。
+
+> **复杂度**：每条消息写入摊还 O(1)（追加到内存 buffer + 一次 `stree` 查找）；flush 是 O(pending)。`fss` 为 `stree.SubjectTree`（`server/filestore.go:249`），即 subject 字典树——按 subject 前缀共享路径，**`foo.a` 与 `foo.b` 的查找复杂度随公共前缀增加而下降**，且天然支持 `foo.>` 通配订阅的区间遍历。这比Go 原生 map 更适合 JetStream「大量 subject + 前缀订阅」的访问模式。
+
+### 24.3 缓存一致性判据：`cacheAlreadyLoaded` 的重放校验
+
+`cacheAlreadyLoaded`（`server/filestore.go:8783`）判断内存缓存是否与磁盘状态一致，判据不是简单的"cache 非空"，而是**重算应当存在的条目数并比对**：
+
+```
+cacheAlreadyLoaded():                                  # server/filestore.go:8783
+    if mb.cache == nil: mb.cache = mb.ecache.Value()   # 尝试从弹性缓存取出
+    if mb.cache == nil or mb.cache.fseq == 0 or len(mb.cache.buf) == 0:
+        return false
+    # 关键：重新推导「当前应有多少条」，与缓存实际条目数比对
+    numEntries = mb.msgs + uint64(mb.dmap.Size()) + (atomic.LoadUint64(&mb.first.seq) - mb.cache.fseq)
+    return numEntries == uint64(len(mb.cache.idx))
+```
+
+三项相加的含义：
+
+| 项 | 含义 |
+|----|------|
+| `mb.msgs` | 未删除（活跃）消息数 |
+| `mb.dmap.Size()` | 删除标记（dmap / tombstones）条目数——**删除也是一条物理记录** |
+| `first.seq - cache.fseq` | 缓存起点之前、已被淘汰出缓存但仍在 Block 内的消息数 |
+
+`dmap` 的存在是这套设计的关键：NATS 的删除是**写一条墓碑记录**而非抹掉原记录（append-only 的必然要求），因此磁盘上「活跃消息」= `msgs`，而「索引条目」= `msgs +墓碑数 + 缓存外的历史消息`。若只用 `msgs` 比对，删除过的 Block 会永远判定为"缓存未加载"，退化成每次都从磁盘重放。
+
+`atomic.LoadUint64(&mb.first.seq)` 用原子读而非直接取字段，是因为 `first.seq` 可能被并发的过期清理（expiration）线程推进；这行代码是该模式在本文件里的一处典型用法。
+
+> **成本与收益**：这是一个 O(1) 校验（只有三个整型加法 + 一次长度比较），但换来的是**可以放心地在任意时刻丢弃并重建缓存**。`server/filestore.go:3209` 与 `server/filestore.go:5052` 两处都用到它；后者源码注释还特别说明了"**Not safe to use `mb.cacheAlreadyLoaded()` here as the heuristic**"（`server/filestore.go:5052`）——即某些路径不能依赖这个判据，说明该校验虽可靠但**不能推广为"缓存一定与磁盘一致"的全局不变式**。
+
+> **工程含义**：JetStream 的缓存是**可丢弃的加速层**，不是权威数据。任何"重启后数据不丢"的保证都来自 append-only 的 Block 文件与 fsync，而不是缓存。把 Block 视为唯一真相、缓存视为纯派生状态——这个定位是 JetStream 能在崩溃后精确恢复的根本原因。
+
+---
+
+## 二十五、参考资料
 
 - [NATS 官方主页](https://nats.io/)
 - [NATS Documentation](https://docs.nats.io/)
