@@ -604,7 +604,364 @@ RETURN node.name, rank
 - **流式集成**：可参考 Memgraph Kafka 集成；
 - **LangChain / LlamaIndex 集成**：本项目若做 GraphRAG，可复用其思路。
 
-## 二十四、参考资料
+## 二十四、Bolt v2 存储引擎：Delta Chain 与两阶段垃圾回收
+
+Memgraph 3.x 的存储实现只有一棵代码树 `src/storage/v2/`，运行模式由三值枚举 `StorageMode` 决定（`src/storage/v2/storage_mode.hpp:23`）：`IN_MEMORY_TRANSACTIONAL`（内存基表 + WAL / snapshot）、`IN_MEMORY_ANALYTICAL`（只读分析，不产生版本）、`ON_DISK_TRANSACTIONAL`（RocksDB 承载）。**Delta Chain 只在事务型内存模式下存在**——`CreateDeleteObjectDelta` 与 `CreateAndLinkDelta` 在分析型模式下直接提前返回，连 delta 都不生成（`src/storage/v2/mvcc.hpp:242`、`src/storage/v2/mvcc.hpp:315`）。本节拆解这套 Bolt 风格的多版本结构。
+
+### 24.1 Delta 的定长布局与标签指针压缩
+
+顶点本体极薄（`src/storage/v2/vertex.hpp:32`）：`gid` 常量 + `labels` 小向量（`src/storage/v2/vertex.hpp:41`）+ `in_edges` / `out_edges` 两条边三元组小向量（`src/storage/v2/vertex.hpp:43`、`src/storage/v2/vertex.hpp:44`）+ `PropertyStore properties`（`src/storage/v2/vertex.hpp:46`）。**所有历史版本都不在顶点上**，而是外挂在一条 delta 链上。
+
+`Delta` 是定长 POD：`CommitInfo *commit_info` + `uint64_t command_id` + `prev` + 原子 `next` + 一个按 `action` 区分的 union 载荷（`src/storage/v2/delta.hpp:244`）。编译器必须满足 `sizeof(Delta) <= 56`（`src/storage/v2/delta.hpp:408`），由此可以算出内存密度上界：
+
+```
+每页可容纳 delta 数 ≤ ⌊4096 / 56⌋ = 73
+每 slab 可容纳 delta 数 = ⌊(4×4096 − 8) / 56⌋ = 292      // 见 src/storage/v2/delta_container.hpp:59
+```
+
+后者正是源码里的硬断言 `static_assert(292 == delta_slab::capacity())`（`src/storage/v2/delta_container.hpp:62`）。
+
+两个标签指针是这里最关键的省字节技巧：
+
+- **`PreviousPtr`**（`src/storage/v2/delta.hpp:59`）把 `NULL_PTR / DELTA / VERTEX / EDGE` 四种指针类型编码进指针**低 2 位**。之所以可行，是因为被指向的三种结构都含 `uint64_t` 字段、要求 8 字节对齐，指针低 3 位必然为 0。取用时先 `value & kMask` 解类型，再 `value & ~kMask` 还原地址（`src/storage/v2/delta.hpp:96`）。
+- **`TaggedVertexPtr`**（`src/storage/v2/delta.hpp:199`）把 `DeltaChainState` 三态编码进顶点指针**低 2 位**，使 delta 能携带链状态而不增加 `sizeof(Delta)`。
+
+结果是：**一次属性更新只追加一条记录「被改动的那一个字段」的 delta，写放大与对象大小无关，仅与改动量成正比**——改一个属性不必重写顶点本体。
+
+### 24.2 delta_container：页对齐 slab 分配器
+
+delta 不逐个 `new`，而是走 slab。`delta_container`（`src/storage/v2/delta_container.hpp:239`）持有一个 `PageAlignedList<delta_slab>`，每次 `emplace` 先看队首 slab 是否满，满了就在**队首**插一个新 slab（`src/storage/v2/delta_container.hpp:295`）。slab 用 `kRemainingPageSpace = 4 页 − sizeof(void*)` 字节（`src/storage/v2/delta_container.hpp:59`）静态定容，选 4 页（16 KiB）的理由写在注释里：这是 jemalloc 的最小 large size class。
+
+```
+emplace(args):
+  if deltas_.empty() || deltas_.front().is_full():
+      deltas_.emplace_front()          # 新 slab 插到队首，保持 LIFO
+  delta = deltas_.front().emplace_back(args...)
+  if 需要额外内存（属性值 / 字符串）:
+      lazily 创建 PageSlabMemoryResource（上游 = DB arena）
+```
+
+一个对象在自己的生命周期内产生的全部 delta 都落在**同一块 slab** 上，清空时整体归还，避免逐个析构。
+
+### 24.3 Delta 链接的四步定序
+
+`CreateAndLinkDelta`（`src/storage/v2/mvcc.hpp:315`）把新 delta 挂到对象链头，顺序被严格固定，因为 GC 与其他执行线程会并发遍历这条链：
+
+```
+1. delta->next.store(object->delta(), release);   // 先接后继
+2. delta->prev.Set(object);                       // 再指回宿主对象
+3. if object->delta(): object->delta()->prev.Set(delta);  // 此刻 GC 可见新 delta
+4. object->SetDelta(delta);                       // 最后换头，读侧此时持对象锁
+```
+
+第 3 步与第 4 步之间的窗口里，新 delta 已可见但链头未换，所以源码在第 4 步注释里明确说明：读者必须持对象 `RWSpinLock` 读 `delta()` 才能安全。
+
+### 24.4 非顺序 Delta 与 DeltaVertexCache
+
+常态下 delta 按提交序串成一条链，读到别人事务的未提交 delta 就停——这是标准 MVCC。但**边导入场景**（百万级 bulk load）里，若严格串行化，同一个超级节点上的并发建边会退化成串行。Memgraph 的做法是允许「非顺序 delta」被前插到别人的未提交 delta 之前（`src/storage/v2/delta.hpp:186` 的 `DeltaSequencing`），代价是遍历与 GC 变重，收益是导入吞吐（`src/storage/v2/delta.hpp:180` 的注释即如此论述）。
+
+代价是**定位宿主顶点不能再只看 `prev`**：非顺序 delta 的 `prev` 可能指向另一个 delta。`DeltaVertexCache::GetVertexFromDelta`（`src/storage/v2/inmemory/storage.cpp:258`）负责这件事：
+
+```
+GetVertexFromDelta(delta):
+  if delta->prev.type == VERTEX: return delta->prev.vertex   // 常见路径 O(1)
+  if delta in cache: return cache[delta]
+  从 delta 沿 prev 向上游走，直到遇到 prev.type == VERTEX
+  把本轮走过的所有「同事务子链头」一并写入 cache
+  遇到跨事务边界时，先查 cache 再决定是否继续走
+```
+
+复杂度：单次查询最坏 `O(L)`（`L` = 链长），但因为缓存了途经的所有子链头，**一个事务内访问 N 个 delta 的总成本摊还到 `O(L + N)`**，而不是 `O(N·L)`。
+
+### 24.5 两阶段垃圾回收
+
+`CollectGarbage`（`src/storage/v2/inmemory/storage.cpp:3045`）的设计核心写在 `src/storage/v2/inmemory/storage.cpp:3108` 的注释里：**GC 必须分两阶段**。
+
+先定义回收视界（horizon）：
+
+```
+oldest_active_start_timestamp = commit_log_->OldestActive()   // src/storage/v2/inmemory/storage.cpp:3116
+// 再与未处理的 schema 更新起点取 min（src/storage/v2/inmemory/storage.cpp:3122）
+```
+
+只有 `commit_ts < oldest_active_start_timestamp` 的 delta 才可能没有任何活跃事务再读到。
+
+```
+阶段 A：摘链（unlink），不释放
+  for 每个 committed_transactions_ 条目 g:
+      if g.unlinkable_timestamp_ >= oldest_active_start_timestamp: continue  // src/storage/v2/inmemory/storage.cpp:3257
+      持对象锁 → 复查该 delta 仍在链头 → UnlinkAndRemoveDeltas(...)        // src/storage/v2/inmemory/storage.cpp:205
+      把整批 delta 移入 garbage_undo_buffers_（带 mark_timestamp_）
+
+阶段 B：释放（free）
+  若持有排他主锁（即无活跃事务）: garbage_undo_buffers_.clear()
+  否则按 mark_timestamp_ 有序弹出 front，条件同上                  // src/storage/v2/inmemory/storage.cpp:3214
+```
+
+摘链与释放分离的原因：一个刚被摘链的 delta，可能仍被某个已存在的事务持有引用（它正靠这条 delta 来终止版本链遍历），因此不能立即 `delete`，只能标记延迟。
+
+**并发安全的关键细节**写在 `src/storage/v2/inmemory/storage.cpp:3262`——当被摘的 delta 恰是链头时存在竞态：
+
+```
+[Vertex] → [Delta A]                      GC 线程认定 A 是链头
+                                          TX 线程插入 B，A 成为 B 的 next
+[Vertex] → [Delta B] ⇄ [Delta A]
+                                          GC 线程把 A 从 Vertex 上摘掉
+[Vertex] → (nullptr)                      ← A 的 next 仍指着 B，B 成孤儿
+```
+
+解法是「先拿对象锁 → 再复查链头是否仍是本 delta → 是才摘」，把无锁竞态转成加锁复查。
+
+**快速丢弃路径**：若本次 GC 处于空闲（`try_lock` 拿到 `gc_lock_`，`src/storage/v2/inmemory/storage.cpp:1023`），事务提交时不必等 GC，而是自己调 `FastDiscardOfDeltas`（`src/storage/v2/inmemory/storage.cpp:1381`）→ `GCRapidDeltaCleanup`（`src/storage/v2/inmemory/storage.cpp:1346`）完成同样的摘链，把延后释放的部分交还给 GC。源码注释明确了这个 `try_lock` 不能换成阻塞锁，否则会与事务侧的 `engine_lock_` 构成死锁环。
+
+**非顺序 delta 的贡献者协议**（`src/storage/v2/inmemory/storage.cpp:3144`）：带非顺序 delta 的已提交事务先进 `waiting_gc_deltas_` 候场室，只有当链上所有「贡献者」事务都提交或回滚后，才取贡献者中的最高提交时间戳作为 `unlinkable_timestamp_` 并转入正常 GC 队列。
+
+**GC 的成本优化——IndexArming**：全量扫描每个索引太贵，所以 `IndexArming`（`src/storage/v2/index_arming.hpp:38`）在写路径上按位记录「本次写可能弄脏哪些索引」——`note_label` / `note_vertex_property` / `note_edge_property`（`src/storage/v2/index_arming.hpp:105`）。GC 阶段只扫被 arm 的索引，其余跳过（`src/storage/v2/inmemory/storage.cpp:501` 一连串 `RunGC()` 调用；单索引扫描入口见 `src/storage/v2/inmemory/label_index.hpp:237`）。
+
+GC 总体复杂度（设 `D` = 本轮待摘 delta 数、`I` = 被 arm 的索引总条目数）：
+
+```
+摘链阶段  O(D · 平均对象锁竞争)
+索引清理  O(I_arm)  而非 O(I_all)
+释放阶段  O(D)
+```
+
+## 二十五、查询计划：算子树、七级重写流水线与代价模型
+
+本节是对 §9.2 的下探：§9.2 只列了「AST → 规则优化 → Plan 树」四个要点，这里给出 Memgraph 实际执行规划的具体结构、每个重写器的职责与代价函数的真实参数。
+
+### 25.1 逻辑算子族与计划树
+
+Memgraph 采用**火山模型（Volcano / iterator）**：每个算子都是 `LogicalOperator` 子类，对外只暴露 `Pull()` 拉取一行与 `Frame`（符号表 + 位置映射）。全量算子定义在 `src/query/plan/operator.hpp`，家族包括：
+
+- **扫描**：`ScanAll`（`src/query/plan/operator.hpp:595`）及其按索引特化的子类 `ScanAllByLabel` / `ScanAllByLabelProperties` / `ScanAllByVertexProperty` / `ScanAllByPointDistance` 等；
+- **连接与过滤**：`Expand`（`src/query/plan/operator.hpp:1089`）、`ExpandVariable`（变长路径）、`Filter`（`src/query/plan/operator.hpp:1323`）、`EvaluatePatternFilter`；
+- **改写类**：`Produce` / `CreateNode` / `CreateExpand` / `SetProperty` / `SetLabels` / `Delete`；
+- **流控类**：`Unwind`（`src/query/plan/operator.hpp:2723`）、`Limit` / `Skip` / `Distinct` / `OrderBy` / `Aggregate` / `Accumulate`；
+- **Enterprise 专属**：`AggregateParallel` / `OrderByParallel` / `ScanParallel*`。
+
+规划入口 `MakeLogicalPlan`（`src/query/plan/planner.hpp:149`）的流程是：`CollectQueryParts` 把 AST 拆成 `QueryParts` → 用 `RuleBasedPlanner`（规则驱动，产出单一计划）或 `VariableStartPlanner`（变量起点，产出**多个候选计划**）生成计划树 → 每个候选依次经过 `Rewrite` → `ValidatePlan`（`src/query/plan/rewrite/plan_validator.hpp`）→ `EstimatePlanCost`，最后择优。
+
+多候选择优不是纯比代价，而是**索引提示优先**：注释写明「一旦有计划用到了 index hint，就拒绝所有没用到的」，因为用户显式写了 `USING INDEX HINT` 就是要强制该计划（`src/query/plan/planner.hpp:191`）。排序键实际是二元组 `(use_index_hints, cost)` 的字典序。
+
+### 25.2 七级重写流水线
+
+`PostProcessor::Rewrite`（`src/query/plan/planner.hpp:74`）用自定义的管道算子把计划依次喂给七个重写器，顺序固定：
+
+| 级 | 重写器 | 源码 | 职责 |
+|----|--------|------|------|
+| 1 | `RewriteEnumAccess` | `src/query/plan/rewrite/enum.hpp:246` | 把枚举属性过滤下推成范围扫描 |
+| 2 | `RewriteWithIndexLookup` | `src/query/plan/rewrite/index_lookup.hpp:2194` | `ScanAll` + `Filter` → `ScanAllBy<Index>` |
+| 3 | `RewriteWithJoinRewriter` | `src/query/plan/rewrite/join.hpp:768` | 合流型改写（多分支归一为 join） |
+| 4 | `RewriteWithEdgeIndexRewriter` | `src/query/plan/rewrite/edge_index_lookup.hpp:1371` | `ScanAll` / `Expand` → `ScanAllByEdgeType*` |
+| 5 | `RewritePeriodicDelete` | `src/query/plan/rewrite/periodic_delete.hpp:72` | 为 `DELETE` 注入分批缓冲，配合 `USING PERIODIC COMMIT` |
+| 6 | `RewriteWithPruningBFS` | `src/query/plan/rewrite/pruning_bfs.hpp:31` | 标记可剪枝的变长路径展开 |
+| 7 | `RewriteParallelExecution` | `src/query/plan/rewrite/parallel_rewrite.hpp:1022` | 拆成并行算子（`MG_ENTERPRISE` 条件编译，源码注释标注 "Keep at the end"） |
+
+第 2 级是核心。它的决策函数 `FindBestIndexGroup`（`src/query/plan/rewrite/index_lookup.hpp:1443`）对每个候选 label 组合打分：
+
+```
+best_group.vertex_count = INT64_MAX
+for each label_group in or_labels:                    // or_labels = OR 语义下的 label 分组
+    for each label in group:
+        for each LabelPropertiesIndexCandidate:
+            vertex_count = db_->VerticesCount(label_id, properties)
+            has_hint    = index_hints_.HasLabelPropertiesIndex(...)
+            if vertex_count < best_vertex_count || (has_hint && !best_has_hint):
+                记录为该 label 的最佳属性索引
+        若无属性索引可用，退化到该 label 的纯 LabelIndex
+    取 vertex_count 最小者作为整组的选择
+```
+
+即「**优先用选择性最高的索引**（条目数最少者胜出），其次才是 label 索引」；索引提示是一票否决式的优先级。
+
+第 4 级与第 2 级对称，复用同一个 `OrderByEliminator`（`src/query/plan/rewrite/order_by_elimination.hpp:41`）处理边属性索引与 ORDER BY 的配合。
+
+### 25.3 CompactFilters：把成对比较折叠成 RangeOperator
+
+`CompactFilters`（`src/query/plan/rewrite/range.cpp:89`）是典型的谓词规范化。它先把 `AND` 连接的合取式拆成 `filters` 数组，再两两配对：
+
+```
+can_range(f):
+  归一化 PropertyComparisonType：识别 n.prop OP value 与 value OP n.prop 两种写法，
+  后者反转运算符（value > n.prop ≡ n.prop < value）
+  → {LESS | GREATER | UNKNOWN}
+
+Compatible(a, b):  a.type != b.type（一个上界一个下界）
+                   且 property 相同
+                   且 ident 的 symbol_pos 相同
+
+for i in 1..len(filters):
+    for j in 0..i-1:
+        if infos[i].Compatible(infos[j]):
+            用 RangeOperator 替换 filter[j] 与 filter[i]，两者置为 UNKNOWN 防止重复配对
+```
+
+关键收益在配对被折叠掉之后，剩下两个「半开区间」约束变成**一个可下推给索引的区间条件**，索引层不必逐条比较。源码 `src/query/plan/rewrite/range.cpp:128` 的注释就是 "Combine and switch to range"。
+
+复杂度：朴素两两配对 `O(n²)`，`n` 为单个 `AND` 的合取项数量；头部注释承认这是当前实现，并指出若引入编译期字面量常量，可以把多条约束进一步压成一个区间，甚至提前判定区间为空。
+
+### 25.4 平衡 Union：把 O(N) 深度压到 O(log N)
+
+当一个节点同时命中多个 label 时（`MATCH (n:A|B|C|…)`），索引改写会生成 N 个独立扫描。若朴素左深串接，算子树深度是 `O(N)`，N 很大时会压爆执行线程栈。`BalancedDisjunctionUnion`（`src/query/plan/rewrite/balanced_union.hpp:58`）改为折叠成平衡二叉 Union 树，并在顶部挂**单个** `Distinct` 去重。
+
+其注释（`src/query/plan/rewrite/balanced_union.hpp:31` 起「Preconditions」段）明确列出成立前提，也正是这些限定说明它不能推广到别处：
+
+1. 每个扫描产出同一个输出符号 `node_symbol`，故各层符号映射一致；
+2. 分支是纯集合并（`Union` 是拼接），故一次全局 `Distinct` 等价于逐层去重；
+3. `Union(A,B)` 与 `Union(B,A)` 代价相同，总基数恒为分支和，配对与嵌套方式可自由优化深度——**分支不必等代价**（一个 label 可能命中几个点，另一个命中数百万），按索引顺序而非代价配对。
+
+明确禁止复用于查询级 `UNION`（符号不同、`UNION ALL` 语义）与 `Cartesian`（左右顺序即代价决策）。
+
+单扫描时原样返回，不加 `Union` 也不加 `Distinct`。
+
+### 25.5 代价模型
+
+代价估算器是一次对计划树的访问（`src/query/plan/cost_estimator.hpp`），维护 `(cost_, cardinality_)` 两个累加量。核心递推式（`src/query/plan/cost_estimator.hpp:602`）：
+
+```
+IncrementCost(param):
+    cost_ += max(kMinimumCost, param × cardinality_) / num_threads_
+```
+
+即**代价 ∝ 到该算子时的中间结果行数**（这就是所谓「行数驱动代价」）。`kMinimumCost = 0.001` 给每个算子兜底，避免空表上的排序等操作被判为零代价。参数表在 `src/query/plan/cost_constants.hpp:18`：
+
+| 算子 | `CostParam` | 基数乘子 `CardParam` |
+|------|------------|----------------------|
+| `ScanAll` | 1.0 | — |
+| `ScanAllByLabel` 及各索引扫描 | 1.1 | — |
+| `Expand` | 2.0 | 3.0（若有统计则用真实平均度 `stats->degree`） |
+| `ExpandVariable` | 3.0 | 9.0 |
+| `Filter` | 1.5 | 0.25 |
+| `EdgeUniquenessFilter` | 1.5 | 0.95 |
+| `Unwind` | 1.3 | 无字面量时 10.0 |
+
+`Filter` 的 0.25 是假设选择率 25%；0.95 的边去重因子近似「随机图里已访问邻居占比很小」。二分支算子（`Union` / `RollUpApply` / `HashJoin`）直接把两支代价与基数**相加**，而不是相乘——因为两个分支是并行物化而非嵌套。
+
+排序代价单独处理（`src/query/plan/cost_estimator.hpp:608`）：
+
+```
+IncrementOrderByCost():
+    IncrementCost(kOrderBy × log2(max(kOrderByMinCardinality, cardinality_)))
+```
+
+`kOrderByMinCardinality = 2.0`（`src/query/plan/cost_constants.hpp:42`）是刻意设的下限，注释直言「防止排序在空表上看起来免费」——否则 `log2(1) = 0` 会让 `ORDER BY` 在代价上凭空消失。
+
+### 25.6 计划缓存
+
+缓存类型是两级（`src/query/cypher_query_interpreter.hpp:162`）：
+
+```
+PlanCache_t   = utils::LRUCache<frontend::HashedString, std::shared_ptr<PlanWrapper>>
+PlanCacheLRU  = utils::Synchronized<PlanCache_t, utils::RWSpinLock>
+```
+
+每个 `Database` 自带一个实例（`src/dbms/database.hpp:263`），容量由 `--query-plan_cache_max_size` 控制（默认 1000，`src/query/cypher_query_interpreter.cpp:42`）。
+
+`CypherQueryToPlan`（`src/query/cypher_query_interpreter.cpp:305`）的命中判据有**三道闸**，任一不过就整条作废并重规划：
+
+1. **模式开关**：启用实验性 `PLANNER_V2` 时**完全绕过缓存**，注释写明「计划可能随 v2 演进而变」；
+2. **索引就绪**：缓存计划记着它依赖的索引集合，用 `CheckIndicesAreReady` 复查；若此刻拿不到 accessor，则退化为「该计划不需要任何索引」才可复用（`src/query/cypher_query_interpreter.cpp:315`）；
+3. **模块代龄**：`IsFresh(ast_storage, module_generation, module_generation)`，确保用户加载的 UDF 模块版本没变（`src/query/cypher_query_interpreter.cpp:317`）。
+
+键是**去字面量化的查询文本**（`StrippedQuery`），所以 `WHERE age > 30` 与 `WHERE age > 40` 共享同一份计划。写入侧还要过 `is_cacheable_plan`；失效侧由 `PlanInvalidatorForDatabase`（`src/dbms/database.cpp:34`）在 schema 变更时按时间戳逐条 `invalidate`。
+
+## 二十六、索引结构内部实现：SkipList MVCC、usearch 向量检索与 RocksDB 落盘
+
+§八 列出了 Memgraph 提供哪些索引能力，本节下探到实现层：节点布局、MVCC 条目格式、索引快照切换、向量检索的第三方实现，以及落盘模式的键空间。
+
+### 26.1 SkipList：可变长节点与二项式层高
+
+Memgraph 自己手写了并发跳表 `utils::SkipList`（`src/utils/skip_list.hpp:650`），而非 B 树 / 红黑树。节点 `SkipListNode`（`src/utils/skip_list.hpp:164`）用了 **C 风格的柔性数组成员** `std::atomic<SkipListNode *> nexts[0]`——数组成员长度为 0 时不占空间，实际内存按 `sizeof(node) + height × 8` 一次性分配，布局注释画在 `src/utils/skip_list.hpp:147` 附近。
+
+层高分布用一个 O(1) 的二项分布技巧（`src/utils/skip_list.hpp:114`，即 `SkipListNode_base::gen_height`）：
+
+```
+gen_height():
+    value = thread_local_mt19937()()                 # 每线程一个 mt19937，避免锁
+    if value < 1 << (32 − kSkipListMaxHeight): return kSkipListMaxHeight
+    value >>= (32 − kSkipListMaxHeight)              # 保留高 32 位
+    return __builtin_ffs(value)                      # 找最低位 1 的位置 = 层高
+```
+
+`kSkipListMaxHeight = 32`（`src/utils/skip_list.hpp:62`）。源码注释指出用的是 ticki 那篇 "Skip Lists Done Right" 的 "O(1) level generation"，唯一区别是本实现正确处理了 0：`ffs(0)` 返回 0 是非法层高，所以要先做阈值判断再映射。特殊地，当随机数小于 `1 << (32−32) = 1`（即恰好取到 0）时直接顶格给最大层高。
+
+查找是标准的自顶向下：`find_node`（`src/utils/skip_list.hpp:1316`）从第 31 层降到第 0 层，同时填 `preds` / `succs` 两个长度 32 的数组。期望查找/插入复杂度均为 `O(log N)`；层高期望 `E[h] = 2`，故空间期望 `O(N)`。
+
+### 26.2 Label 索引的 MVCC：条目即版本
+
+索引条目不是裸 `Vertex *`，而是一个二元组（`src/storage/v2/inmemory/label_index.hpp:37`）：
+
+```
+struct Entry { Vertex *vertex; uint64_t timestamp; }   // 比较键 = (vertex, timestamp)
+```
+
+排序键是 `std::tie(vertex, timestamp)`（`src/storage/v2/inmemory/label_index.hpp:41`）。这意味着：**同一个顶点可以在跳表里同时存在多条记录，分别对应不同提交时刻的标签身份**，读事务按自己的可见性时点挑选 timestamp 不大于自己的那条。跳表实例本身是 `utils::SkipListDb<Entry>`（`src/storage/v2/inmemory/label_index.hpp:56`），并被包在 `shared_ptr<IndividualIndex>` 里——这样 schema 变更（drop / 重建索引）时可以把整个索引对象原子换出，而不影响正在跑的事务所持有的旧快照。
+
+每个 label 对应一个 `IndividualIndex`，全部装在 `std::map<LabelId, shared_ptr<IndividualIndex>>` 里。
+
+### 26.3 ActiveIndices：写时复制的索引快照
+
+所有索引被聚合成一个不可变的 `ActiveIndices` 快照（`src/storage/v2/indices/active_indices.hpp:45`），持有 12 个子索引快照指针：label / label-property / edge-type / edge-type-property / edge-property / vertex-property / text / text-edge / point / vector / vector-edge。
+
+构造时用 `DMG_ASSERT` 断言**没有任何一个为空**（`src/storage/v2/indices/active_indices.hpp:67`），杜绝了半初始化快照。替换单个字段用指针成员模板：
+
+```
+template <auto Member, class X>
+std::shared_ptr<ActiveIndices const> With(X x) const;   // src/storage/v2/indices/active_indices.hpp:78
+```
+
+注释说明这样设计的原因是把「字段与位置」的映射知识集中在一处，避开 10 参数构造函数的错位隐患。事务启动时取一次快照（`GetActiveIndices()`，`src/storage/v2/indices/vector_index.hpp:272`），之后整个事务看到的索引集合不变——这就是 DDL 与 DML 之间的隔离手段，比全局锁廉价得多。
+
+### 26.4 向量索引：底层是 usearch，不是 hnswlib
+
+Memgraph 3.x 的向量索引由第三方库 **usearch**（unum-cloud）承载，conan 锁定版本 2.21.4（`conan.lock:7`），通过 `find_package` 引入（`src/storage/v2/CMakeLists.txt:181`）。
+
+具体类型（`src/storage/v2/indices/vector_index_utils.hpp:47`）：
+
+```
+mg_vector_index_t = unum::usearch::index_dense_gt<
+    Vertex *,                      // key 直接就是顶点裸指针
+    unum::usearch::uint40_t,       // 内部槽位 key 占 40 bit
+    TrackedVectorAllocator<64>,    // 向量内存分配器（容量 64 的量化档）
+    TrackedVectorAllocator<8>>     // 标量分配器
+```
+
+外层再包一层 `synchronized_mg_vector_index_t`，加一把 `utils::ResourceLock`（`src/storage/v2/indices/vector_index_utils.hpp:50`），因为 usearch 本身不是全并发安全的。
+
+检索路径 `VectorIndex::SearchNodes`（`src/storage/v2/indices/vector_index.cpp:447`）持**读锁**后调用 `index.search(...)`，再把距离换算成相似度：
+
+```
+sim(d) = 1 − d                 对 ip / cos / pearson / hamming / tanimoto
+                                 / sorensen / jaccard            （内积类）
+sim(d) = 1 / (1 + d)           对 l2sq / haversine / divergence   （距离类）
+```
+
+换算函数 `SimilarityFromDistance`（`src/storage/v2/indices/vector_index_utils.hpp:270`）最终还会取 `abs` 并夹到 `(0,1)`。**这个区分很关键**：内积型度量下小 distance 表示「更相似」，所以用 `1−d`；而 L2 距离下 `d=0` 表示完全相同，`1−d` 会得到 1 但 `d` 大时会变负数，故必须用 `1/(1+d)` 这种单调有界的衰减。
+
+写入侧 `UpdateVectorIndex`（`src/storage/v2/indices/vector_index_utils.hpp:409`）的典型路径是「存在则先 remove 再 add」；容量按 `resize_coefficient` 倍增后 `try_reserve`（`src/storage/v2/indices/vector_index_utils.hpp:456`）——注意 `try_reserve` **失败也不抛异常**，只是维持原容量继续 add，说明扩容是尽力而为而非硬保证。
+
+索引规格 `VectorIndexSpec`（`src/storage/v2/indices/vector_index.hpp:121`）固化了：索引名、`label_filter`、`property`、`metric_kind`、`dimension`、`resize_coefficient`、`capacity`、`scalar_kind`。`scalar_kind` 支持 `b1x8 / u40 / uuid / bf16 / f64 / f32 / f16 / f8` 等多种量化档位，解析失败时抛 `VectorSearchException` 并在消息里列出全部支持项（`src/storage/v2/indices/vector_index_utils.hpp:259`）。
+
+### 26.5 ON_DISK_TRANSACTIONAL：RocksDB 列族与带时间戳的比较器
+
+落盘模式下不再有内存基表，`DiskStorage`（`src/storage/v2/disk/storage.hpp:39`）把 RocksDB 包在 `RocksDBStorage` 结构里（`src/storage/v2/disk/rocksdb_storage.hpp:34`）：
+
+```
+vertex_chandle       // 顶点
+edge_chandle         // 边
+out_edges_chandle    // 出边
+in_edges_chandle     // 入边
+default_chandle      // 默认族（元数据等）
+```
+
+注释坦承这个结构「从软件工程角度不理想，应更彻底地封装进 Storage 类」。它的作用也仅是持有 `rocksdb::Options` 与五个列族句柄。
+
+版本可见性不靠 delta 链，而靠**比较器把提交时间戳编进 key**——`ComparatorWithU64TsImpl`（`src/storage/v2/disk/rocksdb_storage.hpp:60`）继承 `rocksdb::Comparator`，按 `(user_key, ts)` 排序。同理，加载历史数据时用的 `DELETE_DESERIALIZED_OBJECT` delta 会自己造时间戳：时间戳取自 RocksDB key 中携带的值，由 `CreateDeleteDeserializedObjectDelta` 解析（`src/storage/v2/mvcc.hpp:254`），而不是取当前事务的时间。
+
+快照侧由 `CreateSnapshot`（`src/storage/v2/durability/snapshot.hpp:105`）与 `LoadSnapshot`（`src/storage/v2/durability/snapshot.hpp:83`）成对提供。
+
+## 二十七、参考资料
 
 1. Memgraph 官方文档 — `https://docs.memgraph.com/`。
 2. Memgraph 源码 — `https://github.com/memgraph/memgraph`。
