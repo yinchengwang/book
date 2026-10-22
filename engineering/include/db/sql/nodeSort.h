@@ -42,6 +42,8 @@ typedef struct Sort {
     int         *sortColIdx;         /**< 排序列索引数组 */
     Oid         *sortOperators;      /**< 排序操作符数组 */
     bool        *nullsFirst;         /**< NULL 值排序位置数组 */
+    bool        *sortDesc;           /**< 降序标志数组（执行器消费：true = 降序） */
+    Oid         *sortColTypes;       /**< 排序列类型数组（执行器消费：类型感知比较） */
 } Sort;
 
 /* ========================================================================
@@ -57,6 +59,8 @@ typedef struct SortState {
     PlanState    ps;                 /**< 做类：计划状态 */
     int          numCols;            /**< 排序列数 */
     int         *sortColIdx;         /**< 排序列索引 */
+    bool        *sortDesc;           /**< 降序标志数组 */
+    Oid         *sortColTypes;       /**< 排序列类型数组 */
     bool         sort_Done;          /**< 排序完成标志 */
     void        *tuplesortstate;     /**< 元组排序状态（框架版本：未使用） */
 } SortState;

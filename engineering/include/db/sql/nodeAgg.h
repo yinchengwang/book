@@ -40,6 +40,38 @@ typedef enum AggStrategy {
 } AggStrategy;
 
 /* ========================================================================
+ * 聚合函数种类与聚合表达式描述
+ * ======================================================================== */
+
+/**
+ * @brief 聚合函数种类
+ *
+ * 驱动层（sql_driver.c）把 SQL 里的聚合函数名映射到该枚举，
+ * 执行层（nodeAgg.c）据此选择累加子程序。
+ */
+typedef enum AggFuncKind {
+    AGG_FUNC_COUNT = 0, /**< COUNT(*)/COUNT(col) */
+    AGG_FUNC_SUM,       /**< SUM(col) */
+    AGG_FUNC_MIN,       /**< MIN(col) */
+    AGG_FUNC_MAX,       /**< MAX(col) */
+    AGG_FUNC_AVG        /**< AVG(col)（当前驱动层拒绝，无浮点类型） */
+} AggFuncKind;
+
+/**
+ * @brief 单个聚合表达式的描述
+ *
+ * 由驱动层在构建 Agg 计划节点时分配，挂在 Agg.aggrefs 链表上；
+ * 执行层遍历该链表逐项累加。
+ */
+typedef struct AggrefDef {
+    AggFuncKind fn;         /**< 聚合函数种类 */
+    int         arg_attno;  /**< 参数列号；COUNT(*) 为 -1 */
+    Oid         arg_type;   /**< 参数列类型 */
+    Oid         out_type;   /**< 输出列类型 */
+    char       *out_name;   /**< 输出列名（可为 NULL） */
+} AggrefDef;
+
+/* ========================================================================
  * Agg 计划节点
  * ======================================================================== */
 
@@ -55,7 +87,10 @@ typedef struct Agg {
     AggStrategy  aggstrategy;        /**< 聚合策略 */
     int          numCols;            /**< GROUP BY 列数 */
     int         *grpColIdx;          /**< GROUP BY 列索引数组 */
-    List        *aggrefs;            /**< 聚合表达式列表 */
+    Oid         *grpColTypes;        /**< GROUP BY 列类型数组 */
+    List        *aggrefs;            /**< 聚合表达式列表（元素为 AggrefDef*） */
+    int          out_natts;          /**< 输出列数 = GROUP BY 列数 + 聚合项数 */
+    struct TupleDescData *out_desc;  /**< 输出元组描述符（可为 NULL，由驱动填充） */
 } Agg;
 
 /* ========================================================================
@@ -72,9 +107,16 @@ typedef struct AggState {
     AggStrategy  aggstrategy;        /**< 聚合策略 */
     int          numCols;            /**< GROUP BY 列数 */
     int         *grpColIdx;          /**< GROUP BY 列索引 */
+    Oid         *grpColTypes;        /**< GROUP BY 列类型 */
+    List        *aggrefs;            /**< 聚合表达式列表（元素为 AggrefDef*） */
+    int          out_natts;          /**< 输出列数 */
+    struct TupleDescData *out_desc;  /**< 输出元组描述符 */
     TupleTableSlot *agg_slot;        /**< 聚合结果槽 */
     bool         agg_done;           /**< 聚合完成标志 */
     struct AggPerGroupData *pergroup; /**< 每组聚合状态 */
+    void        *hash_table;         /**< AGG_HASHED 的哈希表（内部类型 AggHashTable*） */
+    int          hash_ngroups;       /**< 已产生的分组数 / 输出游标 */
+    void        *plain_acc;          /**< AGG_PLAIN 的累加器（内部类型 AggPlainAccum*） */
 } AggState;
 
 /* ========================================================================

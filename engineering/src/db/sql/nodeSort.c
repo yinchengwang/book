@@ -164,10 +164,15 @@ static void **realloc_tuple_array(void **arr, int new_cap, MemoryContext ctx) {
 
 static TupleTableSlot *exec_sort_impl(PlanState *pstate) {
     SortState *node = (SortState *)pstate;
-    SortExtState *ext = (SortExtState *)node->ps.plan;  /* ext 借存 ps.plan */
+    SortExtState *ext;
     TupleTableSlot *slot;
 
-    if (node == NULL || ext == NULL) {
+    /* 必须先判 node 再取 node->ps.plan，否则 ExecSort(NULL) 会解引用空指针 */
+    if (node == NULL) {
+        return NULL;
+    }
+    ext = (SortExtState *)node->ps.plan;  /* ext 借存 ps.plan */
+    if (ext == NULL) {
         return NULL;
     }
 
