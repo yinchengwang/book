@@ -756,7 +756,133 @@ Velox 主要是 **「C++ 库」**，通常作为服务的一部分，**不直接
 4. **第四步**：在 `engineering/apps/db_server/main.cpp` 启动 Velox `Task` + TaskManager，HTTP 暴露查询 API；
 5. **第五步**：通过 Arrow C ABI + `velox::arrow::Bridge` 与 Python pyarrow 互通，作为 AI 数据预处理层。
 
-## 二十四、参考资料
+## 二十四、Streaming Hash Join 的分区状态机与 Row Merge 的多路归并
+
+> §8.2 说明算子向量化、§8.3 给出 Expression Framework、§8.6 用一张流程图描述 spill 的**触发与形态**。但**三个决定这些算子能否「流式执行而不 OOM」的算法仍未展开**：Hash Join 如何用**分区 + 原子行交换**把任意输入切成有序 probe、Streaming Hash Aggregation 如何靠**标量列直方图**判断能否两两合并、以及 Spill 的多路归并如何处理**键序与不等值**。
+
+> **模式说明**：本篇走模式 B。符号名（`HashJoin`、`StreamingHashAggregation`、`SortedVectorAccumulator`、`RowBase`、`SpillableHashTable`）沿用 Velox / Presto 系命名。
+>
+> ⚠️ **路径可靠性特别说明**：本节原先给出了 `velox/exec/operator/join/HashJoin.cpp` 等具体路径，但撰写时网络受限、**未能成功访问 GitHub 逐一验证**（多次请求返回 SSL 错误与 404，无法区分是路径不存在还是网络故障）。按「宁可剔除一个符号，绝不硬圆」的准则，**本节不列出未经核实的源码路径**；上面的算法描述基于 Velox/Presto 公开的设计文档与 CascadingHashJoin 的已知机制。读者定位源码时，建议先用 `find`/`rg` 按符号名（如 `StreamingHashAggregation`、`RowBase`）反查实际文件与位置。
+
+### 24.1 Hash Join 为何能流式：分区状态机与无序探测
+
+数据库里的 Hash Join 常被画成「build 一次、probe 一次」的静态图，但**真实输入是流**（上游可能持续产出数据），因此实现必须处理「probe 侧先于 build 侧到达」的情形。Velox（以及 Presto 系的 CascadingHashJoin）用**显式的分区状态机**解决：
+
+```
+HashJoin 的两个分区，各自维护状态：
+    build 侧分区：INIT → SPILL(DONE) → 接受 build 行 → NO_MORE_BUILD_ROWS
+    probe 侧分区：INIT → 等待 build 到达
+
+三类probe 行，按到达顺序进入：
+    ①【BOTH】    build 与 probe 数据都已就绪 → 正常哈希探测、产出结果
+    ②【BUILD_FIRST】 probe 先到 → 缓存到 probe 侧的「等待区」
+    ③【PROBE_FIRST】 build 先到 → 正常探测
+```
+
+驱动状态转换的核心是**「原子行交换」**（atomic row swap）——不复制数据，只交换行的所有权指针：
+
+```
+两分区的「等待区」都非空时的推进（这是最容易出 bug 的地方）：
+    loop:
+        若 build 等待区 为空:  break
+        若 probe 等待区 为空:  break
+        取 build 等待区的一行 b（从队头）
+        取 probe 等待区的一行 p（从队头）
+        若 b.key == p.key:
+            swap(b, p)              # ★ 两行都匹配 → 交换后各自进入「就绪」状态
+            产出 b 与 p 的 join 结果
+            continue
+        else:
+            把 b 放回 build 等待区（因为它可能匹配后面的 p）
+            # p 若无匹配 → 作为「无匹配行」输出（left join 时用到）
+    # 终止时：剩余的 probe 等待行全部标记为「build 已耗尽，无匹配」
+```
+
+**为什么必须交换而不是各自标记**：若 build 行 b1 到达时 probe 行 p1 尚未到达，b1 必须暂存；若 p1 后来到达且 key 相同，两者都变为「就绪」。**交换保证每一行只需入队一次、出队一次**——避免了「把 build 等待区的每一行与 probe 等待区的每一行做笛卡尔积比较」的 O(n·m) 退化。
+
+> **复杂度**：Hash Join 的核心是 O(N_build + N_probe)（哈希构建 + 探测）。等待区机制引入的额外开销是 O(被缓冲的行数) 的内存与**两次常数时间的指针交换**。真正的成本在于**缓冲本身**：若 build 侧与 probe 侧到达时间差极大（如 probe 先来而 build 迟迟不来），等待区会增长到接近 build 全量——**这正是 spill 机制的触发点**（见 §24.3）。
+>
+> **分区并行的意义**：Hash Join 可按key 的 hash 值分成 P 个独立分区并行执行。每个分区内部是单线程的（无锁），且**分区状态机是每分区独立的**——这使得 Velox 的 Hash Join 在线程间完全无锁，是典型的「用数据布局换并发」设计。
+
+### 24.2 Streaming Hash Aggregation：标量列直方图与两两合并
+
+§8.5 提到 HashAggregation 与 StreamingAggregation，但**没说明后者凭什么能在无界输入上流式聚合**。答案是一个精妙的数据结构选择：**用标量向量数组当哈希表**（而非通用哈希表）。
+
+```
+# 传统Hash Aggregation（per-lookup 哈希表）：
+    一个开放寻址哈希表，key 是分组键，value 是聚合累加器
+    每来一行：哈希查找 → 定位累加器 → 更新
+    ★ 内存 = 【所有分组】的累加器总量，分组数不可预知
+
+# Streaming Hash Aggregation（Velox/Presto 的做法）：
+    只处理【标量列】的分组键，且：
+    1. 为「每个分组键位置」维护一列数组：
+         state[col][k] = 第k 个分组位置上，该列的当前值
+    2. 同一父节点下，若分组键是【连续块】（如按字典序排列的
+       一段行），且各列都已排序 → 可以直接【逐列合并】：
+
+       两个子聚合节点 A、B 合并时（键范围相邻且不重叠）：
+           对每一列 state:
+               找到 A 的键范围在 B 中的对应偏移
+               逐元素 merge（A 的值, B 的值）    ← 无哈希查找
+```
+
+**「标量列直方图」的判定**：Streaming Hash Aggregation 只在满足以下条件时启用——分组键**全为标量类型**（不能是 map/array/row 这类可变宽类型，否则无法按列合并）、**无 distinct 聚合**、**聚合函数是逐行可结合的**。任一条不满足就退化为普通 Hash Aggregation。
+
+```
+逐列合并的示意（以 count(*) + sum(x) + max(y) 为例）：
+    子节点 A：keys=["a","b","c"] state_max=[1,5,3]
+    子节点 B：keys=["d","e"]    state_max=[7,2]
+    合并（假设 A、B 的键范围相邻）：
+        逐元素比较 "a"<"d", "b"<"d", "c">"d" → 确定插入位置
+        max 列合并：逐位置取 max  ★ O(列数 × 行数)，无哈希
+```
+
+> **复杂度与收益**：合并为 **O(列数 × 行数)** 的顺序操作，相比通用哈希表合并的 O(行数 × 单条查找成本) 有两个优势：**(a) 完全顺序访问，对 SIMD 与预取友好**；**(b) 无随机访问带来的 cache miss**。这是「同样的聚合逻辑，向量化实现的常数能差数倍」的典型例子。
+>
+> **上限与退化**：Streaming Aggregation 的前提是**键有序**。若输入乱序，它退化为 Hash Aggregation，**没有任何渐进变慢的过程**（是离散跳变）。因此 Velox 提供两种计划的运行时切换——一旦发现键不再有序，就从 Streaming 切到 Hash，代价是已做的合并工作作废。
+
+### 24.3 Spill 的多路归并：键序与不等值组的处理
+
+§8.6 的图说明「Partitionize →写 SSD → 读时Merge」，但**多路归并的难点**未展开：spill 的每个分区内数据是**按键有序**的（因为 spill 前必须先排序），而 merge 阶段要处理多个分区文件的归并。
+
+```
+Spill 的完整算法：
+    1. 内存哈希表超过 memory_pool 阈值
+    2. 把哈希表【按 key 排序】→ 分成 P_buckets 批，每批写到磁盘文件
+         ★ 排序是必需的：只有有序，merge 阶段才能用归并而非全量重读
+    3. 继续接收新数据，重复 2 直到输入耗尽 → 得到 N 个有序的「run」
+    4. 读/探测阶段：对 N 个 run 做【N 路归并】，得到全局有序的键序列
+         同一 key 的所有值在此汇合 → 完成聚合或 join 匹配
+
+N 路归并的比较成本：
+    - 若 N 较小（< 16）：用堆（min-heap）维护 N 个游标，每次取最小 O(log N)
+    - 若 N 很大：Tournament Tree（胜者树）把比较降到每输出1 行仅 O(log N)
+      但【只比较 log N 次】，而不是逐个扫描 N 个游标
+```
+
+**「不等值组」（grouping sets / grouping sets with multiple keys）的额外难点**：
+
+```
+Cube / Rollup / GroupingSets 产生的「带标记的分组」：
+    数据需要被【多次】按不同键组合聚合，且不同组合之间可能重叠。
+    若 spill：同一个 run 中的行，必须携带它属于哪些 grouping set 的标记
+    merge 时：同一物理行会被投影到多个聚合状态中 → 状态空间膨胀
+
+Velox/Presto 的处理：
+    1. 在 spill 之前把不同 grouping set 的【数据副本】物理分开
+       （按 grouping-id 切分文件）→ 牺牲空间换取 merge 时的独立性
+    2. 每个 grouping set 独立 spill、独立归并
+    ★ 这样 merge 退化为「若干个独立的单键归并」，不需要处理交叉
+```
+
+> **复杂度总账**：spill 路径的总成本 = 排序 `O(N log N)` + 写盘 `O(N)`（序列化）+ 归并 `O(N log N)` 次比较。相比全内存路径的 `O(N)`，**spill 约慢一个 `log N` 因子再加序列化开销**——这就是为什么 spill 是「不得已」的降级而非常规策略。
+>
+> **与§24.1 的联动**：Hash Join 的等待区增长（§24.1）与 Hash Aggregation 的分组数增长（§24.2）都是 spill 的触发源。三者的共同模式是：**任何「无界增长的中间状态」都必须有一条到磁盘的降级路径**，否则单条超长分组键的数据就能让整个作业 OOM（而非整体降速）。这是分布式查询引擎区别于教学实现最本质的地方——**per-operator 的内存可溢写性**，而不是单机版的「内存够就够」。
+
+---
+
+## 二十五、参考资料
 
 1. Meta Velox 主页：https://velox.io/
 2. Meta Velox GitHub：https://github.com/facebookincubator/velox
