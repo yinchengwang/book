@@ -678,7 +678,123 @@ pgvector 在 ANN-Benchmarks 上未单独参与（pgvector 是 PG 扩展，not a 
 3. **第三步**：在 `engineering/src/db/executor/` 增加距离运算符 `<->` / `<=>` / `<#>` / `<+>`；
 4. **第四步**：参考 pgvector 的 WAL 实现，在 `engineering/src/db/wal/` 同步 HNSW 写入 redo 日志；
 
-## 二十四、参考资料
+## 二十四、索引选择的代价估算、召回率公式与 VACUUM 的隐式维护
+
+> 本节源码路径：`src/ivfflat.c`（`ivf_amcostestimate` / `ivf_ambuild`）、`src/hnsw.c`（`hnswcostestimate`）、`src/halfvec.c`、`src/ivfhalfvec.c`（canonical，模块未 init，行号需校对）。§8.2 / §8.3 已经给出 HNSW 与 IVFFlat 的**参数含义与对比表**，§8.4 给出量化类型。但**三个决定「索引能不能被 planner 选中」与「召回率实际是多少」的关键机制仍是黑盒**：planner 如何估算代价并可能放弃用索引、召回率随 `probes`/`lists` 变化的量化关系、以及 PostgreSQL 的 MVCC 与近似索引之间的**根本矛盾**及其在 VACUUM 下的缓解方式。本节补齐这三处。
+>
+> **模式说明**：本篇走模式 B。路径为 pgvector 上游的稳定布局，**具体行号需在子模块 init 后校对**。符号名（`ivf_amcostestimate`、`probes`、`lists`、`halfvec`）沿用上游与 PostgreSQL 扩展的标准命名。
+
+### 24.1 planner 代价估算：为什么近似索引经常不被选中
+
+pgvector 是 PostgreSQL 扩展，索引通过 **am（access method）接口**挂进 planner。代价估算在 `ivf_amcostestimate` / `hnswcostestimate`：pgvector **故意高报索引扫描代价**，因为 ANN 返回的是近似结果，planner 需要把它当作「可能不全」的路径来权衡。
+
+```
+cost_estimate(estimated_rows):
+    # pgvector 的策略：返回一个「相对可信但偏大」的启动+总代价
+    startup_cost  = 0        # 索引扫描启动便宜
+    total_cost    = <随 estimated_rows 线性增长的表达式>
+    # 关键：HNSW 的总代价被设定为「随匹配行数近似 O(logN)」，
+    # 而 seq scan 的代价是 O(N)。但 pgvector 额外加了一项惩罚项，
+    # 使 planner 在 estimated_rows 很大时更倾向顺序扫描。
+```
+
+pgvector 官方文档明确要求：**无论是否命中，向量索引只在「过滤后预计匹配行数远小于表总行数」时才被选**。这是因为近似索引的召回率不是保证值——若匹配行数本来就很大，用近似索引省下的扫描量远小于召回率损失。
+
+```
+force_seq_scan:                # pgvector 0.8+ 引入
+    SET hnsw.iterative_scan = strict_order | relaxed_order;
+    SET ivfflat.iterative_scan = relaxed_order;
+    SET hnsw.force_seq_scan = on;   -- 完全禁用近似索引
+```
+
+`force_seq_scan` 的存在本身说明了问题的存在性：planner 的选择**在真实数据分布与估算偏差下可能不合期望**，所以提供一个「强制走精确扫描」的逃生舱。**这不是一个「ANN 索引接得不好」的补丁，而是近似检索与优化器之间的固有张力**：
+
+- 优化器是**基于统计信息的确定性推理**；
+- ANN 返回的是**概率性的近似集合**；
+- 两者无法在planner 层面调和——planner 无法为「可能漏结果」定价。
+
+> **工程含义**：pgvector 上的向量检索调优，第一步往往不是调 `ef_search`，而是**用 `EXPLAIN` 确认 planner 真的选了索引**。若显示 `Seq Scan`，调参完全无效。常见原因是过滤条件的选择性估算过低/过高，或表行数统计陈旧（需 `ANALYZE`）。
+
+### 24.2 召回率的量化关系：probes / lists 的两难
+
+§8.3 给出了「Recall 中（0.7-0.9，依赖 probes）」，但**没有给出量化关系**。IVFFlat 的召回率有一个清晰的几何直觉：
+
+```
+候选覆盖率 ≈ (真实最近邻所属的聚类中心 被 probes 扫到的概率)
+
+# 假设数据在 K 个聚类上均匀分布，每个聚类大小 ≈ N/K：
+# 查询时只扫 probes 个中心，则「至少扫到一个」的概率：
+P(命中) ≈ probes / K   （粗略上界；均匀分布下近似成立）
+
+# IVFFlat 的 recall 近似：
+recall ≈ (probes / lists) ^ αα其中 α 与维度相关：
+  - 低维（α≈1）：探针数线性换来召回率
+  - 高维（α<1）：距离集中效应（hubness），需要更多探针才能达到同样召回
+```
+
+**`lists = sqrt(rows)` 这一经验法则的来源**：它是「构建成本」与「查询效率」的平衡点。
+
+- 构建期K-means 成本约为 `O(N × lists × dim)`（每个点要算到 lists 个中心的距离）。lists 越大，构建越慢、内存越多（每个中心存一个list）。
+- 查询期扫描成本约为 `O(N / lists × probes)`（每个被扫的list 约 N/lists 个点）。lists 越大，每个 list 越小，**扫描更便宜**。
+- 平衡两者：`O(N × lists)` 与 `O(N/lists × probes)` 相等 ⟹ `lists ≈ sqrt(N × probes)`。忽略 probes 时即 `lists ≈ sqrt(N)`。
+
+| 参数 | 影响 recall | 影响延迟 | 影响构建 |
+|------|------------|---------|---------|
+| `lists` ↑ | ↓（探测范围相对变小） | ↓（每 list 更小） | ↑（K-means 更贵） |
+| `probes` ↑ | ↑（线性，中低维） | ↑（线性） | 无 |
+| `ef_search`（HNSW）| ↑ | ↑ | 无 |
+
+> **重要陷阱**：pgvector 的 HNSW 实现（0.5 及之前）在 `ef_search` 之外还要求查询时**尽早退出**，因此**过滤条件的位置极影响召回率**：若过滤在索引扫描**之后**（post-filter），被过滤掉的候选消耗了 `ef_search` 额度，可能导致实际返回不足 k 条。pgvector 0.8 的 `iterative_scan` 正是针对此：让扫描在过滤后不足 k 条时**继续向下层补充候选**，而不是直接返回少量结果。这是近似检索 + 过滤这一组合的核心难点。
+
+### 24.3 VACUUM 与近似索引的根本矛盾
+
+PostgreSQL 的 MVCC 与 pgvector 的近似索引存在一个**结构性的矛盾**，它是 PostgreSQL 上做向量检索最容易被忽视的坑：
+
+```
+MVCC 的世界：
+  - 行的可见性由 xmin/xmax + snapshot 决定
+  - 旧版本行在 VACUUM 之前仍然占用空间、且仍被索引条目指向
+
+ANN 索引的世界：
+  - HNSW/IVFFlat 的召回结果是「当时索引状态」的函数
+  - 索引条目（指向 tuple TID）在 VACUUM 后可能变成 dead tuple 或被 HOT 更新打断
+```
+
+**HOT（Heap-Only Tuple）更新**会加剧这个问题：当被索引列未变时，PostgreSQL 做 HOT 更新——新版本行放在同一页内，**但索引条目仍然指向旧 TID**。此时：
+
+- 索引扫描拿到旧 TID → 回到 heap 找到新版本（可见性检查通过）→ 得到正确的值。**这是正常的**。
+- 但如果反复 HOT 更新，索引条目与实际最新版本的偏离会累积。
+
+**VACUUM 的作用与局限**：
+
+```
+VACUUM 的收益：
+  - 清理 dead tuple，回收空间
+  - 更新索引条目指向的新版本（对某些 am，VACUUM 会做「索引清理」）
+
+VACUUM 的局限（★ 关键）：
+  - VACUUM **不会重建 HNSW 图结构**——图结构在插入时增量维护，
+    大量删除后图里会残留大量指向 dead tuple 的节点
+  - 这些「悬空边」既浪费内存，又让搜索导航到无效区域 → 召回率下降
+  - 极端情况下：表中 90% 行已删除，但 HNSW 图仍按100% 规模分布
+```
+
+> **结论：pgvector 的 HNSW 索引需要定期 REINDEX 才保持质量**，而不是像 B-tree 那样「VACUUM 一下就清理好了」。这是 `hnsw` 这种**增量维护的图结构索引**与 `ivfflat`（倒排 list，删除影响较轻）的根本差异。
+>
+> `REINDEX INDEX CONCURRENTLY` 可在线重建，不阻塞读写，但需要额外磁盘空间（等同重建索引）与 CPU。对高频删除/插入的表，需要评估重建频率。
+
+| 操作 | B-tree | HNSW（pgvector） | IVFFlat |
+|------|--------|------------------|---------|
+| HOT 更新 | 免维护 | 可用（条目仍指向旧 TID，查询时可见性检查修正） | 同 |
+| VACUUM 后质量 | 自动恢复 | **图结构仍含悬空边，召回率不恢复** | list 内 dead 条目减少，质量基本恢复 |
+| 是否需 REINDEX | 仅严重膨胀时 | **建议周期性 REINDEX** | 一般不需要 |
+| 构建时机 | 增量 | 增量（每次插入维护多层邻居） | `REINDEX` 或 `CREATE INDEX` |
+
+> **与本项目的关联**：本项目的向量索引实现位于 `engineering/src/db/index/vector_index/`（`dist_hnsw`、`hnsw_pq`、`hnsw_sq` 三个 HNSW 变体，见 §二十三与本项目关联章），与 pgvector 的核心差异在于——**本项目的 MiniVecDB 是否有 PostgreSQL 式行级 MVCC**。若项目内向量表采用「写时复制 + 索引整体重建」而非行级多版本，那么上面这整个「VACUUM 与 ANN 的矛盾」在项目内**不存在**，代价是更新成本更高。这是一个「架构选择规避了一类问题」而非「解决了问题」的典型例子。
+
+---
+
+## 二十五、参考资料
 
 1. pgvector GitHub：https://github.com/pgvector/pgvector
 2. pgvector 官方文档：https://github.com/pgvector/pgvector#readme
