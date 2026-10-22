@@ -541,7 +541,190 @@ data_dir/
   - Tiered Storage：依赖对象存储，本项目当前无对象存储后端；
 - **流式 ETL 集成**：本项目无内置流接入能力；如需对接 Kafka，可参考 `engineering/apps/` 未来扩展。
 
-## 二十四、参考资料
+## 二十四、偏移量的四元组与高水位推进算法
+
+> 本节源码路径：`storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java`、`storage/src/main/java/org/apache/kafka/storage/internals/log/LogOffsetMetadata.java`。§8.1 用一句话给出了「Append-only + Segment」的概念，§8.3 讲了 ISR 与 acks 的语义，但**都没有落到「一个分区在磁盘上究竟同时维护哪几个进度指针、它们按什么规则联动」这一层**。本节补齐四个偏移量指针的精确语义、高水位推进的单调性判据与 segment 滚动时的特例处理。
+
+### 24.1 四个偏移量指针与它们的单调约束
+
+一个 Kafka partition 的运行状态由四个偏移量刻画，**它们不是同一个数**，混淆这四个值是读 Kafka 源码与排障时最常见的错误：
+
+| 指针 | 含义 | 访问器 | 谁推进 |
+|------|------|--------|--------|
+| LEO（Log End Offset） | 已**写入**的最大 offset + 1（下一条要写的位置） | `UnifiedLog.logEndOffset()`（`storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:2122`） | Producer 追加写入 |
+| LSO（Last Stable Offset） | **HW − 首个未完成事务的起始 offset**；无事务时等于 HW | `UnifiedLog.fetchLastStableOffsetMetadata()` | 由 HW 与 First Unstable Offset 推导 |
+| HW（High Watermark） | **已提交给消费者**的最大 offset；消费者只能看到 `< HW` | `UnifiedLog.highWatermark()`（`storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:506`） | Follower fetch 完成 → Leader 推进 |
+| LSO on log start | 最早仍**保留在本地磁盘**、未被清理的 offset | `UnifiedLog.logStartOffset()`（`storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:392`） | Retention / DeleteRecords |
+
+必须成立的不变式（invariants）：
+
+```
+logStartOffset ≤ (firstUnstableOffset ∨ HW) ≤ logEndOffset
+read_committed 消费者可见范围 = [logStartOffset, LSO)
+read_uncommitted 消费者可见范围 = [logStartOffset, HW)
+```
+
+`logStartOffset` 与 `logEndOffset` 在 `UnifiedLog` 里都声明为 `volatile`（`storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:162` 即 `private volatile long logStartOffset;`），因为它们要被无锁读取；而 `highWatermark` 走的是 `highWatermarkMetadata` 对象引用（`storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:506` 处直接返回 `highWatermarkMetadata.messageOffset`），**读的是引用而非裸 long**，因此读取者天然看到一致的 HW 与它所携带的 segment 元数据。
+
+> 关键区别：LEO 可以**领先** HW（写入已落盘但尚未被 follower 确认复制），这个差值就是未被复制的数据量；而 HW **绝不能**领先 LEO，否则消费者会读到不存在的数据 —— 源码用一行显式断言守住这条边界，见下节。
+
+### 24.2 HW 推进的两阶段校验：先夹逼，再单调
+
+HW 推进由 follower 的 fetch 响应驱动。`UnifiedLog.maybeIncrementHighWatermark` 是唯一的推荐入口（`storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:563`）。它的判定分两层：
+
+**第一层：上界夹逼（拒绝越过 LEO）**。函数第一件事就是检查新 HW 是否超出当前 LEO，超出直接抛 `IllegalArgumentException`（`storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:564`）：
+
+```
+maybeIncrementHighWatermark(newHighWatermark):
+    # ① 上界：绝不允许 HW 越过 LEO，否则消费者会读到尚未写入的 offset
+    if newHighWatermark.messageOffset > logEndOffset():
+        throw IllegalArgumentException(...)                    # storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:564-566
+
+    synchronized (lock):                                       # storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:569
+        old = fetchHighWatermarkMetadata()
+        # ② 推进判据：单调递增 OR「offset 相同但 segment 更老」
+        if old.messageOffset < new.messageOffset
+           or (old.messageOffset == new.messageOffset
+               and old.onOlderSegment(new)):                    # storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:572-574
+            updateHighWatermarkMetadata(new)
+            return Optional.of(old)                            # 返回旧值，供上层做 Listener 通知
+        else:
+            return Optional.empty()                            # 不推进，返回空
+```
+
+**判据 (b) 是本节最容易被漏掉的一处设计**：`old.messageOffset == new.messageOffset && old.onOlderSegment(new)` 表示「**offset 没变，但新元数据来自更老的 segment**」。`LogOffsetMetadata.onOlderSegment`（`storage/src/main/java/org/apache/kafka/storage/internals/log/LogOffsetMetadata.java:50`）比较的是 segment 的基名。这解决了一个真实故障：日志滚动（roll）到新 segment 后，若某个 follower 用一个「offset 与当前 HW 相同、但 segment 编号更小」的旧元数据上报HW，若只做 `old < new` 的严格比较，这个请求会被丢弃，而**Leader 缓存的 HW 元数据就永久停留在已删除的旧 segment 上**，后续基于该元数据做 `maybeConvertToOffsetMetadata` 的路径会失败。源码注释明确写了这个意图："We also update the high watermark when the new offset metadata is on a newer segment, which occurs whenever the log is rolled to a new segment."（`storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:570`）
+
+**第二层：单调性只告警、不拒绝**。真正落地的 `updateHighWatermarkMetadata`（`storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:621`）对倒退**只打 WARN 而不抛错**：
+
+```
+updateHighWatermarkMetadata(newHighWatermark):
+    if newHighWatermark.messageOffset < 0:
+        throw IllegalArgumentException("High watermark offset should be non-negative")   # storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:622-624
+    synchronized (lock):
+        if newHighWatermark.messageOffset < highWatermarkMetadata.messageOffset:
+            logger.warn("Non-monotonic update of high watermark from {} to {}", ...)    # storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:627-629
+        highWatermarkMetadata = newHighWatermark            # ← 仍然赋值（允许倒退）
+        producerStateManager.onHighWatermarkUpdated(newHighWatermark.messageOffset)      # storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:631
+        logOffsetsListener.onHighWatermarkUpdated(newHighWatermark.messageOffset)         # storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:632
+        maybeIncrementFirstUnstableOffset()                  # storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:633 联动 LSO
+```
+
+这里的设计取舍值得注意：**倒退被记录但不阻断**。原因是 HW 更新可能来自多个并发路径（如 KRaft 迁移期的 `updateHighWatermarkWithLogEndOffset`，见 `storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:798`），把倒退当成硬错误会让一次异常上报导致整个副本不可用；而倒退本身不会破坏正确性——因为消费者推进 cursor 用的是各自的 acked offset，且 leader 切换时会以新副本的实际 LEO 重建 HW。
+
+`UnifiedLog.updateHighWatermark(long)`（`storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:531`）是无元数据快捷入口，内部直接包装成 `LogOffsetMetadata` 再调上面的方法；而带元数据的重载（`storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:542`）会先把传入值夹逼到 `[logStartOffset, logEndOffset]` 区间再提交。**这就是为什么 app 层会看到 HW「停在某个值不动」**：每一步夹逼都可能把它拉回边界内。
+
+### 24.3 HW → LSO 的联动：活跃事务如何阻塞可见性
+
+LSO 不是独立维护的，而是由 HW 与「首个未完成事务的起始 offset（First Unstable Offset）」共同推导：`LSO = min(HW, FirstUnstableOffset)`。`updateHighWatermarkMetadata` 的最后一步固定调用 `maybeIncrementFirstUnstableOffset()`（`storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:633`），确保两者永远同步。
+
+`firstUnstableOffset` 与 HW 的组合语义：
+
+| 场景 | First Unstable | LSO | `read_committed` 消费者可见 |
+|------|---------------|-----|---------------------------|
+| 无活跃事务 | 不存在（`Optional.empty`） | = HW | `[logStart, HW)`，与 read_uncommitted 一致 |
+| 有一个进行中的长事务，起点 T | `T` | `min(HW, T)` | 截断到 `T`，该事务数据不可见 |
+| 长事务已提交/中止 | 消失 | 抬升到 HW | 一次性放出全部数据 |
+
+`fetchLastStableOffsetMetadata`（`storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java:651` 附近）在读取时做了一次**双重拷贝**以避免竞态：先取 `highWatermarkMetadata` 快照，再取 `firstUnstableOffsetMetadata` 的快照，然后才做区间比较（源码注释："cache the current high watermark and the first unstable offset metadata to avoid a concurrent update invalidating the range check breaking the isPresent check"）。若不这样拷贝，`firstUnstableOffsetMetadata` 可能在 `isPresent()` 与 `.get()` 之间被置空，导致 `Optional.get()` 抛 `NoSuchElementException` —— 这是并发编程里典型的 check-then-act 缺陷。
+
+> **工程含义**：一个 producer 开启事务后若迟迟不提交，`read_committed` 消费者的 LSO 会**冻结**在事务起点，整条 partition 对该模式消费者表现为「不再前进」。此时排查往往误以为是消费者问题，实际是生产者的事务未结束。这也解释了为什么 `max.transaction.timeout.ms` 存在：它是这个冻结窗口的兜底上界。
+
+> 复杂度：HW/LSO 推进是**每 fetch 响应一次**的O(1) 操作（仅比较 + 赋值 + 两次回调通知），与分区数据量无关。唯一值得注意的是它持有 partition 级`lock`，因此在大量并发 fetch 的分区上会形成轻微争用；`producerStateManager.onHighWatermarkUpdated` 会在锁内同步清理过期的事务状态，是锁持有时间的主要贡献者。
+
+---
+
+## 二十五、索引查找：warm 区优化与 LARGEST_LOWER_BOUND 二分
+
+> 本节源码路径：`storage/src/main/java/org/apache/kafka/storage/internals/log/OffsetIndex.java`、`storage/src/main/java/org/apache/kafka/storage/internals/log/AbstractIndex.java`。§8.1 说索引是「稀疏 offset → file position，用于二分查找」，但**没有说明二分查找的判据方向、边界返回语义，以及 Kafka 为热点尾部做的 warm 区优化**。本节补齐这三处，其中 warm 区优化是 Kafka 相对教科书式二分查找的主要工程改进。
+
+### 25.1 两类查询与判据方向相反
+
+`OffsetIndex`对外暴露两个方向相反的查询：
+
+| API | 语义 | 查找方向 | 源码位置 |
+|-----|------|---------|---------|
+| `lookup(targetOffset)` | 找到**≤ target 的最大 offset**对应的文件位置 | largest lower bound | `storage/src/main/java/org/apache/kafka/storage/internals/log/OffsetIndex.java:97` |
+| `fetchUpperBoundOffset(fetchOffset, fetchSize)` | 找到**≥ 终点**的最小 offset | smallest upper bound | `storage/src/main/java/org/apache/kafka/storage/internals/log/OffsetIndex.java:127` |
+
+`lookup` 的实现极简，因为真正的算法在基类：
+
+```
+lookup(targetOffset):# storage/src/main/java/org/apache/kafka/storage/internals/log/OffsetIndex.java:97
+    return inRemapReadLock():                    # 读锁：允许 mmap 重映射与查询并发
+        idx = mmap().duplicate()                 # duplicate() 而非直接用 mmap()：共享内存但独立 position
+        slot = largestLowerBoundSlotFor(idx, targetOffset, searchEntity=KEY)
+        if slot == -1:
+            return OffsetPosition(baseOffset(), 0)   # 早于第一条索引项 → 从段首开始
+        else:
+            return parseEntry(idx, slot)
+```
+
+两处细节：
+
+- **`slot == -1` 映射为「段首」而非报错**（`storage/src/main/java/org/apache/kafka/storage/internals/log/OffsetIndex.java:100`）。语义是「目标 offset 比索引里任何一条都早，那就从头扫」——这让调用方无需特殊处理边界。
+- **`inRemapReadLock` + `duplicate()`**：`AbstractIndex` 的索引文件是 mmap 映射，且存在「文件增长后重映射」的操作（append 时可能 `remap`）。用读锁 + `duplicate()` 视图，使查询期间的 `ByteBuffer` 位置推进互不干扰，同时允许底层重映射发生。这是 Java NIO 下 mmap 区间并发读写的标准处理方式。
+
+### 25.2 `indexSlotRangeFor`：先判热点尾部，再二分
+
+`largestLowerBoundSlotFor` 只是转发，真正逻辑在 `AbstractIndex.indexSlotRangeFor`（`storage/src/main/java/org/apache/kafka/storage/internals/log/AbstractIndex.java:495`）。它把查找区间分成两段：
+
+```
+indexSlotRangeFor(idx, target, searchEntity, searchResultType):
+    if entries == 0: return -1                                    # storage/src/main/java/org/apache/kafka/storage/internals/log/AbstractIndex.java:497-498
+
+    firstHotEntry = max(0, entries - 1 - warmEntries())            # storage/src/main/java/org/apache/kafka/storage/internals/log/AbstractIndex.java:501
+
+    # ① 热点判定：target 是否已越过「冷热分界」，落在最后若干项之内？
+    if compareIndexEntry(parseEntry(idx, firstHotEntry), target, searchEntity) < 0:
+        return binarySearch(idx, target, searchEntity, searchResultType,
+                            firstHotEntry, entries - 1)            # storage/src/main/java/org/apache/kafka/storage/internals/log/AbstractIndex.java:502-504
+
+    # ② 早于最小项：按查询类型返回不同边界
+    if compareIndexEntry(parseEntry(idx, 0), target, searchEntity) > 0:
+        return LARGEST_LOWER_BOUND ? -1 : 0                        # storage/src/main/java/org/apache/kafka/storage/internals/log/AbstractIndex.java:508-512
+
+    # ③ 常规：只在前半段（冷区）二分
+    return binarySearch(idx, target, searchEntity, searchResultType, 0, firstHotEntry)
+```
+
+`warmEntries()`（`storage/src/main/java/org/apache/kafka/storage/internals/log/AbstractIndex.java:387`）返回 `warmEntries` 字段，默认值为 3（可由 `index.interval.bytes` 与写热度的配置间接影响）。**为什么值得单独做这个分支**：Kafka 的写入是**尾部热点**——绝大多数 fetch 请求都在追最新 offset，即落在索引的最后几项里。若每次都做全区间二分，热点查询也要 `log2(entries)` 次 mmap 解码；先做一次边界比较直接锁定末段，在 `entries` 很大时把热点查询从 O(log N) 降到更小的常数区间。代价是热点段内的二分仍需在 `[firstHotEntry, entries-1]` 上进行 —— 所以收益来自**区间收窄**而非消除二分。
+
+### 25.3 `binarySearch` 的判据方向与 LARGEST_LOWER_BOUND 的返回语义
+
+二分本体在 `AbstractIndex.binarySearch`（`storage/src/main/java/org/apache/kafka/storage/internals/log/AbstractIndex.java:519`），两个细节决定正确性：
+
+**其一，取中点用右偏写法**：`int mid = (lo + hi + 1) >>> 1`（`storage/src/main/java/org/apache/kafka/storage/internals/log/AbstractIndex.java:525`）。`+1` 后右移是向上取中点而非向下，配合 `hi = mid - 1` / `lo = mid` 的收缩，保证区间每轮严格减小；若用 `(lo + hi) >>> 1` 向下取中，在 `lo + 1 == hi` 时会死循环。
+
+**其二，比较结果是「key − target」而非布尔**，因为索引槽位里同时存着 offset 与 file position：
+
+```
+binarySearch(idx, target, searchEntity, resultType, begin, end):
+    lo = begin; hi = end
+    while lo < hi:
+        mid = (lo + hi + 1) >>> 1
+        found = parseEntry(idx, mid)
+        c = compareIndexEntry(found, target, searchEntity)      # >0: found 在 target 之后
+        if c > 0:      hi = mid - 1
+        elif c < 0:    lo = mid
+        else:          return mid                             # 精确命中，提前退出
+    # 收敛后 lo 是「最后一个 ≤ target 的项」（LARGEST_LOWER_BOUND 语义）
+    switch resultType:
+        case LARGEST_LOWER_BOUND:  return lo
+        case SMALLEST_UPPER_BOUND: return (lo == entries - 1) ? -1 : lo + 1
+```
+
+`searchEntity` 参数（`IndexSearchType.KEY` / `VALUE`）让同一份二分代码服务两种索引：`OffsetIndex` 按 **offset**（KEY）查，`TimeIndex` 按 **timestamp**（VALUE）查。二者槽位布局相同、只是比较字段不同，因此算法完全复用——这正是 `AbstractIndex` 抽基类的收益所在。
+
+**返回语义的两个边界值得单列**（`storage/src/main/java/org/apache/kafka/storage/internals/log/AbstractIndex.java:536-543`）：
+
+- `LARGEST_LOWER_BOUND` 恒返回 `lo`：**即使目标比索引里所有项都大，也返回最后一个槽位**（而不是 −1）。因为语义是「≤target 的最大项」，最后一项总是满足的。调用方拿到它后会从这里开始向前扫，最终在段尾停下。
+- `SMALLEST_UPPER_BOUND` 在 `lo == entries - 1` 时返回 **−1**，语义是「已无上界项」，`fetchUpperBoundOffset` 据此返回 `Optional.empty()`（`storage/src/main/java/org/apache/kafka/storage/internals/log/OffsetIndex.java:132`）。
+
+> **复杂度**：索引项固定 8 字节（offset 与 position 各 4/8 字节，定义见 `AbstractIndex` 的 `ENTRY_SIZE`），故 `parseEntry` 是 O(1) 解码且**无反序列化开销**——这正是 Kafka 用 mmap 而非堆内 `HashMap<Long, Long>` 的原因：省掉堆分配与 GC 压力，代价是必须自己处理重映射与并发。查找复杂度 O(log N)（N 为索引项数，量级 = 段大小 / `index.interval.bytes`）；热点查询因 25.2 的区间收窄而更快。内存开销为 O(段大小 / 4096)，默认配置下每 1 GB 数据约 250K 项索引、约 2 MB。
+
+---
+
+## 二十六、参考资料
 
 - [Apache Kafka 官方主页](https://kafka.apache.org/)
 - [Apache Kafka 官方文档](https://kafka.apache.org/documentation/)
