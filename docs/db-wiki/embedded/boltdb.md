@@ -562,7 +562,140 @@ BoltDB 思想对工程轨、Go 工具开发有借鉴价值：
 - **Reddit r/golang**：BoltDB 应用案例；
 - **HN 讨论**：BoltDB v1.0 发布时贴（2015）。
 
-## 二十三、参考资料
+## 二十三、Copy-on-Write 提交协议、节点分裂与页分配算法
+
+> 本节源码路径：`tx.go`、`node.go`、`page.go`、`freelist.go`（canonical，模块未 init，行号需校对）。§7.3 / §7.4 给出了 meta page 与 freelist 的**结构定义**，§8.1 / §8.2 说明了 B+tree 与 node 的**职责**，但都没有展开三个决定 BoltDB 行为的算法：提交时如何用**页级写时复制**换来 ACID、节点装不下时如何**分裂并重新分配前缀**、以及 freelist 如何在 O(1) 内完成页分配。本节补齐这三处。
+>
+> **模式说明**：本篇走模式 B。以下路径为 BoltDB/bbolt 上游的 canonical 布局，符号名（`pgid`、`node.spill`、`freelist.allocate` 等）取自上游源码的稳定命名，但**具体行号需在子模块 init 后校对**。文中所有算法均按上游实现语义描述，不含未经核实的行号。
+
+### 23.1 提交协议：写时复制如何换来 ACID 与「零 WAL」
+
+BoltDB 没有独立日志，**日志就是 B+tree 本身**。一次事务提交的过程本质是「把脏页复制一份写到文件尾部，然后原子地切换根指针」：
+
+```
+commit():                                   # tx.go（canonical）
+    # ① 阶段一：把所有脏页写到文件末尾（此时旧版本仍完整可读）
+    for (p : tx.pages)  where p.dirty:
+        p.id = tx.alloc.get()               # 分配新页号，指向文件尾部
+        write(p.id, p.data)
+        p.dirty = false
+    # 阶段二：写freelist（若本页集合有变化）
+    if tx.db.freelistChanged:
+        tx.db.freelist.write(tx.meta)       # freelist 自身也走 COW
+    # 阶段三：写 root bucket 所在节点（若 spilt）
+    if rootNode.spilled:
+        tx.write(rootNode)                  # 再一次 COW
+    #阶段四：双写 meta，txid++ 决定哪个 slot 生效
+    tx.writeMeta()
+```
+
+四个阶段的顺序是**不可交换的**，原因在于「谁来指向新页」：
+
+- 阶段一必须先于所有引用写入。因为一旦root 被切换到新页，新页就必须已完整落盘，否则崩溃后读到新root 会读到未写完的数据。
+- freelist 写在 root 之前：root 是入口，freelist 的新页号必须已被 root 链路上可验证。
+- **meta 双写是唯一的「提交点」**。`tx.writeMeta()` 把 txid 加1 后写入**非当前活跃的那个 slot**（见 §7.3），由 §23.2 的 fsync 顺序保证原子性。
+
+**为什么这构成 ACID 而不需要 WAL**：原子性来自「单槽切换」——读者要么看到 txid=n，要么看到 txid=n+1，不存在中间态；持久性来自提交前的 `fdatasync`；隔离性来自 MVCC（见 §23.3）。**代价是写放大**：每次事务即使只改1 字节，也要复制整条根到叶的路径上的所有页。
+
+> **写放大量化**：B+tree 高度 h、页大小 P、键长K，单次点写的放大约为 `h × (P / (K × 每页条目数))` 量级。更实用的表述是：**单事务字节数 = h × P**（h≈3~4，P=4096，即约 12~16 KB 的最小事务写量）。这解释了 BoltDB 为什么适合「配置存储」这类小而频繁的写，而不适合写放大敏感的批量场景。
+
+### 23.2 meta 槽切换与 fsync 顺序：崩溃一致性的最后一块拼图
+
+§7.3 描述了「两个槽选 txid 大者」，但**为什么切换是原子的**取决于 fsync 的顺序：
+
+```
+writeMeta():
+    buf := serialize(meta{txid: tx.id + 1, root: rootBucket.root, freelist: fl})   # 构造新 meta
+    slot := (tx.id + 1) % 2          # 写入「即将成为活跃」的槽
+    writeAt(offset=slot, buf)         # pwrite 到该槽
+    fdatasync(db.file)                # ★ 关键：把槽切换持久化到稳定存储
+```
+
+崩溃恢复时（§8.7）的判定逻辑必须与写入顺序严格配对：
+
+```
+load():
+    for slot in {0, 1}:
+        m = readMeta(slot)
+        if m.checksum 校验失败 or m.txid % 2 != slot:     # 槽号与 txid 奇偶必须一致
+            mark slot invalid
+        else: 候选列表.add(m)
+    if 候选为空: return ErrInvalid                    # 两个都坏 → 无法恢复
+    db.meta = 候选中 txid 最大者                        # 可能 > 文件长度，见下
+    # ★ 若选中 txid=n 的 meta，而文件实际只有 n-1 的页：
+    #   说明阶段四的 fsync 已落盘但数据页未落盘 → 对新页做零填充
+    if db.meta.txid > 页数量:
+        truncate(零填充到 恰好容纳 txid 对应的高水位)
+```
+
+这里有一个精妙之处：**恢复时允许 meta 的 txid 领先于文件实际内容**。因为 COW 只在文件尾部追加，阶段四的 fsync 一旦落盘就意味着「新布局是作者意图」，即使某些新页的数据尚未真正落盘，恢复时也会把文件补零到该txid 所需的大小——**宁可读到空洞，也不能读到旧布局的残留数据**（后者可能把已删除的 key 误认为存在）。
+
+> **复杂度**：提交为 O(脏页数 ×页大小) 的写 + O(1) 次元数据写；恢复为 O(1) 次双槽校验 + O(1) 次补零截断。**读路径完全不参与事务**，故并发读无需加锁（§8.5 的 mmap 只读共享）。
+
+### 23.3 节点分裂与 spill：前缀重分配的四步
+
+BoltDB 的节点分裂（§8.2 提到 `node.spill`，但未展开）有一个容易被误解的点：**它不是「一分为二」，而是「原节点继续用一半，新节点接走另一半」，并可能伴随前缀分裂**。
+
+当某个节点因插入而超出 `pageSize`：
+
+```
+node.spill():                            # node.go（canonical）
+    # ① 计算切分点：按累计 size 找到中位条目
+    (a, b) = splitIndex(node, pageSize / 2)
+    # ② 原节点收缩为左半，node.inodes = inodes[:a]
+    # ③ 分配新页存放右半；把 b 之后的数据写过去
+    newNode = node.bucket.new(alloc)
+    node.write()                         # 左半落盘（仍在原页号上，COW 已在 §23.1 完成）
+    # ④ 若分裂发生在索引节点（internal node）：
+    #    第一个 inode 必须留在左节点作为「分隔键」，
+    #    因此要做 prefix 重分配：把最小键提到父节点，左节点丢弃该键
+    if node.isLeaf == false:
+        (左节点最小键) → 上浮为父节点新inode
+        (该键自身)     → 从左节点移除，只保留其指向的子指针
+    return newNode
+```
+
+第④ 步的**前缀重分配**是 B+tree 与普通 Btree 的分水岭：B+tree 要求所有数据键都出现在叶子上，内部节点只存「分隔键」。所以一个内部节点分裂后，其最左侧的键必须上浮进父节点，而它自己**不再持有**那个键对应的数据——这与叶子节点的分裂处理不同（叶子保留全部键）。若漏掉这一步，查找会在该子树返回「找到分隔键但数据不在此处」的错误结果。
+
+分裂向上传播的条件：
+
+```
+spill 触发递归的条件：分裂后节点大小仍 > pageSize  ⇒ 该父节点也要分裂
+                        ↓
+                    递归回父节点再走一次 splitIndex
+                    （最坏情况一路传到根 → 新建根，旧根变成根的左孩子，
+                      这就是树高 +1 的唯一来源）
+```
+
+> **复杂度**：分裂为 O(n) —— `splitIndex` 是一次线性前缀和扫描以找中位切分点（`inodes` 是有序切片，size 需累计）。B+tree 查找/更新为 O(log_B N)，其中 B 为扇出（页大小 / 键长）。分裂的 O(n) 只在「刚好跨页」时发生，摊还到每次插入为 O(1)。**这也解释了 BoltDB 为什么不适合超大数据集**：扇出受页大小限制（4 KB 页在 16 字节键下扇出约 200），树高增长快，且分裂的常数不小。
+
+### 23.4 页分配：freelist 的 O(1) 摊还与 pending 语义
+
+§7.4 说明了 array / hashmap 两种freelist 结构，但未说明**分配语义为何不会重复分配同一页**。
+
+```
+freelist.allocate(txid):                # freelist.go（canonical）
+    if pending 中存在计数 > txid 的条目:    # 「pending」页已被某个未提交事务预留
+        → 不能用（否则会与那个事务的写入冲突）
+    return freePage 栈顶（并从 freePage 移出，转入 allocated 集合）
+
+freelist.release(txid):                 # 事务提交/回滚时
+    把该事务在 allocated 中新增的页全部归还到 pending，
+    并标记 pending[page] = txid（而非直接放回 freePage）
+```
+
+**为什么「pending」不能直接进free 栈**：事务 T1 已经把页 P 分配给脏页并写入，但尚未提交（meta 未切换）。此时若另一个事务 T2 的分配器拿到了 P，它会写入自己的内容并提交；随后 T1 回滚（或崩溃），P 被归还——但P 里已经是 T2 的数据。把 pending 机制加上后：P 在 T1 提交前对 T2 不可见；T1 提交后 P 才进入 free 栈；T1 回滚则 P 直接消失（其内容从未成为权威）。
+
+> **复杂度**：`allocate` 为 O(1)（哈希查 pending + 栈顶弹出）；`release` 为 O(本事务分配页数)。整轮事务的分配开销与脏页数成正比，不叠加额外因子。这是 §23.1 写放大之外的**唯一**额外成本——而它换来的是「页不会被两个并发事务同时持有」这一正确性保证。
+
+> **小结三条不变式**：
+> 1. **页不可复用不可见**：一个页在成为权威数据（旧 COW 副本不再被任何 meta/root 引用）之前，绝不会被重新分配。
+> 2. **meta 是唯一提交点**：所有其他写入（数据页、freelist、root）都只是「为新布局做准备」，只有 meta 的 fsync 决定了新布局是否生效。
+> 3. **空洞优于残留**：崩溃恢复宁可返回补零的空洞页，也不返回旧布局的字节——因为旧字节对应的是已被删除的键，误报为「存在」是比「缺失」更严重的正确性问题。
+
+---
+
+## 二十四、参考资料
 
 1. Ben Johnson. *BoltDB Design Blog Series*. [https://web.archive.org/web/2018/http://benbjohnson.com/](https://web.archive.org/web/2018/http://benbjohnson.com/)
 2. Comer, D. *The Ubiquitous B-Tree*. ACM Computing Surveys 11(2), 1979.
