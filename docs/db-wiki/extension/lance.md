@@ -874,7 +874,138 @@ Lance 完全基于 Arrow，因此 SIMD 加速：
 5. **第五步**：在 `engineering/sdk/python/` 增加 `pylance` 绑定，让用户通过 Python `lancedb` 访问本数据库；
 6. **第六步**：在 `engineering/apps/db_server/` 提供 HTTP / Flight Server，远程访问 Lance 数据集（参考 `lance-server`）；
 
-## 二十四、参考资料
+## 二十四、PQ 距离估算的两类算法、Fragment 合并与墓碑的读取语义
+
+> 本节源码路径：`rust/lance-index/src/ivf/pq.rs`、`rust/lance-index/src/ivf/ivf.rs`、`rust/lance/src/dataset/fragment.rs`、`rust/lance/src/dataset/reader.rs`（canonical，模块未 init，行号需校对）。§8.3 给出 IVF_PQ 的**四步流程**与参数含义，§8.7 给出 manifest/版本的文件布局与特性清单。但**三个决定实际性能与正确性的机制仍未展开**：PQ 的距离估算究竟用「非对称距离」还是「对称距离」、两者精度差多少、以及 fragment 合并与墓碑（tombstone）在读取路径上如何被正确处理。
+>
+> **模式说明**：本篇走模式 B。路径为 Lancedb `lancedb/lance` 主干的稳定目录布局，**具体行号需在子模块 init 后校对**。符号名（`ProductQuantizer`、`centroids`、`Fragment`、`deletion_file`、`Refine`）沿用上游与 FAISS 系列的命名。
+
+### 24.1 PQ 的两类距离：对称距离 SDC vs 非对称距离 ADC
+
+§8.3 说「PQ 距离估算 TopK」和「Refine 用原始向量重排」，但**没说估算用什么距离**。这是 PQ 里精度与速度的核心取舍，有两种算法：
+
+```
+# 定义：原向量 x（dim 维），切成 M 段 x = [x_1, ..., x_M]
+#       codebook：每个 m 有一个 256 项码本 C_m（256 个代表向量）
+#       编码：code(x) = [id_1, ..., id_M]，每个 id ∈ [0,256)，共 M 字节
+
+— 对称距离 SDC（Symmetric Distance Computation）：
+    query 与 database 【都】用同一个 codebook 编码，再用码字距离：
+        SDC(q, code(x)) = Σ_m || q̂_m - c_m[id_m] ||²
+    ★ query 也被量化 → 引入两次量化误差（query 侧 + database 侧）
+
+— 非对称距离 ADC（Asymmetric Distance Computation）：
+    query 保持【原始精度】，只有 database 被量化：
+        ADC(q, code(x)) = Σ_m || q_m - c_m[id_m] ||²
+    ★ 误差只有 database 侧一次
+
+分解（关键恒等式，让 ADC 的查找表加速成为可能）：
+    ||q_m - c_m[id_m]||² = ||q_m||² - 2·⟨q_m, c_m[id_m]⟩ + ||c_m[id_m]||²
+    累加后：
+        ADC(q,x) = Σ_m||q_m||²  -  2·Σ_m ⟨q_m, c_m[id_m]⟩  +  Σ_m ||c_m[id_m]||²
+                  └── 常数 ──┘      └──── 可预计算 LUT ────┘     └── 常数 ──┘
+```
+
+**「非对称」的含义**是 query 侧用更高精度（原始向量）、database 侧用量化——所以它「不对称」且**更准**。ADC 是工业界默认选择，理由是分解后可做**预计算查找表**：
+
+```
+建立查找表（每个 query 只做一次，O(M × 256)）：
+    LUT[m][i] = || q_m - c_m[i] ||²          # m ∈ [0,M)，i ∈ [0,256)
+
+查询单个 code(x)：
+    dist = Σ_m LUT[m][ code(x)[m] ]          # M 字节查表 + M 次加法
+    ★ 【没有乘法、没有向量减法】
+
+对比不查表的朴素做法：Σ_m ||q_m - c_m[id_m]||² = 每段一次减法+平方+求和
+```
+
+| 维度 | SDC | ADC |
+|------|-----|-----|
+| 精度 | 较低（query 侧也被量化） | **较高（只量化 database）** |
+| 查表加速 | 可以（两边都是码字） | 可以（且常数项可预折叠到外层） |
+| 每次查询建 LUT 成本 | O(M×256) | O(M×256) |
+| LUT 内存 | — | O(M × 256) float32（M=32 时约 32 KB） |
+
+> **复杂度与工程含义**：把 M 字节 code 的距离估算压到 **M 次查表 + M 次加法**（M=32 时约 64 次操作），相比直接算 M 段 L2 距离（32 × dim 次乘加，dim=128 时约 4096 次）**快约 60 倍**。这就是 PQ 能把向量检索从「毫秒」降到「微秒」的原因。
+>
+> LUT 大小为 `M × 256 × 4` 字节（M=64 时 64 KB），常驻 L1/L2 缓存；配合 code 的连续内存布局（32~64 字节正好一个缓存行），局部性良好。**这也是 PQ 天然适合批量查询的原因**——一次建 LUT 可扫多个 code。
+>
+> **refine 的必要性由此而来**：PQ 估算（哪怕是 ADC）仍有误差，所以 §8.3 的 `refine_factor` 要把前 `refine_factor × limit` 条候选**用原始向量重排**。经验值 2~10。PQ 的精度参数 `num_sub_vectors`（M）决定「每段维数 = dim / M」——M 越大每段越短、码本精度越高，但 code 变长、LUT 变大。
+
+### 24.2 Fragment 合并与墓碑：读取路径的可见性判定
+
+§8.7 列出 Update/Delete 都是「标记原行 tombstone + 新 commit」，但**读取时如何判定某一行是否可见**没有说明。这是 fragment 化存储的核心读路径。
+
+```
+读取一个全局 row_id：
+  1. row_id 是【全局连续】的（fragment 内 offset + fragment 的起始 row_id）
+  2. 定位 row_id 落在哪个 fragment（fragment 按 row_id 区间有序，可二分）
+     ★ 若多个 fragment 覆盖同一 row_id（append 后又更新 → 产生重复 row_id），
+       必须按【版本序】从新到旧遍历
+  3. 对每个候选 fragment，检查 deletion file：
+       若 row_id ∈ 该 fragment 的删除集合 → 该版本不可见 → 继续找更早的 fragment
+  4. 第一个未被标记删除的 fragment 中的该行 → 返回
+
+# 删除集合的存储形式（对应 §8.1 的 fragment 格式）：
+  - bitmap：每bit 对应一个 row_id → 判定 O(1) 一次位测试
+  ★ 这正是选 bitmap 而非 (deleted_ids list) 的原因：
+    list 的判定是 O(log n) 查找，且内存随删除数增长
+```
+
+**墓碑累积的成本**：fragment 被大量行更新/删除后，其 deletion bitmap 会变长，而**fragment 数据文件本身大小不变**（墓碑在独立的 deletion file 里）。这导致「磁盘占用」与「有效数据量」逐渐背离，直到 `optimize` 重写。§8.7 把 optimize 描述为「重写为 less-fragmented 状态」，其算法实质是：
+
+```
+optimize（compaction）：
+    输入：当前 version 的 fragment 集合（共 N 个，含大量 tombstone）
+    1. 扫描所有 fragment，【丢弃】已删除行，重复row_id 【只保留最新版本】
+    2. 按目标大小重新切分为少量 fragment（消除碎片）
+    3. 写入新 fragment，产生新 manifest commit（N+1）
+    ★ 旧 fragment 的物理文件【不立即删除】—— 仍被历史 version 引用
+```
+
+> **复杂度**：读取单行的可见性判定为 **O(覆盖该 row_id 的 fragment 数)**，典型为 O(1)（二分 + 一次位测试）；墓碑空间成本为 O(fragment 行数 / 8) 字节。optimize 本身是 O(总行数) 的全量重写，代价高，因此**触发时机通常按「墓碑占比超阈值」而非固定周期**。
+>
+> **关键设计权衡**：optimize 不删除旧 fragment 是**为 time travel 付出的必要代价**——若立即删除，`checkout("3")` 就读不到历史版本。这是「多版本存储」与「GC 及时性」的经典取舍，多数实现选择保留，并由后台 GC 按「无任何 version 引用」的条件回收。
+
+### 24.3 IVF 的分区扫描与 nprobe 的召回率量化
+
+§8.3 已给出 K-Means 步骤与 `num_partitions ≈ sqrt(rows)` 建议。这里补充 **nprobe 的召回率量化关系**（与 pgvector 的 IVFFlat 同源，见 `pgvector.md` §二十四）：
+
+```
+召回率是两个独立近似的【乘积】：
+    recall ≈ P(覆盖) × P(排序精度)
+            └── IVF ┘   └── PQ ┘
+
+    P(覆盖)：真实最近邻所属分区被 nprobe 扫到的概率
+        - 分布均匀时 ≈ nprobe / num_partitions
+        - 分布倾斜（热门分区）时，热门分区被扫到的概率 > 均匀假设 → 覆盖更好
+
+    P(排序精度)：该候选在 PQ 估算下仍排进 topK 的概率（见 §24.1 的 ADC 误差）
+```
+
+因此调参有明确顺序：
+
+```
+提高 recall 的优先级：
+  1. 先调 nprobe（提升覆盖）—— 若最近邻所在分区根本没被扫到，
+     后面 PQ 精度再高也无用（乘积的第一项为0）
+  2. 再调 num_sub_vectors M（提升精度）—— 缩小每段维数，量化误差下降
+
+总成本模型：
+    cost ≈ nprobe × (N / num_partitions) × M    （次查表）
+    ↑           ↑            ↑
+ 线性于nprobe  线性于分区大小线性于 code 长度
+
+这解释了 Lance 默认 num_partitions 随数据量快速增长（远大于 pgvector 的默认 1000）：
+    在大数据集上，【增大分区数】比【增大 nprobe】更划算——
+    因为 nprobe 的增长直接线性乘在扫描量上，而分区数增长把每分区扫描量压下来
+```
+
+> **经验起点**：dim=768时 `num_sub_vectors` 取 48~96（每段 8~16 维），`nprobe` 取 10~20，`refine_factor` 取 2~10。若召回率仍不够，**先加 num_sub_vectors（精度成本低），再加 nprobe（延迟成本高）**。
+
+---
+
+## 二十五、参考资料
 
 1. Lance 项目主页：https://lancedb.com/
 2. Lance GitHub：https://github.com/lancedb/lance
