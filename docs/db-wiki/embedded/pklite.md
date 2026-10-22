@@ -413,7 +413,125 @@ pklite（如果存在）思想对工程轨、learning 轨都有借鉴价值：
 - **同 tier 对比**：Wikipedia *"Comparison of embedded databases"*；
 - **Reddit**：r/Python、r/golang、r/learnprogramming 中的 lightweight embedded KV 讨论。
 
-## 二十三、参考资料
+## 二十三、B+tree 分裂合并、Free List 重建与溢出页回填
+
+> 本节源码路径：`pklite/index/bptree.py`（或 `pklite/index/bptree.go`，取决于实现语言）、`pklite/page/__init__.py`、`pklite/storage.py`（canonical；本仓库 `reference/embedded/pklite` **未登记为 git submodule**，无任何源码可供核对，行号需校对）。
+>
+> **模式说明**：本篇走模式 B，且比其他模式 B 篇目更弱——`reference/embedded/pklite` 目录**根本不存在**（`.gitmodules` 里也没有登记），因此以下路径与符号名来自 pklite 项目的公开结构与轻量嵌入式 KV 的通用设计，**不保证与任何具体版本逐一对应**。本节刻意聚焦「轻量嵌入式 KV 必须自己解决的三件事」，这些设计在任何B+tree 单文件实现里都成立，比绑定具体行号更有长期价值。
+
+### 23.1 B+tree 分裂：为什么轻量实现普遍选择「无条件分裂」
+
+BoltDB / LMDB 会在页填充率不足时提前分裂（见 `boltdb.md` §二十三、`lmdb.md` §二十三），因为它们要摊销写放大。轻量 Python 实现通常**不做这种优化**，而是在页写满时才分裂：
+
+```
+_insert(node, key, value):
+    if node.is_leaf:
+        node.keys.append(key); node.values.append(value)
+        if len(node.keys) <= MAX_KEYS: return# 未满，结束
+        # ★ 页已满 → 分裂
+        mid = len(node.keys) // 2
+        new_leaf = Leaf(); new_leaf.keys  = node.keys[mid:]
+                     new_leaf.values= node.values[mid:]
+        node.keys  = node.keys[:mid]      # 原节点保留左半
+        node.values= node.values[:mid]
+        return new_leaf                   # ★ 返回「兄弟节点」交给父层处理
+    else:
+        child = descend(node, key)
+        new_sibling = _insert(child, key, value)
+        if new_sibling is None: return None
+        # 父节点插入分隔键 + 右兄弟指针
+        idx = lower_bound(node.keys, key)
+        node.keys.insert(idx, key); node.children.insert(idx+1, new_sibling)
+        if len(node.keys) <= MAX_KEYS: return None
+        return _split_internal(node)
+```
+
+分裂向上传播的写法是**返回兄弟节点而非就地处理**，这是 B+tree 实现的标准范式（递归的下界是「我保证你塞得下，溢出时我把一半还给你」）：
+
+```
+_insert 的契约：
+  返回 None        → 未溢出，一切正常
+  返回 sibling节点 → 我这边满了，多出来的部分在这个兄弟里，请父层接管
+```
+
+这个契约让分裂的**处理集中在父层**，代码量远小于「就地分裂 + 向上冒泡」写法。
+
+**为什么轻量实现可以放弃预分裂**：预分裂（低于50% 就分裂）能减少后续插入时的连续分裂次数，代价是需要额外的计数与判断。对于每秒几千次写入的嵌入式场景，B+tree 分裂本身是 O(n) 但 n ≤ MAX_KEYS（几十），绝对开销极小——**优化预分裂的收益远小于代码复杂度**。
+
+> **复杂度**：分裂为 O(n)（n ≤ MAX_KEYS，通常 32~64），需memmove 后半段。查找/更新为 O(log_B N)。轻量实现的真实瓶颈往往不是 B+tree 本身，而是 §23.3 的 Python 对象开销。
+
+### 23.2 Free List 与空闲页回收：溢出页与合并页的处理
+
+轻量实现里free list 通常只是一个 `set` 或 `list`，但**哪些页能被回收**有两个容易漏掉的分支：
+
+```
+_alloc_page():
+    if free_list 非空: return free_list.pop()          # ① 优先复用
+    return append_new_page()                          # ② 文件尾追加
+
+释放页的三种来源（漏掉任一都会造成文件持续膨胀）：
+    ① B+tree 内部节点分裂 → 旧节点被替换 → 该页可回收
+    ② 合并（merge）时的兄弟节点          → 两个页变一个 → 一个页可回收
+    ③ **overflow 页**→ 值被删除或搬回主页 → overflow 页可回收
+```
+
+**③ 是最常被漏掉的一条**。§7.2 提到「大value（>1/4 page）走单独 overflow」，但如果 overflow 页只在「追加时分配」而不在「删除时归还」，那么一个反复写大 value 的负载会让文件单调增长而永不回收。
+
+严格实现需要在**页头记录该页是否为 overflow、以及其归属的 key**，这样删除 key 时才能定位并释放对应的 overflow 页链。简化实现则往往退化为「删除时把整个 value 置空但不释放 overflow 页」——功能正确但空间不回收，这正是嵌入式 KV 在「反复覆盖大 value」场景下的典型泄漏表现。
+
+```
+判断「一个 key 的 value 是否溢出」的两种做法：
+  方案 A（推荐，省空间）：页头 flags 位标记 is_overflow
+  方案 B（简单，多费一点）：读页内实际 payload 长度，与 MAX_INLINE 比较
+方案 A 依赖「写入时就把页头 flag 写对」；若中途崩溃而flag 未落盘，
+就会把overflow 数据当成 inline 读 → 解析错误。因此需要页头 checksum 覆盖该 flag。
+```
+
+> **工程含义**：判断一个嵌入式 KV 的实现质量，看两个指标——**(a) 删除大 value 后文件大小是否下降**（测overflow 回收），**(b) 反复写入同一批 key 后文件是否稳定**（测 free list 复用）。这两个都比「随机写 100 万条数据能否正确读回」更能区分实现水平。
+
+### 23.3 Python 实现的真实瓶颈：pickle 与对象头
+
+轻量嵌入式 KV 用 Python 实现时，**性能瓶颈几乎从不在B+tree 算法，而在序列化与对象开销**：
+
+```
+# 一个 key/value 对在 Python 中的实际内存成本（量级示意）
+key_bytes   = len(key)                   # 业务数据
+pickle_dump = pickle.dumps((key, value)) # 再序列化一遍
+node_entry  = (pickle_dump,)             # tuple 本身 56 字节
+dict 槽位开销                            # 约 100 字节/条（Python dict 每 entry）
+────────────────────────────────────────────
+每条记录的实际内存 ≈ 业务数据 × 2 + 150 字节以上
+```
+
+这解释了三个常见现象：
+
+- **同样数据量，Python 版内存占用是 C 版（boltdb/lmdb）的 3~10 倍**。不是算法差异，而是 Python 对象头+ dict 槽位 + pickle 中间产物的叠加。
+- **`pickle.dumps` 重复调用会显著拖慢写入**。若每次读取都重新 `loads` 而不做缓存，单条读的成本可能超过一次页的磁盘 IO。
+- **页内用 `list` 追加 vs 用 `array`/预分配**：分裂时的 memmove 在 list 上是 O(n) 指针拷贝，在 array('I') 上是 O(n) 连续内存拷贝，后者常数更小。
+
+可行的缓解手段（不改变架构、只改实现）：
+1. 页内索引用 `array('I')` 或 `bytearray` 而非 `list`；
+2. 值序列化后缓存 bytes，避免重复 `dumps`；
+3. 页写回时用一次 `join` 而非循环 `write`。
+
+> **取舍**：这些优化会让代码从「几十行能读懂」变成「上百行需注释」，与轻量嵌入式库「小而可读」的定位冲突。**pklite 这类项目的价值恰恰在于选了后者**——它不适合高频写入，但在「配置存储、小规模元数据、测试夹具」等场景下，几十行能读懂的代码比十倍吞吐更有价值。
+
+### 23.4 与 LMDB / BoltDB 的定位对比
+
+| 维度 | BoltDB | LMDB | pklite 类轻量实现 |
+|------|--------|-------|-------------------|
+| 语言 | Go | C | Python / Go（薄封装） |
+| 写放大 | O(树高) 页/事务 | O(脏页数)，页内可重用 | 低（同 LMDB 思路，无预分裂） |
+| 读并发 | mmap 共享 + 读锁 | 槽位数组，**完全无锁** | 依赖GIL/ 语言运行时 |
+| 崩溃恢复 | 双 meta 校验 + 补零 | 双 meta + freeDB 重建 | 单文件扫描重建（弱） |
+| 事务 | 完整 ACID 写事务 | 完整 ACID 写事务 | 通常只保证单次 put/get 原子 |
+| 定位 | etcd 后端，大生态 | 极致读性能 | 配置存储 / 测试夹具 / 教学 |
+
+三者共享同一设计哲学——**放弃「WAL + 缓冲池」，让文件本身即索引**；差别在于**为「正确性与并发」付出的代价**逐级递减，而**可读性与体积**逐级递增。pklite 处在光谱的另一端：它把正确性边界划得很小（单次操作原子），换来的是几十行代码。
+
+---
+
+## 二十四、参考资料
 
 1. **本项目上游不可达**：`https://github.com/nicholasgasior/pklite.git` 在 2026-10 验证返回 404。原始登记见 `reference/catalog.yml`。
 2. **同 tier 嵌入式 KV 综述**：Wikipedia, *Comparison of embedded databases*. <https://en.wikipedia.org/wiki/Comparison_of_embedded_databases>
