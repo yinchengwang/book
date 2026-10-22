@@ -519,7 +519,144 @@ data_dir/
   - **BSL 许可**：与本项目 Apache 2.0 兼容优先原则不符；
 - **流接入集成**：未来如需对接 Redpanda，可使用 Kafka 客户端 SDK 直接对接（无特殊集成成本）。
 
-## 二十四、参考资料
+## 二十四、三元组偏移量索引：DeltaFor 压缩与线性查找
+
+> 本节源码路径：`src/v/cloud_storage/offset_index.h`、`src/v/cloud_storage/offset_index.cc`、`src/v/utils/delta_for.h`。§8.5 把 `offset_index.cc` 列为 Tiered Storage 的关键文件并说明它「解决 Kafka offset 与 Redpanda offset 不连续的问题」，但**没有展开这个索引的内部结构**。本节补齐三元组索引的编码方式、查找算法，以及一个反直觉的事实：**它是线性查找，不是二分**。
+
+### 24.1 索引要维护什么：一个 Segment 里的三套坐标
+
+Redpanda 的一个远程 segment（`remote_segment`）内部同时存在三套互不相同的偏移量，`offset_index` 为每条记录同时索引三者：
+
+| 坐标 | 含义 | 为什么需要 |
+|------|------|-----------|
+| `rp_offset`（Redpanda offset） | Redpanda 自己的连续逻辑偏移 | 内部排序与定位 |
+| `kaf_offset`（Kafka offset） | 对外暴露给客户端的偏移量 | **Kafka 协议兼容**：删除/压缩造成空洞时它不连续 |
+| `file_pos`（文件位置） | 在 segment 文件内的字节位置 | 实际读取的定位量 |
+
+类注释把不变量写得很明确（`src/v/cloud_storage/offset_index.h:37`）："The invariant of the offset_index is that all three encoders have the same number of elements."
+
+**三套坐标不同步，正是 Tiered Storage 的必然结果**：Kafka 语义下删除消息不能重编号（否则已提交的 consumer offset 全部失效），但物理文件里那段空间就是被浪费了；Redpanda 用 `rp_offset`（连续）与 `kaf_offset`（有空洞）两套值的差值来精确表达「这段空间被吃掉了」。
+
+### 24.2 DeltaFor 编码：行宽16的差分压缩
+
+三套坐标都不是原样存储，而是经DeltaFor（delta-of-delta）编码。核心常量在 `src/v/utils/delta_for.h:39`：
+
+```
+static constexpr uint32_t FOR_buffer_depth = 16;   # src/v/utils/delta_for.h:39
+```
+
+`offset_index` 直接把它作为行宽（`src/v/cloud_storage/offset_index.h:41`）：
+
+```
+static constexpr uint32_t buffer_depth = details::FOR_buffer_depth;  # src/v/cloud_storage/offset_index.h:41
+static constexpr uint32_t index_mask  = buffer_depth - 1;# src/v/cloud_storage/offset_index.h:42
+static_assert((buffer_depth & index_mask) == 0, "buffer_depth have to be a power of two");
+```
+
+这个 `static_assert` 不是形式主义——它保证了 `index_mask` 可用作**取模掩码**（`_pos & index_mask`，见 `src/v/cloud_storage/offset_index.cc:96`），从而把"位置对 16 取模"编译成一次位与。行宽取 2 的幂是性能设计：既让按行取模变成位运算，也让解码时能整块（16 个值）批量解出。
+
+三类编码器/解码器的选型差异（`src/v/cloud_storage/offset_index.h:165`）：
+
+```
+using delta_delta_t     = details::delta_delta<int64_t>;
+using foffset_encoder_t = deltafor_encoder<int64_t, delta_delta_t>;# file_pos 用 delta-of-delta
+using foffset_decoder_t = deltafor_decoder<int64_t, delta_delta_t>;
+// rp_offset / kaf_offset 用默认的 delta 编码（deltafor_encoder<int64_t>）
+```
+
+`file_pos` 用**二阶差分**（delta-of-delta）而偏移量只用**一阶差分**，原因是数据分布不同：
+
+- offset 序列的一阶差分是「每批消息条数」，量级稳定且接近常数 → 一阶差分后数值仍然很小，普通 zigzag + bit-pack 就能压得很小；
+- `file_pos` 的一阶差分是「每条消息的字节长度」，**抖动大得多**（小消息可能 20 字节、大消息可能数 MB）。二阶差分压掉的是「长度本身的变化率」，对这种高方差序列效果显著得多。
+
+文件位置还带一个最小步长 `_min_file_pos_step`（`src/v/cloud_storage/offset_index.h:173`），解码时以 `delta_delta_t(_min_file_pos_step)` 作为初值传入（`src/v/cloud_storage/offset_index.cc:149`）——**把「文件头预留了多少字节」这一全局常量从索引数据里剥离出去**，每条记录就不用重复存它。这是一处很典型的「把常量提出来、让变长部分变小」的压缩设计。
+
+### 24.3 查找：线性扫描 + 16 项写入缓冲区兜底
+
+类注释里那句"The search is linear"（`src/v/cloud_storage/offset_index.h:33`）是本节最值得注意的事实——**Redpanda 没有用二分**。核心是 `_find_under`（`src/v/cloud_storage/offset_index.cc:418`）：
+
+```
+_find_under(decoder, offset):                           # src/v/cloud_storage/offset_index.cc:418
+    ix = 0; rp_buf = array<int64_t, 16>{}; candidate = nullopt
+    while decoder.read(rp_buf):                        # 每次解出整行 16 个值
+        for o in rp_buf:
+            if o >= offset: return candidate           # 第一个 ≥ target → 前一个即答案
+            candidate = {ix, o}; ix++
+        rp_buf = {}
+    return candidate                                   # 扫完全部 → 最后一个候选
+```
+
+三个要点：
+
+- **返回的是 `candidate` 而非当前 `o`**。因为语义是 largest lower bound：一旦发现 `o >= offset`，答案在**前一个**元素，所以 `candidate` 天然滞后一项。若目标小于索引里所有值，`candidate` 保持 `nullopt`。
+- **每次 `decoder.read` 解一整行 16 个值**（`src/v/cloud_storage/offset_index.cc:420`），逐个比较。这意味着比较次数仍是 O(N)，但**解码次数是 O(N/16)** —— 线性但常数很小，且顺序访问对 CPU 预取友好。若换成二分，每跳都要定位到某一行的某一列，反而需要额外的随机访问。
+- **实测规模下线性完全够用**：索引条目数 = 记录数 / `step_size`，而 `step_size` 是可配的（构造函数参数，`src/v/cloud_storage/offset_index.h:52` 的 `file_pos_step`）。索引放大被 step_size 直接摊薄。
+
+**跨压缩块的边界处理**是这段代码最 tricky 的部分。`maybe_find_offset`（`src/v/cloud_storage/offset_index.cc:86`）需要处理"答案落在尚未压缩的写入缓冲区里"：
+
+```
+maybe_find_offset(upper_bound, encoder, write_buffer):     # src/v/cloud_storage/offset_index.cc:86
+    decoder = deltafor_decoder(encoder.get_initial_value(), encoder.get_row_count(), encoder.share())
+    max_index = encoder.get_row_count() * FOR_buffer_depth - 1
+    maybe_ix = _find_under(decoder, upper_bound)
+    if (not maybe_ix) or (maybe_ix.ix == max_index):         # ← 两种情况都要兜底
+        for i in 0 .. (_pos & index_mask):                  # 只扫 write_buffer 的有效前缀
+            if write_buffer[i] < upper_bound:
+                candidate = {rp_offsets[i], kaf_offsets[i], file_offsets[i]}
+            else: break                                      # 有序 → 可提前退出
+        if candidate: return candidate
+        if (not maybe_ix): return monostate()               # 空索引
+    return *maybe_ix
+```
+
+进入兜底分支的**两个条件**含义不同：
+
+- `maybe_ix == nullopt`：索引里还没找到任何 ≥ upper_bound 的值，答案（如果存在）只能在写入缓冲区里；
+- `maybe_ix.ix == max_index`：找到的值恰好是**最后一个压缩块的最后一个元素**。源码注释（`src/v/cloud_storage/offset_index.cc:110`）解释了为什么这时仍需兜底："maybe_ix can point to the last element of the compressed chunk if all elements inside it are less than the offset that we're looking for. In this case we should use it even if we can't find anything inside the buffer." ——即压缩块内所有值都小于目标，此时 `max_index` 这个位置**不应被当作答案**，答案在未压缩的 write_buffer 里。
+
+`for` 循环里`break` 的存在依赖一个不变式：三个编码器的元素顺序一致（正是24.1 引用的那条不变量），因此 write_buffer 里 rp_offset 也是有序的，一旦 `>= upper_bound` 就能停。
+
+### 24.4 一次查询要付三次解码
+
+`find_rp_offset`（`src/v/cloud_storage/offset_index.cc:124`）拿到了 rp_offset 索引位置后，还要把**另外两套坐标**取出来，构成完整的三元组：
+
+```
+find_rp_offset(upper_bound):                              # src/v/cloud_storage/offset_index.cc:124
+    search_result = maybe_find_offset(upper_bound, _rp_index, _rp_offsets)
+    return ss::visit(search_result,
+        monostate    → nullopt,
+        find_result  → 直接返回,
+        index_value  → [
+            ix = index_result.ix;  rp_offset = index_result.value
+            kaf_dec = deltafor_decoder(_kaf_index...)               # ← 第二个解码器
+            kaf_offset = _fetch_ix(kaf_dec, ix)                     # src/v/cloud_storage/offset_index.cc:142
+            file_dec = foffset_decoder_t(..., delta_delta_t(_min_file_pos_step))
+            file_pos = _fetch_ix(file_dec, ix)                      # src/v/cloud_storage/offset_index.cc:150
+        ])
+```
+
+`_fetch_ix`（`src/v/cloud_storage/offset_index.h:137`）是「按绝对下标取值」的辅助函数——它必须**从头解到第 ix 行**：
+
+```
+_fetch_ix(decoder, target_ix):                            # src/v/cloud_storage/offset_index.h:137
+    ix = 0; buffer = {}
+    while decoder.read(buffer):
+        for o in buffer:
+            if ix == target_ix: return o
+            ix++
+        buffer = {}
+    return nullopt
+```
+
+所以一次 `find_*` 查询实际是**三次 O(N/16) 的解码扫描**（rp 一次定位，再为 kaf 与 file 各解一次）。这是「用空间和 CPU 换实现简单性」的取舍：换来的是**三套坐标严格对齐**（同一个 `ix` 必然指向三条记录的同一位置），无需任何同步或校验。若改用「解码整块到 cache 再随机取」能降到 O(1)，但要引入缓存一致性问题——对照 Kafka 的做法（mmap 整个索引 + 二分，见本项目 `docs/db-wiki/stream/kafka.md` 第二十五节），两者是同一权衡的两端。
+
+> **复杂度**：`find_*` 为 O(索引条目数 / 16) 次解码 + 同量级次比较，**索引条目数 = segment 记录数 / step_size**。索引占用为三套编码后的大小，`rp_offset`/`kaf_offset` 一阶差分后接近常量（可压到每条 1~2 bit），`file_pos` 二阶差分后可压缩到原始二阶差分的约 1/3；因此每条记录的索引开销量级为**数 bit**，远小于 Kafka 每 4096 字节一条的定长索引。
+>
+> **为何不用二分**：二分的收益是 O(log N) 次**随机访问**，但 DeltaFor 是顺序熵编码——**无法在不完整解码前的情况下定位到第 k 行**，二分将退化为 O(N) 次解码。相比之下 Kafka 能二分是因为它的索引是**定长记录 + mmap 随机访问**。Redpanda 选择顺序编码 + 线性扫描，正是因为它的访问模式是「顺序读为主」（批处理式 fetch），线性扫描对预取更友好。这是两种设计对各自访问模式的最优解，不存在优劣。
+
+---
+
+## 二十五、参考资料
 
 - [Redpanda 官方主页](https://redpanda.com/)
 - [Redpanda Documentation](https://docs.redpanda.com/)
