@@ -878,7 +878,145 @@ hnswlib 支持多线程：
 5. **第五步**：在 `engineering/sdk/python/` 通过 `pybind11` + hnswlib 提供 Python KNN API（`from pyvector import Index`）；
 6. **第六步**：增加与 `engineering/src/db/executor/relscan.c` 全表扫描的混合执行（vector scan + heap scan）；
 
-## 二十四、参考资料
+## 二十四、visited 集合的摊还、邻接剪枝的取舍与召回率边界
+
+> 本节源码路径：`hnswlib/hnswalg.h`、`hnswlib/visited_list_pool.h`、`hnswlib/space_l2.h`（canonical，模块未 init，行号需校对）。§8.2 已经给出了 HNSW 的插入/查询流程与「启发式选择 + 双向检查 + 邻居剪枝」，§8.3/§8.4 给了复杂度和参数含义。但**三个决定实际召回率与吞吐的关键机制仍是黑盒**：visited 集合为什么必须是「带 epoch 的标记数组」而不是 hashset、邻接剪枝 `pruneNeighbors` 到底按什么规则丢邻居、以及 `M` / `efConstruction` / `efSearch` 三者如何共同决定召回率上界。本节补齐这三处。
+>
+> **模式说明**：本篇走模式 B。路径为 hnswlib 上游的稳定布局，**具体行号需在子模块 init 后校对**。符号名（`visited_list_pool`、`VisitedList`、`shrink_connections_`、`heuristic_neighbor_selection`）沿用上游命名。
+
+### 24.1 visited 集合：用 epoch 标记数组替代 hashset
+
+图搜索必须回答「这个点我访问过吗」，且这个问题在**内层循环里被调用数十亿次**。朴素 `unordered_set` 的问题是每次查询都要哈希 + 分配节点，内存与常数都不可接受。
+
+hnswlib 的解法是 **「数组 + epoch 版本号」**：
+
+```
+# 概念伪代码
+struct VisitedList:
+    visited: list<epoch_t>       # 与节点数等长的数组，存「访问时所在的 epoch」
+    epoch:  epoch_t              # 当前 epoch（每次搜索 +1）
+
+search(q, k, visited_list_pool):
+    vl = visited_list_pool.get()               # 从池里取一个复用的
+    vl.epoch += 1                # ★ 换epoch = 逻辑上「清空」整个集合
+    ...
+    # 访问判定：
+    was_visited(node) ⟺ vl.visited[node.id] == vl.epoch
+    mark_visited(node): vl.visited[node.id] = vl.epoch
+```
+
+`epoch` 自增就等价于「O(1) 清空」——**不需要真的把数组清零**（那才是 O(N) 的初始化开销）。这是「时间戳代替删除」这一经典技巧：把「清除 N 个元素」从O(N) 降到 O(1)。
+
+为什么必须从**池**里取（§8.5 已列出`visited_list_pool`，但未解释）：每次搜索都 `new` 一个长度 N 的数组，N 上千万时单次分配 + 零填充就是几十毫秒，远超搜索本身。池化的做法是**每个线程缓存一个**（thread-local），反复复用，只在 epoch 溢出时（`epoch_t` 一般是 32 位，约 40 亿次搜索后才需回绕）才做一次真正的清理。
+
+```
+VisitedListPool.get():
+    if 当前线程已有缓存 且 epoch 未溢出: 返回缓存
+    else:新建数组（一次性 O(N)），并把 epoch 归零
+
+回绕处理（epoch 从2^32-1 回到 0）：
+    必须真正重置数组为 0，并把 epoch 设为 1
+    （否则「上次恰好也在 0」的点会被误判为已访问 → 漏搜 → 召回率静默下降）
+```
+
+> **这个回绕陷阱值得单列**：它是实现 HNSW 时最容易犯且最难发现的 bug——召回率会毫无征兆地从 99%掉到 70%，而代码看起来完全正确。工程上应在回绕时打印日志或计数，便于判断线上是否已触发。
+>
+> **复杂度**：visited 判定为 **O(1) 无哈希、无分支预测失败**，且内存连续（比 hashset 缓存友好得多）。代价是空间O(N) 常驻（每个并发线程一份，10 线程 ×1000 万点 × 4 字节 = 400 MB）——线程数多时需要权衡。
+
+### 24.2 邻接剪枝：多样性优先于纯粹的距离最优
+
+§8.2 提到「邻居剪枝（超过 maxM0/M 时剪掉远端邻居）」，但**没说明按什么顺序剪**。HNSW 原论文的关键洞察是：直接按距离排序保留最近的 M 个，会让所有邻居挤在同一方向，图的**可导航性**变差。正确的剪枝规则是「**先按距离排序，再做一次「多样性筛选」**」：
+
+```
+heuristic_neighbor_selection(candidates, M):
+    # candidates 已按距离升序
+    result = []
+    for c in candidates (nearest → farthest):
+        if len(result) == M: break
+        # ★ 判据：c 是否「离已选中的某个点太近」？
+        #   若 c 与任一已选中点 r 的距离 < c 与查询点的距离，
+        #   说明c 在该方向上没有提供新视野 → 丢弃（保留多样化）
+        if∀ r in result:  dist(c, r) >= dist(c, query):
+            result.append(c)
+    if len(result) < M:                # 兜底：多样性过滤太严，补齐
+        补入被跳过的最近点直到 M
+```
+
+直观理解：邻居应当在**各个方向上分散**，形成一个能把搜索「引导」到未探索区域的导航网。若所有邻居都在同一侧，搜索会像沿着一条窄走廊走，容易在局部区域耗尽候选集。多样性剪枝用 `dist(c,r) >= dist(c,q)` 这个判据保留了「相对于查询点更远、因此视角更开阔」的点。
+
+`shrink_connections_` 是同一判据在**更新既有节点邻接表**时的应用：当某个节点的邻居数超限（例如后续插入使某点度数增加），就要重新按此规则剪一遍。此时**距离基准从 query 换成了该节点自身**（`q = node`），因为要判断的是「围绕这个节点的邻居是否足够分散」。
+
+> **M 与召回率的关系**：`M` 越大，每层图的出度越高，搜索能探索的方向越多 → 召回率↑、内存↑、构建时间↑。经验值 `M=16`：内存约 `N × M × 2个方向 × sizeof(int)` ≈ 每点 128 字节。`M` 从 16 降到 8 会显著省内存，但在高维数据上召回率下降明显；升到 32 通常收益递减而内存翻倍。
+>
+> **复杂度**：剪枝为 O(candidates × M)（每次插入判断M 个已选点是否太近）。由于候选集大小是 `efConstruction`，单次插入的剪枝开销 O(efConstruction × M)。
+
+### 24.3 efSearch：召回率与延迟的单一旋钮
+
+§8.4 列出了 `efSearch` 参数含义，但**没说清它与召回率的关系曲线**。level 0 层的搜索维护一个大小为 `efSearch` 的候选集 B 与结果集 W：
+
+```
+search_layer(q, entry_points, ef, layer):
+    candidates = priority_queue(min_heap)  # 按距离升序，取最近待扩展
+    results    = priority_queue(max_heap)  # 保留最近的 ef 个结果
+    push 所有 entry_points 到 candidates
+    while not candidates.empty():
+        c = candidates.pop_min()
+        if dist(c, q) > worst(dist(results)) and len(results) == ef:
+            break                          # ★ 终止判据：队列里最近的比结果里最差的还远
+        for e in邻接(c) on layer:
+            f = dist(e, q)
+            if f < worst(results) or len(results) < ef:
+                if not visited(e):
+                    mark_visited(e)
+                    push e 到 candidates 和 results
+                    if len(results) > ef: pop_max(results)   # 淘汰最差
+    return results 的前 k 个
+```
+
+终止判据是整个算法的**效率核心**：因为 `candidates` 是按距离升序取出的，一旦取出的最近候选点已经比当前结果集里最差的还远，就说明**任何还没探索的点的距离都不会更小**——搜索可以安全停止。这一判据把搜索从「遍历全图」变成「只探索可能进入 top-k 的区域」。
+
+`efSearch` 的效果：
+
+- `efSearch < k`：结果集装不下 k 个，**结果必然少于 k 个**（这是最常见的配置错误）。
+- `efSearch = k`：仅保证返回 k 个，但不保证它们就是全局最优的 k 个。
+- `efSearch ≫ k`：召回率趋近100%，但层内需要维护更大的候选集与结果集 → 距离计算次数线性增长 → **延迟成比例上升**。
+
+> **量级参考**：`efSearch` 从 10 提到 100，召回率通常从 ~85%升到 ~99%，但距离计算次数增加约 10 倍。这是 ANN 检索中最主要的「召回 vs 延迟」调节旋钮，也是它与暴力精确检索（ef = ∞）的分界。
+>
+> **复杂度**：单次查询 O(ef × 平均出度 × 距离计算成本) ≈ O(ef × M)。距离计算通常主导总耗时（见下）。
+
+### 24.4 距离计算与内存布局：SIMD 对齐的取舍
+
+§8.5 提到「零拷贝访问」，但**没有解释距离计算本身的优化**，而它往往才是查询耗时的真正大头。
+
+```
+朴素 C++ 距离函数的问题（每点一次调用，调用次数 = O(ef × M)）：
+  - 无法向量化（分支多、累加依赖）
+  - 内存访问模式不佳（逐元素 load）
+
+hnswlib 的做法（以 L2 为例）：
+  - 维度在编译期/ 运行期对齐到 4 的倍数
+  - 累加过程写成可自动向量化的形式（多个独立累加器打散依赖链）
+  - 距离结果缓存到 visited_list 之外的 per-node 数组，避免重复算
+```
+
+关键的缓存结构是**「距离缓存数组」**：因为同一个节点会被多个候选点反复探测距离，若每次都重算就是浪费。hnswlib 用一个与节点数等长的 `dist_cache`（配合类似的 epoch 机制）保存「本轮搜索中，该点到 query 的距离」，命中则跳过重新计算。
+
+```
+dist(q, e):
+    if dist_cache[e] 有效且 epoch 匹配: return dist_cache[e]
+    d = L2(q.ptr, e.ptr, dim)         # 实际 SIMD 距离计算
+    dist_cache[e] = d; 记录 epoch
+    return d
+```
+
+> **复杂度与收益**：距离计算 O(dim)，SIMD 后约为标量的 1/4~1/8（AVX2/AVX-512）。带缓存后，单次查询的距离计算次数从「邻接边遍历次数」降至「**不同节点数**」，在图的高层（出度小、重复探测多）收益尤其明显。
+>
+> **内存代价总账**（N = 1000 万点）：向量本身 N × dim × 4 字节（dim=128时约 5.1 GB）+ 图结构 N × M × 2 × 4 字节（M=16 时约 1.3 GB）+ visited/dist_cache 每个搜索线程 N × 4 × 2。**这说明 hnswlib 的定位是「内存充裕的单机」**：它的设计前提是索引常驻内存，磁盘场景需要 lance / milvus 这类带磁盘分层的方案（见 `lance.md` §8.3/§8.4）。
+
+---
+
+## 二十五、参考资料
 
 1. hnswlib GitHub：https://github.com/nmslib/hnswlib
 2. hnswlib Python 包：https://pypi.org/project/hnswlib/
