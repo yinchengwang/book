@@ -540,7 +540,118 @@ LMDB 的设计哲学对工程轨有借鉴价值：
 - **变体**：[https://github.com/erthink/erthink](https://github.com/erthink/erthink)（MDBX）；
 - **Reddit**：r/embedded、r/sysadmin 偶尔提及。
 
-## 二十三、参考资料
+## 二十三、写时复制的页级重排、freeDB 游标与读事务槽位
+
+> 本节源码路径：`mdb.c`（`mdb_page_split`、`mdb_freelist_save`、`mdb_cursor_put`、`mdb_txn_renew0`、`mdb_env_open2`）与 `midl.c`（`midl_search`、`midl_locate`）（canonical，模块未 init，行号需校对）。§7.3 / §7.4 给出了 meta 与 freeDB 的**结构**，§8.1 提到「MVCC 多版本、通过 page id 间接访问」，但**没有解释三个关键机制**：LMDB 相比 BoltDB 把COW 粒度从「页」降到「页 + 页内重排」的具体做法、freeDB 如何用一个 B+tree 游标维护整棵free 列表、以及**读事务槽位（reader slot）**如何让读完全不阻塞写。
+>
+> **模式说明**：本篇走模式 B。以下路径与符号名取自 LMDB 上游（OpenLDAP 的mdb分支）稳定布局，**具体行号需在子模块 init 后校对**。文中算法按上游实现语义描述。
+
+### 23.1 页分裂的两阶段：先拷贝后重排（LMDB 对 BoltDB 的关键改良）
+
+LMDB 的 `mdb_page_split` 与BoltDB 的 `node.spill` 有一个本质区别：**LMDB 会在事务内多次重排同一个页**，而 BoltDB 只在提交时整体拷贝一次。这是「无 WAL + 极低写放大」的关键。
+
+```
+mdb_page_split(txn, mp, indx):            # mdb.c（canonical）
+    # ① 新分配一个 sibling 页，承载「原页的全部内容 + 新插入的键值」
+    newp = mdb_page_new(txn, mp->mp_flags)
+    copy 原 mp 全部 N 个节点 到 newp
+    在 newp 中完成插入（indx 位置）
+
+    # ② 决定谁成为「当前页」：容量较大者留下，较小者成为兄弟
+    if newp 填充率 > 50%:  当前页 = newp;  mp 被「退休」（加入 freeDB 待复用）
+    else:                当前页 = mp（原地覆盖，newp 成为兄弟）
+
+    # ③ 若当前页是 leaf：在父节点插入新指针
+    #    若当前页是 branch：把分隔键与右指针一并上浮
+    #④ 把 mp 放回 page 链表，供事务结束时统一处理
+```
+
+**为什么「退休页可以复用而不违反 COW」**：LMDB 的写事务持有一份 `dirty page` 列表（`txn->mt_u.dirty_list`）。一个被退休的页**只被当前写事务引用**——旧版本（读者可能看到的版本）在提交前仍然通过 reader 的 `mr_txnid` 指向旧 meta。事务提交时，只有**新链路上仍然可达**的页会被保留；不可达的页进入 freeDB 供后续事务复用。
+
+这带来一个 LMDB 独有的能力：**同一个页可在同一事务内被反复退休与重用**（每次插入都可能触发 §23.1）。若页不够用，事务就不得不从文件尾追加新页——因此**写放大的上界是「事务实际触碰的不同页数」而非「树高 × 页大小」**。一个在同一页内反复更新 1000 次的事务，写放大可能只有 1 个页。
+
+> **复杂度**：分裂为 O(n)（`midl_split` 需在有序节点数组中定位切分点并 memmove 后续节点）。单次插入摊还 O(1)——因为 splitIndex 的代价只在跨页时发生。**对比 BoltDB**：BoltDB 每次提交都重写根到叶的整条路径（O(树高) 页写），LMDB 只写实际变脏的页且允许页内重用，这是两者写放大差异的根源。
+
+### 23.2 freeDB：用 B+tree 游标维护 free page 集合
+
+§7.4 提到 freeDB 存在 `meta->mm_dbs[FREE_DB]` 里，但没说它怎么维护。LMDB 的做法很特别：**free page 列表本身就是一棵 B+tree**，键是 `pgno`（用`mdb_freelist_save` 把它压成「最大空闲页号 + 小 pgno 位图」的紧凑形式）。
+
+```
+mdb_freelist_save(txn):                   # mdb.c（canonical）
+    # 用一个专用游标遍历 freeDB（B+tree 扫描），
+    # 把空闲页号集合压缩成：{ 最大的连续空闲尾页号, 其余小 pgno 的位图 }
+    cursor 打开 FREE_DBI
+    遍历 → 收集所有空闲 pgno
+    写入 meta 的 freeDB root（同样是 COW：先把旧 freeDB 全部标记为待 free）
+
+mdb_frelist_restore(env, txn):            # mdb.c（canonical）
+    # 崩溃恢复时反向展开：位图 → 空闲页列表，逐页加入待分配池
+    for pgno in 位图中置位的 pgno:
+        mdb_page_alloc(txn, pgno)          # 直接占用该页号
+    last_pgno 之后的整段 → 一次性标记为空闲区间
+```
+
+**为什么用游标遍历而非数组**：`env->me_free_pgs[]` 是一个已排序的空闲页数组，遍历它需要 O(n) 内存拷贝；改用 B+tree 游标遍历则是 O(页数) 的顺序 IO，且**不需要在堆上构造完整列表**。这在 free page 数量可能很大（曾经历过大量删除的库）时省掉了可观的内存峰值。
+
+游标还带来一个额外收益：`mdb_cursor_put` 本身就能把新释放的页**就地插入 freeDB**，使free 列表与 B+tree 保持同一套分裂/合并逻辑，无需单独实现一套 free-list 结构——这也是 LMDB 相对老版本（用数组）简化的地方。
+
+> **复杂度**：`freelist_save` 为 O(空闲页数/每页条目)，`frelist_restore` 同阶。两者只在事务提交或环境打开时执行，不在热路径上。压缩表示（尾页号 + 位图）使freeDB 的页数从「正比于空闲页数」降到「正比于不连续空闲段数」，这是老版本 LMDB 反复重复空闲页号的核心动机。
+
+### 23.3 读事务槽位：让「读」完全不参与锁竞争
+
+§8.5（多线程/多进程安全）提到读多写少特性，§8.1提到 MVCC，但**都没说明读事务如何注册**。LMDB 的核心机制是 `MDB_env.me_txns`——一个**固定大小的读事务槽位数组**（默认 `MDB_READERS_DEFAULT = 126`，可用 `mdb_env_set_maxreaders` 调整）。
+
+```
+mdb_txn_begin(env, parent, flags, &txn):         # mdb.c（canonical）
+    if flags & MDB_RDONLY:
+        # 读事务：抢一个槽位，无需任何锁
+        i = 原子递增(env->me_txns 计数器)
+        if i >= env->me_maxreaders: 返回 MDB_READERS_FULL   # 槽位耗尽
+        slot = &env->me_txns[i]
+        # ★ 只需一条 store-release 写：发布「我这个槽位正在用 txnid=N 的快照」
+        slot->mr_txnid = env->me_txns->mt_txnid
+        txn->mt_txnid = slot->mr_txnid
+    else:
+        # 写事务：抢全局写锁（互斥）
+        mdb_txn_lock(env, F_ISSET(flags, MDB_TXN_BLOCKED) ? F_RDLCK : F_WRLCK)
+        txn->mt_txnid = env->me_txns->mt_txnid
+
+mdb_txn_renew0 / mdb_txn_reset：                   # mdb.c（canonical）
+    # 读者释放/重用槽位时，先把 mr_txnid 置为无效：
+    slot->mr_txnid = (txnid_t)-1                 # ★ 写事务扫描此值决定「该页能否复用」
+```
+
+**槽位的真正作用是给写事务提供「垃圾回收」的依据**：写事务在退休一个页（§23.1）之前，必须确认**没有任何活跃读事务仍在读旧版本**。LMDB 的判定方式是扫描所有槽位的 `mr_txnid`：若某读者的 `mr_txnid` 小于「该页所属的版本 txnid」，说明它可能仍持有旧视图的引用，该页**不能复用**。
+
+```
+页可复用  ⟺  ∀ slot: slot.mr_txnid ≥ 该页最后一次修改的 txnid
+                 （或 slot 为无效值 -1，表示没有读者）
+```
+
+这条判据解释了 LMDB 的两个经典现象：
+
+- **长时间运行的读事务会导致文件膨胀**。一个持续 1 小时的读者会把期间所有退休页都钉住，写事务无法复用它们，文件持续增长。这不是泄漏，而是 MVCC 语义的必然代价。
+- **读事务必须主动renew/reset**（`mdb_txn_reset` + `mdb_txn_renew`）。若既不释放也不 renew，槽位会一直被视为活跃，写事务的复用判定永久受阻。§8.3 的「嵌入模式」讨论也依赖这一点——嵌入式场景里读事务通常绑定到 goroutine/线程的生命周期。
+
+> **复杂度**：读事务创建为 **O(1) 且无锁**（一条原子写）；写事务的页复用判定为 O(槽位数)，即O(maxreaders=126)，与数据量无关。**这正是 LMDB 读性能远超BoltDB 的原因**：BoltDB 的读事务需要拿 `mmaplock` 读锁并可能等待，而 LMDB 的读事务与写事务之间**零共享状态**。
+
+### 23.4 三种嵌入式 KV 的写放大对比小结
+
+把本轮深化过的三篇放在一起，可以看到一个清晰的设计谱系（数值量级基于页大小 4 KB、键值对约 32 字节的典型假设）：
+
+| 维度 | BoltDB（§23.1） | LMDB（§23.1 / §23.3） | pklite（§7.3/ §8.5） |
+|------|----------------|---------------------|-------------------|
+| 写放大 | O(树高) 页/事务 | O(脏页数)，且页内可重用 | 取决于实现，通常无 COW |
+| 提交原子性 | meta 双槽切换 + fsync | meta 双槽切换 | 无（无WAL） |
+| 读并发 | mmap 只读共享，需读锁 | 槽位数组，**完全无锁** | 取决于实现 |
+| 崩溃恢复 | 双 meta 校验 + 补零 | 双 meta 校验 + freeDB 重建 | 依赖单文件自描述扫描 |
+| 典型定位 | Go 生态大生态（etcd） | 极致读性能 + 极小体积 | 轻量嵌入式 |
+
+> **共同点**：三者都放弃了「独立 WAL + 缓冲池」的经典架构，改用「**文件即索引**」。这一取舍换来的是单文件部署、零配置、以及崩溃后不需要重放日志即可定位到最后一次提交——代价是写放大高于 WAL 方案。
+
+---
+
+## 二十四、参考资料
 
 1. Howard Chu. *LMDB: The Memory-Mapped Database*. OpenLDAP.org 官方文档.
 2. Comer, D. *The Ubiquitous B-Tree*. ACM Computing Surveys 11(2), 1979.
