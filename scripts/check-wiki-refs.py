@@ -103,6 +103,8 @@ def main():
                     help='打印命中的目标行内容（语义比对用）')
     ap.add_argument('--mode-b', action='store_true',
                     help='强制对全部模式 B 篇目做合规校验（零精确行号 + approx 标注）')
+    ap.add_argument('--mode-readme', action='store_true',
+                    help='校验 README 表格的「深化」标记与 wiki 文件实际内容一致')
     args = ap.parse_args()
 
     prefix_map = {}
@@ -177,7 +179,11 @@ def main():
 
 # 任意形态的「路径:数字」——不要求反引号、不要求行尾
 LOOSE_REF = re.compile(
-    r'[A-Za-z0-9_./\-]+\.(?:java|scala|go|cc|cpp|cxx|hpp|h|py|rs|kt|sql|cmake|c|pyx|cu|md|txt|sh):[0-9]+'
+    r'(?<![\w.])[A-Za-z_][A-Za-z0-9_./\\-]*\.(?:java|scala|kt|kts|go|rs|c|cc|cpp|cxx|h|hpp|hxx|inc'
+    r'|py|pyi|pyx|cs|erl|ex|exs|clj|cljs|rb|php|js|jsx|ts|tsx|mjs|cjs|swift|m|mm'
+    r'|sql|proto|thrift|graphql|gql|sh|bash|zsh|pl|lua|r|jl|ml|mli|nim|zig'
+    r'|cmake|mk|gradle|bzl|bazel|toml|yml|yaml|json|xml|ini|cfg|conf'
+    r'|fbs|avsc|ps1|bat|vim|el|scm|cl|pas|f90|for|vb|fs|fsx):[0-9]+'
 )
 
 # 模式 B 篇目清单（子模块未 init，禁止精确行号）
@@ -229,9 +235,93 @@ def check_mode_b(repo_root):
     return 1 if bad else 0
 
 
+# ---------------------------------------------------------------- README 一致性校验
+#
+# 背景：README「深化」列曾把couchdb(.erl 54处) / ravendb(.cs 91 处) 误标为
+# 「无行号」，把高质量档位标低了——这正是周报 P2 批评的「README 状态失真」。
+# 根因是判档正则用了**固定扩展名清单**，漏掉 .erl / .cs / .ex 等冷门后缀。
+# 本模式把「标记 ↔ 事实」逐篇比对固化为可回归断言，避免下次靠人手数。
+#
+# 断言：README 表格每行的标记 == 按文件实际内容判出的档位
+#   🔬 行号级：含 `源码路径:行号`
+#   🔷 canonical 标注：有源码路径但无行号
+#   ◻️ 路径待核实：显式声明「不列出未经核实的源码路径」（仅符号名）
+
+MARK_L1 = '\U0001F52C'   # 🔬
+MARK_L2 = '\U0001F537'   # 🔷
+MARK_L3 = '\u25FB\uFE0F'  # ◻️
+NO_PATH_MARK = '不列出未经核实的源码路径'
+MARK2TIER = {MARK_L1: 'L1', MARK_L2: 'L2', MARK_L3: 'L3', '\u25FB': 'L3'}
+
+
+def actual_tier(path):
+    """按文件实际内容判档（判据与 check_mode_b 保持一致）。"""
+    text = open(path, encoding='utf-8').read()
+    if LOOSE_REF.search(text):
+        return 'L1'
+    if NO_PATH_MARK in text:
+        return 'L3'
+    return 'L2'
+
+
+def check_readme(repo_root):
+    print()
+    print('=' * 70)
+    print('README 一致性校验（表格标记 ↔ wiki 文件实际内容）')
+    print('=' * 70)
+    readme = os.path.join(repo_root, 'docs/db-wiki/README.md')
+    if not os.path.isfile(readme):
+        print('  [MISS] docs/db-wiki/README.md 不存在')
+        return 1
+
+    text = open(readme, encoding='utf-8').read()
+    bad = []
+    total = 0
+    for ln in text.split('\n'):
+        if not (ln.startswith('| ') and '.md)' in ln):
+            continue
+        cells = [c.strip() for c in ln.strip().strip('|').split('|')]
+        if len(cells) != 4:
+            continue
+        rel = cells[1].split('](')[-1].rstrip(')').lstrip('./')
+        total += 1
+        wiki = os.path.join(repo_root, 'docs/db-wiki', rel)
+        if not os.path.isfile(wiki):
+            bad.append((rel, '文件不存在'))
+            continue
+        want = actual_tier(wiki)
+        got = MARK2TIER.get(cells[3])
+        if want != got:
+            bad.append((rel, f'标记 {cells[3]!r}，实际应为 {want}'))
+
+    counts = {}
+    for ln in text.split('\n'):
+        if ln.startswith('| ') and '.md)' in ln:
+            cells = [c.strip() for c in ln.strip().strip('|').split('|')]
+            if len(cells) == 4:
+                counts[cells[3]] = counts.get(cells[3], 0) + 1
+
+    print(f'  逐篇比对 {total}篇')
+    for mk in (MARK_L1, MARK_L2, MARK_L3):
+        if mk in counts:
+            print(f'    {mk} {counts[mk]} 篇')
+    print('-' * 70)
+    if bad:
+        for rel, why in bad:
+            print(f'  MISMATCH {rel}: {why}')
+        print(f'README 一致性: FAIL（{len(bad)} 篇标记与事实不符）')
+    else:
+        print(f'README 一致性: PASS（{total} 篇标记与事实全部一致，MISMATCH 0）')
+    print('=' * 70)
+    return 1 if bad else 0
+
+
 if __name__ == '__main__':
     rc, args = main()
     # 模式 B 校验：无文件参数时全量跑；--mode-b 强制跑；给了多个文件时也全量跑
     if (not args.files) or args.mode_b or (len(args.files) > 1):
         rc |= check_mode_b(os.path.abspath(args.repo_root))
+    # 模式 README 校验：--mode-readme 读README 表格标记列，逐篇核对文件实际内容
+    if args.mode_readme:
+        rc |= check_readme(os.path.abspath(args.repo_root))
     sys.exit(rc)

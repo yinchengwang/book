@@ -1,9 +1,0 @@
-/* src/index.css */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-@layer base {
-  html { @apply antialiased; }
-  body { @apply bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100; }
-}
