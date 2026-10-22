@@ -525,7 +525,112 @@ Arrow 的扩展能力取决于其消费者：
 3. **第三步**：参考 DataFusion / Velox 的优化器模式（`Vector` / `Buffer` 复用）改造 `engineering/src/db/executor/`；
 4. **第四步**：在 `engineering/apps/` 添加 `flight_server` 应用，启动 `apache.arrow.flight.FlightServerBase` 子类，对外暴露 query API。
 
-## 二十四、参考资料
+## 二十四、Validity Bitmap 的位运算语义、Union 判别式与零拷贝的失效条件
+
+> 本节源码路径：`cpp/src/arrow/array/array_base.cc`、`cpp/src/arrow/array/builder_base.cc`、`cpp/src/arrow/ipc/writer.cc`、`cpp/src/arrow/util/bitmap_ops.h`（canonical，模块未 init，行号需校对）。§8.1 给出内存布局、§8.2 给出类型系统、§8.3 列出可用的压缩编码、§8.4 说明 C ABI 零拷贝机制。但**三个决定 Arrow 实际行为的关键语义仍未展开**：validity bitmap（NULL 掩码）的位运算与它和 values buffer 的对齐关系、Union 类型的判别式偏移规则、以及**零拷贝在什么条件下会静默退化为拷贝**。
+>
+> **模式说明**：本篇走模式 B。路径为 Apache Arrow `apache/arrow` 主干的稳定目录布局，**具体行号需在子模块 init 后校对**。符号名（`validity_bitmap`、`null_count`、`buffers()`、`ArrayData`）沿用上游命名。
+
+### 24.1 validity bitmap：NULL 不是哨兵值，而是独立的位图
+
+Arrow 最容易被误解的设计是「NULL 的表示方式」。它**不用哨兵值**（不像 many databases 用 `-1` 或特殊 bit 模式），而是给每列配一个**等长的位图**：
+
+```
+一个 Int32 列，length = 4：
+  values buffer:  [10, <任意垃圾>, 30, 40]      # 第 1 行的 value 槽位内容【无意义】
+  validity buffer: 0b...0110                    # bit1=0 表示 NULL；bit0=1,bit2=1,bit3=1 表示有效
+                    bit3 bit2 bit1 bit0
+```
+
+三个直接后果：
+
+- **values buffer 与 validity buffer 长度严格相等**（而非「NULL 处不占空间」）。这让values 可以按下标随机访问，无需任何偏移表——**这是 Arrow 能零拷贝共享的前提**。
+- **NULL 槽位里的字节内容是未定义的**（可能是旧数据、可能是 0、可能是敏感数据残留）。读取时必须先查 bitmap；直接读 values 会读到无意义内容。
+- **`null_count` 是缓存值而非实时计算**。构造时统计一次并存储在 `ArrayData` 中；后续若手工改bitmap 而不同步 `null_count`，计数会不一致（Arrow 假定 bitmap 不可变）。
+
+位运算原语（`arrow/util/bitmap_ops.h`，canonical）：
+
+```
+count_set_bits(bitmap, offset, length):     # null_count 的来源
+    → O(length / 64)，按 64 位字批量 popcount
+
+is_valid(bitmap, i):                # 单点判定，热路径
+    → (bitmap[i >> 3] >> (i & 7)) & 1          # 一次 load + 移位 + 与
+
+BitmapEquals / BitmapAnd / BitmapOr:            # 过滤下推的核心
+    → 按 64 位字批量运算，O(length / 64) 且可 SIMD
+```
+
+**位序（bit order）是一个必须注意的细节**：Arrow 规定**小端序（little-endian bit order）**，即第`i` 个元素对应第 `i>>3` 字节的第 `i&7` 位（LSB 优先）。这与某些系统的「高位优先」相反，跨语言实现时若搞反，会得到**完全错误但看起来合法**的数据。
+
+> **复杂度与收益**：NULL 判定O(1)（两次位运算），批量过滤下推 O(N/64) 个字操作且可 SIMD。代价是每个可能含 NULL 的列多一条与values 等长的 bitmap（1 bit/行，即 N/8 字节）——相比 values 的 4N 字节只占 1/32，通常可接受；但对「99% 是 NULL 的稀疏列」，bitmap 反而比 data 更省。
+>
+> **一个实际收益**：过滤下推时，若过滤条件本身产出一个 validity bitmap（如 `a IS NOT NULL AND b > 3`），可以直接与列的 bitmap 做 `BitmapAnd` 得到结果掩码，**不需要物化一个「过滤后的小数组」**——这正是 Arrow 表达式的惰性求值基础。
+
+### 24.2 Union 类型的判别式偏移：UnionArray 的布局陷阱
+
+§8.2 把 Union 列为类型系统的一类，但没有说明它**在内存里怎么排**。Union 的复杂性在于「不同类型的子数组长度不同，但顶层要求等长」：
+
+```
+UnionArray（以 Union(Int32, Utf8) 为例，length = 3）：
+  ┌─ type_ids buffer:   [0, 1, 1]              # 每行属于哪个子类型
+  ├─ type_offsets buffer:[0, 0, 5]             # 每行在对应子数组中的位置
+  ├─ child[0] (Int32):   [10, 20, 30]          # 只有 type_id==0 的行被引用
+  └─ child[1] (Utf8):    ["hello", "wor", "ld"]# 被拆成两段拼接！
+```
+
+`type_offsets` 的存在是**必需的**：因为 `child[1]` 里第 1、3 行分别是 `"hello"` 和 `"ld"`，它们在子数组里必须**连续存放**才能共享 buffer，但逻辑上它们在顶层是不相邻的（第 2、3 行）。`type_offsets` 就是「第 3 行的 `"ld"` 在 child[1] 里的下标是 1」这一映射。
+
+由此产生的三个约束：
+
+1. **子数组的长度可能超过顶层长度**（本例 child[1] 长度 5 >顶层 3）。因此**不能用 `length` 去遍历 child buffer 的长度**——必须用 `type_offsets` 的最大值。
+2. **写入需要「两遍」**：先统计各子类型各占多少行以分配偏移，再填充。`UnionBuilder` 的 `Append` 因此不能像普通 builder 那样单遍追加——它需要先分类计数。这是 Union 构建比普通列**显著更慢**的根本原因。
+3. **紧凑布局（compact）与稀疏布局（sparse）**：Arrow 规范定义了两种。默认的 sparse 就是上面这种（子数组带偏移）；compact 布局则让每个子数组与顶层等长（未使用的槽位填 null），换来的好处是**可以跳过 type_offsets**（按下标直接取），代价是空间浪费。多数实现（如 Arrow C++）用 sparse。
+
+> **工程含义**：Union 类型在分析负载里很少真正需要。若确实要用，**优先考虑把 Union 拆成多个独立列**（schema 演进友好）或用 `Dictionary` + `Struct` 组合替代——Union 的写入成本与读取复杂度都不划算。这也让 Parquet 等格式普遍把 Arrow Union 降级为「一列多列 + 判别列」的写法。
+
+### 24.3 零拷贝的失效条件：三类静默拷贝
+
+§8.4 强调零拷贝的价值，但**没说什么时候零拷贝会不成立**。实践中以下三类情况会退化为拷贝，且**往往不报错**（数据正确，只是慢）：
+
+```
+类型 1：布局不匹配（Schema 相同但内存布局不同）
+    零拷贝要求双方的 DataType 与 buffer 结构【完全一致】：
+    - Int32 vs Int64（宽度不同）→ 必须转换
+    - 字典列的 index 类型不同（Int32 vs Int64）
+    - Date32 vs Date64
+    - 字段顺序 / metadata 不同
+    → 此时 import 会分配新 buffer 并逐值转换（静默拷贝）
+
+类型 2：所有权与生命周期不匹配
+    - C ABI export 要求内存由 Arrow 的 BufferHolder 管理（可被接管）
+    - 若从【只读、非 Arrow 分配】的内存（如 mmap 的文件、Python bytes）导入，
+      多数实现选择【复制】而非引用，否则无法保证生命周期
+    → PyCapsule 接口尤其敏感：Python 对象被回收后 C++ 侧仍持有指针会野，
+      所以跨语言时几乎总是复制或由 PyCapsule 显式转移所有权
+
+类型 3：ChunkedArray 的跨 chunk 合并
+    - RecordBatch 内部是连续的，但 Arrow Table 常由【多个 chunk】组成
+    - 任何要求「单一连续 buffer」的操作（如直接 mmap 共享、
+      某些 C 接口的 raw pointer 导出）都会先合并 chunk → 一次全量拷贝
+```
+
+判定实际是否零拷贝的方法：
+
+```
+# pyarrow：看是否发生 buffer 共享（而非值相等）
+arrow_total_allocated_bytes()          # 进程内 Arrow 总分配字节
+若查询前后该值【没有明显增长】，说明没有发生拷贝
+（若发生了全量拷贝，这个值会跳升一个 RecordBatch 的体量）
+```
+
+> **复杂度与工程含义**：零拷贝是 O(1)（仅传递指针与长度）；退化拷贝是 O(N)（逐值转换 + 分配）。差距在百万行级别上是毫秒 vs 百毫秒的差别。
+>
+> 实践建议：**跨进程/跨语言传递时优先传 Schema + buffer 描述而非 Python 对象**（如 Arrow Flight 的 `FlightData` 就是纯 protobuf 描述 + 独立 buffer 传输，接收端零拷贝 mmap）。在纯进程内（C++ ↔ C++）则直接用 `arrow::Array` 的值语义，避免不必要的 `Table::CombineChunks`。
+
+---
+
+## 二十五、参考资料
 
 1. Apache Arrow 官方主页：https://arrow.apache.org/
 2. Apache Arrow GitHub：https://github.com/apache/arrow
