@@ -494,7 +494,109 @@ DuckDB 是**嵌入式库**，无内置多副本机制。高可用：
 - **YouTube**：DuckDB Office Hours 会议回放；
 - **Reddit**：r/DuckDB、r/dataengineering。
 
-## 二十三、参考资料
+## 二十三、向量化执行、Zone Map 剪枝与 ART 的路径压缩
+
+> 本节源码路径：`src/execution/vector_operations/`、`src/storage/table/column_chunk.cpp`、`src/storage/index/art/node.cpp`、`src/storage/buffer_manager.cpp`（canonical，模块未 init，行号需校对）。§7.1~§7.3 给出了 Row Group / WAL / Buffer Manager 的**结构**，§8.2 列出了 ART 的**节点类型**，但都没有展开三个决定 DuckDB 性能的算法：向量化批处理的**选择向量 + 惰性物化**、Zone Map 的**保守剪枝判据**、以及 ART 在**长前缀键**下的路径压缩与节点升级代价。
+>
+> **模式说明**：本篇走模式 B。路径取自 DuckDB 上游（`duckdb/duckdb`）的稳定目录布局，**具体行号需在子模块 init 后校对**。符号名（`VectorData`、`SelectionVector`、`ColumnChunkStats`、`Node16` 等）沿用上游命名。
+
+### 23.1 向量化执行：选择向量与惰性物化的组合
+
+DuckDB 的性能核心不是「一次处理一行」而是「一次处理 2048 行的一批」（`STANDARD_VECTOR_SIZE`）。但真正的精巧之处在于**批内仍然允许逐行选择**——这靠选择向量（`SelectionVector`）实现。
+
+```
+# 概念伪代码：一次带过滤的扫描
+scan(table, filter):
+    for each chunk of2048 rows:
+        # ① 物理读：把整批列数据解压进 Vector（连续内存布局）
+        vector = column_data.get_chunk(chunk_id)      # 类型化，无装箱
+        # ② 过滤：返回的是一个「行号数组」而非新数据
+        sel = execute_filter(vector, filter)          # sel = [i0, i1, ...]（下标列表）
+        if sel.size() == STANDARD_VECTOR_SIZE:
+            # 全通过 → 直接把整个 vector 交给下游，零拷贝
+            emit(vector)
+        else:
+            # ③ 压缩（SelectionVector）下游算子按 sel 间接寻址
+            emit(vector.slice(sel))
+```
+
+这里有**两层不同的机制**，混用会得到错误的性能预期：
+
+| 机制 | 作用对象 | 是否复制数据 |
+|------|---------|------------|
+| **Vector 化批处理** | 2048 行的**整列** | 是（从压缩存储解压到 Vector） |
+| **SelectionVector** | 批内的**行选择** | 否（只传下标数组） |
+
+「压缩执行」（`COMPRESSION`）与「选择」是两件独立的事：DuckDB 先把 2048 行解压到连续 Vector（此步必然涉及数据搬运），之后所有过滤/连接都只传下标。这就是为什么 §7.1 里 zone map 剪枝（跳过整个 chunk）比「批内过滤」值钱得多——**前者连解压都省了**。
+
+> **复杂度**：批内过滤 O(n) n=2048；下标传递 O(k) k 为选中行数（k ≤ n）。若选中率 s 极低（如 s=0.1%），批内过滤仍要扫完 2048 行才能得出 2 个下标——这正是 zone map 在 chunk 级剪枝能带来数量级收益的原因。整批执行相对逐行的加速来自：摊销循环开销、消除分支预测失败、允许 SIMD。
+
+### 23.2 Zone Map：块级 min/max 与保守性优先
+
+DuckDB 的每个 Column Chunk 维护一对 `[min, max]`。§7.1 提到 Row Group 结构但未展开剪枝判据。关键设计是**剪枝的正确性优先于命中率**：
+
+```
+canSkip(chunk, predicate):               # 概念伪代码
+    stats = chunk.column_stats[col_idx]
+    if stats 无统计值（嵌套类型/ 全 NULL）:
+        return false                       # ★ 无统计 = 不剪，绝不误剪
+    for pred in conjuncts of predicate:
+        if pred 与 stats 矛盾:
+            return true                    # 整个 chunk 可跳过
+    return false
+```
+
+「矛盾」的判定对每种谓词都是**贴边才剪**（与 Kafka 的 zone map 判据同构，见本项目 `docs/db-wiki/stream/kafka.md`）：
+
+| 谓词 | 可剪枝条件 |直觉 |
+|------|-----------|------|
+| `col = c` | `c < min` 或 `c > max` | 常量落在值域外 |
+| `col < c` | `min >= c` | 块内最小值都不小于 c |
+| `col > c` | `max <= c` | 块内最大值都不大于 c |
+
+注意 `col < c` 的判据是 `min >= c` 而不是 `min > c`——**等号必须保留**（漏剪率0 的代价是命中率略降，而误剪的代价是错误结果）。这与「宁可多扫不可错扫」是同一条原则。
+
+**Zone map 的粒度决定了它的上限**：剪枝发生在 **Column Chunk** 粒度（一个 Row Group 内一列的一段），而一个 Row Group 通常 122880 行（`ROW_GROUP_SIZE`，约 15 万行数量级）。一块15 万行的列只要有 1 行落在值域内，整块都要解压。因此**高频UPDATE 的列会显著削弱 zone map 收益**——因为统计信息需要合并增量更新，DuckDB 的做法是在统计值上叠加一个「是否精确」的标志，一旦有更新就退化为不精确。
+
+> **复杂度**：剪枝判定为 O(谓词数)，发生在 chunk 粒度。设选择率 s、谓词数 p、行组行数 R：扫描代价从 O(N) 降到 O(s·N)，剪枝开销 O((N/R)·p)。净收益条件是 `s·R ≫ p`。经验上 s < 10% 时收益明显；s > 50% 时剪枝开销开始吃掉收益。
+
+### 23.3 ART 的路径压缩：长键场景下的空间与时间权衡
+
+§8.2 列出了 ART 的四种内部节点类型（Node4/16/48/256）与 Leaf，但**没有解释路径压缩**——这是 ART 处理长前缀键（如 `user_id + '_' + event_type + '_' + timestamp`）的关键机制。
+
+```
+插入 key = "user_42_click_2026":
+    # 逐字节下行，每一步吃掉 key 的一个前缀
+    root(Node256) ──[u]──> Node16 ──[s]──> ... ──> Leaf("42_click_2026")
+                                         ↑ 从这里开始，剩余全部字节存入 Leaf
+
+# 路径压缩（Adaptive 的 "Adaptive" 体现在此）：
+splitLeaf(parent, prefix "user_42_click_", leaf):
+    # 1. 统计所有兄弟叶与新 key 的最长公共前缀（LCP）
+    lcp = longest_common_prefix(new_key, 所有已存 key)
+    # 2. 若 LCP 足够长（≥ 内联阈值），插入一个 Path Compression 节点
+    insert PathNode(prefix = lcp 前 min(len, max_inline_len) 字节)
+    # 3. PathNode 之后才分叉为各Leaf
+```
+
+ART 的 node 变体设计遵循一个统一的**空间-时间阶梯**（这也是 radix tree 家族的通用做法）：
+
+| 节点类型 | 子指针数| 查找复杂度 | 单指针存储代价 |
+|---------|--------|-----------|--------------|
+| Node4 | ≤ 4 | O(4) 线性 | 4 × 1 字节索引 + 4 × 8 字节指针，紧凑 |
+| Node16 | 5~16 | O(4) SIMD 并行比较 | 16 × 1 字节 + 16 × 8 字节 |
+| Node48 | 17~48 | O(1) 查索引数组 → 256 槽位 | 256 × 1 字节索引 + 48 × 8 字节指针 |
+| Node256 | 49~256 | **O(1) 直接数组下标** | 256 × 8 字节指针（256 个子树） |
+
+关键取舍：**节点升级发生在子节点数越过阈值时（16→17、48→49）**，每次升级是一次 O(子节点数) 的重排。对高频前缀（如所有 key都以 `user_` 开头），root 会被压缩成一个 PathNode，**根本不会发生 256 分支的扇出**——这正是「自适应」的价值：节点结构随实际键分布动态调整，而非固定一种布局。
+
+> **复杂度**：查找 O(k) k 为 key 字节数（每字节一次下钻，但 PathNode 一次吃掉整段前缀）。相比 B+tree 的 O(log_B n) 次页访问，ART 的优势是**全内存、无页边界、单次指针追逐**；劣势是内存占用更高（每个内部节点都有固定开销），且**不适用于范围扫描**（ART 只支持点查与前缀扫描，不支持 `col BETWEEN a AND b` 的有序遍历）。
+>
+> **工程含义**：DuckDB 的 ART 索引在 OLTP 场景（主键点查）表现优秀，但分析型查询若需要范围过滤，仍会退化为全表扫描 + zone map 剪枝。这是「索引为点查优化、为扫描优化的是列存与统计信息」的典型分工。
+
+---
+
+## 二十四、参考资料
 
 1. Raasveldt & Mühleisen. *DuckDB: an Embeddable SQL OLAP Database Management System*. SIGMOD 2019. <https://duckdb.org/pdf/DuckDB.pdf>
 2. Leis et al. *The Adaptive Radix Tree: ARTful Indexing for Main-Memory Databases*. ICDE 2013. <https://db.in.tum.de/~leis/papers/ART.pdf>
