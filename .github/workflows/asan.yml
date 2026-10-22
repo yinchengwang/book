@@ -1,5 +1,12 @@
 # ASAN/UBSAN CI workflow for Linux runner.
 # 注：Windows MSVC runner 无 ASAN 支持（依赖 MinGW 工具链差异），单独保留。
+#
+# Checkout 策略（2026-10-22 修复）：与 ci.yml 一致，只拉构建真正需要的
+# third_part/googletest，不使用 submodules: recursive（99 个子模块里 95 个是
+# reference/ 下的第三方源码参考仓，对构建无用且导致 Checkout 超时失败）。
+# 本 workflow 在仓库根执行 cmake ..（根 CMakeLists.txt → ENGINEERING_BUILD=ON
+# → add_subdirectory(engineering)），因此 googletest 必须存在，否则
+# engineering/CMakeLists.txt 会回退到 find_package(GTest REQUIRED) 而失败。
 name: ASAN UBSAN
 
 on:
@@ -13,7 +20,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+          persist-credentials: false
+      - name: Fetch googletest submodule
+        run: git submodule update --init --depth 1 third_part/googletest
       - name: Install build tools
         run: |
           sudo apt-get update

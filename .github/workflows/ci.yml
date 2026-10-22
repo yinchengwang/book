@@ -1,5 +1,22 @@
 # GitHub Actions CI/CD 工作流
 # 双轨独立 CI (S12)：工程层 + 学习层 各自独立 build & test
+#
+# Checkout 策略（2026-10-22 修复）：
+#   仓库共 99 个子模块，其中 95 个是 reference/ 下的第三方源码参考仓（faiss/redis/
+#   postgres/clickhouse/...），对构建毫无用处；submodules: recursive 会把它们全部
+#   拉下来，导致 Checkout 步骤超时/失败，后续构建测试全被跳过。
+#   真正被 CMake 引入的只有根目录 third_part/googletest 一个：
+#     - engineering/CMakeLists.txt:124  add_subdirectory(../third_part/googletest)
+#       （缺失时回退 find_package(GTest REQUIRED)，CI 环境无系统 GTest 会直接失败）
+#     - learning/CMakeLists.txt:48      add_subdirectory(../third_part/googletest)
+#       （缺失时 leetcode_tests 链接 GTest::gtest_main 失败）
+#   因此改为 submodules: false（默认值，此处显式声明以表意）+ 显式单模块浅拉取。
+#
+#   LFS 关闭：.gitattributes 追踪的 *.pdf / dataset/** / *.chm 全部不被任何构建或
+#   测试步骤读取（sift_recall.c 等硬编码 Windows 路径且未注册进 ctest），约 692MB
+#   的 LFS 内容对 CI 毫无价值。
+#
+#   fetch-depth 保持默认(1)：工作流内没有任何 git log / git describe / git tag 取版本号。
 
 name: CI
 
@@ -11,7 +28,6 @@ on:
 
 env:
   BUILD_TYPE: Release
-  GIT_LFS_ENABLED: true
 
 jobs:
   # ============ 工程层（PG 风格数据库 + MiniVecDB）============
@@ -24,19 +40,11 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
       with:
-        submodules: recursive
-        lfs: true
-        fetch-depth: 0
+        submodules: false
+        persist-credentials: false
 
-    - name: Setup Git LFS
-      uses: actions/checkout@v4
-      if: env.GIT_LFS_ENABLED == 'true'
-      with:
-        lfs: true
-        sparse-checkout: |
-          *.bin
-          *.gguf
-          sift.tar.gz
+    - name: Fetch googletest submodule
+      run: git submodule update --init --depth 1 third_part/googletest
 
     - name: Install dependencies (Ubuntu)
       run: |
@@ -62,19 +70,11 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
       with:
-        submodules: recursive
-        lfs: true
-        fetch-depth: 0
+        submodules: false
+        persist-credentials: false
 
-    - name: Setup Git LFS
-      uses: actions/checkout@v4
-      if: env.GIT_LFS_ENABLED == 'true'
-      with:
-        lfs: true
-        sparse-checkout: |
-          *.bin
-          *.gguf
-          sift.tar.gz
+    - name: Fetch googletest submodule
+      run: git submodule update --init --depth 1 third_part/googletest
 
     - name: Install dependencies (Ubuntu)
       run: |
@@ -101,19 +101,11 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
       with:
-        submodules: recursive
-        lfs: true
-        fetch-depth: 0
+        submodules: false
+        persist-credentials: false
 
-    - name: Setup Git LFS
-      uses: actions/checkout@v4
-      if: env.GIT_LFS_ENABLED == 'true'
-      with:
-        lfs: true
-        sparse-checkout: |
-          *.bin
-          *.gguf
-          sift.tar.gz
+    - name: Fetch googletest submodule
+      run: git submodule update --init --depth 1 third_part/googletest
 
     - name: Set up MinGW
       uses: msys2/setup-msys2@v2
@@ -148,19 +140,11 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
       with:
-        submodules: recursive
-        lfs: true
-        fetch-depth: 0
+        submodules: false
+        persist-credentials: false
 
-    - name: Setup Git LFS
-      uses: actions/checkout@v4
-      if: env.GIT_LFS_ENABLED == 'true'
-      with:
-        lfs: true
-        sparse-checkout: |
-          *.bin
-          *.gguf
-          sift.tar.gz
+    - name: Fetch googletest submodule
+      run: git submodule update --init --depth 1 third_part/googletest
 
     - name: Install dependencies (Ubuntu)
       run: |
@@ -187,19 +171,11 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
       with:
-        submodules: recursive
-        lfs: true
-        fetch-depth: 0
+        submodules: false
+        persist-credentials: false
 
-    - name: Setup Git LFS
-      uses: actions/checkout@v4
-      if: env.GIT_LFS_ENABLED == 'true'
-      with:
-        lfs: true
-        sparse-checkout: |
-          *.bin
-          *.gguf
-          sift.tar.gz
+    - name: Fetch googletest submodule
+      run: git submodule update --init --depth 1 third_part/googletest
 
     - name: Install dependencies (Ubuntu)
       run: |
@@ -230,19 +206,11 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
       with:
-        submodules: recursive
-        lfs: true
-        fetch-depth: 0
+        submodules: false
+        persist-credentials: false
 
-    - name: Setup Git LFS
-      uses: actions/checkout@v4
-      if: env.GIT_LFS_ENABLED == 'true'
-      with:
-        lfs: true
-        sparse-checkout: |
-          *.bin
-          *.gguf
-          sift.tar.gz
+    - name: Fetch googletest submodule
+      run: git submodule update --init --depth 1 third_part/googletest
 
     - name: Install lcov + PyYAML
       run: |
