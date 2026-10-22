@@ -621,7 +621,122 @@ Topic (my-topic, 16 partitions)
   - **BookKeeper 独立项目**：本项目当前无分布式存储需求；
 - **集成参考**：本项目如需消息中间件集成，可考虑 Pulsar（云原生）或 Kafka（生态广）；
 
-## 二十四、参考资料
+## 二十四、Individual Ack 的区间合并：PositionRangeSet 与 mark-delete 推进
+
+> 本节源码路径：`managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/ManagedCursorImpl.java`、`managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/PositionRangeSet.java`。§8.4 列出了 Individual / Cumulative / Key_Shared 三种 ack 模式，**但只到模式名称层面**；它没有解释一个关键问题：individual ack 产生的「离散删除集合」如何在推进 mark-delete 时被高效合并并批量裁剪。本节补齐这套区间合并算法。
+>
+> 说明：本节以本仓库 `reference/stream/pulsar` 中实际存在的 `ManagedCursorImpl` / `PositionRangeSet` 为准。该版本的批量 ack（batch ack）通过 entry 上的 `AckSet` 位图实现（见 `ManagedCursorImpl.ackBatchPosition`，`managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/ManagedCursorImpl.java:2339`），而 `PositionRangeSet` 负责**跨 entry 的离散删除区间**。两者是互补而非替代关系。
+
+### 24.1 为什么需要区间结构而不是位图
+
+Cumulative ack 天然是「一个单调递增的指针」，O(1) 即可表示。但 individual ack 允许消费者**跳着 ack**——比如 ack 了 entry 5、9、17，那么「已删除集合」就是 `{5, 9, 17}`，是离散的。
+
+若用 `HashSet<Position>` 存储，每次 mark-delete 推进都要遍历全部历史删除记录做裁剪，而删除记录会随消费持续累积（可达 backlog 全量）。Pulsar 的做法是**按 ledgerId 分组 + entryId 位图**：
+
+```
+private final Long2ObjectSortedMap<LongBitmap> rangeBitmapMap = new Long2ObjectRBTreeMap<>();
+                                                        # managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/PositionRangeSet.java:80
+```
+
+- 外层 `Long2ObjectRBTreeMap`：key 是 `ledgerId`，红黑树维护**有序**，支持按 ledgerId 区间快速定位与批量移除；
+- 内层 `LongBitmap`：value 是该 ledger 内entryId 的**位图**（RoaringBitmap 系实现，见`LongBitmaps.create()`，`managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/PositionRangeSet.java:84`）。
+
+这个「外层有序树 + 内层位图」的选择同时吃到了两种结构的好处：ledger 之间的范围操作走树（O(log L)），同一 ledger 内的稀疏点走位图（O(1) 查、常数级区间操作）。
+
+三个基础操作的实现：
+
+```
+contains(ledgerId, entryId):                              # managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/PositionRangeSet.java:131
+    bitmap = rangeBitmapMap.get(ledgerId)
+    return bitmap != null && bitmap.contains(getSafeEntry(entryId))
+
+rangeContaining(ledgerId, entryId):# managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/PositionRangeSet.java:140
+    bitmap = rangeBitmapMap.get(ledgerId)
+    if bitmap == null or not bitmap.contains(getSafeEntry(entryId)): return null
+    # 向前找最近一个「不在集合里」的值 → 其 +1 即区间左端
+    lower = consumer.apply(ledgerId, bitmap.previousAbsentValue(safeEntry) + 1)
+    # 向后同理得到右端（并夹住下界，避免负数区间）
+    upper = consumer.apply(ledgerId, max(bitmap.nextAbsentValue(safeEntry) - 1, lower))
+    return Range.closed(lower, upper)
+
+removeAtMost(ledgerId, entryId):                         # managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/PositionRangeSet.java:154
+    if enableMultiEntry and ledgerId >= 0:
+        dirtyLedgers.remove(0, min(ledgerId + 1, Integer.MAX_VALUE + 1))   # 顺带清 dirty 标记
+    remove(Range.atMost(create(ledgerId, entryId)))                        # 裁掉 <= 该位置的全部
+```
+
+`rangeContaining` 的两个位运算原语是 RoaringBitmap 的核心能力：`previousAbsentValue(x)` 返回 ≤ x 的最大「未设置」值，`nextAbsentValue(x)` 返回 ≥ x 的最小「未设置」值。对删除集合而言，**「连续区间的边界 = 相邻的空洞」**，于是「求包含某点的最大连续删除区间」就退化为两次 `absent` 查询。这是把区间查询变成常数时间的关键。
+
+`removeAtMost` 里的 `dirtyLedgers.remove(0, end)` 是一处易被忽略的联动：`dirtyLedgers` 记录「哪些 ledger 的删除集合发生过变化，需要持久化」。裁剪历史删除区间时顺手清掉对应 ledger 的 dirty 位，避免把「已被裁掉的空区间」也写进元数据。
+
+### 24.2 `setAcknowledgedPosition`：三段式推进
+
+`setAcknowledgedPosition`（`managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/ManagedCursorImpl.java:2180`）是 mark-delete 落地的核心，也是本节算法的主体。它分三段：
+
+```
+setAcknowledgedPosition(newMarkDeletePosition):            # managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/ManagedCursorImpl.java:2180
+    # ① 单调性守卫：不允许回退
+    if new < markDeletePosition:
+        throw MarkDeletingMarkedPosition(...)             # managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/ManagedCursorImpl.java:2182
+
+    if new != markDeletePosition:
+        # ② 计算跳过的 entry 数（用于 MSG_CONSUMED 指标）
+        if 同 ledger 且 entryId 恰好 +1:
+            skipped = individualDeletedMessages.contains(new) ? 0 : 1        # managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/ManagedCursorImpl.java:2194
+        else:
+            skipped = getNumberOfEntries(Range.openClosed(old, new))       # managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/ManagedCursorImpl.java:2197
+
+        # ③ 核心：向前「吞掉」后续连续已删除的 entry
+        pos = ledger.getNextValidPosition(new)
+        while pos <= ledger.lastConfirmedEntry:                             # managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/ManagedCursorImpl.java:2204
+            if individualDeletedMessages.contains(pos.ledgerId, pos.entryId):
+                new = individualDeletedMessages.rangeContaining(...).upperEndpoint()   # managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/ManagedCursorImpl.java:2209
+                pos = ledger.getNextValidPosition(new)                     # 继续吞
+                continue
+            break
+        MSG_CONSUMED_COUNTER_UPDATER.addAndGet(this, skipped)               # managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/ManagedCursorImpl.java:2222
+
+    markDeletePosition = new
+    individualDeletedMessages.removeAtMost(new.ledgerId, new.entryId)      # managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/ManagedCursorImpl.java:2227 批量裁剪
+    # ④ 联动 read position
+    READ_POSITION_UPDATER.updateAndGet(cur -> cur <= markDeletePosition
+        ? ledger.getNextValidPosition(markDeletePosition) : cur)           # :2229-2244
+    return new
+```
+
+**③ 的连锁吞并是整个算法的精髓**。考虑这个场景：消费者 ack 了 5、6、7（连续），随后 ack 了 8。若只把 mark-delete 设为 8，那么 5~7 这三条删除记录仍留在 `individualDeletedMessages` 里，直到某次 mark-delete 越过它们才被裁掉。连锁吞并则从 8 的下一个有效位置出发，只要发现「下一个位置也已被删除」，就**直接跳到该连续删除区间的右端点**，从而：
+
+- 让 `markDeletePosition` 一次推进到「所有连续删除段的最后一个」，减少后续无谓的逐条推进；
+- 让 24.1 的 `removeAtMost` 在**一次**调用里裁掉全部历史删除区间，而不是分散在多次 mark-delete 中逐步裁剪。
+
+源码注释解释了 ③ 为何要循环而非只做一次（`managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/ManagedCursorImpl.java:2200`）：range 可能**跨 ledger 且不连续**——"sometime ranges are connected but belongs to different ledgers so, they are placed sequentially eg: (2:10..3:15] can be returned as (2:10..2:15], [3:0..3:15]"。也就是说删除区间集合里，`ledger2` 的尾部与 `ledger3` 的头部在语义上相邻，但 `getNextValidPosition` 需要跨 ledger 查找，循环正是用来处理这种「逻辑连续、物理分离」的情形。
+
+**② 的相邻特判值得单独说**：当新位置恰好是旧位置的下一条时（最常见的高频 ack 路径），无需计算区间，直接查一次 `contains` 决定这条是否已被删除（`managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/ManagedCursorImpl.java:2194`）。这让**顺序 ack 的常见路径退化为 O(1)**，只有跳跃式 ack 才付出 `getNumberOfEntries` 的区间计数代价。
+
+### 24.3 read position 联动：跳过检测
+
+④ 处理一个容易被忽略但会真实影响正确性的场景：**mark-delete 越过 read position**。若消费者 ack 了 entry 10 但 read position 还在 5，说明它跳过了 6~9（可能因为这些消息已被其他订阅处理，或配置了 `receiverQueueSize` 之外的跳过）。此时必须把 read position 推到 mark-delete 之后：
+
+```
+if currentReadPosition <= markDeletePosition:               # managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/ManagedCursorImpl.java:2231
+    newReadPosition = ledger.getNextValidPosition(markDeletePosition)
+    # 更新完成后回调 ledger 通知 dispatcher
+    ledger.onCursorReadPositionUpdated(this, updatedReadPosition)      # managed-ledger/src/main/java/org/apache/bookkeeper/mledger/impl/ManagedCursorImpl.java:2248
+```
+
+`updateAndGet` 的 CAS 语义保证并发安全（多个线程可能同时 ack）。`readPositionUpdated` 用 `MutableBoolean` 做「是否真的变了」的标记，只在变化时回调，避免无谓的 dispatcher 唤醒。
+
+> **复杂度**：
+> - `contains` / `rangeContaining`：O(log L + 1)，L 为涉及的 ledger 数（树查找 + 位图操作）；
+> - `setAcknowledgedPosition` 的 ③ 连锁吞并：O(吞并的段数 × (log L + 1))，**摊还后 O(1)**——因为每个被吞并的删除区间随后立即被 `removeAtMost` 裁掉，同一个区间不会被重复吞并两次；
+> - `removeAtMost`：O(log L + 位图区间清除)，位图侧为 O(边界差值 / 64) 字长批量清零，故即便删除区间横跨数十万 entry 也是常数级字操作。
+> - 内存：每个 ledger 一棵位图，空间 O(最大 entryId / 8) 字节，**且随 mark-delete 推进被不断裁剪回收**——这是它优于 `HashSet` 的关键：历史删除记录不会无限累积。
+>
+> **工程含义**：Individual ack 的成本集中在「乱序程度」上。完全顺序 ack 时§24.2 的相邻特判让它退化为 O(1) 且 `individualDeletedMessages` 始终接近空；高度乱序 ack 时会拉长连续区间，位图的优势（常数字宽操作）才真正显现。这也是 Pulsar 文档建议「尽量顺序 ack」的根本原因。
+
+---
+
+## 二十五、参考资料
 
 - [Apache Pulsar 官方主页](https://pulsar.apache.org/)
 - [Apache Pulsar Documentation](https://pulsar.apache.org/docs/)
