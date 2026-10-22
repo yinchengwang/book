@@ -575,7 +575,414 @@ Neo4j 图算法库 GDS（独立插件，Apache 2.0）：
 - **生态整合**：未来可考虑用 Bolt 协议暴露本项目引擎以便 Python / JS 客户端连接；
 - **向量索引**：本项目"多模态"框架里 graph + vector 检索的混合，与 Neo4j 5.x 同步演进。
 
-## 二十四、参考资料
+## 二十四、记录格式与页内槽位分配（2026.07.0 实测）
+
+> **版本基准**：本节及以下两节的所有行号均以本仓库 `reference/graph/neo4j/` 的**完整 clone** 为准，其 `pom.xml:7` 声明版本为 `2026.07.0`（**日历版本号，已不是 5.x**）。因此下面给出的字节数、位布局、算法与前文 §六~§八 按 5.x 描述的部分内容存在出入，本节只陈述代码事实，不改写既有章节。
+
+### 24.1 三个记录格式族
+
+`StoreVersion` 把「记录格式」建模为 **格式族（FormatFamily）× 存储大版本** 的二维枚举，每族每版本一个不可变单例，实现在 `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/format/StoreVersion.java:26`：
+
+```java
+STANDARD_V4_3(FormatFamily.STANDARD,  0, 1, "4.3.0", true),
+STANDARD_V5_0(FormatFamily.STANDARD,  1, 1, "5.0.0", false),
+ALIGNED_V4_3 (FormatFamily.ALIGNED,   0, 1, "4.3.0", true),
+ALIGNED_V5_0 (FormatFamily.ALIGNED,   1, 1, "5.0.0", false),
+HIGH_LIMIT_V4_3(FormatFamily.HIGH_LIMIT, 0, 1, "4.3.0", true),
+HIGH_LIMIT_V5_0(FormatFamily.HIGH_LIMIT, 1, 1, "5.0.0", false);
+```
+
+（逐条行号：STANDARD 在 `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/format/StoreVersion.java:26` 与 `:27`，ALIGNED 在 `:29` 与 `:30`，HIGH_LIMIT 在 `:32` 与 `:33`。）
+
+三个族的取舍：
+
+| 族 | 核心差异 | 代价 |
+|----|---------|------|
+| `STANDARD` | 传统定长记录；文件页大小向下截断到 `recordSize` 的整数倍，记录**绝不跨页** | 页尾留下 0~`recordSize-1` 字节空洞；OS 无法按整页读写 |
+| `ALIGNED` | 页尾补齐，记录可跨页；文件页大小 == page cache 页大小 | 补齐字节浪费；`PageAlignedV5_0` 类注释直言「唯一没有直接演化的理由是迁移代价高」 |
+| `HIGH_LIMIT` | 用存储「高水位页」把稀疏 id 段的物理页密度做高 | 结构更复杂 |
+
+ALIGNED 族的设计意图写在 `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/format/aligned/PageAlignedV5_0.java:52`：
+
+> `Pages are padded at the end instead of letting record span 2 pages.` —— 让 OS 每次能取/写**完整的 8K 页**，比「8K 减 5 字节」友好得多。
+
+三族对「文件页大小」的处理是同一个三元表达式的两分支，见 `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/format/BaseRecordFormat.java:108`：
+
+```java
+public int getFilePageSize(int pageSize, int recordSize) {
+    return pageAligned ? pageSize : Math.min(pageSize, pageSize - pageSize % recordSize);
+}
+```
+
+即 **ALIGNED 直接用整页；其余族把页大小向下取整到记录大小的整数倍**，从而保证一条记录永远落在单页内。
+
+### 24.2 各 store 的记录字节布局
+
+所有定长记录的 `RECORD_SIZE` 常量都集中在 `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/format/standard/` 下的各个 `*RecordFormat` 类里：
+
+| 记录 | 字节 | 常量出处 | 布局（源码注释原文） |
+|------|------|---------|--------------------|
+| `NodeRecord` | **15** | `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/format/standard/NodeRecordFormat.java:32` | `in_use(byte)+next_rel_id(int)+next_prop_id(int)+labels(5)+extra(byte)`（注释在同文件 `:31`） |
+| `RelationshipRecord` | **34** | `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/format/standard/RelationshipRecordFormat.java:35` | `directed\|in_use(byte)+first_node(int)+second_node(int)+rel_type(int)+first_prev_rel_id(int)+first_next_rel_id+second_prev_rel_id(int)+second_next_rel_id+next_prop_id(int)+first-in-chain-markers(1)` |
+| `RelationshipGroupRecord` | **25** | `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/format/standard/RelationshipGroupRecordFormat.java:38` | `[type+inUse+highbits,next,firstOut,firstIn,firstLoop,owningNode] = 25B`（注释在 `:33`） |
+| `PropertyRecord` | **41** | `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/format/standard/PropertyRecordFormat.java:37` | `1 /*next and prev high bits*/ + 4 /*next*/ + 4 /*prev*/ + 32 /*property blocks*/` |
+| `TokenRecord`（label / propKey / relType 共用基类） | **5** + 名串 | `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/format/standard/TokenRecordFormat.java:30` | `1 /*inUse*/ + 4 /*nameId*/` |
+
+**这里必须纠正前文 §7.1 的两个数字**：节点记录不是「≈41 字节」，关系记录不是「约 47 字节」。实测分别是 **15** 与 **34** 字节；41 字节是 **属性记录** 的大小（前文把属性记录的数值安到了节点头上）。
+
+节点的 15 字节还能再压：header 字节的 8 个 bit 被**全部分配**掉，写路径的注释在 `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/format/standard/NodeRecordFormat.java:95`：
+
+```java
+// [    ,   x] in use bit
+// [    ,xxx ] higher bits for rel id
+// [xxxx,    ] higher bits for prop id
+```
+
+对应读路径的两行掩码移位在同文件 `:62` 与 `:63`：
+
+```java
+long relModifier  = (headerByte & 0xEL) << 31;   // header 的 bit1..bit3 -> nextRel 的 bit32..bit34
+long propModifier = (headerByte & 0xF0L) << 28;  // header 的 bit4..bit7 -> nextProp 的 bit32..bit35
+```
+
+所以一个节点记录的**有效载荷只有 14 字节**（1 header + 4 nextRel + 4 nextProp + 5 labels），而 `nextRel` 与 `nextProp` 各有 3 / 4 个高位藏在 header 里。id 位宽上限由 `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/format/standard/StandardFormatSettings.java:29` 的 `NODE_MAXIMUM_ID_BITS = 35` 封顶——这个数字直接由「header 里能藏几位」推导出来：4 字节的 `int` 只给 32 位，再加 header 里的 3 位，正好 35。label token 上限 31 位（`StandardFormatSettings.java:37`）则是被 JVM 的 `HashMap` key 用 `int[]` 装载这一实现细节倒逼的，源码注释直接写了原因。
+
+### 24.3 页内槽位寻址：O(1) 的 id → (page, offset)
+
+定长 store 的寻址是**纯除法**，没有任何哈希或查找表，实现在 `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/RecordPageLocationCalculator.java:36` 与 `:49`：
+
+```java
+public static long pageIdForRecord(long id, int recordsPerPage) {
+    return id / recordsPerPage;
+}
+public static int offsetForId(long id, int recordSize, int recordsPerPage) {
+    return (int) (id % recordsPerPage) * recordSize;
+}
+```
+
+每页能放多少条记录由 `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/CommonAbstractStore.java:391` 决定：
+
+```java
+recordsPerPage = (filePageSize - pagedFile.pageReservedBytes()) / recordSize;
+recordsEndOffset = recordsPerPage * recordSize; // Truncated file page size to whole multiples of record size.
+```
+
+**复杂度**：`pageId`/`offset` 两条整除各 O(1)，`recordsPerPage` 在 store 打开时算一次并缓存（字段声明在 `CommonAbstractStore.java:89`）。这就是「定长记录」相对「变长槽位表」的全部性能意义：**指针直连 = 一次整除 + 一次页缓存取页，没有间接层**。
+
+以硬编码的 8K 页（`community/io/src/main/java/org/neo4j/io/pagecache/PageCache.java:49` 的 `int PAGE_SIZE = 8192`；该版本**没有**用户可配置的 `page_size` 选项，且会被校验为 2 的幂）+ STANDARD 族 + `NodeRecordFormat`（15B）为例：`recordsPerPage = 8192 / 15 = 546`，`recordsEndOffset = 546 × 15 = 8190`，每页尾部浪费 2 字节。同样的 8K 页放 `RelationshipRecordFormat`（34B）：`8192 / 34 = 240`，尾部浪费 32 字节——**记录越大，STANDARD 族的页尾空洞越明显**，这正是 ALIGNED 族存在的直接动因。
+
+### 24.4 Store 文件清单（2026.07.0）
+
+`RecordDatabaseFile` 枚举枚举了**全部**数据库文件，共 16 个（`community/layout/src/main/java/org/neo4j/io/layout/recordstorage/RecordDatabaseFile.java:40` 起），文件名常量集中在 `community/layout/src/main/java/org/neo4j/io/layout/recordstorage/RecordDatabaseFileNames.java:26` 起：
+
+```java
+COUNTS_STORE                    = "neostore.counts.db";                              // :26
+NODE_STORE                      = "neostore.nodestore.db";                           // :28
+NODE_LABELS_STORE               = "neostore.nodestore.db.labels";                    // :29
+RELATIONSHIP_STORE              = "neostore.relationshipstore.db";                   // :31
+RELATIONSHIP_GROUP_STORE        = "neostore.relationshipgroupstore.db";              // :32
+RELATIONSHIP_GROUP_DEGREES_STORE= "neostore.relationshipgroupstore.degrees.db";      // :33
+PROPERTY_STORE                  = "neostore.propertystore.db";                       // :37
+PROPERTY_ARRAY_STORE            = "neostore.propertystore.db.arrays";               // :38
+PROPERTY_STRING_STORE           = "neostore.propertystore.db.strings";              // :39
+SCHEMA_STORE                    = "neostore.schemastore.db";                         // :46
+INDEX_STATISTICS_STORE          = "neostore.indexstats.db";                          // :48
+METADATA_STORE                  = "neostore";                                        // :50
+```
+
+对比前文 §六「磁盘文件层」列的 6 个文件，有三处需要修正：
+
+1. **`neostore.transaction.db` 已不在文件清单里** —— 事务日志早已迁到独立目录，由 `community/kernel/src/main/java/org/neo4j/kernel/impl/transaction/log/files/TransactionLogFiles.java` 管理，不再与数据文件混放；
+2. **多出 `neostore.nodestore.db.labels`** —— 标签溢出（一个节点的 label 装不进 5 字节时）落在这个独立的 dynamic store 里，见 §二十五；
+3. **多出 `neostore.relationshipgroupstore.db` 及其 `.degrees.db`** —— 前者存关系组记录，后者是关系组度数的 **GBPTree**（§二十五详述），前文完全没有提到这两个文件。
+
+每个 store 文件的**头 1 条记录被保留**放 store header，格式是一个 `int`（记录格式的版本号），见 `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/IntStoreHeaderFormat.java:33` 的 `numberOfReservedRecords()` 返回 `1`，写入是同文件 `:38` 的一行 `cursor.putInt(header)`。
+
+## 二十五、密集节点、关系组与遍历状态机
+
+### 25.1 稀疏节点 / 密集节点的分界
+
+Neo4j 的节点按关系数分成两种物理形态，切换阈值可配置，默认 **50**，见 `community/configuration/src/main/java/org/neo4j/configuration/GraphDatabaseSettings.java:797`：
+
+```java
+public static final Setting<Integer> dense_node_threshold = newBuilder(
+                "db.relationship_grouping_threshold", INT, 50)
+```
+
+判定发生在每次建关系时、真正写入之前，`community/record-storage-engine/src/main/java/org/neo4j/internal/recordstorage/RelationshipCreator.java:152`：
+
+```java
+if (relCount(node.getId(), relProxy.forReadingData()) >= denseNodeThreshold) {
+    convertNodeToDenseNode(nodeChange, relProxy.forChangingLinkage(), relRecords, ...);
+}
+```
+
+**关键设计（很反直觉但很省）**：稀疏节点根本没有独立的「度数」字段——**度数就内联在关系链首条关系的 `prevRel` 字段里**。`RelationshipCreator.java:135` 的两行注释和实现把这件事说得很直白：
+
+```java
+static int relCount(long nodeId, RelationshipRecord rel) {
+    // Degrees are stored in the backward pointer of the first in chain!
+    return (int) rel.getPrevRel(nodeId);
+}
+```
+
+于是「这个节点有多少条出边」是 **O(1)** 的：读一次 `nextRel` 指向的链首关系，再取它的 `prevRel`。省掉了一个 store 的随机读，但代价是**链首关系是热 key**。
+
+### 25.2 稀疏 → 密集的转换算法
+
+`convertNodeToDenseNode`（`RelationshipCreator.java:253`）做的是一次**链表重排**，复杂度 O(k)（k = 该节点当前关系数）：
+
+```
+convertNodeToDenseNode(node, firstRel):
+  1  node.setDense(true);  node.setNextRel(NULL)      // nextRel 语义整体切换
+  2  for rel in chain(firstRel):                     // 边走边改写
+  3      next = rel.getNextRel(node.id)              // 先读出后继（将被覆盖）
+  4      rel.setPrevRel(NULL, node.id)
+  5      rel.setNextRel(NULL, node.id)
+  6      rel.setDense(node.id)                       // 标记该端由组记录管理
+  7      connectRelationshipToDenseNode(node, rel, ...)
+  8  goto 2
+```
+
+每条关系被摘出旧的双向链表、再挂进对应「类型 × 方向」的关系组链表。因为 group 记录按 `type` 排序存储，转换后遍历同一个节点时**按类型跳变快得多**，而稀疏节点遍历一条关系就要在关系 store 里跨页跳。
+
+### 25.3 关系组记录与遍历状态机
+
+关系组记录只有 25 字节，却承载了「一个节点 × 一种类型 × 三个方向」的全部入口，字段定义见 `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/record/RelationshipGroupRecord.java:30` 起：`type`、`next`、`firstOut`、`firstIn`、`firstLoop`、`owningNode`。
+
+遍历一个密集节点，由 `community/record-storage-engine/src/main/java/org/neo4j/internal/recordstorage/RecordRelationshipTraversalCursor.java:205` 的注释给出了完整状态机（外加 `:184` 的 ASCII 示意图）：
+
+```
+1) 取下一个 group；没有更多 group 就停
+2) next = group.incomingReference；状态 -> OUTGOING
+3) 沿关系链迭代到末尾
+4) next = group.outgoingReference；状态 -> LOOP
+5) 沿关系链迭代到末尾
+6) next = group.loop；状态 -> INCOMING
+7) 沿关系链迭代到末尾
+8) GOTO 1
+```
+
+对应的实现是一个三状态 `switch`，在 `RecordRelationshipTraversalCursor.java:215` 起。状态判定入口是**同一个 `nextRel` 字段的两义性**——`init` 方法在 `:90` 处根据 `isDense` 二选一（`:97` 走 `groups()`，`:102` 走 `chain()`）。
+
+状态机的两个精妙剪枝：
+
+1. **按类型早停**：group 按 `type` 有序，一旦 `group.getType() > selection.highestType()` 就直接返回（`:225`），因为后面的组类型只会更大；
+2. **按类型整组跳过**：类型不在 selection 里就 `continue`，整条组链表**一次都不读**（`:229`），这正是 `MATCH (a)-[:KNOWS]->(b)` 能避开读全部关系的机制——从「O(度数)」降到「O(度数/K)」。
+
+**遍历复杂度**：设节点度数为 d、类型数为 T，则稀疏节点全类型遍历 O(d) 次关系读；密集节点遍历为 O(T + d)（T 次组记录读 + d 次关系读），但 `MATCH (a)-[:T_i]->(b)` 单类型查询退化为 O(T + d/K)，K 是该类型的平均关系数。
+
+### 25.4 引用编码：让「组引用」伪装成「关系引用」
+
+`nextRel` 这一个 8 字节字段，既可能指向关系记录，也可能指向关系组记录。`community/record-storage-engine/src/main/java/org/neo4j/internal/recordstorage/RelationshipReferenceEncoding.java:57` 用最高 4 个 bit 编码这个区别：
+
+```java
+static final long FLAG_MARKER = 0x8000_0000_0000_0000L;   // :57  最高位
+static final long FLAG_MASK   = 0x7000_0000_0000_0000L;   // :58  flag 载荷占 bit60..62
+static final long FLAGS       = 0xF000_0000_0000_0000L;   // :59  清除用
+```
+
+`encodeDense` 在 `:84` 打标记位：
+
+```java
+static long encodeDense(long reference) {
+    return reference | DENSE.bits | FLAG_MARKER;
+}
+```
+
+类注释（`:45` 起）说明了 `FLAG_MARKER` 存在的唯一理由：**编码后的引用在数值上必然为负**，这样任何「忘记用 `clearEncoding` 就直接当 id 用」的错误都会立刻暴露成负数下标，而不是静默读到错误记录。这是一个用值域换断言的设计。
+
+还有一个防御性设计在遍历器里：`RecordRelationshipTraversalCursor.java:163` 的注释说明，如果遍历**稀疏**节点的过程中该节点被另一个事务转成了密集节点，读到的边可能既漏又重，于是直接抛 `TransientTransactionFailureException.outdatedRead()` 要求应用重试——**宁可让事务失败，也不返回不一致的遍历结果**。
+
+### 25.5 关系组度数：GBPTree 而非定长 store
+
+前文 §7.4 只提到「counts.db 维护计数槽」。实测中**关系组度数已经搬进 GBPTree**：`community/record-storage-engine/src/main/java/org/neo4j/internal/counts/GBPTreeRelationshipGroupDegreesStore.java:46` 的类声明直接写明 `extends GBPTreeGenericCountsStore implements RelationshipGroupDegreesStore`。
+
+它的 key 是一个手工压位的 `CountsKey`，注释画出了位图（`GBPTreeRelationshipGroupDegreesStore.java:136`）：
+
+```
+first:  [gggg,gggg][gggg,gggg][gggg,gggg][gggg,gggg] [gggg,gggg][gggg,gggg][gggg,gggg][gggg,ggdd]
+        g: relationship group id,   d: RelationshipDirection#id()
+second: 0
+```
+
+压位实现就一行，在同文件 `:147`：
+
+```java
+static CountsKey degreeKey(long groupId, RelationshipDirection direction) {
+    return new CountsKey(TYPE_DEGREE, groupId << 2 | direction.id(), 0);
+}
+```
+
+即 **35 位 groupId + 2 位方向 = 37 位**，塞进 key 的第一个 8 字节；`CountsKey` 总长 13 字节（1 字节 type + 8 字节 first + 4 字节 second），见 `community/storage-engine-util/src/main/java/org/neo4j/internal/counts/CountsKey.java:31`。
+
+度数的更新路径因此变成 **GBPTree 的 key-value 增量写**（`CountUpdater.increment`，被 `GBPTreeRelationshipGroupDegreesStore.java:122` 调用），复杂度 O(log N)、N 为树节点数。而读路径 `degree(groupId, direction, ...)`（`:100`）是一次点查，同样 O(log N)。对比旧的定长度数槽 O(1)：**用 log 因子换掉了「度数与 group 记录 1:1 稠密」带来的空间浪费**——只有实际存在的关系组才有度数条目。
+
+### 25.6 GBPTree 内核：分裂、合并与 latch coupling
+
+标签索引（§26）与度数（§25.5）共用同一个 `GBPTree` 内核，其算法决策集中在三处：
+
+**① 分裂比例**。唯一的分裂常数在 `community/index/src/main/java/org/neo4j/index/internal/gbptree/InternalTreeLogic.java:94`：`DEFAULT_SPLIT_RATIO = 0.5`，注释说明语义是「0=左节点全空，0.5=对半，1=左节点全留」。真正算出分裂位置的是 `community/index/src/main/java/org/neo4j/index/internal/gbptree/TreeNodeUtil.java:96`：
+
+```java
+static int splitPos(int keyCount, double ratioToKeepInLeftOnSplit) {
+    int minSplitPos = 1;          // 左节点至少留 1 个 key（不能留空）
+    int maxSplitPos = keyCount - 1;
+    return Math.max(minSplitPos, Math.min(maxSplitPos, (int) (ratioToKeepInLeftOnSplit * keyCount)));
+}
+```
+
+两次 clamp 保证分裂后**左、右节点都非空**，这是 B+Tree 不变式。
+
+**② 合并判定用容量而非阈值**。定长叶子节点的容量是**推导出来**的（`community/index/src/main/java/org/neo4j/index/internal/gbptree/LeafNodeFixedSize.java:83` 的 `maxKeyCount = floorDiv(payloadSize - headerSize, keySize + valueSize)`），合并/再平衡判据直接写成容量的函数，同文件 `:294` 与 `:304`：
+
+```java
+public int canRebalance(PageCursor left, int leftKeyCount, PageCursor right, int rightKeyCount) {
+    if (leftKeyCount + rightKeyCount >= maxKeyCount) {
+        int moveFromPosition = (rightKeyCount + leftKeyCount) / 2;   // 目标：两兄弟各占一半
+        return leftKeyCount - moveFromPosition;
+    }
+    return -1;                      // -1 哨兵 = 不再平衡，直接合并
+}
+public boolean canMerge(PageCursor left, int leftKeyCount, PageCursor right, int rightKeyCount) {
+    return leftKeyCount + rightKeyCount <= maxKeyCount;
+}
+```
+
+即：两兄弟**能装进一个节点就合并**（省一页），装不下但总和超过容量就**各搬一半**（平衡扇出）。
+
+**③ 节点内二分查找**。`community/index/src/main/java/org/neo4j/index/internal/gbptree/KeySearch.java:92` 起是教科书式的二分，节点内查找 O(log k)、k 为节点内 key 数；树高 h 层 → 点查 O(h·log k)，B+Tree 下 h 通常 3~4 层。
+
+**④ 为什么读者不会被写者阻塞**：`community/index/src/main/java/org/neo4j/index/internal/gbptree/LatchCrabbingCoordination.java:34` 的类注释直接给出「Better Latch Crabbing」的两种模式——
+
+> *Optimistic mode uses read latches all the way down to leaf. Down at the leaf the latch is upgraded to write... If operation is unsafe (split/merge) then first an optimistic latch upgrade on parent is attempted... Otherwise... will result in releasing of the latches and flip to pessimistic mode.*
+
+即 **无冲突时全路径只持读闩，只有到叶子才升级为写闩**；并发读者同样只持读闩，因此**读-读不互斥、读不阻塞写**。一旦发现分裂/合并这类结构性变更，放不下就整条路径释放并切到悲观模式（全程写闩）重做。这是把「无冲突快路径 O(h) 且无互斥」与「有冲突时保证正确」组合起来的标准手法。
+
+## 二十六、标签索引：位图化 Token Scan 与事务状态归并
+
+### 26.1 先纠正一个架构事实：`LabelScanStore` 已不存在
+
+用 `find` 在整个 clone 的主源码里搜索，`LabelScanStore` / `LabelIndexStore` / `BTreeIndex` / `BTreeSampler` / `BTreeUpdater` / `BTreePopulator` / `SchemaIndexProvider` **零命中**。唯一的残留引用在 `community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/storemigration/legacy/SchemaStore44Reader.java`——那是从 Neo4j 4.4 迁移数据时用的 legacy 读取器，读的是老版本的 `labeltokenstore` 布局。（`NativeIndex` 这个名字仍然存在，但已是 `kernel/impl/index/schema/` 下另一个类，与老版本被删除的 `org.neo4j.kernel.api.impl.index.NativeIndex` 无关。）`community/record-storage-engine/src/main/java/org/neo4j/kernel/impl/store/SchemaStore.java:104` 唯一的字段 `private final PropertyStore propertyStore;`，**不再持有任何标签索引结构**；schema 抽象也已迁到独立的 `community/schema` 模块（`IndexType` 枚举把索引分为 `TOKEN / LOOKUP / TEXT / RANGE / POINT / VECTOR / FULLTEXT` 七类）。
+
+前文 §8.2 说「每个 label 隐式提供 B+Tree 索引（node label index）存储 `labelId → nodeId`」——方向对（确实是 GBPTree），但**键值模型说错了**。实际形态是**位图化的 token 索引**。
+
+### 26.2 位图模型：一个 64 节点窗口 = 一个 tree 条目
+
+索引是一棵 `GBPTree<TokenScanKey, TokenScanValue>`，字段声明在 `community/kernel/src/main/java/org/neo4j/kernel/impl/index/schema/DefaultTokenIndexReader.java:41`。
+
+- **Key** `TokenScanKey{int tokenId; long idRange;}` —— 类注释（`community/kernel/src/main/java/org/neo4j/kernel/impl/index/schema/TokenScanKey.java:22` 起）写明：`each key consists of tokenId and entityIdRange, i.e. entityId/rangeSize`；
+- **Value** `TokenScanValue{long bits;}` —— 类注释（`community/kernel/src/main/java/org/neo4j/kernel/impl/index/schema/TokenScanValue.java:23`）写明 `A small bit set of maximum 64 bits`，窗口大小由同文件 `:26` 的 `RANGE_SIZE = Long.SIZE` 定为 **64**。
+
+```
+索引条目 (tokenId, idRange)  →  1 个 long（64 bit）
+                                  bit k = 1  ⇔  节点 (idRange*64 + k) 带此 label
+```
+
+**空间收益**：朴素方案「一个 (labelId, nodeId) 键」要 8 字节 key；位图方案把 64 个节点的成员关系压进 8 字节 value，一个条目覆盖 64 个节点。对「label 命中率 1/64」量级的标签，索引体积近似压缩 **64 倍**，且一次 cache line（8 字节）读能同时判 64 个节点。
+
+### 26.3 遍历算法：跳窗 + 抽位
+
+`TokenScanValueIndexProgressor` 把 GBPTree 的顺序扫描包装成「实体 id 递增游标」。核心在 `community/kernel/src/main/java/org/neo4j/kernel/impl/index/schema/TokenScanValueIndexProgressor.java:132`：
+
+```java
+private long extractNextId(int relevantBitPos) {
+    long bitToFlip = 1L << relevantBitPos;
+    assert (bits & bitToFlip) != 0;
+    bits -= bitToFlip;                 // 清位，保证 next() 不会重复吐出同一 bit
+    return baseEntityId + relevantBitPos;
+}
+```
+
+主循环 `next()`（`:115`）是标准的「清空当前窗口 → 取下一窗口」：
+
+```
+next():
+  while bits != 0:
+      id = extractNextId(trailingZeros(bits))     // 最低置位
+      if id ∈ range and client.acceptEntity(id):  return true
+  if !nextRange(): return false                   // 游标推进到下一个 idRange 窗口
+  bits = cursor.value().bits; baseEntityId = idLayout.firstIdOfRange(key.idRange)
+```
+
+`nextRange()` 在 `:139`，取窗口的两行是 `:150` 与 `:151`。**每吐出一个实体 id 的代价 = O(1)**（一次最低位提取 + 一次安全过滤），**每跳一个窗口的代价 = O(log N)**（GBPTree `Seeker.next()`）。所以一次标签扫描的总体代价是：
+
+```
+T(labelScan) = O(⌈命中节点数 / 64⌉ × log N_tree + 命中节点数)
+```
+
+即「**窗口内 O(1)、跨窗口 O(log N)**」的混合复杂度——比逐节点查表 O(k log N) 好了 `log N / 64` 倍。
+
+### 26.4 skipUntil：长短腿策略
+
+多标签交集（§26.6）需要「把落后的游标快进到目标 id」，靠 `skipUntil(id)`。这里的优化在 `TokenScanValueIndexProgressor.java:164`：
+
+```java
+if (id - baseEntityId > RANGE_SIZE * 10) {
+    // if we need to take a long stride in tree
+    cursor.reinitializeToNewRange(new TokenScanKey(tokenId, idLayout.rangeOf(id)), ...);
+```
+
+**阈值 = 10 个窗口 = 640 个 id**。短跳（<640）只清当前窗口的位；长跳直接 `reinitializeToNewRange` 重定位 GBPTree 游标，避免「逐位 scan 过几百个空窗口」。这是典型的**长短腿双算法**。
+
+### 26.5 并行化：partitionedSeek 按 id 区间切分
+
+标签扫描要喂给并行运行时，于是扫描被切成互不相交的 **id 区间分区**。`DefaultTokenIndexReader.java:136` 一次性把整棵树的键空间切成 `desiredNumberOfPartitions` 段：
+
+```java
+partitionEdges = index.partitionedSeek(fromInclusive, toExclusive, desiredNumberOfPartitions, cursorContext);
+```
+
+返回的是一串分界 `TokenScanKey`，分区数 = `edges.size() - 1`（`:150`）。每个工作线程通过 `reservePartition`（`:154`）用 `AtomicInteger.getAndIncrement()` 原子地领走一段，串行地做 `index.seek(from, to)`。
+
+**这就是 Cypher 并行执行里「morsel」的实体层实现**：分片单位是 **节点 id 区间**而非固定行数，因此各分片的负载取决于标签在该 id 区间的密度——对 id 局部聚集的图数据，分区天然不均衡，这是该设计的已知代价。
+
+### 26.6 事务状态归并：read-committed 的正确性核心
+
+`MATCH (n:Person)` 的结果集 = **store 里的位图索引 ∪ 本事务内新增的带该 label 的节点 − 本事务内删除的**。归并逻辑集中在 `community/kernel/src/main/java/org/neo4j/kernel/impl/newapi/DefaultEntityTokenIndexCursor.java`。
+
+**准备阶段**（`:98` 起）：只有事务确有改动时才建归并结构——
+
+```java
+if (txStateHolder.hasTxStateWithChanges()) {
+    added   = peekable(createAddedInTxState(txStateHolder.txState(), token, order));
+    removed = createDeletedInTxState(txStateHolder.txState(), token);
+    useMergeSort = order != IndexOrder.NONE;
+}
+```
+
+两个集合的构造在子类 `DefaultNodeLabelIndexCursor.java:59` 与 `:64`：`added` 取 `txState.nodesWithLabelChanged(token).getAdded()`；`removed` 是 `addedAndRemovedNodes().getRemoved()` 与 `nodesWithLabelChanged(token).getRemoved()` 的**并集**（两类删除都要屏蔽）。
+
+**有序扫描走归并，无序扫描走拼接**（`:225` 的 `nextWithOrdering()` 与 `:201` 的 `nextWithoutOrder()`）。归并版每轮各从两条流各取一个元素，交给 `PrimitiveSortedMergeJoin`（`:247`）产出下一个；任一条流先耗尽就落到另一条。无序版更简单：先吐 `added`，再吐 store 里的。
+
+**删除过滤是 O(1) 的哈希判断**，见 `:256`：
+
+```java
+private boolean isRemoved(long reference) {
+    return removed != null && removed.contains(reference);
+}
+```
+
+`removed` 是个 `LongSet`，且子类里用 `.asUnmodifiable()` 冻结（`DefaultNodeLabelIndexCursor.java:68`），所以热路径无拷贝、无并发写。
+
+**排序是免费的**：`sortTxState`（`:260`）在 `ASCENDING/DESCENDING` 时把 `LongSet` 冻结成 `long[]` 再正向/反向迭代；`NONE` 时直接用 `longIterator()`。也就是说**事务内新增节点的有序扫描靠一次数组化排序完成**，而不是插入排序。
+
+### 26.7 多标签：排序归并而非求交
+
+`(n:A&B)` / `(n:A|B)` / `(n:A&!B)` 三个谓词分别对应三个游标类，实现在 `community/cypher/runtime-util/src/main/java/org/neo4j/internal/kernel/api/helpers/`。交集游标的归并主循环在 `community/cypher/runtime-util/src/main/java/org/neo4j/internal/kernel/api/helpers/IntersectionNodeLabelIndexCursor.java:113`：
+
+```java
+for (int i = 0; ; ) {
+    compare(firstReference, secondReference);
+    if (compare == 0)        { i++; if (i == length - 1) return true; }   // 全游标对齐 = 命中
+    else if (compare < 0)    { advanceAllUpTo(i, secondReference); i = 0; } // 落后的全快进
+    else                     { second.skipUntil(firstReference); second.next(); }
+}
+```
+
+因为每个游标都是 **id 递增** 的，交集退化成经典的 **k 路有序归并 + galloping 快进**（`skipUntil` 即 §26.4 的长短腿）。升降序只需换 `compare`（`:200` 与 `:211` 两个子类分别用 `Long.compare` 和其相反数）。总代价 O(Σ 标签的扫描代价)，**没有任何一步会去读节点记录**——谓词筛选完全发生在 id 层。
+
+## 二十七、参考资料
 
 1. Neo4j 官方文档 — `https://neo4j.com/docs/`（含 Developer / Cypher / Operations / GDS Manual）。
 2. Neo4j 源码 — `https://github.com/neo4j/neo4j`（Java + Scala，构建系统 Maven）。
