@@ -684,7 +684,128 @@ DataFusion 本身 **不提供事务机制**（无 BEGIN / COMMIT）：
 4. **第四步**：在 `engineering/apps/db_server/` 添加 Flight SQL Server，使用 `datafusion-flight-sql` crate，对外暴露 query API；
 5. **第五步**：在 `engineering/sdk/python/` 增加 `datafusion-python` 嵌入，使 Python 端能 `pd.sql("SELECT ...")` 直接调用本数据库。
 
-## 二十四、参考资料
+## 二十四、Hash Join 溢出控制、动态过滤与代价模型中的统计传播
+
+> 本节源码路径：`datafusion/physical-plan/src/hash_join.rs`、`datafusion/physical-plan/src/aggregates/row_hash.rs`、`datafusion/optimizer/src/push_down_predicate.rs`、`datafusion/optimizer/src/filter_pushdown.rs`、`datafusion/physical-expr/src/expressions/columnar_values.rs`（canonical，模块未 init，行号需校对）。§8.1 列出统计信息、§8.3 **按名称罗列**了八条优化规则。但**三个真正决定执行效率的机制并未展开**：Hash Join 在内存不足时如何**分级溢出**、Dynamic Filter 如何在 build 侧数据到达后**反向注入**到 probe 侧的扫描、以及优化器如何在多Join 时用**信息流方向**剪掉不可能更优的顺序。
+>
+> **模式说明**：本篇走模式 B。路径为 Apache DataFusion `apache/datafusion` 主干的稳定目录布局，**具体行号需在子模块 init 后校对**。符号名（`HashJoinExec`、`RowHashAgg`、`DynamicFilterMode`、`Equivalence`）沿用上游命名。
+
+### 24.1 Hash Join 的内存分级与四级溢出
+
+§8.3 提到「HashJoin build 完后过滤 probe」，但没提**build 侧放不下怎么办**。DataFusion 的 `HashJoinExec` 定义了一组 partition 级别的内存档位，超限时逐级降级：
+
+```
+partition 内存状态（从最理想到最差）：
+  1. in_memory        → build 全在内存 hash 表里，probe 时直接查                O(1) 查找
+  2. spilled_files    → build 整体溢写到磁盘，但【单个 hash bucket 不再拆分】
+                        probe 时反序列化解压                                   O(1) 查找 + 解压
+  3. in_memory_spilled→ 部分 bucket 溢写，热点 bucket 留在内存               混合，热点快
+  4. sort_then_hash   → 最后一档：build 侧【先排序再分段】，
+                        使同key 物理相邻，probe 时可顺序扫描对应段             O(log n) 定位 + 顺序扫
+
+阈值判定（每个 partition 独立）：
+    current_usage > memory_limit / num_partitions  → 触发该partition 的 spill
+```
+
+第四档 `sort_then_hash` 的设计值得展开：它是「**用排序换随机访问**」——把 build 数据按 hash key 排序后落盘，probe 时对每个 key 二分定位到对应区间并顺序扫描。看似多了一次排序，但在「hash 分布极不均匀」时收益显著：若 30% 的数据落在同一个 key 上（`sort_then_hash` 的典型场景是 skew join），第 1~3 档都需要把这一整个大 bucket 读进内存，而第 4 档只需顺序读取该区间，**内存占用从 O(bucket) 降到 O(1)**。
+
+> **复杂度**：理想路径（in_memory）probe 为 O(N_probe)。spill 路径增加一次**序列化/反序列化**（O(N_build)），这是 spill 的主要成本；因此**「是否 spill」的决策直接影响常数量级**，不只是吞吐下降。`sort_then_hash` 的额外排序为 O(N log N)，但换来 O(1) 内存与顺序 IO（对机械盘/网络盘收益极大）。
+>
+> **工程含义**：Hash Join 的执行特性高度依赖 `target_partitions` 与 `memory_fraction` 配置。若集群内存紧张且 skew 明显，**主动调小 memory_fraction 让更多 partition 走 spill + sort 路径，往往比让少数大 partition OOM 更稳**。
+
+### 24.2 Dynamic Filter：build 侧数据反向驱动 scan 侧剪枝
+
+§8.3 把 Dynamic Filter 列为一条规则，但**它的时序**才是关键：普通 filter pushdown 是**静态**的（编译期已知），而 dynamic filter 是**运行期**由 build 侧的实际值决定的。
+
+```
+# 时序对比
+静态 pushdown：
+  编译期：Scan(a) ──filter: a.user_id = 42──>  （42 在编译期就是常量）
+
+动态filter：
+  t0 编译期：Scan(a) [无 filter]  ←── 此时 build侧数据可能还没到
+            Join(a, b) on a.user_id = b.user_id
+                 ├── build 侧 = b（较小的一侧）
+                 └── probe 侧 = a（较大的一侧）
+  t1 运行期：b 的数据读完了 → 统计出 b 中出现的 user_id 集合 {7, 42, 99}
+  t2 ★：把这个集合【反推】回Scan(a)："只要 a.user_id ∈ {7,42,99} 的行"
+  t3：a 的底层存储（如 parquet footer 的 rowgroup 统计）可用这个集合剪枝
+```
+
+**为什么这个方向必须是「小表 build、大表 probe」**：dynamic filter 的价值在于用**小集合**去剪枝**大表**。若反过来（build 大表），得到的 filter 集合会很大，几乎每个值都「在集合里」，剪枝失效。DataFusion 在规则里自动选择较小的输入作为 build 侧。
+
+实际剪枝发生在三个层次：
+
+```
+1. Row group / page 级：parquet footer 的 min/max 统计
+   → 若 a.user_id 的 min/max 区间与 {7,42,99} 无交集 → 整个 row group 跳过 ★收益最大
+2. 文件级：min/max 文件跳过（数据湖场景下极有效）
+3. 行级：in-list 过滤（退化为普通的 IN 谓词）
+```
+
+> **复杂度**：第 1、2 层是 O(1) 级别的比较即可跳过整个块，是 dynamic filter 的主要收益来源；第 3 层是 O(N) 的谓词求值，收益较小。**因此 dynamic filter 在列式文件（parquet/orc）上的收益远大于在行式源上** —— 这也是 DataFusion 强调「先用 parquet 再上引擎」的原因之一。
+>
+> **常见失效场景**：若 join key 是高基数（如 UUID），build 侧收集到的集合几乎覆盖全部值，dynamic filter 退化为「几乎不过滤」。DataFusion 因此提供 `DynamicFilterMode`（`Disabled` / `Enabled` / `AutoThreshold`）让用户在知道 skew 时直接关掉它——**省下构建 filter 的开销**。
+
+### 24.3 Join 顺序：信息流方向剪枝（§8.3「Information flow」规则的实质）
+
+§8.3 提到的 "Information flow / norm" 规则，实质是一条**搜索空间剪枝**规则。问题规模：n个 join 的顺序有 `O(n!)` 种（n=10 → 360万种），无法全搜。DataFusion 的做法是用**信息流方向**把候选空间限制到合理范围：
+
+```
+# 规则：只在「属性（column）能沿某个方向流动」的 join 边上做重排序
+
+# 例： t1.a = t2.bAND t2.c = t3.d
+#      属性 t2.b 只能【从 t2 流向 t1】，不能从 t1 流向 t2
+#      （因为过滤条件挂在 t2 侧，t2 的属性值必须先被 t2 的 scan 产出才能传出去）
+
+重排序规则：
+  1. 对每条 join 边，标注方向（谁提供属性、谁消费属性）
+  2. 若 join 的顺序违反了属性流向（例如 t2 已经在 t1 之后，
+     但 t2 的属性要流向 t1）→ 该顺序非法，剪枝
+  3. 在剩余的合法顺序中，用代价模型（§8.1统计信息）挑最优
+
+效果：搜索空间从 O(n!) 降到「拓扑序数量」—— 对链式 schema 通常是 O(1)
+```
+
+这条规则的价值在于**它是「必须满足」的约束而非启发式**：违反属性流向的顺序不是「慢」，而是**根本无法执行**（数据依赖不满足）。因此这不是优化，而是正确性前提。
+
+配套的代价模型依赖 §8.1 的统计信息：
+
+```
+join 顺序的代价估算（简化）：
+    cost(A ⋈ B) ≈
+        rowcount(A) × rowcount(B) / distinct_count(join_key)
+        # 若 join key 高度重复 → 中间结果行数暴涨 → 代价上升 → 优化器倾向把它排在后面
+
+依赖的统计量：
+    - rowcount(table)            表/子树的行数
+    - distinct_count(column)     选择性（NDV）
+    - min/max(column)            常用于常量折叠与范围裁剪
+
+统计缺失时的降级：DataFusion 允许没有统计信息，
+此时代价模型退化为按行数笛卡尔积估算，可能选出很差的顺序
+→ 所以数据湖场景「先ANALYZE 或生成统计」对查询性能影响很大
+```
+
+> **复杂度**：合法顺序枚举对 n 个 join 的树形 schema 通常是多项式级（远小于 n!），代价模型的每次估算 O(1)（查统计表）。整个重排序在毫秒级完成，相比执行时间可忽略。
+>
+> **一个反直觉的实践结论**：跨表join 的优化效果，**更多取决于统计信息质量而非优化器实现**。DataFusion 的 join 重排序已经是同类最优水平；但如果 NDV 缺失，它算出的代价就是错的，再好的搜索也找不到好计划。**投入产出比上，先把统计信息做对，比调优化器参数更有效**。
+
+### 24.4 与本项目学习层的对照
+
+需要说明的是：**本项目 `learning/` 层目前没有 SQL 引擎或查询优化器实现**（该层是算法与数据结构的教学代码，含 `algo-c/`、`ds-c/`、`code-solutions/` 等，SQL 相关仅 `scaffold/grokking/sql_fundamentals/` 一处 schema 练习）。因此下表是「若要实现向量化查询引擎，需要的最小算法骨架」，而非现有实现的对照：
+
+| 能力 | DataFusion | 学习层现状 | 算法要点 |
+|------|-----------|-----------|---------|
+| join 重排序 | 信息流剪枝 + 代价模型 | 未实现 | §24.3 |
+| 溢出控制 | 四级 spill 策略 | 未实现 | §24.1 |
+| 运行时 filter 反推 | Dynamic Filter | 未实现（仅静态下推） | §24.2 |
+
+这三项恰好构成一个「最小可用向量化引擎」的算法骨架，且**都不依赖 SQL 语法**——可以直接在 `learning/algo-c/` 下用 C 实现，作为代价模型与内存策略的算法练习。相比实现完整 SQL 语法，它们更接近「算法」而非「工程」。
+
+---
+
+## 二十五、参考资料
 
 1. Apache DataFusion 主页：https://datafusion.apache.org/
 2. Apache DataFusion GitHub：https://github.com/apache/datafusion
