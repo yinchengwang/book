@@ -18,6 +18,7 @@ target_include_directories(api-server PRIVATE
     ${ENGINEERING_SOURCE_DIR}/apps/todo-app
     ${ENGINEERING_SOURCE_DIR}/../third_part/sqlite3
     ${ENGINEERING_SOURCE_DIR}/../third_part
+    ${ENGINEERING_SOURCE_DIR}/third_part
 )
 
 if(NOT TARGET sqlite3)

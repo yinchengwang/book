@@ -10,6 +10,7 @@ add_executable(todo-app ${TODO_APP_SOURCES})
 target_include_directories(todo-app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${ENGINEERING_SOURCE_DIR}/../third_part
+    ${ENGINEERING_SOURCE_DIR}/third_part
 )
 
 target_link_libraries(todo-app PRIVATE

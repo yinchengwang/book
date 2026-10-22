@@ -44,7 +44,12 @@ add_library(vector_index_c_api SHARED vector_index_c_api.c)
 if(VECTOR_INDEX_LIB)
     target_link_libraries(vector_index_c_api PRIVATE ${VECTOR_INDEX_LIB})
 endif()
-if(FAISS_HNSW_LIB)
+# faiss_hnsw 是本工程的 CMake 目标：优先按目标名链接。
+# find_library 在 configure 期执行，此时静态库尚未生成，会得到 NOTFOUND
+# 并静默跳过链接，导致 faiss_hnsw_index_drop 等符号 undefined。
+if(TARGET faiss_hnsw)
+    target_link_libraries(vector_index_c_api PRIVATE faiss_hnsw)
+elseif(FAISS_HNSW_LIB)
     target_link_libraries(vector_index_c_api PRIVATE ${FAISS_HNSW_LIB})
 endif()
 if(ALGO_PROD_LIB)

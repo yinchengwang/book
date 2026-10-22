@@ -159,7 +159,7 @@ gtest_discover_tests(test_e2e_capability
 
 # MemoryContext 测试（Task 3: Allocation Header 与统计）
 add_executable(test_memctx test_memctx.cpp)
-target_link_libraries(test_memctx db_sql_memctx project_includes GTest::gtest_main)
+target_link_libraries(test_memctx sql_engine db_storage project_includes GTest::gtest_main)
 
 # JIT 性能对比测试（Task 5.6）
 add_executable(test_jit_perf test_jit_perf.cpp)
