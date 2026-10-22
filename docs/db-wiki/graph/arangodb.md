@@ -585,7 +585,292 @@ FOR d IN view
 - **嵌入式模式**：借鉴 ArangoDB 3.11+ Embedded API，本项目可考虑让自有引擎也支持 in-process 模式（参考 Kuzu）；
 - **Operator 路径**：本项目 K8s 化时 ArangoDB Operator 提供成熟模板。
 
-## 二十四、参考资料
+## 二十四、RocksDB 存储层：列族划分与键值编码
+
+> 以下三节（§二十四 ~ §二十六）的源码行号基于 `reference/graph/arangodb/` 的 **3.12.11-devel** 完整 clone（`ARANGO-VERSION` 文件）。该版本中存储引擎抽象层位于 `arangod/StorageEngine/`，具体实现只有 `arangod/RocksDBEngine/` 与 `arangod/ClusterEngine/` 两个目录；MMFiles 的目录与符号已被完全删除，因此本节起全部以 RocksDB 引擎为对象。
+
+### 24.1 列族（Column Family）划分
+
+一个 collection 的数据不落在同一个 RocksDB key 空间里，而是按「记录种类」拆进 **11 个列族**（`arangod/RocksDBEngine/RocksDBColumnFamilyManager.h:64`）：
+
+| # | 内部名 | 对外名 | 内容 |
+|---|--------|--------|------|
+| 0 | default | definitions | 数据库 / collection 元数据 |
+| 1 | Documents | documents | 文档正文（VelocyPack） |
+| 2 | PrimaryIndex | primary | `_id` / `_key` 主索引 |
+| 3 | EdgeIndex | edge | `_from` / `_to` 邻接索引 |
+| 4 | VPackIndex | vpack | 持久化 secondary index（skiplist / hash） |
+| 5 | GeoIndex | geo | 地理索引 |
+| 6 | FulltextIndex | fulltext | 旧全文索引 |
+| 7 | ReplicatedLogs | replicated-logs | 复制日志 |
+| 8 | ZkdIndex | mdi | 多维索引（Zkd 为 unprefixed MDI 的旧称） |
+| 9 | MdiPrefixed | mdi-prefixed | 带前缀的多维索引 |
+| 10 | VectorIndex | vector | 向量索引 |
+
+枚举定义在 `arangod/RocksDBEngine/RocksDBColumnFamilyManager.h:42`，内部名与对外名两套字符串数组分别硬编码于 `arangod/RocksDBEngine/RocksDBColumnFamilyManager.cpp:36` 与 `arangod/RocksDBEngine/RocksDBColumnFamilyManager.cpp:46`。注意第 8 个列族的内部名保留为 `ZkdIndex`，源码在该行专门留了向后兼容注释 —— 改名会作废已有数据目录。
+
+**为什么按记录种类分列族**：LSM-Tree 的 compaction、block cache、bloom filter、prefix extractor 全部是 per-column-family 的。图查询的访问模式与文档正文截然不同 —— 遍历只读 `edge` 与 `primary` 两个列族，正文 `documents` 列族完全不被触碰。分开之后，一次边插入触发的 compaction 只在 `edge` 列族内合并，不与文档正文争抢 I/O 与内存带宽。代价是每个列族各自持有一份缓存与 bloom 数组，内存上界为 O(列族数 × 缓存预算)。
+
+### 24.2 键编码：类型字节与定长 / 变长之分
+
+键的**种类**由单字节枚举 `RocksDBEntryType` 标识（`arangod/RocksDBEngine/RocksDBTypes.h:39`），取值刻意避开可打印 ASCII：
+
+```
+Database='0'  Collection='1'  Document='3'  PrimaryIndexValue='4'
+EdgeIndexValue='5'  VPackIndexValue='6'  View='>'  GeoIndexValue='?'
+```
+
+（`arangod/RocksDBEngine/RocksDBTypes.h:44` 起为完整取值，注释里还留了两条 pre-3.8 GA 的作废 revision tree 编码，标注「不得重用」。）
+
+类型字节**是否写进键**取决于该键是否定长：
+
+- **变长键**写入类型字节。`arangod/RocksDBEngine/RocksDBKey.cpp:220` 处数据库键为 `[type:1B][databaseId:8B]`，collection 键为 `[type:1B][databaseId:8B][collectionId:8B]`；
+- **定长键**不写类型字节 —— 反正按列族就能区分，写了纯属浪费。文档键由 `arangod/RocksDBEngine/RocksDBKey.cpp:238` 构造：
+
+```
+Document 键 = [collectionObjectId : 8B little-endian][LocalDocumentId : 8B little-endian]
+              └──────── 前缀（整 collection 共享） ────────┘└──── 行内唯一 ────┘
+```
+
+主索引键则是「变长尾部」形态（`arangod/RocksDBEngine/RocksDBKey.cpp:250`）：
+
+```
+PrimaryIndexValue 键 = [indexId : 8B][primaryKey : 0..n B]      // primaryKey 即 _key
+```
+
+`indexId` 前缀不可省 —— 主索引列族内混着 persistent / skiplist / hash 三类索引，去掉前缀会让不同索引的键互相穿插，直接破坏全局有序性，也就毁掉了范围扫描的前提。
+
+### 24.3 前缀提取器与「一个顶点一个前缀」
+
+边索引键是最微妙的一种（`arangod/RocksDBEngine/RocksDBKey.cpp:262`）：
+
+```
+EdgeIndexValue 键 = [indexId : 8B][vertexId : 0..n B]['\0'][LocalDocumentId : 8B]['0xFF']
+                    └────── RocksDB 前缀提取器只取这一段 ──────┘└──── 定位单条边 ────┘
+```
+
+分隔符 `\0` 定义在 `arangod/RocksDBEngine/RocksDBKey.cpp:56`。为什么必须在字符串后补一个 `\0`？因为顶点 id 长度可变，提取器无法从尾部回推切点，必须用一个**不会出现在顶点 id 里**的字节当终止符。
+
+提取逻辑在 `arangod/RocksDBEngine/RocksDBPrefixExtractor.h:41`：检查末字节，若非 `\0` 则断言它是 `0xFF`，再回退 `8 + 1` 字节取前缀。`arangod/RocksDBEngine/RocksDBPrefixExtractor.h:58` 的 `InDomain` 用同一判据区分「完整键」（末字节 `0xFF`）与「已是前缀」（末字节 `\0`）—— 这让 `Transform` 幂等，因为 RocksDB 偶尔会对已变换过的 key 再变换一次，源码里对此有明确注释。
+
+**收益**：顶点 v 的全部出边在 RocksDB 的 key 序上恰好构成一段连续区间，且这整段**共享同一个 bloom 位图**。遍历查 v 的出边时：
+
+```
+朴素方案：每条边独立 seek  →  O(d · log N) 次比较，d = 出度
+前缀 bloom：1 次 bloom 探测 →  O(log N + d) 次比较
+```
+
+误判概率取决于 bloom 的每 key 位数 k 与总位数 b：p ≈ 1 − e^(−k·n·d / 2^b)。扇出 d 越大收益越明显 —— 这是图存储相对通用 KV 最实质的一处优化，也是「邻接表天然按顶点聚簇」在 LSM 存储上的落地方式。
+
+### 24.4 值编码：LocalDocumentId + RevisionId
+
+键里放的是 `LocalDocumentId`（8 字节单调递增整数），值里跟着放行版本号。主索引值由 `arangod/RocksDBEngine/RocksDBValue.cpp:273` 的分支构造：
+
+```
+PrimaryIndexValue 值 = [LocalDocumentId : 8B]                        // 无版本：仅做唯一性校验
+                    或 [LocalDocumentId : 8B][RevisionId : 8B]       // 带版本，见 arangod/RocksDBEngine/RocksDBValue.cpp:280
+```
+
+这样「按 `_key` 查到 `LocalDocumentId`」与「校验并发写的 `_rev` 是否过期」是**同一次 seek 返回的两段字节**，不需要第二次读。反方向按 `LocalDocumentId` 取正文走 `documents` 列族，那里的值就是裸 VelocyPack，不再带任何头部 —— 读取路径的零额外分配由此而来。
+
+## 二十五、Edge Index 的邻接存取与遍历游标推进
+
+### 25.1 边索引是覆盖索引
+
+社区版每个 edge collection 有两个系统索引 `_from` 与 `_to`，由 `RocksDBEdgeIndex` 承载（构造见 `arangod/RocksDBEngine/RocksDBEdgeIndex.cpp:746`，`_directionAttr` 即被索引的那一侧，`_isFromIndex` 区分方向）。插入路径见 `arangod/RocksDBEngine/RocksDBEdgeIndex.cpp:820`：
+
+```
+insert(edgeDoc):
+    v   = edgeDoc[_directionAttr]        // _from 索引取 _from，_to 索引取 _to
+    key = [indexId][v]['\0'][docId]['0xFF']
+    val = edgeDoc[对端属性]               // _from 索引存 _to，_to 索引存 _from，见 arangod/RocksDBEngine/RocksDBEdgeIndex.cpp:828
+    Put(edge 列族)                        // arangod/RocksDBEngine/RocksDBEdgeIndex.cpp:835
+```
+
+关键在 `arangod/RocksDBEngine/RocksDBEdgeIndex.cpp:828`：**值里存的是对端属性的原样字符串**。这意味着边索引天然是覆盖索引 —— 从 v 的出边顺序扫出来时，每条记录已经带着终点，**不需要回 `documents` 列族取边文档**。这是 ArangoDB 遍历比「vertex × edge 双表 JOIN」更快的原因：实际发生的不是 JOIN，而是「索引顺序扫描 + 一次批量取顶点」。
+
+值不做 `_id` ↔ `_key` 归一化：写入侧直接取 `stringView()`（`arangod/RocksDBEngine/RocksDBEdgeIndex.cpp:832`），查询侧 `handleValNode` 也是原样塞进查找键数组（`arangod/RocksDBEngine/RocksDBEdgeIndex.cpp:1267`）。所以边文档若把 `_from` / `_to` 写成短键（SmartGraph 风格的 `vertex/edge` 形式），索引体积可线性压下来，代价是用户自行承担 `_id` → `_key` 的翻译。
+
+### 25.2 游标推进：rearm 而非重建
+
+遍历每推进一个顶点都要问一次「v 的所有出边」。逐次重建索引迭代器，会让每一步都付出一次完整的 `indexScanForCondition`（AST 匹配 + 条件下推 + 迭代器分配）。ArangoDB 的做法是**原地改写 AST 条件常量并复用迭代器**。
+
+`SingleServerEdgeCursor::LookupInfo::rearmVertex`（`arangod/Graph/Cursors/SingleServerEdgeCursor.cpp:96`）做两件事：
+
+1. **改写条件常量**：找到形如 `e._from == "coll/a"` 的比较节点，把右侧字符串常量就地替换为新顶点 id（`arangod/Graph/Cursors/SingleServerEdgeCursor.cpp:116`）。若所用索引未覆盖 `_from` / `_to`，则改写到表达式的最后一个成员上（`arangod/Graph/Cursors/SingleServerEdgeCursor.cpp:126`）。注意其间的 `TEMPORARILY_UNLOCK_NODE` —— AQL AST 平时是不可变共享树，这里是受控的可变豁免。
+2. **复用或重建游标**（`arangod/Graph/Cursors/SingleServerEdgeCursor.cpp:146`）：
+
+```
+if (cursor.canRearm()):
+    cursor.rearm(astNode)              # 只换 seek 目标，迭代器对象保留
+else:
+    trx->indexScanForCondition(...)    # 全量重建，见 arangod/Graph/Cursors/SingleServerEdgeCursor.cpp:160
+```
+
+边索引迭代器明确声明支持 rearm（`arangod/RocksDBEngine/RocksDBEdgeIndex.cpp:303`），rearm 只做两件事：按新条件填查找键数组、按等值 / `IN` 分别走两条路径（`arangod/RocksDBEngine/RocksDBEdgeIndex.cpp:325` 与 `arangod/RocksDBEngine/RocksDBEdgeIndex.cpp:336`），其余状态原样保留。
+
+复杂度（d 为出度，N 为该索引的条目数）：
+
+```
+重建方案：每步 O(条件匹配) + 一次 O(log N) seek + 一次迭代器分配，固定开销 ∝ 步数
+rearm 方案：每步 一次 O(log N) seek + 一次常量替换，省掉与 d 无关的固定开销
+```
+
+两者分别计入 `incrCursorsRearmed()`（`arangod/Graph/Cursors/SingleServerEdgeCursor.cpp:148`）与 `incrCursorsCreated()`（`arangod/Graph/Cursors/SingleServerEdgeCursor.cpp:157`），可直接从 `/_admin/statistics` 观察命中率。
+
+### 25.3 方向的表达：正反两个独立游标
+
+方向枚举是每个游标各持一份的 `enum Direction { FORWARD, BACKWARD }`（`arangod/Graph/Cursors/SingleServerEdgeCursor.h:91`），而非全局枚举。两条方向边各自持有独立游标与独立索引：
+
+- 正向（`_from` 索引）：从边文档取 `_from`、从索引值取 `_to` 作为下一跳顶点；
+- 反向（`_to` 索引）：从边文档取 `_to`、从索引值取 `_from` 作为下一跳顶点。
+
+`arangod/Graph/Cursors/SingleServerNeighbourCursor.cpp:78` 处的三元分支正是这个二选一。`ANY` 方向等价于同时持有两者并在结果层做去重。
+
+最短路径用的**双侧枚举器** `TwoSidedEnumerator` 同时持有左右两侧（`arangod/Graph/Enumerators/TwoSidedEnumerator.cpp:288` 与 `arangod/Graph/Enumerators/TwoSidedEnumerator.cpp:290`）：
+
+```
+_left  { Direction::FORWARD,  forwardProvider,  ... }
+_right { Direction::BACKWARD, backwardProvider, ... }
+```
+
+两侧交替推进，而不是双向 BFS 并行展开 —— 每步比较当前最优路径长度与两侧剩余深度，超出即剪枝（方向分支见 `arangod/Graph/Enumerators/TwoSidedEnumerator.cpp:145`）。理论上搜索空间从单侧 Dijkstra 的 O(b^d) 降到 O(b^(d/2))，b 为分支因子、d 为最短跳数。
+
+### 25.4 从边文档里抠出对端 id：VelocyPack 就地扫描
+
+边索引已经给了对端 id，为何还需要 `extractFromFromDocument`？因为**当所用索引不覆盖所需属性**（自定义过滤表达式、或 `_from` 索引不覆盖 `_to`）时仍需读边文档正文。此时 ArangoDB 不走 VelocyPack 的属性名哈希查找，而是**在字节流上线性扫属性名标记**。
+
+系统属性在 VelocyPack 里用单字节标记（`lib/Basics/VelocyPackHelper.h:479`）：
+
+```
+_key=0x31   _rev=0x32   _id=0x33   _from=0x34   _to=0x35
+```
+
+且源码用 `static_assert` 强制它们**严格递增**（`lib/Basics/VelocyPackHelper.h:484` 起）—— 因为边文档正是按此序落盘。于是：
+
+```
+extractToFromDocument(slice):                          # arangod/Transaction/Helpers.cpp:281
+    p     = slice.begin() + slice.findDataOffset(slice.head())
+    count = 0
+    while (*p <= ToAttribute && ++count <= 4):         # _from 版见 arangod/Transaction/Helpers.cpp:262
+        if (*p == ToAttribute): return VPackSlice(p + 1)   # 命中即构造 slice，零拷贝
+        ++p
+        p += VPackSlice(p).byteSize()                  # 跳过 属性名 + 属性值
+    return slice.get(StaticStrings::ToString)           # 扫描未命中 → 退回哈希查找
+```
+
+三处提前退出把最坏情况钉死：
+
+1. `*p <= 标记` —— 属性名按字节序递增，一旦当前属性名大于目标，后面不可能再有目标（前提是落盘有序，由 `static_assert` 与写入端共同保证）；
+2. `++count <= 4` —— 系统属性至多 5 个（`_key/_rev/_id/_from/_to`），扫过 4 个还没命中就必然没有；
+3. 命中后直接以 `p + 1` 构造 `VPackSlice`，**不复制**。
+
+正常路径是 O(≤4) 次指针跳转且零分配；只有属性乱序的自定义文档才付哈希查找的代价。函数头注释同时声明了前提：仅对含 `_key/_id/_from/_to/_rev` 且按此序的边文档有效。
+
+### 25.5 遍历条件的可下推性判定
+
+条件并非都能下推到索引。`arangod/Aql/TraversalConditionFinder.cpp:73` 定义了四分类：
+
+```
+OptimizationCase { PATH, EDGE, VERTEX, NON_OPTIMIZABLE }
+```
+
+判定逻辑见 `arangod/Aql/TraversalConditionFinder.cpp:675` 的 `identifyCase`：把条件引用的变量逐一比对 `vertexVar` / `edgeVar` / `pathVar`，**只允许命中一种**；一旦混用两种（例如同时出现 edge 与 vertex），或引用了遍历后才定义的变量，判为 `NON_OPTIMIZABLE`，该条件成员被从下推候选中剔除（`arangod/Aql/TraversalConditionFinder.cpp:716`）。判定通过的边条件最终喂给 §25.2 的 `rearmVertex` —— 也就是说，**优化器的判定结果直接决定遍历能否免掉每步的迭代器重建**。
+
+## 二十六、AQL 集群执行：Scatter-Gather 与优化规则调度
+
+Coordinator 上的执行计划不是「一个计划 + 运行时切分」，而是**编译期就把 Scatter / Gather 插进计划树**。§七与 §十一描述的是部署拓扑，本节补的是计划树里的两个算子。
+
+### 26.1 Scatter：两种扇出粒度
+
+`arangod/Aql/ExecutionNode/ScatterNode.h:48` 定义了两种扇出粒度：
+
+```
+enum ScatterType { SERVER = 0, SHARD = 1 };
+```
+
+- `SERVER`：一个 DBServer 一个执行单元，同一 server 上的多个 shard 由本地事务管理器串行调度；
+- `SHARD`：一个 shard 一个执行单元，可真正并行。
+
+选择权交给优化器规则 `scatter-in-cluster`。它先把可被 scatter 的节点类型圈成静态白名单（`arangod/Aql/Optimizer/Rule/ScatterInCluster.cpp:50`）：
+
+```
+ENUMERATE_COLLECTION, ENUMERATE_NEAR_VECTORS, INDEX, MATERIALIZE,
+ENUMERATE_IRESEARCH_VIEW, INSERT, UPDATE, REPLACE, REMOVE, UPSERT
+```
+
+即**只有真正触碰 collection 数据的算子才需要扇出**；纯计算算子（FILTER / CALCULATION / SORT）留在 Coordinator 本地跑，避免无效 RPC。规则随后在每个命中节点前插入 `ScatterNode::ScatterType::SHARD`（`arangod/Aql/Optimizer/Rule/ScatterInCluster.cpp:270`）并重接依赖边。
+
+代价模型（u 个扇出单元，第 i 个的数据量 s_i，网络往返 R）：
+
+```
+不扇出（u=1）    ：T ≈ O(s) + R
+并行散列（u 个） ：T ≈ max_i O(s_i) + R        —— 与 u 几乎无关
+协调器串行收割   ：T_merge ≈ O(Σ s_i)          —— 单线程收割时反而变差
+```
+
+所以只有 u 足够大、s_i 足够小时 SHARD 级散列才划算；单 shard collection 走 SERVER 级即可，这正是 §26.2 判据的来源。
+
+### 26.2 Gather 的并行度判定
+
+扇入端 `GatherNode` 的并行度是三态而非布尔（`arangod/Aql/ExecutionNode/GatherNode.h:52`）：
+
+```
+enum class Parallelism : uint8_t { Undefined = 0, Serial = 2, Parallel = 4 };
+```
+
+`Undefined` 是「留待后续规则决定」的中间态。初值直接由集合形态给出（`arangod/Aql/ExecutionNode/GatherNode.cpp:318`）：
+
+```
+evaluateParallelism(collection):
+    return (collection.numberOfShards() == 1 || collection.isSatellite())
+             ? Parallelism::Serial      # 单 shard 或卫星集合：并行无收益
+             : Parallelism::Undefined;
+```
+
+真正的判定在规则 `parallelize-gather`（`arangod/Aql/Optimizer/Rule/ParallelizeGather.cpp:88`）。它先用一个图遍历 `ParallelizableFinder`（`arangod/Aql/Optimizer/Rule/ParallelizeGather.cpp:38`）收集两类否决理由：
+
+- 若**已经**存在并行度 > 1 的图遍历节点（`arangod/Aql/Optimizer/Rule/ParallelizeGather.cpp:60`），再叠一层并行会超订线程池 → 否决；
+- 若图遍历节点不是本地节点（`arangod/Aql/Optimizer/Rule/ParallelizeGather.cpp:61` 的 `isLocalGraphNode()`）→ 否决。
+
+只有全部图节点都判定为本地（`arangod/Aql/Optimizer/Rule/ParallelizeGather.cpp:106` 的 `allSatellite`）才把 Gather 置为 `Parallel`（`arangod/Aql/Optimizer/Rule/ParallelizeGather.cpp:113`），否则显式置 `Serial`。这个「要么全并行、要么全串行」的粗粒度决策避免了部分并行带来的乱序合并开销 —— 因为并行扇入必须整体按序归并，混着来反而要付额外排序。
+
+### 26.3 消除无谓的 Remote → Scatter 对
+
+并非所有「Coordinator 上的远程算子」都需要先 scatter 再远端执行。规则 `remove-unnecessary-remote-scatter` 专门清理这一组合（`arangod/Aql/Optimizer/Rule/RemoveUnnecessaryRemoteScatter.cpp:41`）：
+
+```
+for each RemoteNode r（不进子查询）:
+    if r 无依赖:              continue
+    if r 的首个依赖不是 Scatter: continue
+    node = r 的 scatter 依赖
+    while node != nullptr:
+        if node 的依赖数 != 1:  break          # 有分叉，不能删
+        node = node 的唯一依赖
+        if node 不是 SINGLETON / CALCULATION / FILTER
+           且未被 shouldExcludeFromScatterGather 标记:   # 见 arangod/Aql/Optimizer/Rule/RemoveUnnecessaryRemoteScatter.cpp:72
+            break
+    # 走到底 → r 与它的 scatter 之间只有纯本地算子，删掉这一对
+```
+
+即「Scatter 与 Remote 之间若只隔着单例算子与本地计算 / 过滤，扇出再扇入纯属往返浪费，直接拉直」。这类改写在 AQL 文本里不可见，只能靠 `explain` 的节点树观察。
+
+### 26.4 优化规则的注册与调度
+
+规则不是硬编码的调用序列，而是**按 level 排序的数据表**。level 枚举定义在 `arangod/Aql/OptimizerRule.h:92`，注释写明「level 值小者先执行、且必须唯一」，并按 pass 分组（Pass 1 上移节点、Pass 2 消冗余、Pass 3 交换相邻 Enumerate、Pass 4 二次上移……）。其中约第 500 号 level 被特别标注为屏障：更高 level 新产生的计划不得回退到此 level 及以下。
+
+每条规则带一组位标志（`arangod/Aql/OptimizerRule.h:45`）：
+
+```
+Default=0  Hidden=1  ClusterOnly=2  CanBeDisabled=4
+CanCreateAdditionalPlans=8  DisabledByDefault=16  EnterpriseOnly=32
+```
+
+`CanCreateAdditionalPlans` 决定优化器是「就地改写」还是「派生候选计划 + 代价比较」—— 后者对应候选计划池 `arangod/Aql/Optimizer.h:181` 的 `PlanList _plans`，最终由 `stealBest()` 交出胜者。`EnterpriseOnly` 决定社区版构建下该规则是否注册；源码里成片的 `#ifdef USE_ENTERPRISE` 就是在守这条。
+
+注册入口是 `OptimizerRulesFeature::addRules()`（`arangod/Aql/OptimizerRulesFeature.cpp:212`），逐条调用 `registerRule(名字, 函数指针, level, flags, 说明文本)`；当前源码共 82 处注册调用，最终落进按 level 排序的 `_rules` 向量（`arangod/Aql/OptimizerRulesFeature.cpp:120`）。名字到 level 的反查在 `ruleByLevel` 里用 `std::lower_bound` 二分完成（`arangod/Aql/OptimizerRulesFeature.cpp:152`）—— 这正是 `AQL EXPLAIN` 能按名字 `.using("rule-name")` 单独开关某条规则的基础。§9.3 列举的 `use-index` / `avoid-sort` 等属于这张表里的条目，本节补充的是它们**如何被调度**。
+
+## 二十七、参考资料
 
 1. ArangoDB 官方文档 — `https://docs.arangodb.com/`。
 2. ArangoDB 源码 — `https://github.com/arangodb/arangodb`。
