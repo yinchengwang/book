@@ -546,7 +546,406 @@ g.V().has('name', textContains('vortex'))
 - **schema Maker / Index Maker DSL**：本项目若走 schema-first 模式可借鉴；
 - **不直接关联**：本项目 `engineering/src/db/` 暂无图引擎，但多模态 wiki 直接对齐 JanusGraph 已能落地于未来扩展。
 
-## 二十四、参考资料
+## 二十四、后端存储抽象：五个 Store 与遍历短路点
+
+### 24.1 真实的接口继承链（Titan 时代命名已废弃）
+
+JanusGraph 1.2.0 的后端抽象是一条**很薄**的接口链，比 Titan 0.5 时代简单得多：
+
+```
+StoreManager                        janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/StoreManager.java
+  └─ KeyValueStoreManager           janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/keyvalue/KeyValueStoreManager.java:25
+       └─ OrderedKeyValueStoreManager  janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/keyvalue/OrderedKeyValueStoreManager.java:27
+
+KeyValueStore                       janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/keyvalue/KeyValueStore.java:27
+  └─ OrderedKeyValueStore           janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/keyvalue/OrderedKeyValueStore.java:30
+```
+
+`KeyValueStore` 全部只有 5 个方法：`delete`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/keyvalue/KeyValueStore.java:36`）、`get`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/keyvalue/KeyValueStore.java:46`）、`containsKey`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/keyvalue/KeyValueStore.java:56`）、`acquireLock`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/keyvalue/KeyValueStore.java:67`）、`close`。**没有 put / 没有 scanner** —— 写入与范围扫描都在子类 `OrderedKeyValueStore` 上：`insert`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/keyvalue/OrderedKeyValueStore.java:41`）、`getSlice`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/keyvalue/OrderedKeyValueStore.java:55`）、`getSlices`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/keyvalue/OrderedKeyValueStore.java:71`）。
+
+范围查询的三元组 `[start, end)` + `Predicate<StaticBuffer> keyFilter` + `limit` 封装在 `KVQuery`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/keyvalue/KVQuery.java:28`），`getKeySelector()` 把它压成「过滤谓词 + 剩余条数」的可执行游标控制器（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/keyvalue/KVQuery.java:57`）。
+
+⚠️ **重要命名纠正**：`KeyColumnValueStore`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/KeyColumnValueStore.java`）在 1.2.0 里是与 `KeyValueStore` **平级的遗留接口**，不是它的父类；Titan 时代的 `KeyColumnarBackend` / `KeyRangeBackend` / `KeySlicedBackend` 在本仓库**全仓零命中**。同理 `ConfiguredBackend` 也已被 `BackendTransaction` + `BaseTransactionConfig` 取代（零命中）。
+
+### 24.2 五个固定 Store
+
+`Backend`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/Backend.java:133`）启动时固定打开这几类 store，名字**永不可改**（注释见 `janusgraph-core/src/main/java/org/janusgraph/diskstorage/Backend.java:137`）：
+
+| Store | 常量与位置 | 职责 |
+|-------|-----------|------|
+| `edgestore` | `janusgraph-core/src/main/java/org/janusgraph/diskstorage/Backend.java:148` | 全部边 + 属性（按 vertex id 分行） |
+| `graphindex` | `janusgraph-core/src/main/java/org/janusgraph/diskstorage/Backend.java:149` | 图内倒排索引：属性值 → vertex |
+| `txlog` | `janusgraph-core/src/main/java/org/janusgraph/diskstorage/Backend.java:158` | 事务 WAL |
+| `systemlog` | `janusgraph-core/src/main/java/org/janusgraph/diskstorage/Backend.java:159` | schema 变更日志 |
+| `<store>_lock_` | 后缀常量 `janusgraph-core/src/main/java/org/janusgraph/diskstorage/Backend.java:156` | 分布式锁（独立 store） |
+
+内存缓存按固定比例切：`EDGESTORE_CACHE_PERCENT = 0.8` / `INDEXSTORE_CACHE_PERCENT = 0.2`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/Backend.java:161`）。热数据天然集中在 `edgestore`，因为邻接遍历是热点。
+
+### 24.3 遍历短路点：BackendTransaction
+
+`BackendTransaction`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/BackendTransaction.java:62`）把所有读操作收敛成 6 个入口，每一个都对应一次图遍历的**短路点**：
+
+| 入口 | 位置 | 语义 |
+|------|------|------|
+| `edgeStoreQuery(KeySliceQuery)` | `janusgraph-core/src/main/java/org/janusgraph/diskstorage/BackendTransaction.java:287` | 已知 vertexId，取某一 relation 类别下的 slice —— 邻接遍历主路径 |
+| `edgeStoreMultiQuery(List<key>, SliceQuery)` | `janusgraph-core/src/main/java/org/janusgraph/diskstorage/BackendTransaction.java:302` | N 个 vertex 同构 slice 批取 |
+| `edgeStoreKeys(SliceQuery)` | `janusgraph-core/src/main/java/org/janusgraph/diskstorage/BackendTransaction.java:394` | 全局 key 扫描（`g.V()` / OLAP） |
+| `indexQuery(KeySliceQuery)` | `janusgraph-core/src/main/java/org/janusgraph/diskstorage/BackendTransaction.java:434` | 图内索引查询 |
+| `indexQuery(String, IndexQuery)` / `rawQuery` / `totals` | `janusgraph-core/src/main/java/org/janusgraph/diskstorage/BackendTransaction.java:451` / `janusgraph-core/src/main/java/org/janusgraph/diskstorage/BackendTransaction.java:482` / `janusgraph-core/src/main/java/org/janusgraph/diskstorage/BackendTransaction.java:517` | 外部索引后端（ES / Solr / Lucene） |
+
+全局扫描的键边界是硬编码的 8 字节全零 / 全一（`EDGESTORE_MIN_KEY` / `EDGESTORE_MAX_KEY`，`janusgraph-core/src/main/java/org/janusgraph/diskstorage/BackendTransaction.java:70`）—— 因为 JanusGraph 约定 vertexId 是 64 位。
+
+**能力降级分支**：若后端不支持 `hasMultiQuery()`，`edgeStoreMultiQuery`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/BackendTransaction.java:303` 处判断）退化为 `multiThreadedEdgeStoreMultiQuery`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/BackendTransaction.java:355`）—— 用 `CountDownLatch` 给每个 key 起一个线程。但源码注释明确写着：即使退化成多线程，也**优先**把一批 key 直接发给支持 multiQuery 的后端，因为分布式 KV（Cassandra / HBase）能做分组异步下发，比「一 key 一线程」更省连接（注释见 `janusgraph-core/src/main/java/org/janusgraph/diskstorage/BackendTransaction.java:350`）。低于 `MIN_TASKS_TO_PARALLELIZE = 2`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/BackendTransaction.java:67`，判断在 `janusgraph-core/src/main/java/org/janusgraph/diskstorage/BackendTransaction.java:357`）时线程池开销大于收益，直接串行。
+
+### 24.4 读写分离的提交与重试
+
+提交是**两阶段**的：`commitStorage()` 只提交主存储（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/BackendTransaction.java:148`），`commitIndexes()` 逐个提交外部索引并**收集异常而不是首个即抛**（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/BackendTransaction.java:152`）—— 这样一个索引挂掉不会连累其他索引的提交，调用方拿到 `Map<String,Throwable>` 自行决定降级。
+
+重试在 `BackendOperation`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/util/BackendOperation.java:35`）：
+
+```
+executeDirect(exe, totalWaitTime):                      # :59
+    maxTime  = now + totalWaitTime
+    waitTime = perturb(50ms)                           # BASE_REATTEMPT_TIME :41
+    loop:
+        try: return exe.call()
+        catch e:
+            找到最内层 BackendException                 # :71-73
+            若它是 TemporaryBackendException -> 记录待重试  # :74
+            否则若是 BackendException -> 立即抛出        # :76-77
+            否则 -> 包成 PermanentBackendException 抛出  # :79
+        if now + waitTime < maxTime: sleep(waitTime)   # :84-87
+        else: break
+        waitTime = perturb(waitTime * 2)               # :96
+    throw TemporaryBackendException(超时)               # :98
+```
+
+抖动扰动 ±20%（`PERTURBATION_PERCENTAGE`，`janusgraph-core/src/main/java/org/janusgraph/diskstorage/util/BackendOperation.java:42`，扰动函数 `janusgraph-core/src/main/java/org/janusgraph/diskstorage/util/BackendOperation.java:44`）是为了打散多客户端同时重试造成的惊群。所有读路径都经过它（`executeRead`，`janusgraph-core/src/main/java/org/janusgraph/diskstorage/BackendTransaction.java:523`），并在那里把线程中断转成 TinkerPop 的 `TraversalInterruptedException`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/BackendTransaction.java:529`）。
+
+**异常契约三态**：`TemporaryBackendException` = 可重试（超时 / 限流 / 节点不可用）；`PermanentBackendException` = 不可重试（表不存在 / 序列化失败）；`ResourceUnavailableException` = 后端明确表示资源打满。三态划分让上面的退避循环能精确区分「再试一次」和「立刻放弃」。
+
+### 24.5 后端能力矩阵 StoreFeatures
+
+`StoreFeatures`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/StoreFeatures.java:31`）用 8 个布尔位描述后端能力：`hasScan`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/StoreFeatures.java:37`）、`hasUnorderedScan`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/StoreFeatures.java:43`）、`hasConsistentScan`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/StoreFeatures.java:51`）、`hasOrderedScan`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/StoreFeatures.java:57`）、`hasMultiQuery`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/StoreFeatures.java:64`）、`hasLocking`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/StoreFeatures.java:71`）、`hasBatchMutation`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/StoreFeatures.java:78`）、`isKeyOrdered`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/StoreFeatures.java:85`）。`StandardStoreFeatures`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/StandardStoreFeatures.java:26`）是不可变的 Builder 实现。
+
+两个后端的声明对比：
+
+| 能力位 | BerkeleyJE | HBase |
+|--------|-----------|-------|
+| 声明位置 | `janusgraph-berkeleyje/src/main/java/org/janusgraph/diskstorage/berkeleyje/BerkeleyJEStoreManager.java:126` | `janusgraph-hbase/src/main/java/org/janusgraph/diskstorage/hbase/HBaseStoreManager.java:380` |
+| `orderedScan` / `keyOrdered` | true / true | true / true |
+| `multiQuery` | **未声明（false）** | true |
+| `unorderedScan` | false | true |
+| `locking` | true | 未声明（false） |
+| `batchMutation` | 未声明（false） | true |
+| `distributed` | 未声明（false） | true |
+| `optimisticLocking` | 显式 false（`janusgraph-berkeleyje/src/main/java/org/janusgraph/diskstorage/berkeleyje/BerkeleyJEStoreManager.java:138`） | true |
+
+能力位直接决定执行路径：
+
+- **BerkeleyJE 的 slice 走 Cursor 两段式**：首次 `Get.SEARCH_GTE` 定位到 `start`（`janusgraph-berkeleyje/src/main/java/org/janusgraph/diskstorage/berkeleyje/BerkeleyJEKeyValueStore.java:185`），之后每步 `Get.NEXT` 顺序迭代（`janusgraph-berkeleyje/src/main/java/org/janusgraph/diskstorage/berkeleyje/BerkeleyJEKeyValueStore.java:187`），并受 `selector.reachedLimit()` 约束（`janusgraph-berkeleyje/src/main/java/org/janusgraph/diskstorage/berkeleyje/BerkeleyJEKeyValueStore.java:183`）；单点查则是 `Get.SEARCH`（`janusgraph-berkeleyje/src/main/java/org/janusgraph/diskstorage/berkeleyje/BerkeleyJEKeyValueStore.java:123`）。
+- **HBase 的 slice 全部下推到 RegionServer**：构造 `ColumnRangeFilter` 做列区间裁剪（`janusgraph-hbase/src/main/java/org/janusgraph/diskstorage/hbase/HBaseKeyColumnValueStore.java:159`），有 limit 时再叠一层 `ColumnPaginationFilter`（`janusgraph-hbase/src/main/java/org/janusgraph/diskstorage/hbase/HBaseKeyColumnValueStore.java:168`）—— limit 因此是**服务端**限制而非客户端截断，避免拉回海量数据。
+- **`acquireLock` 两端都不可用**：BerkeleyJE 直接是 no-op，依赖 JE 自身的 MVCC 隔离（`janusgraph-berkeleyje/src/main/java/org/janusgraph/diskstorage/berkeleyje/BerkeleyJEKeyValueStore.java:141`）；HBase 直接抛 `UnsupportedOperationException`（`janusgraph-hbase/src/main/java/org/janusgraph/diskstorage/hbase/HBaseKeyColumnValueStore.java:129`）。真正的分布式锁由 `consistentkey` locker 在独立的 `_lock_` store 上实现（注册见 `janusgraph-core/src/main/java/org/janusgraph/diskstorage/Backend.java:197`）。
+
+### 24.6 复杂度
+
+| 操作 | 后端复杂度 | 上层语义 |
+|------|-----------|---------|
+| `get(单 key)` | O(1) | 按 id 取节点 |
+| `getSlice(KVQuery)` | O(log N + K)（B 树定位 + K 条结果） | 邻接遍历 / vertex-centric 索引 |
+| `getSlices(N key)` | JE：O(N log N + K)；HBase：O(命中 Region 数 + K) | multiQuery 合批 |
+| `getKeys(SliceQuery)` | O(N) | 全图扫描（OLAP） |
+
+其中 `K` 是本次扫描命中的记录数。`limit` 通过 `KVQuery` 构造器传给父类 `BaseQuery`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/keycolumnvalue/keyvalue/KVQuery.java:43`）能把 O(N) 压成 O(log N + limit) —— 这是 `g.V().limit(10)` 不扫全图的原因。
+
+## 二十五、键编码与 ID 分配：3 位关系类型前缀与 Base36 元素 ID
+
+### 25.1 关系类型前缀：3 bit 划分
+
+`IDHandler.DirectionID` 只有 3 个取值，且**故意跳过了 `01b`**：
+
+```
+PROPERTY_DIR(0)   // 00b  属性
+EDGE_OUT_DIR(2)   // 10b  出边
+EDGE_IN_DIR(3)    // 11b  入边
+```
+
+（`janusgraph-core/src/main/java/org/janusgraph/graphdb/database/idhandling/IDHandler.java:51`，枚举项在 `janusgraph-core/src/main/java/org/janusgraph/graphdb/database/idhandling/IDHandler.java:53`）
+
+列（column）部分的整体位布局（源码注释，`janusgraph-core/src/main/java/org/janusgraph/graphdb/database/idhandling/IDHandler.java:122`）：
+
+```
+[ Invisible & System (2 bit) | Relation-Type-ID (1 bit) | Relation-Type-Count (变长) | Direction-ID (1 bit) ]
+```
+
+前缀的计算（`janusgraph-core/src/main/java/org/janusgraph/graphdb/database/idhandling/IDHandler.java:95`）：
+
+```
+prefix = ((systemType ? 0 : invisible ? 2 : 1) << 1) + getRelationType()
+其中 getRelationType()  = id >>> 1        # :64  0=属性, 1=边
+     getDirectionInt()   = id & 1         # :68  0=OUT, 1=IN
+     PREFIX_BIT_LEN      = 3               # :114
+```
+
+**这是 JanusGraph 遍历短路点的物理基础**。`getBounds(RelationCategory, boolean)`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/database/idhandling/IDHandler.java:185`）把「只要出边」「只要属性」这类语义编译成一段**连续字节区间**：
+
+```
+getBounds(type, systemTypes):
+    PROPERTY: start = end = prefix(PROPERTY_DIR, systemTypes, systemTypes)
+    EDGE:     start = end = prefix(EDGE_OUT_DIR,  systemTypes, systemTypes)
+    RELATION: start = prefix(PROPERTY_DIR, ...)
+              end   = prefix(EDGE_OUT_DIR, ...)
+    return [ byte(start << 5), byte((end + 1) << 5) ]     # getPrefixed :178，前缀左移到字节高 3 位
+```
+
+因为 `PROPERTY_DIR(0) < EDGE_OUT_DIR(2) < EDGE_IN_DIR(3)`，所以 `[PROPERTY, EDGE_OUT]` 恰好覆盖「属性 ∪ 出边」的连续前缀，`EDGE_IN` 天然被排除在外。于是一次范围扫描在**存储层**就不可能读到入边行 —— 不需要任何额外过滤。这正是 §7.1 说的「Edge Cut」在字节层面如何变成「只扫一半」。
+
+### 25.2 变长整数 VariableLong
+
+前缀占高 3 位，剩下的位要装 relation type 的计数。`VariableLong.writePositiveWithPrefix`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/database/idhandling/VariableLong.java:160`）把前缀写进首字节高位，count 用块状变长编码跟在后面；`positiveWithPrefixLength`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/database/idhandling/VariableLong.java:188`）**先算长度再分配**，供 `getRelationType` 预分配缓冲（`janusgraph-core/src/main/java/org/janusgraph/graphdb/database/idhandling/IDHandler.java:138`）。
+
+解码侧 `readRelationType`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/database/idhandling/IDHandler.java:143`）：
+
+```
+[c0, c1] = readPositiveWithPrefix(in, 3)          # :144  {count, prefix}
+dirID        = DirectionID.getDirectionID(c1 & 1, c0 & 1)   # :145
+typeId       = c0 >>> 1                                     # :146
+isSystemType = (c1 >> 1) == 0                               # :147
+typeId = IDManager.getSchemaId(isSystemType ? SystemPropertyKey : UserPropertyKey, typeId)
+```
+
+代价：绝大多数关系类型（count 小）整个 column **1 字节**搞定；count 每翻一倍多占 1 字节。写入放大几乎为零。
+
+顶点 id 则支持两种编码并存：long 用 `VariableLong.writePositive`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/database/idhandling/IDHandler.java:213`），字符串用 `VariableString.write`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/database/idhandling/IDHandler.java:211`）；解码时靠 `STRING_ID_MARKER = -128`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/database/idhandling/IDHandler.java:49`，最高位为 1，而正 long 的最高位恒为 0）判别类型（`janusgraph-core/src/main/java/org/janusgraph/graphdb/database/idhandling/IDHandler.java:226`）。
+
+### 25.3 VertexIDType：用位后缀而非前缀字段打标签
+
+`IDManager.VertexIDType`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/idmanagement/IDManager.java:63`）不靠固定字段，而是让不同类型占用 id 的**不同位宽后缀**。源码注释里那张完整掩码表在 `janusgraph-core/src/main/java/org/janusgraph/graphdb/idmanagement/IDManager.java:36`：
+
+```
+        0 - + User created Vertex
+      000 -     * Normal vertices
+      010 -     * Partitioned vertices
+      100 -     * Unmodifiable (e.g. TTL'ed) vertices
+      110 -     + Reserved for additional vertex type
+        1 - + Invisible
+       01 -     + Schema related vertices
+      101 -         + Schema Type vertices
+   0101 -             + Relation Type vertices
+  00101 -                 + Property Key
+ 000101 -                     * User Property Key
+ 100101 -                     * System Property Key
+   10101 -                 + Edge Label
+ 010101 -                     * User Edge Label
+ 110101 -                     * System Edge Label
+    1101 -             Other Type vertices
+   01101 -                 * Vertex Label
+```
+
+每个枚举项的 `offset()` 就是它的位宽：`NormalVertex` = 3（`janusgraph-core/src/main/java/org/janusgraph/graphdb/idmanagement/IDManager.java:83`）、`PartitionedVertex` = 3（`janusgraph-core/src/main/java/org/janusgraph/graphdb/idmanagement/IDManager.java:99`）、`UnmodifiableVertex` = 3（`janusgraph-core/src/main/java/org/janusgraph/graphdb/idmanagement/IDManager.java:115`）。全局参数：`TYPE_LEN_RESERVE = 3`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/idmanagement/IDManager.java:380`）、`MAX_PARTITION_BITS = 16`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/idmanagement/IDManager.java:392`）。
+
+**分区号内嵌在 id 高位**。`getPartitionId`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/idmanagement/IDManager.java:481`）：
+
+```
+partition = (vertexId >>> USERVERTEX_PADDING_BITWIDTH) & (partitionIDBound - 1)
+```
+
+`USERVERTEX_PADDING_BITWIDTH = NormalVertex.offset()`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/idmanagement/IDManager.java:400`）。这意味着**一次点查不需要查任何映射表**就能算出该打到哪个分区 —— 分布式 KV 的路由决策是 O(1) 且零 I/O 的。
+
+`getKey(Object vertexId)`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/idmanagement/IDManager.java:489`）三条分支：schema 节点直接 8 字节 long buffer；long 用户节点重组为 `(partition << partitionOffset) | type.addPadding(count)`；String 节点走 `BufferUtil.getStringIdBuffer`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/idmanagement/IDManager.java:505`）。
+
+### 25.4 「长度即类型」的反向约定
+
+`getKeyID(StaticBuffer)`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/idmanagement/IDManager.java:534`）用了一个巧妙的不变量：
+
+```
+if b.length() != 8:  return VariableString.read(b)    # :535-537 长度非 8 ⇒ 字符串 id
+value = b.getLong(0)                                   # :538     长度恰为 8 ⇒ long id
+```
+
+源码注释（`janusgraph-core/src/main/java/org/janusgraph/graphdb/idmanagement/IDManager.java:512`）解释了为什么这里能这么判：因为整个 buffer 就是 id 本身，长度必然精确；而 §25.2 里 column 内的 id 只是 buffer 的一部分，长度不定，那里就只能靠 `STRING_ID_MARKER` 位。还特别注明 long 型 id 的首字节最高位**不保证为 0**，所以位标记方案在这里行不通（`janusgraph-core/src/main/java/org/janusgraph/graphdb/idmanagement/IDManager.java:523`）。为了防止歧义，marker + 长度恰好等于 8 时会补一个哑字节（注释见 `janusgraph-core/src/main/java/org/janusgraph/graphdb/idmanagement/IDManager.java:520`）。
+
+### 25.5 PartitionedVertex 的规范分区：XOR 折叠
+
+Partitioned Vertex 要在每个分区各存一份副本，但**必须算出不同的分区号**。`getPartitionHashForId`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/idmanagement/IDManager.java:566`）用逐块 XOR 折叠：
+
+```
+result = 0; offset = 0
+while offset < 64:
+    result ^= (id >>> offset) & (partitionIDBound - 1)   # :572
+    offset += partitionBits                              # :573
+return result
+```
+
+把 64 位按 `partitionBits` 切成 ⌈64 / partitionBits⌉ 块，每块取低 partitionBits 位做 XOR，结果落在 `[0, partitionIDBound)`。XOR 的好处是无进位、各块互不干扰 —— 同样 count 在不同副本上只要起始 offset 不同就能得到不同分区。`getCanonicalVertexIdFromCount`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/idmanagement/IDManager.java:579`）用它构造规范副本，`isCanonicalVertexId`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/idmanagement/IDManager.java:590`）用「算出来 == 原值」判定当前副本是不是主副本，读取时据此去重。
+
+复杂度 O(64 / partitionBits) 次整数运算。
+
+### 25.6 元素 ID 的字符串编码：Base36 + 可配分隔符
+
+`RelationIdentifier`（`janusgraph-driver/src/main/java/org/janusgraph/graphdb/relations/RelationIdentifier.java:31`）既是指向 relation 的引用，也是外部索引后端的**文档主键**，还是 TinkerPop `element.id` 的载体。
+
+`toString()`（`janusgraph-driver/src/main/java/org/janusgraph/graphdb/relations/RelationIdentifier.java:127`）格式：
+
+```
+<LongEncoding.encode(relationId)>-<outVertexId>-<LongEncoding.encode(typeId)>[-<inVertexId>]
+```
+
+- **分隔符默认 `-`**（`janusgraph-driver/src/main/java/org/janusgraph/graphdb/relations/RelationIdentifier.java:58`），可用系统属性或环境变量 `JANUSGRAPH_RELATION_DELIMITER` 覆盖（常量在 `janusgraph-driver/src/main/java/org/janusgraph/graphdb/relations/RelationIdentifier.java:34`，校验逻辑要求单个 ASCII 可打印字符，见 `janusgraph-driver/src/main/java/org/janusgraph/graphdb/relations/RelationIdentifier.java:48`）
+- String 型端点 id 前置 `STRING_ENCODING_MARKER`（`janusgraph-driver/src/main/java/org/janusgraph/graphdb/relations/RelationIdentifier.java:134`）
+- 属性 relation 没有 `inVertexId`，故长度为 3；边 relation 长度为 4。`parse`（`janusgraph-driver/src/main/java/org/janusgraph/graphdb/relations/RelationIdentifier.java:149`）按 3/4 两态还原
+
+⚠️ **命名纠正**：本仓库用的是**单个 `-` 分隔符**（默认），不是 `#` / `:` 双分隔符 —— 后者是 Titan 0.x 与早期 JanusGraph 的旧格式。
+
+`LongEncoding`（`janusgraph-driver/src/main/java/org/janusgraph/util/encoding/LongEncoding.java:26`）是标准 base36：
+
+```
+BASE_SYMBOLS = "0123456789abcdefghijklmnopqrstuvwxyz"    # :28   B = 36
+
+encode(num):                      # :54
+    while num != 0:
+        sb.append(symbols[num % B]); num /= B
+    return reverse(sb)
+
+decode(s):                        # :42
+    num = 0
+    for ch in s: num = num * B + symbols.indexOf(ch)
+    return num
+```
+
+`STRING_ENCODING_MARKER = 'S'`（`janusgraph-driver/src/main/java/org/janusgraph/util/encoding/LongEncoding.java:32`）**故意不在符号表内**，所以解码时看到首字符是 `S` 就知道这不是 base36 数字（源码注释见 `janusgraph-driver/src/main/java/org/janusgraph/util/encoding/LongEncoding.java:30`）。
+
+长度：64 位正整数 → `⌈64 / log₂36⌉ = ⌈64 / 5.1699⌉ = 13` 字符。属性 relation 的 id 形如 13 + 1 + 13 + 1 + 13 = 41 字符。
+
+**哈希只看 (relationId, typeId)**：`hashCode` 返回 `Long.hashCode(relationId)`（`janusgraph-driver/src/main/java/org/janusgraph/graphdb/relations/RelationIdentifier.java:115`），`equals` 也只比这两个字段（`janusgraph-driver/src/main/java/org/janusgraph/graphdb/relations/RelationIdentifier.java:123`）—— 因为 relationId 全局唯一，端点 id 是冗余的，这让 relation 可以被 O(1) 去重而不必解字符串。
+
+顺带：TinkerPop 的内部键 `~adjacent`（§26.5 谓词下推要用）由 `Token.makeSystemName`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/internal/Token.java:51`）→ `Graph.Hidden.hide(name)` 生成。
+
+## 二十六、索引策略与查询重写：从自动配置策略到显式声明
+
+### 26.1 事实纠正：自动配置索引策略已被整体移除
+
+JanusGraph 0.x 定义了 `GraphIndexConfigurationStrategy` 接口与 `default` / `base` / `classic` / `simple` 四个内置实现，在 `buildIndex()` 时**隐式推断**该建哪些键索引、用哪种类型、是否唯一。本仓库（`pom.xml` 版本 `1.2.0-SNAPSHOT`）中实测：
+
+- `GraphIndexConfigurationStrategy`、`JanusGraphDefaultIndexStrategy`、`JanusGraphBaseIndexStrategy`、`JanusGraphClassicIndexStrategy`、`JanusGraphSimpleIndexStrategy` —— **全仓零命中**
+- `index-strategy` 配置项 —— `janusgraph-core/src/main/java` 与 `docs/` 均**零命中**
+
+1.x 已改为**纯 schema-first**，索引必须显式声明：
+
+```groovy
+mgmt.buildIndex('byName', Vertex.class)                              // JanusGraphManagement.java:183
+    .addKey(nameKey)                                                  // 无参重载
+    .addKey(ageKey, Parameter.of('mapping', Mapping.TEXT))            // 带 Parameter 重载
+    .buildUnique()          // 或 buildComposite() / buildRelation()
+```
+
+`IndexBuilder` 接口定义在 `janusgraph-core/src/main/java/org/janusgraph/core/schema/JanusGraphManagement.java:193`，两个 `addKey` 重载分别在 `janusgraph-core/src/main/java/org/janusgraph/core/schema/JanusGraphManagement.java:201` 与 `janusgraph-core/src/main/java/org/janusgraph/core/schema/JanusGraphManagement.java:217`，实现类为 `ManagementSystem.IndexBuilder`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/database/management/ManagementSystem.java:866`）。
+
+**实际影响**：0.x 的经典姿势「`propertyKey('name').cardinality(SINGLE).indexed()` + `automatic()` 自动建索引」在 1.x 里不再自动发生 —— 必须显式 `buildIndex().addKey()`。反过来好处是索引行为完全可预测，没有隐式兜底。
+
+### 26.2 索引后端只剩三种
+
+`StandardIndexProvider`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/StandardIndexProvider.java:29`）：
+
+| 枚举 | shorthand | 实现类 |
+|------|-----------|--------|
+| `LUCENE` | `lucene` | `org.janusgraph.diskstorage.lucene.LuceneIndex` |
+| `ELASTICSEARCH` | `elasticsearch` / `es` | `org.janusgraph.diskstorage.es.ElasticSearchIndex` |
+| `SOLR` | `solr` | `org.janusgraph.diskstorage.solr.SolrIndex` |
+
+（分别见 `janusgraph-core/src/main/java/org/janusgraph/diskstorage/StandardIndexProvider.java:30`、`janusgraph-core/src/main/java/org/janusgraph/diskstorage/StandardIndexProvider.java:31`、`janusgraph-core/src/main/java/org/janusgraph/diskstorage/StandardIndexProvider.java:32`）
+
+⚠️ **`hadoop` 索引后端（`HadoopIndex`）在 1.2.0 已删除**（全仓零命中）。`janusgraph-hadoop/` 模块现在只剩 OLAP Spark 作业配置（`org.janusgraph.hadoop.config.*`），不再提供索引 provider。
+
+⚠️ 同理，**存储后端注册表只剩 5 个**：`StandardStoreManager`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/StandardStoreManager.java:28`）枚举项为 `BDB_JE` / `CQL` / `HBASE` / `IN_MEMORY` / `SCYLLA`（`janusgraph-core/src/main/java/org/janusgraph/diskstorage/StandardStoreManager.java:29` 至 `janusgraph-core/src/main/java/org/janusgraph/diskstorage/StandardStoreManager.java:33`）。**Google Bigtable 已不在标准存储后端注册表中**（`janusgraph-bigtable/` 目录仍在，但未注册为 `StandardStoreManager`）。
+
+### 26.3 索引字段的 Mapping 与双字段策略
+
+索引字段的数据类型来自 `PropertyKey.dataType()` + 显式 `Mapping` 参数。`Mapping` 枚举（`janusgraph-core/src/main/java/org/janusgraph/core/schema/Mapping.java:30`）共 6 档：`DEFAULT` / `TEXT` / `STRING` / `TEXTSTRING` / `PREFIX_TREE` / `BKD`（`janusgraph-core/src/main/java/org/janusgraph/core/schema/Mapping.java:32` 至 `janusgraph-core/src/main/java/org/janusgraph/core/schema/Mapping.java:40`），解析入口 `getMapping`（`janusgraph-core/src/main/java/org/janusgraph/core/schema/Mapping.java:52`）从 `KeyInformation.getParameters()` 里取，缺省为 `DEFAULT`。
+
+| Mapping | 索引形态 | 能力 | 代价 |
+|---------|---------|------|------|
+| `TEXT` | 分词后建倒排 | 支持 `textContains` / 分词匹配 | **不能**精确匹配整个字符串，不能高效排序 |
+| `STRING` | 整串不分词 | 精确等值 + 可排序 | 不支持全文 |
+| `TEXTSTRING` | **双字段** | 两者兼得 | 索引体积 ≈ 两者之和 |
+| `PREFIX_TREE` | 前缀树 | 地理范围 | ES 7 弃用 / ES 8 移除 |
+| `BKD` | BKD 树 | 地理范围（ES 默认） | 仅 ES |
+
+ES 侧的地理策略迁移写在源码注释里：`PREFIX_TREE` 在 ElasticSearch 7 被弃用、8 被移除，ES 改用 `BKD`（`janusgraph-core/src/main/java/org/janusgraph/core/schema/Mapping.java:37`）；`PREFIX_TREE` 在 Solr 8 与 Lucene 8 仍可用（`janusgraph-core/src/main/java/org/janusgraph/core/schema/Mapping.java:39`）。
+
+**双字段机制**（`TEXTSTRING`）在 `LuceneIndex` 里落地：
+
+```
+getDualFieldName(fieldKey, ki):                       # LuceneIndex.java:1150
+    if ki.getDataType() 是 String 且 Mapping == TEXTSTRING:
+        return fieldKey + "_____s"                    # STRING_SUFFIX :145
+    return empty
+
+getDualMapping(ki):                                   # LuceneIndex.java:1157
+    满足上条件时返回 Mapping.STRING，否则 DEFAULT
+```
+
+写入时对同一条 `IndexRecordEntry` **连续 add 两个 field**（`janusgraph-lucene/src/main/java/org/janusgraph/diskstorage/lucene/LuceneIndex.java:413`）：主 field 用原 mapping，影子 field 用 dual mapping（`janusgraph-lucene/src/main/java/org/janusgraph/diskstorage/lucene/LuceneIndex.java:415`）。查询时按 predicate 自动选分支（`janusgraph-lucene/src/main/java/org/janusgraph/diskstorage/lucene/LuceneIndex.java:790`），并在分词类查询时避免误用 STRING 字段（`janusgraph-lucene/src/main/java/org/janusgraph/diskstorage/lucene/LuceneIndex.java:794`）。排序路径同样走 dual field 名（`janusgraph-lucene/src/main/java/org/janusgraph/diskstorage/lucene/LuceneIndex.java:580`）。
+
+复杂度：设文档数 N、平均字段值长度 L，`TEXTSTRING` 的索引体积约 `Θ(N · L · 2)`，倒排链合并常数翻倍；而精确匹配查询的代价与 `STRING` 相同。这是用**写放大 + 存放大**买查询灵活性。
+
+### 26.4 索引文档的字段布局
+
+`LuceneIndex` 文档主键是 §25.6 的 relation 字符串，字段名带固定前缀以避免与用户属性冲突：
+
+| 常量 | 值 | 用途 | 位置 |
+|------|-----|------|------|
+| `DOCID` | `_____elementid` | 文档主键，存 `RelationIdentifier.toString()` | `janusgraph-lucene/src/main/java/org/janusgraph/diskstorage/lucene/LuceneIndex.java:144` |
+| `STRING_SUFFIX` | `_____s` | TEXTSTRING 的影子字段后缀 | `janusgraph-lucene/src/main/java/org/janusgraph/diskstorage/lucene/LuceneIndex.java:145` |
+| `GEOID` | `_____geo` | 几何字段 | `janusgraph-lucene/src/main/java/org/janusgraph/diskstorage/lucene/LuceneIndex.java:146` |
+
+`DOCID` 用 `new StringField(DOCID, docID, Field.Store.YES)` 写入（`janusgraph-lucene/src/main/java/org/janusgraph/diskstorage/lucene/LuceneIndex.java:389`）—— **StringField 不分词且 Store.YES**，因为查询结果必须回读原始 relation 串才能定位 KV 行；用 TextField 会被分词器切碎导致回读失败。查询时只 `FIELDS_TO_LOAD = {DOCID}` 一个字段（`janusgraph-lucene/src/main/java/org/janusgraph/diskstorage/lucene/LuceneIndex.java:147`），避免把全字段拉回内存（取值见 `janusgraph-lucene/src/main/java/org/janusgraph/diskstorage/lucene/LuceneIndex.java:618`）。
+
+### 26.5 IndexRecords：一条索引记录的形状
+
+`IndexRecords extends ArrayList<IndexRecordEntry[]>`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/database/index/IndexRecords.java:24`）。`add` 时做**防御性深拷贝一层数组**（`janusgraph-core/src/main/java/org/janusgraph/graphdb/database/index/IndexRecords.java:27`）—— 因为 CDC 变更流会把同一条记录数组分发给多个下游处理器（写索引、触发器等），共享引用会导致某个处理器就地改写污染其他处理器。`getRecordValues()`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/database/index/IndexRecords.java:31`）把每条的字段值数组摊平成 `Object[]`，交给外部索引后端批量写。
+
+### 26.6 查询重写：谓词下推与合批
+
+`JanusGraphLocalQueryOptimizerStrategy`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/strategy/JanusGraphLocalQueryOptimizerStrategy.java:53`）是本地查询优化的总入口，`apply`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/strategy/JanusGraphLocalQueryOptimizerStrategy.java:63`）依次做五件事：
+
+```
+applyJanusGraphVertexSteps(traversal)                             # :99   VertexStep → JanusGraphVertexStep，折叠 HasStep，合并 limit
+applyJanusGraphPropertiesSteps(traversal, cacheSize, mode)         # :118  Properties/PropertyMap/ElementMap → 属性预取
+applyJanusGraphLabelSteps(traversal, mode)                         # label() 下推
+applyJanusGraphDropSteps(traversal, mode)                          # drop() 下推
+inspectLocalTraversals(...)                                        # 多查询合批（JanusGraphMultiQueryStrategy）
+```
+
+其中 `applyJanusGraphVertexSteps`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/strategy/JanusGraphLocalQueryOptimizerStrategy.java:99`）把标准 `VertexStep` 换成 `JanusGraphVertexStep`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/strategy/JanusGraphLocalQueryOptimizerStrategy.java:101`），并在返回边时把后续 `HasStep` 折进边标签过滤（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/strategy/JanusGraphLocalQueryOptimizerStrategy.java:105`）—— 源码注释明确说 order/range 不能折因为它们不是 local 的（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/strategy/JanusGraphLocalQueryOptimizerStrategy.java:106`）；紧随的 `RangeGlobalStep` 会把 limit 下推成 `setLimit`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/strategy/JanusGraphLocalQueryOptimizerStrategy.java:113`）。
+
+**谓词下推**是其中最有价值的一条规则。`AdjacentVertexOptimizerStrategy`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/strategy/AdjacentVertexOptimizerStrategy.java:41`）识别三种位置：
+
+```
+NONE
+V2V_ID       // VertexStep(返回 vertex) → HasStep(T.id == v)
+V2E_E2V_ID   // VertexStep(返回 edge) → EdgeVertexStep/EdgeOtherVertexStep → HasStep(T.id == v)
+```
+
+`getOptimizablePosition`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/strategy/AdjacentVertexOptimizerStrategy.java:64`）向前回溯两步，跳过中间的 `NoOpBarrierStep`，逐步校验前驱步的类型。
+
+改写规则（`replaceSequenceV2VthenID`，`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/strategy/AdjacentVertexOptimizerStrategy.java:139`）：
+
+```
+g.V(x).out('knows').has(T.id, y)
+        ↓  改写为
+g.V(x).outE('knows').has('~adjacent', y).inV()
+```
+
+先把「返回顶点」的 `VertexStep` 拆成一个返回边的 `VertexStep`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/strategy/AdjacentVertexOptimizerStrategy.java:151`）加一个反向的 `EdgeVertexStep`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/strategy/AdjacentVertexOptimizerStrategy.java:158`，`BOTH` 方向则用 `EdgeOtherVertexStep`，见 `janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/strategy/AdjacentVertexOptimizerStrategy.java:156`），再在中点插入 `has('~adjacent', y)`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/strategy/AdjacentVertexOptimizerStrategy.java:173`）。已存在 `V2E_E2V_ID` 形态时走更轻量的 `replaceSequenceV2EthenE2VthenID`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/strategy/AdjacentVertexOptimizerStrategy.java:110`）。
+
+`~adjacent` 是内置隐式属性 `ImplicitKey.ADJACENT_ID`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/types/system/ImplicitKey.java:57`，`Token.makeSystemName("adjacent")` → `~adjacent`），类型 `Long.class`。合法性由 `AdjacentVertexHasIdOptimizerStrategy.isValidStep`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/strategy/AdjacentVertexHasIdOptimizerStrategy.java:70`）把关：必须恰好 1 个 `HasContainer`、key 是 `T.id`、predicate 是 `Compare.eq`、值是 `Vertex` 或 `Long`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/strategy/AdjacentVertexHasIdOptimizerStrategy.java:76` 至 `janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/strategy/AdjacentVertexHasIdOptimizerStrategy.java:81`）。
+
+**为什么值得**：设顶点 x 的出度为 D。原始计划要物化全部 D 条边（D 次 KV slice 读），再逐条比对端点 id；改写后在**边层**用隐式属性过滤，未命中的边不会被取出，期望代价 O(1)。对「粉丝数十万」的节点是数量级差异。多条件版本 `AdjacentVertexHasUniquePropertyOptimizerStrategy` / `AdjacentVertexIsOptimizerStrategy` 同理，把 `has('uniqueProp', v)` 也下推到边层。
+
+改写结果最终汇聚到 `JanusGraphStep`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/step/JanusGraphStep.java:62`）：`buildGlobalGraphCentricQuery`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/step/JanusGraphStep.java:116`）汇总所有 `hasContainer` 交给查询规划层（单条约束由 `addConstraint` 追加，`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/step/JanusGraphStep.java:166`）。`toString`（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/step/JanusGraphStep.java:213`）会把最终查询形状打印出来，含 `Or(...)` 形式的复合分支（`janusgraph-core/src/main/java/org/janusgraph/graphdb/tinkerpop/optimize/step/JanusGraphStep.java:236`）—— 调优时可直接对照 Gremlin Server 日志确认改写是否生效。
+
+## 二十七、参考资料
 
 1. JanusGraph 官方文档 — `https://docs.janusgraph.org/`。
 2. JanusGraph 源码 — `https://github.com/JanusGraph/janusgraph`。
