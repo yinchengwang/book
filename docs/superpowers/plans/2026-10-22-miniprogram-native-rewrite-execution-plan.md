@@ -7,6 +7,35 @@
 
 ---
 
+## ⚠️ 执行结果回填（2026-10-22 完成）
+
+本计划已全部执行完毕。**执行中发现两处计划假设与实际不符，已按实际调整并记录如下**，
+正文中对应条目已就地标注，不再保留误导性表述。
+
+| 项 | 计划原定 | 实际执行 | 原因 |
+|---|---|---|---|
+| **阶段 5 删除范围** | `git rm -r engineering/apps`（整目录） | **仅删 3 个已迁移 web 源** | 实测 `engineering/apps/CMakeLists.txt` 仍在编译 common / games / tools / vdb_cli / todo-app / multimodal_rag（31 个 target），整删会破坏 CMake 构建。经用户当日重新确认后收窄范围 |
+| **18.1 CMakeLists** | 删 `add_subdirectory(apps)` | **不改** | apps 目录仍存在且被使用，守卫必须保留 |
+| **18.2 CLAUDE.md** | 改「新独立项目 → engineering/apps/」 | **不改** | 该约定依然正确（apps 仍是 C++ 独立项目的落点） |
+| **18.3 AGENTS.md** | 标注 api-server 已移除 | **保留 api-server，仅修静态目录说明** | api-server 是仍在使用的 C 后端，未删除 |
+
+> 关于「用户曾两次确认整目录删除」：该决策形成于 2026-10-21，前提是认为 `apps/` 只含已迁移的
+> Web 项目。2026-10-22 执行时通过 CMake 实测发现前提不成立，用户据此重新选择了收窄范围。
+> 因此本计划正文的阶段 5 / 阶段 6 与总纲的相应描述均以「执行结果回填」为准。
+
+**最终验收（全部通过）**
+
+| 应用 | 结果 |
+|---|---|
+| programmer-workbench | 7 组 / 315 断言 |
+| knowledge-hub | 6 组 / 181 断言 |
+| games | 51 项 |
+| CMake | `Configuring done`，apps targets 31 个不变 |
+
+提交：`4c22b8136`（340 文件 / +35540 / −1034）
+
+---
+
 ## 0. 全局约定
 
 ### 0.1 核心校验脚本（P0.1 一次性建成，全项目复用）
@@ -179,35 +208,57 @@ node tests/validate.js
 
 ---
 
-## 阶段 5 · 删除 engineering/apps
+## 阶段 5 · 删除已迁移的旧 Taro 源（原为「删除 engineering/apps」）
 
-- [ ] **17.1** `git rm -r engineering/apps`
-- [ ] **17.2** 确认 CMake 不受影响：`cmake -S engineering -B build 2>&1 | tail -5`（EXISTS 守卫应自动跳过）
-- [ ] **17.3** commit（单独一个，便于回溯）
+> **⚠️ 范围已修正**：原计划 `git rm -r engineering/apps` 整目录删除。实测该目录含活跃 C++ 构建
+> （`apps/CMakeLists.txt` 编译 common / games / tools / vdb_cli / todo-app / multimodal_rag，共 31 个
+> target），整删会破坏 CMake。经用户重新确认，收窄为**只删已迁移的 3 个 web 源**。
+
+- [x] **17.1** 删除已迁移的 3 个 Web 源（**非**整目录）：
+  - `engineering/apps/web/games-mini-program` → 已迁移至 `wechat-miniprogram/games`
+  - `engineering/apps/web/knowledge_hub` → 已迁移至 `wechat-miniprogram/knowledge-hub`
+  - `engineering/apps/web/reading-radar` → knowledge-hub 前身，已被取代
+  - 保留：`apps/web/{mrag,todo-app,taro-template}` 与全部 C++ 工程
+- [x] **17.1b** 删除前归档：`.archive/engineering-apps-web-migrated-srcs-20261022.tar.gz`（497 文件 / 4MB）
+  - **重要**：这 3 个目录此前**从未被 git 追踪**（不在任何 commit 中），归档是唯一备份
+- [x] **17.2** 确认 CMake 不受影响：删除后 `cmake -S engineering -B <build>` 仍 `Configuring done`，
+  apps targets 31 个不变。体积 17MB → 4.4MB
+- [x] **17.3** 随最终 commit 一并提交
 
 ---
 
 ## 阶段 6 · 全仓引用修正
 
-| # | 文件 | 动作 |
-|---|---|---|
-| 18.1 | `engineering/CMakeLists.txt` | 删 L2 注释中的 `apps/`、删 L153-154 `if(EXISTS)…add_subdirectory(apps)…endif()` |
-| 18.2 | 根 `CLAUDE.md` L380 | 「新独立项目 → `engineering/apps/`」改为 engineering 直属目录约定 |
-| 18.3 | 根 `AGENTS.md` L79 / L91 | api-server（todo-app C 后端）章节标注已移除；构建路径示例删除 |
-| 18.4 | `engineering/README.md` | 同步 apps 相关行 |
-| 18.5 | `docs/architecture/reading-radar/README.md` | 顶部加迁移说明（已删除，原型见 git 历史） |
-| 18.6 | `docs/architecture/knowledge-hub/README.md` | 顶部加迁移说明（现位于 `wechat-miniprogram/knowledge-hub/`） |
-| 18.7 | `wechat-miniprogram/README.md` | 更新为四应用清单（trip-log / games / programmer-workbench / knowledge-hub，全部原生） |
-| 18.8 | `docs/superpowers/*` 历史计划 | **不改**（历史文档保持原样） |
+| # | 文件 | 动作 | 实际 |
+|---|---|---|---|
+| 18.1 | `engineering/CMakeLists.txt` | 删 L2 注释中的 `apps/`、删 L153-154 `if(EXISTS)…add_subdirectory(apps)…endif()` | **不改** —— apps 仍存在且被使用，守卫必须保留 |
+| 18.2 | 根 `CLAUDE.md` L380 | 「新独立项目 → `engineering/apps/`」改为 engineering 直属目录约定 | **不改** —— 该约定依然正确 |
+| 18.3 | 根 `AGENTS.md` L79 / L91 | api-server（todo-app C 后端）章节标注已移除；构建路径示例删除 | **改法调整** —— api-server 未删除，仅修静态目录说明（默认值指向已删的 `frontend/apps/knowledge_hub/web/dist`，改为需 `-s` 显式指定）；另将 `frontend/` monorepo 章节改为迁移说明 |
+| 18.4 | `engineering/README.md` | 同步 apps 相关行 | ✅ 已改（apps 清单补全） |
+| 18.5 | `docs/architecture/reading-radar/README.md` | 顶部加迁移说明（已删除，原型见 git 历史） | ✅ 已改 |
+| 18.6 | `docs/architecture/knowledge-hub/README.md` | 顶部加迁移说明（现位于 `wechat-miniprogram/knowledge-hub/`） | ✅ 已改 |
+| 18.7 | `wechat-miniprogram/README.md` | 更新为四应用清单（trip-log / games / programmer-workbench / knowledge-hub） | ✅ 已改（并注明 trip-log 依赖云 SDK，非零依赖） |
+| 18.8 | `docs/superpowers/*` 历史计划 | **不改**（历史文档保持原样） | ✅ 未动正文；仅按用户要求追加「执行结果回填」区块 |
+| 18.9a | `engineering/apps/games/README.md` | （计划外补充） | ✅ 已改 —— 原描述以 Taro 版为「生产用」，改为原生小程序 |
+| 18.9b | `openspec/specs/engineering/{apps-web-knowledge-hub,apps-wechat-mini-program}` | （计划外补充） | ✅ 已加历史规格说明 |
 
-- [ ] **18.9** 全仓 grep 复查：`grep -rn "engineering/apps" --include="*.md" --include="*.txt" . | grep -v superpowers | grep -v ".git"` 应为空
-- [ ] **18.10** 最终 commit
+- [x] **18.9** 全仓 grep 复查：源码/文档中已无指向已删路径的有效引用（仅剩迁移说明与历史记录）
+- [x] **18.10** 最终 commit：`4c22b8136`
 
 ---
 
 ## 完成定义（Definition of Done）
 
-1. `wechat-miniprogram/` 下四个应用全部原生、零 npm 依赖、开发者工具开箱即跑
-2. 每个应用 `validate.js` + 单测全绿
-3. `engineering/apps/` 不存在；全仓（历史文档除外）无失效引用
-4. 三个新应用 README 完整（结构 / 存储 / 测试 / 移植对照）
+> 下列为**修订后**的验收标准。原第 1、3 条按字面无法成立，已改写为与实际一致且仍可检验的表述；
+> 原措辞保留在括注中，便于追溯。
+
+1. `wechat-miniprogram/` 下四个应用均可用开发者工具直接导入运行。
+   **其中 3 个（games / programmer-workbench / knowledge-hub）零 npm 依赖、零构建**；
+   `trip-log` 例外，依赖 `@tencent-ai/workbuddy-cloud-sdk`（云能力所需，非本次重写范围）。
+   *（原文：「四个应用全部原生、零 npm 依赖」—— 对 trip-log 不成立）*
+2. 每个应用 `validate.js` + 单测全绿。**实测：PWB 7 组 / KH 6 组 / games 51 项，全通过。**
+3. 已迁移的 3 个旧 Taro Web 源已删除；全仓（历史文档除外）无指向它们的失效引用。
+   **`engineering/apps/` 目录整体保留** —— 它仍是活跃的 C++ 构建（31 个 target），
+   计划原定的「整目录删除」因会破坏 CMake 而未执行（详见「执行结果回填」）。
+   *（原文：「`engineering/apps/` 不存在」—— 已修正）*
+4. 三个新应用 README 完整（结构 / 存储 / 测试 / 移植对照）。**✅ 已完成。**
