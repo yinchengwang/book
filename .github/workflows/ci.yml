@@ -12,6 +12,17 @@
 #       （缺失时 leetcode_tests 链接 GTest::gtest_main 失败）
 #   因此改为 submodules: false（默认值，此处显式声明以表意）+ 显式单模块浅拉取。
 #
+#   ⚠️ 构建实际依赖的子模块清单（2026-10-22 QA 验收后补全，缺一个就编译失败）：
+#     - third_part/googletest          —— engineering/CMakeLists.txt:124 与
+#                                       learning/CMakeLists.txt:48 的 add_subdirectory
+#     - engineering/third_part/uthash  —— 5 处 CMakeLists 把头文件路径写死指向该子模块：
+#                                       src/db/storage/graph:19、sparse:16、ts:12、
+#                                       test/db/graph:25、src/db/api:6。
+#                                       注意 learning/include/uthash/ 虽有 git 追踪副本，
+#                                       但 CMake 指向 third_part/uthash/src，**不是同一路径**，
+#                                       tracked 副本救不了，必须拉子模块。
+#     两个 gitlink 指向同一 SHA a49bed0b，故只列 engineering/third_part/uthash。
+#
 #   LFS 关闭：.gitattributes 追踪的 *.pdf / dataset/** / *.chm 全部不被任何构建或
 #   测试步骤读取（sift_recall.c 等硬编码 Windows 路径且未注册进 ctest），约 692MB
 #   的 LFS 内容对 CI 毫无价值。
@@ -44,7 +55,7 @@ jobs:
         persist-credentials: false
 
     - name: Fetch googletest submodule
-      run: git submodule update --init --depth 1 third_part/googletest
+      run: git submodule update --init --depth 1 third_part/googletest engineering/third_part/uthash
 
     - name: Install dependencies (Ubuntu)
       run: |
@@ -74,7 +85,7 @@ jobs:
         persist-credentials: false
 
     - name: Fetch googletest submodule
-      run: git submodule update --init --depth 1 third_part/googletest
+      run: git submodule update --init --depth 1 third_part/googletest engineering/third_part/uthash
 
     - name: Install dependencies (Ubuntu)
       run: |
@@ -105,7 +116,7 @@ jobs:
         persist-credentials: false
 
     - name: Fetch googletest submodule
-      run: git submodule update --init --depth 1 third_part/googletest
+      run: git submodule update --init --depth 1 third_part/googletest engineering/third_part/uthash
 
     - name: Set up MinGW
       uses: msys2/setup-msys2@v2
@@ -144,7 +155,7 @@ jobs:
         persist-credentials: false
 
     - name: Fetch googletest submodule
-      run: git submodule update --init --depth 1 third_part/googletest
+      run: git submodule update --init --depth 1 third_part/googletest engineering/third_part/uthash
 
     - name: Install dependencies (Ubuntu)
       run: |
@@ -175,7 +186,7 @@ jobs:
         persist-credentials: false
 
     - name: Fetch googletest submodule
-      run: git submodule update --init --depth 1 third_part/googletest
+      run: git submodule update --init --depth 1 third_part/googletest engineering/third_part/uthash
 
     - name: Install dependencies (Ubuntu)
       run: |
@@ -210,7 +221,7 @@ jobs:
         persist-credentials: false
 
     - name: Fetch googletest submodule
-      run: git submodule update --init --depth 1 third_part/googletest
+      run: git submodule update --init --depth 1 third_part/googletest engineering/third_part/uthash
 
     - name: Install lcov + PyYAML
       run: |

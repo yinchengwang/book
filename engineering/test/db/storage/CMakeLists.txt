@@ -79,9 +79,16 @@ add_executable(blob_engine_test
     blob_engine_test.cpp
 )
 
-# 使用 CMake 查找 GTest（conda 或 vendored）
-find_package(GTest REQUIRED)
-target_link_libraries(blob_engine_test PRIVATE GTest::GTest GTest::Main)
+# GTest 优先复用 engineering/CMakeLists.txt:123-127 已 add_subdirectory 的
+# vendored googletest（产出 GTest::gtest / GTest::gtest_main）。
+# 只有在没有 vendored 目标时才回退 find_package —— 否则干净 CI 环境
+# （无系统 GTest）会在这里硬失败。目标名用 vendored 实际产出的
+# GTest::gtest_main，不使用 legacy 的 GTest::GTest / GTest::Main
+# （vendored googletest 1.14 不产出这两个名字）。
+if(NOT TARGET GTest::gtest_main)
+    find_package(GTest REQUIRED)
+endif()
+target_link_libraries(blob_engine_test PRIVATE GTest::gtest_main)
 
 # 链接 Blob 存储引擎库
 target_link_libraries(blob_engine_test PRIVATE storage_blob db_core project_includes)

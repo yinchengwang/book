@@ -23,7 +23,7 @@ jobs:
           submodules: false
           persist-credentials: false
       - name: Fetch googletest submodule
-        run: git submodule update --init --depth 1 third_part/googletest
+        run: git submodule update --init --depth 1 third_part/googletest engineering/third_part/uthash
       - name: Install build tools
         run: |
           sudo apt-get update
