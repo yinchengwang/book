@@ -4,9 +4,11 @@
 >
 > **两种完成度需区分**（2026-10-22 更新）：
 > - **建档 ✅**：68/68。每篇均含完整章节骨架、ASCII 架构图、源码路径引用与外部参考。
-> - **算法深化 🔬**：58/68。指在骨架之外追加了源码级算法章节（数据结构选型、核心算法伪代码与复杂度分析、关键源码路径与行号）。
+> - **算法深化 🔬**：68/68。指在骨架之外追加了源码级算法章节（数据结构选型、核心算法伪代码与复杂度分析、关键源码路径）。
 >
-> 「项目状态总览」中的**深化**列标注 🔬 / ⬜。⬜ 的 10 篇（embedded 4 + extension 6）目前仅有建档内容——其 `reference/` 子模块尚未 init，无法给出可信的源码行号，按 canonical 路径 + approx 标注处理，待后续补深化。
+> 「项目状态总览」中的**深化**列标注 🔬 / ⬜。**深化质量分两档**：
+> - 子模块已init 的篇目给出行号级引用（如 `UnifiedLog.java:563`），可用脚本全量校验；
+> - 子模块未 init 的篇目（embedded 4 + extension 6）按 canonical 路径 + 「行号需校对」标注处理。
 
 ## 分类索引
 
@@ -39,7 +41,7 @@
 
 以下 68 个项目**建档全部完成**，每篇 wiki 含完整章节、架构图、源码引用与外部参考。
 
-「深化」列区分是否额外追加了源码级算法章节：🔬 = 已深化（58 篇），⬜ = 待深化（10 篇）。
+「深化」列区分是否额外追加了源码级算法章节：🔬 = 已深化（68 篇），⬜ = 待深化（0 篇）。
 
 ### relational（7 篇）
 
@@ -153,26 +155,26 @@
 
 | 分类 | 项目 | 建档 | 深化 |
 |------|------|------|------|
-| embedded | [duckdb.md](./embedded/duckdb.md) | ✅ | ⬜ |
-| embedded | [lmdb.md](./embedded/lmdb.md) | ✅ | ⬜ |
-| embedded | [boltdb.md](./embedded/boltdb.md) | ✅ | ⬜ |
-| embedded | [pklite.md](./embedded/pklite.md) | ✅ | ⬜ |
+| embedded | [duckdb.md](./embedded/duckdb.md) | ✅ | 🔬 |
+| embedded | [lmdb.md](./embedded/lmdb.md) | ✅ | 🔬 |
+| embedded | [boltdb.md](./embedded/boltdb.md) | ✅ | 🔬 |
+| embedded | [pklite.md](./embedded/pklite.md) | ✅ | 🔬 |
 
 ### extension（6 篇）
 
 | 分类 | 项目 | 建档 | 深化 |
 |------|------|------|------|
-| extension | [arrow.md](./extension/arrow.md) | ✅ | ⬜ |
-| extension | [pgvector.md](./extension/pgvector.md) | ✅ | ⬜ |
-| extension | [datafusion.md](./extension/datafusion.md) | ✅ | ⬜ |
-| extension | [velox.md](./extension/velox.md) | ✅ | ⬜ |
-| extension | [lance.md](./extension/lance.md) | ✅ | ⬜ |
-| extension | [hnswlib.md](./extension/hnswlib.md) | ✅ | ⬜ |
+| extension | [arrow.md](./extension/arrow.md) | ✅ | 🔬 |
+| extension | [pgvector.md](./extension/pgvector.md) | ✅ | 🔬 |
+| extension | [datafusion.md](./extension/datafusion.md) | ✅ | 🔬 |
+| extension | [velox.md](./extension/velox.md) | ✅ | 🔬 |
+| extension | [lance.md](./extension/lance.md) | ✅ | 🔬 |
+| extension | [hnswlib.md](./extension/hnswlib.md) | ✅ | 🔬 |
 
 ---
 
 **最近更新：2026-10-22**
-**统计：68 篇 wiki，建档全部完成 ✅；算法深化 58/68 🔬（10 篇待深化：embedded 4 + extension 6）**
+**统计：68 篇 wiki，建档全部完成 ✅；算法深化 68/68 🔬**
 
 > benchmark/ 分类下 5 个项目（ann-benchmarks、vectordbbench、tpch、tpcds、db-bench）作为参考资料在 wiki 引用部分提及，不单独写 wiki。
 
