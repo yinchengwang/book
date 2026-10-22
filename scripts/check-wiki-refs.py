@@ -179,11 +179,15 @@ def main():
 
 # 任意形态的「路径:数字」——不要求反引号、不要求行尾
 LOOSE_REF = re.compile(
-    r'(?<![\w.])[A-Za-z_][A-Za-z0-9_./\\-]*\.(?:java|scala|kt|kts|go|rs|c|cc|cpp|cxx|h|hpp|hxx|inc'
-    r'|py|pyi|pyx|cs|erl|ex|exs|clj|cljs|rb|php|js|jsx|ts|tsx|mjs|cjs|swift|m|mm'
-    r'|sql|proto|thrift|graphql|gql|sh|bash|zsh|pl|lua|r|jl|ml|mli|nim|zig'
-    r'|cmake|mk|gradle|bzl|bazel|toml|yml|yaml|json|xml|ini|cfg|conf'
-    r'|fbs|avsc|ps1|bat|vim|el|scm|cl|pas|f90|for|vb|fs|fsx):[0-9]+'
+    r'\.[a-zA-Z0-9]+:[0-9]+'
+)
+
+# 模式 B 的「精确行号」判定专用：要求匹配项**前面有路径前缀**，
+# 以排除 `0.0.0.0:8815`（IP:端口）、`(2:10..3:15]`（区间示例）这类
+# 「有数字冒号但不是源码引用」的假阳性。
+# 扩展名不设白名单 —— 固定清单曾漏掉 .erl/.cs/.hh，导致 couchdb/ravendb 被误判。
+SRC_LINE_REF = re.compile(
+    r'[A-Za-z_][A-Za-z0-9_./\\-]*\.[a-zA-Z0-9]+:[0-9]+'
 )
 
 # 模式 B 篇目清单（子模块未 init，禁止精确行号）
@@ -215,7 +219,7 @@ def check_mode_b(repo_root):
             bad.append((rel, '文件不存在'))
             continue
         text = open(path, encoding='utf-8').read()
-        hits = LOOSE_REF.findall(text)
+        hits = SRC_LINE_REF.findall(text)
         has_note = '行号需校对' in text or '未 init' in text
         status = 'OK' if (not hits and has_note) else 'FAIL'
         print(f'  [{status}] {rel.replace("docs/db-wiki/", ""):<26} '
@@ -255,7 +259,14 @@ MARK2TIER = {MARK_L1: 'L1', MARK_L2: 'L2', MARK_L3: 'L3', '\u25FB': 'L3'}
 
 
 def actual_tier(path):
-    """按文件实际内容判档（判据与 check_mode_b 保持一致）。"""
+    """按文件实际内容判档（判据与 check_mode_b 保持一致）。
+
+    这里用**纯通用正则**（不设扩展名白名单），确保 .erl / .cs / .hh / .cc 等
+    冷门后缀不会被漏掉——README 分档曾因固定扩展名清单漏判 couchdb/ravendb。
+    代价是可能把 `0.0.0.0:8815` 这类 IP:端口误判为「有行号」，
+    已知 2 处（datafusion 正文、pulsar 的区间示例 `(2:10..3:15]`），
+    二者均已由人工确认为非引用，故接受该保守偏差（宁可高估行号档）。
+    """
     text = open(path, encoding='utf-8').read()
     if LOOSE_REF.search(text):
         return 'L1'

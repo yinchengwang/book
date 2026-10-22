@@ -6,7 +6,7 @@
 > - **建档 ✅**：68/68。每篇均含完整章节骨架、ASCII 架构图、源码路径引用与外部参考。
 > - **算法深化**：68/68。指在骨架之外追加了源码级算法章节（数据结构选型、核心算法伪代码与复杂度分析、关键源码路径）。
 >   深化质量按**引用可验证程度**分三档：
->   🔬 **已深化（行号级）** 47 篇 · 🔷 **已深化（canonical 标注）** 20 篇 · ◻️ **路径待核实** 1 篇
+>   🔬 **已深化（行号级）** 48 篇 · 🔷 **已深化（canonical 标注）** 19 篇 · ◻️ **路径待核实** 1 篇
 >
 > 「项目状态总览」中的**深化**列按三档标注，读者可据此判断引用能否直接定位到源码：
 > - 🔬 **已深化（行号级）**——`reference/` 子模块已 init，每个源码引用带**精确行号**，
@@ -47,7 +47,7 @@
 
 以下 68 个项目**建档全部完成**，每篇 wiki 含完整章节、架构图、源码引用与外部参考。
 
-「深化」列按**引用可验证程度**分三档：🔬 行号级（47 篇，可脚本校验）、🔷 canonical 标注（20 篇，路径未经验证）、◻️ 路径待核实（1 篇，仅符号名）。全部 68 篇均已追加源码级算法章节，无「待深化」篇目。
+「深化」列按**引用可验证程度**分三档：🔬 行号级（48 篇，可脚本校验）、🔷 canonical 标注（19 篇，路径未经验证）、◻️ 路径待核实（1 篇，仅符号名）。全部 68 篇均已追加源码级算法章节，无「待深化」篇目。
 
 ### relational（7 篇）
 
@@ -172,7 +172,7 @@
 |------|------|------|------|
 | extension | [arrow.md](./extension/arrow.md) | ✅ |  🔷  |
 | extension | [pgvector.md](./extension/pgvector.md) | ✅ |  🔷  |
-| extension | [datafusion.md](./extension/datafusion.md) | ✅ |  🔷  |
+| extension | [datafusion.md](./extension/datafusion.md) | ✅  | 🔬 |
 | extension | [velox.md](./extension/velox.md) | ✅ |  ◻️  |
 | extension | [lance.md](./extension/lance.md) | ✅ |  🔷  |
 | extension | [hnswlib.md](./extension/hnswlib.md) | ✅ |  🔷  |
@@ -180,7 +180,7 @@
 ---
 
 **最近更新：2026-10-22**
-**统计：68 篇 wiki，建档全部完成 ✅；算法深化 68/68（🔬 47 / 🔷 20 / ◻️ 1）**
+**统计：68 篇 wiki，建档全部完成 ✅；算法深化 68/68（🔬 48 / 🔷 19 / ◻️ 1）**
 
 > benchmark/ 分类下 5 个项目（ann-benchmarks、vectordbbench、tpch、tpcds、db-bench）作为参考资料在 wiki 引用部分提及，不单独写 wiki。
 
