@@ -87,7 +87,9 @@ cmake --build build/engineering --parallel 4 --target api-server
 ### 运行
 
 ```bash
-# 在仓库根目录运行（默认端口 8080，db book.db，静态目录 ../web/knowledge_hub/web/dist）
+# 在仓库根目录运行（默认端口 8080，db book.db）
+# 注：默认静态目录 frontend/apps/knowledge_hub/web/dist 已随前端迁移移除，
+# 需通过 -s <static_dir> 显式指定；纯 API 模式下可忽略。
 build/engineering/apps/api-server/api-server.exe
 ```
 
@@ -104,42 +106,22 @@ build/engineering/apps/api-server/api-server.exe
 | review_api | GET /api/review/due, POST /api/review/rate, GET /api/review/stats |
 | notes_api_mod | /api/notes CRUD + tree + search + dir |
 | digest_api | /api/digest/today, items, collections, action |
-| static_files | 非 /api/ 请求 -> knowledge_hub 构建产物 |
+| static_files | 非 /api/ 请求 -> `-s` 指定的静态目录 |
 
-### 前端构建
+### 前端说明（已迁移）
 
-knowledge_hub（Taro 3.6 + React 18 + TS）—— 新前端 monorepo（`frontend/`）：
+knowledge_hub 原为 Taro 3.6 + React 18 + TS 工程，**已于 2026-10-22 完成原生化重写**：
+Taro 源码（原 `engineering/apps/web/{knowledge_hub,games-mini-program,reading-radar}`）已删除，
+对应的原生微信小程序现位于 `wechat-miniprogram/`：
 
-```bash
-cd frontend
-bun install
-bun run build:h5
-```
+| 应用 | 位置 |
+|---|---|
+| knowledge-hub（Reading Radar） | `wechat-miniprogram/knowledge-hub/` |
+| games（游戏中心） | `wechat-miniprogram/games/` |
+| programmer-workbench（DevBench） | `wechat-miniprogram/programmer-workbench/` |
 
-产物在 `frontend/dist/`，api-server 默认静态目录为 `frontend/dist`（PC Vite 版）。
-
-### frontend monorepo 结构
-
-`frontend/` 是统一前端 monorepo（Taro 3.6 + Vite 5）：
-
-```
-frontend/
-├── apps/
-│   ├── knowledge_hub/   # 主平台 H5 + 微信小程序
-│   ├── games/           # 贪吃蛇/2048/数独/俄罗斯方块/三消
-│   ├── digest/          # 信息流 / 资讯聚合
-│   └── todo/            # 任务管理（日历/甘特/统计/DFX）
-├── common/              # 共享代码（API/types/hooks/utils）
-├── package.json         # 根级 workspace 定义
-└── vite.config.ts       # 统一构建入口
-```
-
-构建常用命令（根级 `frontend/`）：
-
-```bash
-bun run build:h5      # 产出所有 H5 应用
-bun run build:weapp   # 产出 knowledge_hub 微信小程序
-```
+三者均为零依赖、零构建的原生小程序（纯 JS + WXML + WXSS），无 pnpm / Taro / Vite 构建步骤。
+下文关于 `frontend/` monorepo 的结构与命令描述对应的是更早的一版前端布局，现已不适用。
 
 ## 开发守则
 

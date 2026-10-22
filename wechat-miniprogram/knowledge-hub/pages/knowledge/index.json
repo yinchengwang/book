@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "知识",
+  "usingComponents": {
+    "progress-bar": "../../components/progress-bar/index"
+  },
+  "enablePullDownRefresh": false
+}

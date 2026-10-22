@@ -1,0 +1,8 @@
+{
+  "navigationBarTitleText": "面试追踪",
+  "usingComponents": {
+    "app-fab": "../../../components/fab/index",
+    "app-empty": "../../../components/empty/index"
+  },
+  "enablePullDownRefresh": false
+}

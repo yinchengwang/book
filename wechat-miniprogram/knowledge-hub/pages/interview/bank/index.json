@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "面试题库",
+  "usingComponents": {
+    "app-empty": "../../../components/empty/index"
+  },
+  "enablePullDownRefresh": false
+}

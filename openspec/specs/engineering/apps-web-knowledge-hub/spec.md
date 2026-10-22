@@ -1,5 +1,10 @@
 # apps-web-knowledge-hub
 
+> ⚠️ **历史规格 · 目标模块已删除**
+> 本规格描述的 `apps/web/knowledge_hub`（Taro + React）已于 2026-10-22 完成原生化重写并删除。
+> 当前实现见 [`wechat-miniprogram/knowledge-hub/`](../../../../wechat-miniprogram/knowledge-hub/)（原生微信小程序，17 页 / 14 个数据域）。
+> 本规格保留作为原始需求参考。
+
 学习追踪平台规范，Taro + React 技术栈（H5 + 微信小程序双端）。
 
 ## Purpose

@@ -26,7 +26,7 @@ cmake -B ../build/engineering -S . -DENABLE_COVERAGE=ON
 | `src/` | 库代码（db/, algo/, cpp/, redis/） |
 | `include/` | 公共头文件 |
 | `test/` | gtest 测试 |
-| `apps/` | 独立应用（db_driver, games, tools, web） |
+| `apps/` | 独立应用（db_driver, games, tools, vdb_cli, todo-app, multimodal_rag, web） |
 | `rag/` | RAG 系统 |
 | `sdk/` | 多语言 SDK |
 | `tools/` | 工程专用工具 |
@@ -42,3 +42,16 @@ cmake -B ../build/engineering -S . -DENABLE_COVERAGE=ON
 - 工程专用工具——从根 `tools/` 拆分迁入 `engineering/tools/`
 
 不可引用 `learning/` 任何路径。
+
+## 微信小程序归属
+
+微信小程序**不属于** engineering track。
+
+所有微信小程序统一存放在仓库根的 `../wechat-miniprogram/`，每个小程序一个子目录：
+
+| 项目 | 目录 | 技术栈 |
+|---|---|---|
+| 足迹（游玩记录） | `wechat-miniprogram/trip-log/` | 原生小程序 |
+| DevBench（程序员工作台） | `wechat-miniprogram/programmer-workbench/` | Taro 3.6 + React 18 + TS |
+
+详见 `../wechat-miniprogram/README.md`。

@@ -1,5 +1,10 @@
 # apps-wechat-mini-program
 
+> ⚠️ **历史规格 · 目标模块已删除**
+> 本规格描述的 `apps/web/games-mini-program`（Taro + WASM）已于 2026-10-22 完成原生化重写并删除。
+> 当前实现见 [`wechat-miniprogram/games/`](../../../../wechat-miniprogram/games/)（原生小程序，游戏逻辑为纯 JS，无 Taro / WASM 构建链）。
+> 本规格保留作为原始需求参考。
+
 微信小程序适配规范，使用 WebAssembly 运行游戏逻辑。
 
 ## Purpose

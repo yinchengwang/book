@@ -13,7 +13,8 @@ add_subdirectory(tools)
 add_subdirectory(vdb_cli)
 
 # Web 项目（静态页面，无需编译）
-# add_subdirectory(web)  # reading-radar 和 knowledge_hub 是静态项目
+# 小程序前端已于 2026-10-22 迁至 wechat-miniprogram/（原生化重写），此处仅保留非小程序 Web 工程
+# add_subdirectory(web)
 
 # Todo App 待办事项应用
 add_subdirectory(todo-app)

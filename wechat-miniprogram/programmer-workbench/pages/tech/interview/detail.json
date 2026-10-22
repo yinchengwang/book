@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "题目",
+  "usingComponents": {
+    "app-header": "../../../components/header/index"
+  }
+}

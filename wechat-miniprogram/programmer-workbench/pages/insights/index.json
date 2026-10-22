@@ -1,0 +1,8 @@
+{
+  "navigationBarTitleText": "闪念",
+  "usingComponents": {
+    "app-header": "../../components/header/index",
+    "app-tag": "../../components/tag/index",
+    "app-empty": "../../components/empty/index"
+  }
+}
