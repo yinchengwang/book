@@ -760,7 +760,8 @@ Velox 主要是 **「C++ 库」**，通常作为服务的一部分，**不直接
 
 > §8.2 说明算子向量化、§8.3 给出 Expression Framework、§8.6 用一张流程图描述 spill 的**触发与形态**。但**三个决定这些算子能否「流式执行而不 OOM」的算法仍未展开**：Hash Join 如何用**分区 + 原子行交换**把任意输入切成有序 probe、Streaming Hash Aggregation 如何靠**标量列直方图**判断能否两两合并、以及 Spill 的多路归并如何处理**键序与不等值**。
 
-> **模式说明**：本篇走模式 B。符号名（`HashJoin`、`StreamingHashAggregation`、`SortedVectorAccumulator`、`RowBase`、`SpillableHashTable`）沿用 Velox / Presto 系命名。
+> **模式说明**：本篇走模式 B——`reference/extension/velox` 子模块尚未 init，**无法核对行号**。
+> 本节不给出精确行号；符号名（`HashJoin`、`StreamingHashAggregation`、`SortedVectorAccumulator`、`RowBase`、`SpillableHashTable`）沿用 Velox / Presto 系命名，可用 `grep -rn "<符号名>"` 在源码中反查实际位置。
 >
 > ⚠️ **路径可靠性特别说明**：本节原先给出了 `velox/exec/operator/join/HashJoin.cpp` 等具体路径，但撰写时网络受限、**未能成功访问 GitHub 逐一验证**（多次请求返回 SSL 错误与 404，无法区分是路径不存在还是网络故障）。按「宁可剔除一个符号，绝不硬圆」的准则，**本节不列出未经核实的源码路径**；上面的算法描述基于 Velox/Presto 公开的设计文档与 CascadingHashJoin 的已知机制。读者定位源码时，建议先用 `find`/`rg` 按符号名（如 `StreamingHashAggregation`、`RowBase`）反查实际文件与位置。
 
