@@ -466,18 +466,20 @@ LMDB 的设计目标是「**最小化**」，**故意不提供扩展 API**：
 
 ## 十七、源码学习路径
 
+> **模式说明**：本节源码路径为LMDB 上游（OpenLDAP 的 mdb 分支）的canonical 布局。`reference/embedded/lmdb` 子模块尚未 init，无法核对行号，故统一标注「行号需校对」。
+
 必读清单（按从浅到深顺序）：
 
 1. **API 头**：`libraries/liblmdb/lmdb.h`（约 700 行，全 API）；
-2. **关键数据结构**：`mdb.c:96` `MDB_PAGE`、`MDB_meta`、`MDB_node`、`MDB_db`；
-3. **环境打开**：`mdb_env_open`（`mdb.c:4185`）；
-4. **事务开始**：`mdb_txn_begin`（`mdb.c:2091`）；
-5. **写入**：`mdb_put`（`mdb.c:5125`）+ `mdb_cursor_put`（`mdb.c:5876`）；
-6. **读取**：`mdb_get`（`mdb.c:5102`）+ `mdb_cursor_get`（`mdb.c:6013`）；
-7. **提交**：`mdb_txn_commit`（`mdb.c:2594`）；
-8. **Meta 切换**：`mdb_env_write_meta`（`mdb.c:4250`）+ `mdb_env_sync0`；
-9. **Free List**：`mdb_freelist_save`（`mdb.c:3679`）；
-10. **Page 操作**：`mdb_page_get`（`mdb.c:1793`）、`mdb_page_new`、`mdb_page_alloc`；
+2. **关键数据结构**：`MDB_PAGE`、`MDB_meta`、`MDB_node`、`MDB_db`；
+3. **环境打开**：`mdb_env_open`（`libraries/liblmdb/mdb.c`（行号需校对））；
+4. **事务开始**：`mdb_txn_begin`（`libraries/liblmdb/mdb.c`（行号需校对））；
+5. **写入**：`mdb_put`（`libraries/liblmdb/mdb.c`（行号需校对））+ `mdb_cursor_put`（`libraries/liblmdb/mdb.c`（行号需校对））；
+6. **读取**：`mdb_get`（`libraries/liblmdb/mdb.c`（行号需校对））+ `mdb_cursor_get`（`libraries/liblmdb/mdb.c`（行号需校对））；
+7. **提交**：`mdb_txn_commit`（`libraries/liblmdb/mdb.c`（行号需校对））；
+8. **Meta 切换**：`mdb_env_write_meta`（`libraries/liblmdb/mdb.c`（行号需校对））+ `mdb_env_sync0`；
+9. **Free List**：`mdb_freelist_save`（`libraries/liblmdb/mdb.c`（行号需校对））；
+10. **Page 操作**：`mdb_page_get`（`libraries/liblmdb/mdb.c`（行号需校对））、`mdb_page_new`、`mdb_page_alloc`；
 11. **MMAP**：`mdb_page_unmap` + `mdb_page_map` 视图管理。
 
 源码规模：约 **6000 行 C**（单一 mdb.c），配套 lmdb.h + tools（mdb_stat、mdb_dump、mdb_load、mdb_copy）。
