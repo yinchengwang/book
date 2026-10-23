@@ -59,7 +59,8 @@ ok('isWrongAnswer 命中', stores.quizzes.isWrongAnswer(wrongQ.id) === true)
 const plan = stores.quizzes.generateDailyPlan()
 ok('每日计划含 stack', khc().STACK_ORDER.indexOf(plan.stack) >= 0)
 ok('每日计划有题目', plan.questionIds.length > 0)
-ok('getTodayPlan 返回计划', stores.quizzes.getTodayPlan().date === new Date().toISOString().slice(0, 10))
+// 与实现一致：用本地日期（todayStr），不用 UTC —— 东八区跨 UTC 午夜时会误判
+ok('getTodayPlan 返回计划', stores.quizzes.getTodayPlan().date === require('../core/date.js').todayStr())
 
 function khc () { return require('../core/kh-constants.js') }
 
