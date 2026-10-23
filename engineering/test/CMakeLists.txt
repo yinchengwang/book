@@ -1,5 +1,5 @@
 # engineering/test/CMakeLists.txt
-# 工程层测试入口（仅 C++ 工程代码 + 数据库内核 + 独立应用）
+# 工程层测试入口（仅 C++ 工程代码 + 数据库内核）
 # 双轨纪律：engineering/test 不应测 ds/、leetcode/、interview/ 库（这些已迁到 learning/）
 
 cmake_minimum_required(VERSION 3.20)
@@ -36,8 +36,6 @@ set(_test_targets
     test_replication_test
     test_sql
     test_storage_all
-    test_common_menu_test
-    test_common_terminal_test
     test_concurrency
     test_hilbert
     test_mm_pool

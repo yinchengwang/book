@@ -247,8 +247,8 @@ TEST(VectorIndexPersistTest, TypeDetection) {
     fwrite(&header, sizeof(header), 1, fp);
     fclose(fp);
 
-    // 注意: 完整文件校验由 vector_index_verify_header() 覆盖；
-    //     hnsw_persist 相关接口已随 apps 移除而下线。
+    // 该用例只构造头部，故改用 vector_index_verify_header() 校验；
+    // vector_index_is_valid() 已下线。
     EXPECT_TRUE(vector_index_verify_header(&header));
 
     char summary[256];
