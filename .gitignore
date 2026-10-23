@@ -1,7 +1,5 @@
-# Prerequisites
+# ---- 编译产物 ----
 *.d
-
-# Compiled Object files
 *.slo
 *.lo
 *.o
@@ -9,56 +7,33 @@
 *.gcda
 *.gcno
 *.gcov
-
-# Coverage build artifact (gcov-only run)
-engineering/build-cov/
-engineering/coverage-gcov/
-
-# Precompiled Headers
 *.gch
 *.pch
-
-# Compiled Dynamic libraries
 *.so
 *.dylib
 *.dll
-
-# Fortran module files
 *.mod
 *.smod
-
-# Compiled Static libraries
 *.lai
 *.la
 *.a
 *.lib
-
-# Executables
 *.exe
 *.out
 *.app
 
-# 编译产物目录（build/<工程|学习|root>/）
+# ---- 构建目录 ----
 build/
-
-# 测试/运行产物目录（test-results/<工程|学习|root>/）
-test-results/
-
-# 根目录运行时产物防御（防止历史测试代码写到根目录）
-test_*.db
-test_*.db.wal
-test_*.bin
-test_*.wal
-test_vector_data/
-test_mm_pool_data/
-test_raft_state.bin.tmp
-test_dir/
+build-default/
+build-engineering/
 build-learning/
 build2/
-test-summary.json
-
-# CMake and Ninja build outputs (legacy flat build dirs)
 cmake-build-*/
+engineering/build-cov/
+engineering/build-linux/
+engineering/coverage-gcov/
+
+# ---- CMake / Ninja 输出 ----
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
@@ -70,120 +45,95 @@ build.ninja
 .ninja_log
 compile_commands.json
 
-# 旧双轨构建输出（legacy，已迁移到 build/ 下）
-build-default/
-build-engineering/
-build-learning/
-
-# Local datasets
-dataset/test-results/
+# ---- 测试 / 运行产物 ----
 test-results/
+dataset/test-results/
+test-summary.json
+test_vector_data/
+test_mm_pool_data/
+test_vdb_data/
+test_dir/
+test_raft_state.bin.tmp
+data/
+test_data/
+test_db_init_*/
+rag_data/
+coverage/
 
-# 测试数据库文件
+# ---- 测试数据库 ----
 *.db
 *.db.wal
 *.db.bin
 *.bin.tmp
 raft_state_test.bin*
-
-# 双重保护：即便 .gitignore 没生效，已跟踪的散落调试数据库也被 S1' 清理
-# （保留历史记录，但不进入新 commit）
+test_db.bin
 /test/test_*.db
 /test/test_*.db.wal
 /test/test_*.db.bin
+test_*.db
+test_*.db.wal
+test_*.bin
+test_*.wal
 
-# Build artifacts
-build2/
-test_db.bin
-test_dir/
-
-# 运行时数据（不进入版本控制）
-data/
-test_data/
-test_db_init_*/
-# vitest 覆盖率报告产物
-coverage/
-
-# 散落调试产物二进制（即使误 commit 也不跟踪）
-*.db.bin
-
-# Third party
+# ---- 第三方依赖（本地构建 / FetchContent 拉取） ----
 third_part/libmicrohttpd/
 third_part/cjson/
+third_part/cmocka_install/
+engineering/third_part/cpp-httplib/
+engineering/third_part/nlohmann/
+engineering/third_part/openssl-stubs/
 
-# Archived changes (don't track archive folder contents in working tree)
-openspec/changes/archive/
-
-# Local artifacts
-engineering/sdk/python/minivecdb/__pycache__/
-engineering/sdk/python/minivecdb/*.pyc
+# ---- Python 缓存 ----
 __pycache__/
 *.pyc
 
-# Dual-track build outputs
-build-default/
-build-engineering/
-build-learning/
-.claude/worktrees/
+# ---- 前端 / Node ----
+node_modules/
+dist/
+.next/
+*.tsbuildinfo
+emsdk/
 
-# kbase 模型文件
+# ---- AI 工具目录下的本地缓存与工作区（收敛后位于 .ai/ 下） ----
+.ai/.claude/worktrees/
+.ai/.claude/sdd/
+.ai/.claude/tasks/
+
+# ---- 模型权重 ----
 reference/models/*.gguf
 reference/models/*.bin
 
-# 项目临时文件和构建产物
-node_modules/
-dist/
-.claude/sdd/
+# ---- 临时文件 / 日志 ----
 *.bak
 err.txt
 out.txt
-test_vdb_data/
 temp_*.cpp
-# 根目录产物清理
 temp_output.txt
 temp_*.txt
 todo_app.json
 issue_tool.json.bak
 __test_todo__.json
 sift.tar.gz
+*_out.txt
+*_err.txt
+*.wasm-legacy
+*.js-legacy
 
-# Next.js 前端构建缓存
-.next/
-
-# 本地环境变量（可能含密钥，严禁提交）
+# ---- 本地环境变量（可能含密钥，严禁提交） ----
 .env
 .env.local
 .env.*.local
 
-# 类型/构建缓存
-*.tsbuildinfo
-
-# 运行日志
-*_out.txt
-*_err.txt
-
-# 运行时数据目录
-rag_data/
-
-# 构建/缓存/运行时残留（避免拖慢 git status）
-engineering/build-linux/
+# ---- 缓存 / 运行时残留 ----
 .pytest_cache/
-third_part/cmocka_install/
-.claude/tasks/
 .remember/
 
-# legacy 构建产物
-*.wasm-legacy
-*.js-legacy
-
-# FetchContent 拉取的第三方依赖（与 libmicrohttpd/cjson 同类）
-engineering/third_part/cpp-httplib/
-engineering/third_part/nlohmann/
-engineering/third_part/openssl-stubs/
-
-# WorkBuddy 自动生成的会话工作区（时间戳命名，如 2026-10-21-23-48-17）
-/20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/
-/20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/**
-
-# WorkBuddy 工作区记忆目录
+# ---- WorkBuddy 自动生成的会话工作区（时间戳命名，如 2026-10-21-23-48-17） ----
+# 目录名为 YYYY-MM-DD-HH-MM-SS 共 6 段，规则必须写满 6 段才匹配（历史版本写成
+# 5 段，从未生效过）；两条都要保留：一条匹配目录本身，一条匹配目录内全部内容。
+/20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/
+/20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/**
+/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/
+/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/**
+# ---- WorkBuddy 工作区记忆目录 ----
 .workbuddy-ai/

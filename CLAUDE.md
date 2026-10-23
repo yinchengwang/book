@@ -108,14 +108,11 @@ test-results/        # 测试/运行产物（logs/coverage/test dbs）
 |-----------|------|------|
 | `.clang-format` | 配置文件 | 代码风格 |
 | `.git*` | Git 内部 | git 配置和属性 |
-| `.claude/` | Claude 配置 | 内存、工作流等 |
-| `.superpowers/` | 能力配置 | AI 能力扩展 |
-| `.vscode/` | IDE 配置 | VSCode 设置 |
-| `.opencode/` | OpenCode 配置 | OpenCode 设置 |
+| `.ai/` | AI 配置 | 收敛后的 AI 工具配置（`.ai/.claude/`、`.ai/.agents/`、`.ai/.opencode/`、`.ai/.vscode/`） |
 | `.obsidianignore` | Obsidian 配置 | |
 | `.github/` | CI/CD | GitHub Actions |
 | `.remember/` | 记忆系统 | 日程/上下文 |
-| `.playwright-mcp/` | MCP 配置 | Playwright MCP |
+| `.playwright-mcp/` | MCP 配置 | Playwright MCP（仅保留 `.gitkeep`，运行时产物不入库） |
 | `AGENTS.md` | 项目配置 | Agent 说明 |
 | `CLAUDE.md` | 项目配置 | 本文件 |
 | `CMakeLists.txt` | 构建配置 | 双轨调度器 |
