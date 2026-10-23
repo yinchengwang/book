@@ -1,5 +1,5 @@
 # engineering/CMakeLists.txt
-# 工程轨道 CMake 入口（PG 风格存储、MiniVecDB、apps/、rag/、sdk/）
+# 工程轨道 CMake 入口（PG 风格存储、MiniVecDB、rag/、sdk/）
 # 由根 CMakeLists.txt 在 ENGINEERING_BUILD=ON 时 add_subdirectory 引入
 # 严禁引用 learning/ 任何路径（详见 cmake/dual-track-guard.cmake）
 
@@ -148,10 +148,6 @@ endif()
 
 if(BUILD_TESTING)
     add_subdirectory(test)
-endif()
-
-if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/apps/CMakeLists.txt")
-    add_subdirectory(apps)
 endif()
 
 # 主程序目标
