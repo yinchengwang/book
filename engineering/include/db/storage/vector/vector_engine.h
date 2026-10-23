@@ -16,7 +16,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* 引入 vector_persist_result_t 类型定义 */
+/* 引入 vector_metric_t / vector_search_results_t 类型定义 */
 #include "db/vector_engine.h"
 
 #ifdef __cplusplus

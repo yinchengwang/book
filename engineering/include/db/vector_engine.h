@@ -170,21 +170,6 @@ void vector_engine_free_results(vector_search_results_t *results);
 int vector_engine_stats(const char *name, storage_stats_t *stats);
 
 /* ========================================================================
- * 持久化接口
- * ======================================================================== */
-
-/**
- * @brief 向量索引保存结果
- */
-typedef struct vector_persist_result_s {
-    int32_t success;             /**< 是否成功 */
-    int32_t error_code;          /**< 错误码 */
-    char error_msg[256];         /**< 错误信息 */
-    uint64_t bytes_written;      /**< 写入字节数 */
-    uint64_t bytes_read;         /**< 读取字节数 */
-} vector_persist_result_t;
-
-/* ========================================================================
  * 工具函数
  * ======================================================================== */
 

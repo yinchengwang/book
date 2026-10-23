@@ -237,7 +237,7 @@ git rm -r engineering/apps/web/{games-mini-program,knowledge_hub,reading-radar}
 
 ## 9. 明确不做（YAGNI）
 
-- 不保留任何 H5 构建能力（原 KH 与 games 的 H5 端已随 3 个 Taro Web 源删除而消失；注意 `engineering/apps/` 目录本身保留）
+- 不保留任何 H5 构建能力（原 KH 与 games 的 H5 端已随 3 个 Taro Web 源删除而消失；注意 `engineering/apps/` 目录已于 2026-10-23 整目录删除（见文末回填））
 - 不迁移旧存储数据（`devbench:` 弃用换 `db:`；KH 直接用 `kh:` 全新开始）
 - 不做跨应用代码共享机制（npm 包 / submodule）——微信小程序无法引用项目根外文件，复制是唯一务实解
 - 不做自定义 tabBar（两应用首版都用原生纯文字 tabBar，列为可选升级）

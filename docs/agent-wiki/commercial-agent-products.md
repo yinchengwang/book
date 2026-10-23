@@ -441,11 +441,11 @@
 
 - **代码生成 / 编辑 / 沙箱执行**：
   - Cursor 的 **Composer 2.5 自研模型** + **BugBot 自动化代码审查** 对本项目 `engineering/src/` 的 C/C++ 代码编辑器集成有参考价值——可对照设计"**C/C++ 语义级代码补全 + 编译验证 + lint 检查**"的工具链。
-  - Devin / Replit Agent 的 **沙箱执行**模式可对照本项目 `engineering/apps/` 中的工具应用设计——多数应用（db_driver / games / vdb_cli / workbench_server / multimodal_rag）需要在隔离沙箱中执行避免污染主环境。
+  - Devin / Replit Agent 的 **沙箱执行**模式可对照本项目 `engineering/apps/`（已删除，见 git 历史）中的工具应用设计——多数应用（db_driver / games / vdb_cli / workbench_server / multimodal_rag）需要在隔离沙箱中执行避免污染主环境。
   - Sourcegraph Cody 的 **完整代码库上下文**（跨 repo 检索）对本项目 `engineering/src/db/` 多模块代码导航有启发——可考虑自研轻量级代码图谱工具。
 
 - **Computer Use / GUI 自动化**：
-  - Claude Computer Use 的 **截图 → 工具决策 → GUI 操作** 三段式流程是当前业界最前沿的 GUI Agent 实现。本项目如需自动化测试 / 部署工具链（`engineering/tools/`、`engineering/apps/`），可参考 Claude Computer Use API + 截图服务（`engineering/apps/workbench_server/` 已有相关基础）实现 C/C++ 项目的**端到端自动化测试**。
+  - Claude Computer Use 的 **截图 → 工具决策 → GUI 操作** 三段式流程是当前业界最前沿的 GUI Agent 实现。本项目如需自动化测试 / 部署工具链（`engineering/tools/`、`engineering/apps/`），可参考 Claude Computer Use API + 截图服务（原 `engineering/apps/workbench_server/` 已于 2026-10-23 随 apps 整目录删除，需从 git 历史恢复）实现 C/C++ 项目的**端到端自动化测试**。
   - 注意：**Anthropic 官方明确警告**Computer Use 不适用于生产关键系统、含敏感数据应用、未受信任网站——本项目若集成 Computer Use 应严格遵守安全指南。
 
 - **多 Agent 协作 / 记忆系统**：

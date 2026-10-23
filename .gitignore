@@ -166,7 +166,6 @@ sift.tar.gz
 rag_data/
 
 # 构建/缓存/运行时残留（避免拖慢 git status）
-emsdk/
 engineering/build-linux/
 .pytest_cache/
 third_part/cmocka_install/
