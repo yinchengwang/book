@@ -55,7 +55,7 @@ set(CMAKE_BUILD_PARALLEL_LEVEL ${N_CORES})
 # ========================================================================
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/MultimodalConfig.cmake")
 
-# include(CTest)
+include(CTest)
 # include(GNUInstallDirs)
 
 option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
