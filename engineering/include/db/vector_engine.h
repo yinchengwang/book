@@ -184,45 +184,6 @@ typedef struct vector_persist_result_s {
     uint64_t bytes_read;         /**< 读取字节数 */
 } vector_persist_result_t;
 
-/**
- * @brief 保存向量索引到文件
- *
- * @param rel 向量集合句柄
- * @param path 目标文件路径
- * @param result 保存结果（可为 NULL）
- * @return 0 成功，-1 失败
- */
-int vector_index_save(void *rel, const char *path, vector_persist_result_t *result);
-
-/**
- * @brief 从文件加载向量索引
- *
- * @param rel 向量集合句柄（已打开的集合）
- * @param path 源文件路径
- * @param result 加载结果（可为 NULL）
- * @return 0 成功，-1 失败
- */
-int vector_index_load(void *rel, const char *path, vector_persist_result_t *result);
-
-/**
- * @brief 检查索引文件是否有效
- *
- * @param path 文件路径
- * @return true 有效，false 无效或不存在
- */
-bool vector_index_is_valid(const char *path);
-
-/**
- * @brief 获取索引文件元数据
- *
- * @param path 文件路径
- * @param dims 维度输出
- * @param n_total 向量数量输出
- * @param metric 度量类型输出
- * @return 0 成功，-1 失败
- */
-int vector_index_get_meta(const char *path, int32_t *dims, int32_t *n_total, int32_t *metric);
-
 /* ========================================================================
  * 工具函数
  * ======================================================================== */

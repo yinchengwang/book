@@ -296,13 +296,6 @@ vector_index_type_t vector_index_detect_type(const char *path);
 int64_t vector_index_file_size(const char *path);
 
 /**
- * @brief 检查索引文件是否有效
- * @param path 文件路径
- * @return 有效返回 true
- */
-bool vector_index_is_valid(const char *path);
-
-/**
  * @brief 获取索引文件信息摘要
  * @param path 文件路径
  * @param summary 输出摘要 (需预分配 256 字节)

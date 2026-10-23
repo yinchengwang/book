@@ -13,8 +13,6 @@ set(VECTOR_PERSIST_SOURCES
     vector_buf.c
     vector_engine.c
     vec_page.c
-    # 直接编译 hnsw_persist.c（从 multimodal_rag 模块）
-    ${ENGINEERING_SOURCE_DIR}/apps/multimodal_rag/src/index/hnsw_persist.c
 )
 
 add_library(vector_persist STATIC ${VECTOR_PERSIST_SOURCES})
@@ -22,7 +20,6 @@ add_library(vector_persist STATIC ${VECTOR_PERSIST_SOURCES})
 target_include_directories(vector_persist PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include
     ${ENGINEERING_SOURCE_DIR}/src
-    ${ENGINEERING_SOURCE_DIR}/apps/multimodal_rag/include
 )
 
 # 链接必要的基础库
