@@ -4,7 +4,7 @@
 > 本篇：全文搜索引擎（倒排索引 / FST / BM25 / 混合检索 / 全文索引 / CJK 分词 / DSL）
 > 时间：2026-10-16
 > 状态：初稿
-> 上游依赖：`.superpowers/sdd/gap-task-1-inventory.md` §6 search
+> 上游依赖：`archive/.superpowers/sdd/gap-task-1-inventory.md` §6 search
 > 对照 wiki：
 > - `docs/db-wiki/search/elasticsearch.md`（Elasticsearch 8.x，Lucene 9.x 内核 + DSL + 聚合 + 向量）
 > - `docs/db-wiki/search/tantivy.md`（Tantivy v0.22，Rust 嵌入式 + FST + Block-Based Posting + Columnar）
@@ -21,7 +21,7 @@
 
 ## 1. 自研现状
 
-> 引用 `.superpowers/sdd/gap-task-1-inventory.md` §6 search（行 51 索引 + 附录），并补充定位说明。
+> 引用 `archive/.superpowers/sdd/gap-task-1-inventory.md` §6 search（行 51 索引 + 附录），并补充定位说明。
 
 1. **DB 存储稀疏向量 + BM25 索引（覆盖度 A）**：`engineering/src/db/storage/sparse/bm25_index.c` 实现 BM25 索引的数据库存储形式；`engineering/src/db/storage/sparse/sparse_vector.c` 实现稀疏向量（sparse vector）的底层数据结构；`engineering/src/db/storage/sparse/hybrid_retrieval.c` 实现稠密向量 + BM25 稀疏召回的混合检索（Hybrid Retrieval）；公共头 `engineering/include/db/bm25_index.h` + `engineering/include/db/hybrid_retrieval.h` 暴露 `bm25_index_create/add/search/destroy` + `hybrid_retrieval_query` 接口。CMake 自动构建为 `storage_sparse` 静态库。
 
@@ -371,7 +371,7 @@
 
 - 报告作者：subagent-driven-development（gap-analysis Task 8 implementer）
 - 关联文档：
-  - `.superpowers/sdd/gap-task-1-inventory.md` §6 search（行 51 索引 + 附录）
+  - `archive/.superpowers/sdd/gap-task-1-inventory.md` §6 search（行 51 索引 + 附录）
   - `docs/superpowers/plans/2026-10-16-gap-analysis-implementation.md` Task 8
   - `docs/gap-analysis/2026-08-29-multimodal-db-gap-analysis.md`（旧版顶层分析，本篇不替代，仅纵向对照）
   - `docs/gap-analysis/relational.md`（姊妹篇，relational 子报告）

@@ -4,7 +4,7 @@
 > 本篇：扩展机制（Plugin Manager 动态加载 + REST/gRPC Server + 优化器代价模型插件化 + 分布式查询 RPC + 成本模型 Cost Estimation）
 > 时间：2026-10-16
 > 状态：初稿
-> 上游依赖：`.superpowers/sdd/gap-task-1-inventory.md` §11 extension
+> 上游依赖：`archive/.superpowers/sdd/gap-task-1-inventory.md` §11 extension
 > 对照 wiki：
 > - `docs/db-wiki/extension/arrow.md`（Apache Arrow 17/18，跨语言列式内存格式 + IPC + Flight + Compute Kernel + 多语言 SDK）
 > - `docs/db-wiki/extension/datafusion.md`（Apache DataFusion 41/42，Rust 原生 SQL 执行引擎 + TableProvider + UDF 注册 + Ballista 分布式 + Flight SQL）
@@ -21,7 +21,7 @@
 
 ## 1. 自研现状
 
-> 引用 `.superpowers/sdd/gap-task-1-inventory.md` §11 extension（行 104-112 索引），并补充定位说明。
+> 引用 `archive/.superpowers/sdd/gap-task-1-inventory.md` §11 extension（行 104-112 索引），并补充定位说明。
 
 1. **Plugin Manager（插件管理器，覆盖度 B+）**：
    - `engineering/src/db/ecosystem/plugin_manager.c`（约 320 行）实现 **动态库加载器**（Windows `LoadLibraryW` + `GetProcAddress`，Linux/macOS `dlopen` + `dlsym`），支持插件的「load/unload/lookup/find/init/exit」；
@@ -423,8 +423,8 @@
 
 - 报告作者：subagent-driven-development（gap-analysis Task 13 implementer）
 - 关联文档：
-  - `.superpowers/sdd/gap-task-1-inventory.md` §11 extension（行 104-112 索引）
-  - `.superpowers/sdd/task-13-brief.md`（本次任务简报）
+  - `archive/.superpowers/sdd/gap-task-1-inventory.md` §11 extension（行 104-112 索引）
+  - `archive/.superpowers/sdd/task-13-brief.md`（本次任务简报）
   - `docs/superpowers/plans/2026-10-16-gap-analysis-implementation.md` Task 13（待创建）
   - `docs/gap-analysis/2026-08-29-multimodal-db-gap-analysis.md`（旧版顶层分析，本篇不替代，仅纵向对照）
   - `docs/gap-analysis/relational.md`（姊妹篇，relational 子报告）

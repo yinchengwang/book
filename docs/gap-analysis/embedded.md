@@ -4,7 +4,7 @@
 > 本篇：嵌入式数据库形态与可嵌入接口（mm_pool / mm_storage / mm_record / mmdb_lock / optimistic / mvcc_session / multimodal_object / cold.c 冷热分层）
 > 时间：2026-10-16
 > 状态：初稿
-> 上游依赖：`.superpowers/sdd/gap-task-1-inventory.md` §10 embedded
+> 上游依赖：`archive/.superpowers/sdd/gap-task-1-inventory.md` §10 embedded
 > 对照 wiki：
 > - `docs/db-wiki/embedded/duckdb.md`（DuckDB v1.1+ LTS，进程内嵌式列存向量化 OLAP，MIT）
 > - `docs/db-wiki/embedded/lmdb.md`（LMDB 0.9.30+，单文件 mmap + COW + 元数据双缓冲，OpenLDAP-Public）
@@ -21,7 +21,7 @@
 
 ## 1. 自研现状
 
-> 引用 `.superpowers/sdd/gap-task-1-inventory.md` §10 embedded（行 94-102 索引），并补充定位说明。
+> 引用 `archive/.superpowers/sdd/gap-task-1-inventory.md` §10 embedded（行 94-102 索引），并补充定位说明。
 
 1. **多模态嵌入式池化（mm_pool，覆盖度 B）**：`engineering/include/db/mm_pool.h`（261 行）声明池化配置（`mm_pool_type_t` 类型：固定 / 动态 / Slab / Arena 四类 + `mm_pool_stats_t` 统计 + `mm_pool_config_t` 配置项）；`engineering/src/db/storage/mm/mm_pool.c`（1051 行）实现 `mm_pool_create/destroy/alloc/free/reset/stats` 完整生命周期 + 多类型池化策略；公共头 `engineering/include/db/mm_pool.h` 暴露 `mm_pool_create` / `mm_pool_alloc` / `mm_pool_free` 等。
 
@@ -380,8 +380,8 @@
 
 - 报告作者：subagent-driven-development（gap-analysis Task 12 implementer）
 - 关联文档：
-  - `.superpowers/sdd/gap-task-1-inventory.md` §10 embedded（行 94-102 索引）
-  - `.superpowers/sdd/task-12-brief.md`（本次任务简报）
+  - `archive/.superpowers/sdd/gap-task-1-inventory.md` §10 embedded（行 94-102 索引）
+  - `archive/.superpowers/sdd/task-12-brief.md`（本次任务简报）
   - `docs/superpowers/plans/2026-10-16-gap-analysis-implementation.md` Task 12（待创建）
   - `docs/gap-analysis/2026-08-29-multimodal-db-gap-analysis.md`（旧版顶层分析，本篇不替代，仅纵向对照）
   - `docs/gap-analysis/relational.md`（姊妹篇，relational 子报告）

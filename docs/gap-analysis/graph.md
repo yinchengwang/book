@@ -4,7 +4,7 @@
 > 本篇：图数据库引擎（属性图 / CSR 邻接表 / Cypher / GQL / SPARQL / RDF / 图算法 / 向量化遍历 / GraphRAG）
 > 时间：2026-10-16
 > 状态：初稿
-> 上游依赖：`.superpowers/sdd/gap-task-1-inventory.md` §8 graph
+> 上游依赖：`archive/.superpowers/sdd/gap-task-1-inventory.md` §8 graph
 > 对照 wiki：
 > - `docs/db-wiki/graph/neo4j.md`（Neo4j 5.x，Java + Scala，Cypher 5 + Bolt 5 + 原生图存储 + GDS 图算法 + 向量索引）
 > - `docs/db-wiki/graph/kuzu.md`（Kuzu 0.x，C++17 嵌入式 + 列存 + 邻接表 + 向量化执行 + Cypher TCK 高通过）
@@ -21,7 +21,7 @@
 
 ## 1. 自研现状
 
-> 引用 `.superpowers/sdd/gap-task-1-inventory.md` §8 graph（行 75 索引 + 附录），并补充定位说明。
+> 引用 `archive/.superpowers/sdd/gap-task-1-inventory.md` §8 graph（行 75 索引 + 附录），并补充定位说明。
 
 1. **属性图存储引擎（覆盖度 A）**：`engineering/src/db/storage/graph/graph_engine.c`（702 行）实现 `graph_engine_get_ops` 操作表 + 暴露 `graph_engine_init/create/open/close/drop/add_vertex/add_edge/get_vertex/stats` 接口；`engineering/src/db/storage/graph/graph_store.c`（1158 行）实现图数据库核心（顶点/边 + 标签/关系类型 + 序列号 + KV 存储后端 + 读写锁）；`engineering/src/db/storage/graph/graph_index.c`（481 行）实现图索引（顶点索引 + 边索引 + 标签索引 + 关系类型索引）；`engineering/src/db/storage/graph/graph_traverse.c`（404 行）实现图遍历（BFS/DFS/最短路径/邻居查询）；公共头 `engineering/include/db/graph_engine.h` + `engineering/include/db/storage/graph/graph_engine.h`。
 
@@ -418,7 +418,7 @@
 
 - 报告作者：subagent-driven-development（gap-analysis Task 10 implementer）
 - 关联文档：
-  - `.superpowers/sdd/gap-task-1-inventory.md` §8 graph（行 75 索引 + 附录）
+  - `archive/.superpowers/sdd/gap-task-1-inventory.md` §8 graph（行 75 索引 + 附录）
   - `docs/superpowers/plans/2026-10-16-gap-analysis-implementation.md` Task 10
   - `docs/gap-analysis/2026-08-29-multimodal-db-gap-analysis.md`（旧版顶层分析，本篇不替代，仅纵向对照）
   - `docs/gap-analysis/relational.md`（姊妹篇，relational 子报告）

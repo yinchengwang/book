@@ -4,7 +4,7 @@
 > 本篇：列存数据库引擎（columnar / 向量化执行 / 列族 / 压缩 / 物化视图）
 > 时间：2026-10-16
 > 状态：初稿
-> 上游依赖：`.superpowers/sdd/gap-task-1-inventory.md` §4 columnar
+> 上游依赖：`archive/.superpowers/sdd/gap-task-1-inventory.md` §4 columnar
 > 对照 wiki：
 > - `docs/db-wiki/columnar/clickhouse.md`（ClickHouse v24.x，MergeTree + 列存 + 向量化）
 > - `docs/db-wiki/columnar/doris.md`（Apache Doris v2.x，FE/BE + Tablet + 向量化）
@@ -21,7 +21,7 @@
 
 ## 1. 自研现状
 
-> 引用 `.superpowers/sdd/gap-task-1-inventory.md` §4 columnar（行 33 索引 + 附录），并补充定位说明。
+> 引用 `archive/.superpowers/sdd/gap-task-1-inventory.md` §4 columnar（行 33 索引 + 附录），并补充定位说明。
 
 1. **列存引擎主体（覆盖度 A）**：`engineering/src/db/storage/columnar/` 已有 1 个 C 源文件（`columnar_engine.c` 13696 字节）+ 内部头文件 `columnar_engine_internal.h`（7022 字节）+ `engineering/include/db/columnar_engine.h`（2900 字节）+ `engineering/src/db/storage/columnar/CMakeLists.txt`；API 完整暴露 `columnar_ops_t` 操作表（init/shutdown/table_create/open/close/drop + column_append/append_batch + agg_count/sum_int64/avg_double + compress/get_stats）。
 
@@ -356,7 +356,7 @@
 
 - 报告作者：subagent-driven-development（gap-analysis Task 6 implementer）
 - 关联文档：
-  - `.superpowers/sdd/gap-task-1-inventory.md` §4 columnar（行 33 索引 + 附录）
+  - `archive/.superpowers/sdd/gap-task-1-inventory.md` §4 columnar（行 33 索引 + 附录）
   - `docs/superpowers/plans/2026-10-16-gap-analysis-implementation.md` Task 6
   - `docs/gap-analysis/2026-08-29-multimodal-db-gap-analysis.md`（旧版顶层分析，本篇不替代，仅纵向对照）
   - `docs/gap-analysis/relational.md`（姊妹篇，relational 子报告）

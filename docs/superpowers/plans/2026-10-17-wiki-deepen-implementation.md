@@ -91,13 +91,13 @@ Expected: 1 commit 推送成功。git log --oneline -1 验证 HEAD 推进。
 
 - [ ] **Step 5: 追加 progress.md**
 
-在 `.superpowers/sdd/progress.md` 末尾「wiki-deepen 进度」段追加 1 行：
+在 `archive/.superpowers/sdd/progress.md` 末尾「wiki-deepen 进度」段追加 1 行：
 
 ```markdown
 - Task WD-N: complete (commit <sha7>, <N> 新增行, 5 条 self-check 全 PASS, <章名>)
 ```
 
-**注意**：`progress.md` 在 `.superpowers/sdd/.gitignore` 内，仅本地保留。
+**注意**：`progress.md` 在 `archive/.superpowers/sdd/.gitignore` 内，仅本地保留。
 
 ---
 
@@ -377,7 +377,7 @@ done
 ### Task WD-98: 续写 progress.md wiki-deepen 收尾段
 
 **Files:**
-- Modify: `.superpowers/sdd/progress.md`（追加 wiki-deepen 收尾段）
+- Modify: `archive/.superpowers/sdd/progress.md`（追加 wiki-deepen 收尾段）
 
 - [ ] **Step 1: 续写 progress.md 末尾**
 
@@ -399,7 +399,7 @@ done
 
 ```bash
 cd C:/code/book
-cat .superpowers/sdd/.gitignore
+cat archive/.superpowers/sdd/.gitignore
 # 期望：*（整个目录忽略）
 ```
 

@@ -4,7 +4,7 @@
 > 本篇：时序数据库引擎（time-series / TSM / 压缩 / 分区 / 保留 / 标签索引 / 连续聚合）
 > 时间：2026-10-16
 > 状态：初稿
-> 上游依赖：`.superpowers/sdd/gap-task-1-inventory.md` §5 time-series
+> 上游依赖：`archive/.superpowers/sdd/gap-task-1-inventory.md` §5 time-series
 > 对照 wiki：
 > - `docs/db-wiki/time-series/influxdb.md`（InfluxDB v2.7 LTS，TSM1 + TSI1 + Flux/InfluxQL）
 > - `docs/db-wiki/time-series/tdengine.md`（TDengine 3.4.x，TSDB 双层 + 多级存储 + 流计算 + 数据订阅）
@@ -21,7 +21,7 @@
 
 ## 1. 自研现状
 
-> 引用 `.superpowers/sdd/gap-task-1-inventory.md` §5 time-series（行 42 索引 + 附录），并补充定位说明。
+> 引用 `archive/.superpowers/sdd/gap-task-1-inventory.md` §5 time-series（行 42 索引 + 附录），并补充定位说明。
 
 1. **时序引擎主体（覆盖度 A）**：`engineering/src/db/storage/ts/ts_engine.c`（26346 字节，825 行）+ `engineering/include/db/ts_engine.h`（166 行公共头）+ `engineering/src/db/storage/ts/CMakeLists.txt`；定义 `ts_aggregate_func_t` 枚举（`AGG_SUM`/`AGG_AVG`/`AGG_MIN`/`AGG_MAX`/`AGG_COUNT`）+ `ts_granularity_t` 粒度（SECOND/MINUTE/HOUR/DAY）；通过 `storage_engine.h` 注册到 `ts_engine_get_ops` 操作表。
 
@@ -368,7 +368,7 @@
 
 - 报告作者：subagent-driven-development（gap-analysis Task 7 implementer）
 - 关联文档：
-  - `.superpowers/sdd/gap-task-1-inventory.md` §5 time-series（行 42 索引 + 附录）
+  - `archive/.superpowers/sdd/gap-task-1-inventory.md` §5 time-series（行 42 索引 + 附录）
   - `docs/superpowers/plans/2026-10-16-gap-analysis-implementation.md` Task 7
   - `docs/gap-analysis/2026-08-29-multimodal-db-gap-analysis.md`（旧版顶层分析，本篇不替代，仅纵向对照）
   - `docs/gap-analysis/relational.md`（姊妹篇，relational 子报告）

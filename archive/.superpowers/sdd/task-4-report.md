@@ -22,7 +22,7 @@
 | `sql_exec_create` / `sql_exec_ddl` / `sql_exec(` | 全仓（src/apps/test/tests/sdk）**零调用者**（sqlExec.c 自身除外） | 安全归档 |
 | `table_create(` / `table_open(`（rel 版，`kv_t*` 签名） | 定义于 `src/db/storage/rel/table.c`（归档）；调用者：`sqlExec.c`（归档）、`src/db/validator/sql_semantic.c:52`、`src/db/validator/semantic_analyzer.c:52` | 见「意外发现 1」 |
 | `db/table.h` 头 | `rel_engine.c`、`sqlExecutor.c`（仅 include，无调用）、`sql_semantic.c`、`semantic_analyzer.c`、`table.c`、`sqlExec.c` | **保留不归档**（仍被在编的 rel_engine.c / sqlExecutor.c include） |
-| `db/storage/rel/table.h` 头 | `engineering/tests/test_relational.c`（该目录无 CMakeLists、不在构建内，是手工 .o 的暂存目录） | 保留 |
+| `db/storage/rel/table.h` 头 | `engineering/test/db/storage/legacy_tests/test_relational.c`（该目录无 CMakeLists、不在构建内，是手工 .o 的暂存目录） | 保留 |
 | `db/parser/sql/sql.h` 头 | `cli.c`（禁用）、`optimizer.c`、`planner.c`、`sql_driver.c`、三个归档文件 | 保留（planner.c/optimizer.c 仍在 sql_engine/db_optimizer 中 include 它） |
 
 ### 1.2 意外发现（brief 预期之外）

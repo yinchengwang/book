@@ -4,7 +4,7 @@
 > 本篇：关系型引擎（relational）
 > 时间：2026-10-16
 > 状态：初稿
-> 上游依赖：`.superpowers/sdd/gap-task-1-inventory.md` §1 relational
+> 上游依赖：`archive/.superpowers/sdd/gap-task-1-inventory.md` §1 relational
 > 对照 wiki：
 > - `docs/db-wiki/relational/postgres.md`（PostgreSQL master 20devel）
 > - `docs/db-wiki/relational/mysql.md`（MySQL 8.0 / InnoDB）
@@ -21,7 +21,7 @@
 
 ## 1. 自研现状
 
-> 引用 `.superpowers/sdd/gap-task-1-inventory.md` §1 relational，并补充定位说明。
+> 引用 `archive/.superpowers/sdd/gap-task-1-inventory.md` §1 relational，并补充定位说明。
 
 1. **关系栈完整闭环（覆盖度 A）**：`engineering/src/db/storage/{rel,heapam,btreeam,page,catalog,buffer,wal,integrity}` 加上 `engineering/src/db/{parser,optimizer,executor/sql,executor/operators,rewrite,validator,view,utils}` 已经实现从磁盘文件到 SQL 执行的最小可用链路。
 2. **磁盘与缓冲池（PG 风格 + 简化）**：
@@ -197,7 +197,7 @@
 
 ### 5.3 自研 executor 节点对齐 PG 命名
 
-`engineering/src/db/sql/{nodeSeqscan.c, nodeIndexscan.c, nodeHashjoin.c, nodeHashagg.c, nodeNestloop.c, nodeGather.c, nodeModifyTable.c, nodeLimit.c, nodeAgg.c}` 完全对齐 PG `src/backend/executor/nodeXxx.c` 的命名与 Volcano 语义，迁移成本极低。配合 `.superpowers/sdd/gap-task-1-inventory.md` 的逐路径映射，未来要补 MVCC/SSI 时只要按 PG `src/backend/access/heap/` 翻译即可。
+`engineering/src/db/sql/{nodeSeqscan.c, nodeIndexscan.c, nodeHashjoin.c, nodeHashagg.c, nodeNestloop.c, nodeGather.c, nodeModifyTable.c, nodeLimit.c, nodeAgg.c}` 完全对齐 PG `src/backend/executor/nodeXxx.c` 的命名与 Volcano 语义，迁移成本极低。配合 `archive/.superpowers/sdd/gap-task-1-inventory.md` 的逐路径映射，未来要补 MVCC/SSI 时只要按 PG `src/backend/access/heap/` 翻译即可。
 
 ---
 
@@ -339,7 +339,7 @@
 
 - 报告作者：subagent-driven-development（gap-analysis Task 3 implementer）
 - 关联文档：
-  - `.superpowers/sdd/gap-task-1-inventory.md` §1 relational
+  - `archive/.superpowers/sdd/gap-task-1-inventory.md` §1 relational
   - `docs/superpowers/plans/2026-10-16-gap-analysis-implementation.md` Task 3
   - `docs/gap-analysis/2026-08-29-multimodal-db-gap-analysis.md`（旧版顶层分析，本篇不替代，仅纵向对照）
   - `docs/gap-analysis/relational.md`（本报告，relational 子报告）

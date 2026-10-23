@@ -4,7 +4,7 @@
 > 本篇：事件流引擎（Kafka 风格 partition + log / Pulsar 风格 ManagedLedger + Tiered Storage / Redpanda 风格 RAFT-native / CDC 订阅 / 结构化日志 / 向量流式索引）
 > 时间：2026-10-16
 > 状态：初稿
-> 上游依赖：`.superpowers/sdd/gap-task-1-inventory.md` §9 stream
+> 上游依赖：`archive/.superpowers/sdd/gap-task-1-inventory.md` §9 stream
 > 对照 wiki：
 > - `docs/db-wiki/stream/kafka.md`（Apache Kafka 3.7+，partition + ISR + KRaft + Tiered Storage，事实标准）
 > - `docs/db-wiki/stream/pulsar.md`（Apache Pulsar 3.x，Broker + BookKeeper + ZK 三层 + Segment + Tiered + Functions + 多协议）
@@ -21,7 +21,7 @@
 
 ## 1. 自研现状
 
-> 引用 `.superpowers/sdd/gap-task-1-inventory.md` §9 stream（行 84 索引 + 附录），并补充定位说明。
+> 引用 `archive/.superpowers/sdd/gap-task-1-inventory.md` §9 stream（行 84 索引 + 附录），并补充定位说明。
 
 1. **Kafka 风格流式核心引擎（覆盖度 B）**：
    - `engineering/src/db/storage/stream/stream_engine.c`（约 650 行，23327 字节）实现流式核心（topic + partition + message + offset + producer/consumer 接口骨架）；
@@ -480,7 +480,7 @@
 
 - 报告作者：subagent-driven-development（gap-analysis Task 11 implementer）
 - 关联文档：
-  - `.superpowers/sdd/gap-task-1-inventory.md` §9 stream（行 84 索引 + 附录）
+  - `archive/.superpowers/sdd/gap-task-1-inventory.md` §9 stream（行 84 索引 + 附录）
   - `docs/superpowers/plans/2026-10-16-gap-analysis-implementation.md` Task 11
   - `docs/gap-analysis/2026-08-29-multimodal-db-gap-analysis.md`（旧版顶层分析，本篇不替代，仅纵向对照）
   - `docs/gap-analysis/relational.md`（姊妹篇，relational 子报告）

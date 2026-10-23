@@ -205,7 +205,7 @@ Phase 4（全量自检 + 进度更新）
 
 ### 8.2 进度跟踪
 
-- 续写 `.superpowers/sdd/progress.md` 加 wiki-deepen 段
+- 续写 `archive/.superpowers/sdd/progress.md` 加 wiki-deepen 段
 - 每个 task 完成后追加一行（commits + self-check verdict）
 
 ---

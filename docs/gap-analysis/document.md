@@ -4,7 +4,7 @@
 > 本篇：文档数据库引擎（document / JSON / BSON / JSONPath / 聚合管道 / 倒排索引）
 > 时间：2026-10-16
 > 状态：初稿
-> 上游依赖：`.superpowers/sdd/gap-task-1-inventory.md` §3 document
+> 上游依赖：`archive/.superpowers/sdd/gap-task-1-inventory.md` §3 document
 > 对照 wiki：
 > - `docs/db-wiki/document/mongodb.md`（MongoDB 7.x/8.x，BSON + 聚合管道 + WiredTiger + 副本集/分片）
 > - `docs/db-wiki/document/ferretdb.md`（FerretDB v2，MongoDB wire → PG + DocumentDB 扩展）
@@ -21,7 +21,7 @@
 
 ## 1. 自研现状
 
-> 引用 `.superpowers/sdd/gap-task-1-inventory.md` §3 document（行 192 索引 + 附录），并补充定位说明。
+> 引用 `archive/.superpowers/sdd/gap-task-1-inventory.md` §3 document（行 192 索引 + 附录），并补充定位说明。
 
 1. **文档引擎内核完整（覆盖度 A）**：`engineering/src/db/storage/doc/` 已有 12 个 C 源文件（`doc_engine.c` 31483 字节 + `jsonpath.c` 19720 字节 + `doc_nested.c` 31807 字节 + `doc_inverted.c` 22321 字节 + `doc_agg.c` 24215 字节 + `doc_pipeline.c` 38912 字节 + `doc_fts.c` 25589 字节 + `doc_vector.c` 20210 字节 + `bm25.c` 9961 字节 + `doc_highlight.c` + `doc_field_boost.c`）+ `engineering/include/db/doc_engine.h`（4999 字节）+ `engineering/src/db/storage/doc/CMakeLists.txt` 通配 `*.c` 编译为 `storage_doc` OBJECT 库。
 2. **文档引擎主体 API**：`engineering/include/db/doc_engine.h` 定义 `doc_engine_get_ops`（注册到 `storage_engine.h` 抽象层）+ `doc_engine_init/shutdown/create/open/close/drop/insert/get/stats`；并实现 JSONPath 查询（`doc_engine_query_jsonpath` 支持 `$.field` / `$.nested.field` / `$.arr[0]` / `$.arr[*]`）+ 基础字段查询（`doc_engine_query` 兼容旧 API）。
@@ -347,7 +347,7 @@
 
 - 报告作者：subagent-driven-development（gap-analysis Task 5 implementer）
 - 关联文档：
-  - `.superpowers/sdd/gap-task-1-inventory.md` §3 document（行 192 索引 + 附录）
+  - `archive/.superpowers/sdd/gap-task-1-inventory.md` §3 document（行 192 索引 + 附录）
   - `docs/superpowers/plans/2026-10-16-gap-analysis-implementation.md` Task 5
   - `docs/gap-analysis/2026-08-29-multimodal-db-gap-analysis.md`（旧版顶层分析，本篇不替代，仅纵向对照）
   - `docs/gap-analysis/relational.md`（姊妹篇，relational 子报告）

@@ -4,7 +4,7 @@
 > 本篇：向量数据库引擎（向量存储 / HNSW / IVF / DiskANN / ScaNN / 量化 PQ·LVQ·SQ·RaBitQ·BQ·OPQ·RQ·ITQ / GPU / hybrid retrieval / payload 过滤）
 > 时间：2026-10-16
 > 状态：初稿
-> 上游依赖：`.superpowers/sdd/gap-task-1-inventory.md` §7 vector
+> 上游依赖：`archive/.superpowers/sdd/gap-task-1-inventory.md` §7 vector
 > 对照 wiki：
 > - `docs/db-wiki/vector/milvus.md`（Milvus 2.x，Go 编排 + C++ Knowhere + Pulsar/S3 存储，云原生分布式）
 > - `docs/db-wiki/vector/faiss.md`（Faiss 1.7.x / 1.8，Meta C++ 算法库，ANN 事实标准）
@@ -21,7 +21,7 @@
 
 ## 1. 自研现状
 
-> 引用 `.superpowers/sdd/gap-task-1-inventory.md` §7 vector（行 60 索引 + 附录），并补充定位说明。
+> 引用 `archive/.superpowers/sdd/gap-task-1-inventory.md` §7 vector（行 60 索引 + 附录），并补充定位说明。
 
 1. **向量存储引擎（覆盖度 A）**：`engineering/src/db/storage/vector/vector_engine.c`（2713 行，38000+ 字节）实现 `vector_engine_get_ops` 操作表 + 注册到 `storage_engine.h`；公共头 `engineering/include/db/vector_engine.h` 暴露 `vector_engine_init/create/open/insert/get/delete` 接口；CMake 子目录 `engineering/src/db/storage/vector/CMakeLists.txt`。
 
@@ -567,7 +567,7 @@
 
 - 报告作者：subagent-driven-development（gap-analysis Task 9 implementer）
 - 关联文档：
-  - `.superpowers/sdd/gap-task-1-inventory.md` §7 vector（行 60 索引 + 附录）
+  - `archive/.superpowers/sdd/gap-task-1-inventory.md` §7 vector（行 60 索引 + 附录）
   - `docs/superpowers/plans/2026-10-16-gap-analysis-implementation.md` Task 9
   - `docs/gap-analysis/2026-08-29-multimodal-db-gap-analysis.md`（旧版顶层分析，本篇不替代，仅纵向对照）
   - `docs/gap-analysis/relational.md`（姊妹篇，relational 子报告）

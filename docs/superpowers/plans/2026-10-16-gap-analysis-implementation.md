@@ -37,7 +37,7 @@
 - Read: `engineering/src/db/index/`（索引模块）
 - Read: `engineering/src/db/executor/`（执行器）
 - Read: `engineering/apps/multimodal_rag/`（多模态 RAG 应用 14 子模块）
-- Output: `.superpowers/sdd/gap-task-1-inventory.md`（自研现状清单，供后续子报告引用）
+- Output: `archive/.superpowers/sdd/gap-task-1-inventory.md`（自研现状清单，供后续子报告引用）
 
 **Interfaces:**
 - Consumes: `engineering/` 全部源码目录
@@ -81,7 +81,7 @@ ls engineering/apps/multimodal_rag/config/ 2>&1
 
 - [ ] **Step 4: 写自研现状清单**
 
-写入 `.superpowers/sdd/gap-task-1-inventory.md`（被 .gitignore 忽略，不提交），结构：
+写入 `archive/.superpowers/sdd/gap-task-1-inventory.md`（被 .gitignore 忽略，不提交），结构：
 
 ```markdown
 # 自研现状清单（13 子报告映射）
@@ -143,7 +143,7 @@ ls engineering/apps/multimodal_rag/config/ 2>&1
 
 - [ ] **Step 5: 自检**
 
-打开 `.superpowers/sdd/gap-task-1-inventory.md`，确认 13 个分类都有条目、每条都有「关键文件 + 覆盖度」。
+打开 `archive/.superpowers/sdd/gap-task-1-inventory.md`，确认 13 个分类都有条目、每条都有「关键文件 + 覆盖度」。
 
 Expected: 13 条全齐，关键文件路径真实存在于 `engineering/`，覆盖度评估有依据。
 
@@ -602,7 +602,7 @@ cd C:/code/book
 
 **Files:**
 - Create: `docs/gap-analysis/README.md`（600-900 行）
-- Create: `.superpowers/sdd/gap-task-16-summary.md`（内部数据收集）
+- Create: `archive/.superpowers/sdd/gap-task-16-summary.md`（内部数据收集）
 
 - [ ] **Step 1: 收集子报告 Top-5 差距**
 
@@ -616,7 +616,7 @@ cd C:/code/book
 | ... |
 ```
 
-写到 `.superpowers/sdd/gap-task-16-summary.md`。
+写到 `archive/.superpowers/sdd/gap-task-16-summary.md`。
 
 - [ ] **Step 2: 收集子报告 Top-3 优势**
 
@@ -792,7 +792,7 @@ Expected: 1 commit 推送成功。
 ## Task 19: 续写 progress.md
 
 **Files:**
-- Modify: `.superpowers/sdd/progress.md`（追加 gap-analysis 段）
+- Modify: `archive/.superpowers/sdd/progress.md`（追加 gap-analysis 段）
 
 - [ ] **Step 1: 续写 progress.md**
 
@@ -824,7 +824,7 @@ Expected: 1 commit 推送成功。
 cd C:/code/book
 git checkout main
 git branch --show-current
-git add .superpowers/sdd/progress.md
+git add archive/.superpowers/sdd/progress.md
 # 注意：此文件在 .gitignore 内？检查
 test -f .gitignore && grep -q "^\.superpowers" .gitignore && echo "在 .gitignore 内，仅本地不提交" || {
   git commit -m "docs: 续写 progress.md gap-analysis 进度"

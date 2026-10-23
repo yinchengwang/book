@@ -4,7 +4,7 @@
 > 本篇：多 Agent 编排与 RAG Pipeline（agent 三件套 + 5 类 Pipeline + DB 内核 RAG 算子 + 记忆 / 工具 / 人机协作）
 > 时间：2026-10-16
 > 状态：初稿
-> 上游依赖：`.superpowers/sdd/gap-task-1-inventory.md` §13 agent
+> 上游依赖：`archive/.superpowers/sdd/gap-task-1-inventory.md` §13 agent
 > 对照 wiki：
 > - `docs/agent-wiki/langgraph.md`（LangGraph b292a33a6 前 release，StateGraph + Pregel BSP + Checkpoint + Interrupt + Send API）
 > - `docs/agent-wiki/crewai.md`（CrewAI 0.130+，Role / Goal / Backstory / Crew / Process + Flow + Memory + MCP）
@@ -21,7 +21,7 @@
 
 ## 1. 自研现状
 
-> 引用 `.superpowers/sdd/gap-task-1-inventory.md` §13 agent（行 137-144 索引），并补充定位说明。覆盖度 **A**（Agent 三件套 + 5 类 Pipeline + DB 内核 RAG 算子 + GraphRAG 模块齐备）。
+> 引用 `archive/.superpowers/sdd/gap-task-1-inventory.md` §13 agent（行 137-144 索引），并补充定位说明。覆盖度 **A**（Agent 三件套 + 5 类 Pipeline + DB 内核 RAG 算子 + GraphRAG 模块齐备）。
 
 1. **Agent 三件套（覆盖度 A）**：
    - `engineering/apps/multimodal_rag/src/agent/agent.cpp`（243 行）+ `engineering/apps/multimodal_rag/include/mmrag/modular/agent/agent.h`（124 行）实现核心 `Agent` 类（ReAct 推理代理）+ `AgentConfig` 配置（max_iterations / max_retries / temperature / verbose）+ `AgentState` 枚举（IDLE / THINKING / ACTING / OBSERVING / FINISHED / FAILED）+ `ReActStep` 步骤结构（thought / action / action_input / observation）+ `AgentResponse` 响应结构。

@@ -4,7 +4,7 @@
 > 本篇：RAG 应用层（14 子模块：agent / core / embed / engine / eval / graph / index / llm / observability / pipeline / retrieval / server / util）
 > 时间：2026-10-16
 > 状态：初稿
-> 上游依赖：`.superpowers/sdd/gap-task-1-inventory.md` §12 rag
+> 上游依赖：`archive/.superpowers/sdd/gap-task-1-inventory.md` §12 rag
 > 对照 wiki：
 > - `docs/rag-wiki/langchain.md`（langchain 0.3 / 1.0，LCEL Runnable 编排 + 700+ 集成 + LangSmith 商业矩阵）
 > - `docs/rag-wiki/llama-index.md`（llama-index 0.12 / 0.13，Index/Retriever/Query Engine/Chat Engine + LlamaParse/LlamaCloud 商业矩阵）
@@ -21,7 +21,7 @@
 
 ## 1. 自研现状
 
-> 引用 `.superpowers/sdd/gap-task-1-inventory.md` §12 rag（行 114-135 索引），并补充定位说明。覆盖度 **A**（14 子模块全部 `.cpp + .h` 齐全），下游调用 DB 内核 + LLM + Embedding + Reranker + Graph 等。
+> 引用 `archive/.superpowers/sdd/gap-task-1-inventory.md` §12 rag（行 114-135 索引），并补充定位说明。覆盖度 **A**（14 子模块全部 `.cpp + .h` 齐全），下游调用 DB 内核 + LLM + Embedding + Reranker + Graph 等。
 
 1. **应用总入口（覆盖度 A）**：
    - `engineering/apps/multimodal_rag/CMakeLists.txt`（per-subdir glob + cpp-httplib 检测）；
@@ -455,8 +455,8 @@
 
 - 报告作者：subagent-driven-development（gap-analysis Task 14 implementer）
 - 关联文档：
-  - `.superpowers/sdd/gap-task-1-inventory.md` §12 rag（行 114-135 索引）
-  - `.superpowers/sdd/task-14-brief.md`（本次任务简报）
+  - `archive/.superpowers/sdd/gap-task-1-inventory.md` §12 rag（行 114-135 索引）
+  - `archive/.superpowers/sdd/task-14-brief.md`（本次任务简报）
   - `docs/superpowers/plans/2026-10-16-gap-analysis-implementation.md` Task 14（待创建）
   - `docs/gap-analysis/2026-08-29-multimodal-db-gap-analysis.md`（旧版顶层分析，本篇不替代，仅纵向对照）
   - `docs/gap-analysis/relational.md`（姊妹篇）

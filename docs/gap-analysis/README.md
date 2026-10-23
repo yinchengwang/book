@@ -585,8 +585,8 @@
 
 - 报告作者：subagent-driven-development（gap-analysis Task 16 implementer）
 - 关联文档：
-  - `.superpowers/sdd/gap-task-1-inventory.md`（自研模块全景）
-  - `.superpowers/sdd/gap-task-16-summary.md`（内部数据收集，gitignored）
+  - `archive/.superpowers/sdd/gap-task-1-inventory.md`（自研模块全景）
+  - `archive/.superpowers/sdd/gap-task-16-summary.md`（内部数据收集，gitignored）
   - `docs/gap-analysis/relational.md` 等 13 子报告
   - `docs/db-wiki/README.md` + `docs/rag-wiki/README.md` + `docs/agent-wiki/README.md`
 - 行数目标：600-900（本篇 600+ 行实测，见 §附录 C 自检）
@@ -616,7 +616,7 @@
 
 ## 附录 F — 自研模块全景（来自 gap-task-1-inventory）
 
-> 自研模块 30+ 库全景（与 13 子报告一一对应），数据来自 `.superpowers/sdd/gap-task-1-inventory.md`：
+> 自研模块 30+ 库全景（与 13 子报告一一对应），数据来自 `archive/.superpowers/sdd/gap-task-1-inventory.md`：
 
 - **DB 内核底座**（13 子报告复用）：`db/storage/page`、`db/storage/buffer/bufmgr`、`db/storage/wal`、`db/storage/catalog`、`db/concurrency/mmdb_lock`、`db/optimizer`；
 - **关系型 + KV**：`db/storage/access/heap`、`db/storage/access/btree`、`db/storage/kv/{lsm,kv_iter,kv_txn,wide_row}`、`db/sql/{executor,node*,jit,cost}`、`db/cf`；
@@ -645,7 +645,7 @@ git push origin main
 **注意事项**：
 1. 不要 commit 无关文件（包括 `reference/*` 子模块的 modified 状态，按 OPSX 纪律不动）；
 2. 不要改 13 篇子报告或旧文件 `2026-08-29-multimodal-db-gap-analysis.md`；
-3. 不入库 `.superpowers/sdd/gap-task-16-summary.md`（gitignored 内部数据）；
+3. 不入库 `archive/.superpowers/sdd/gap-task-16-summary.md`（gitignored 内部数据）；
 4. 推送前确认 origin 远端为 GitHub `https://github.com/yinchengwang/book.git`，不用 Gitee。
 
 ## 附录 H — 总报告验收（§7.1 spec 复核）

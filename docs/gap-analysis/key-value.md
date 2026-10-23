@@ -4,7 +4,7 @@
 > 本篇：键值存储引擎（key-value / LSM-Tree / MemTable / SkipList）
 > 时间：2026-10-16
 > 状态：初稿
-> 上游依赖：`.superpowers/sdd/gap-task-1-inventory.md` §2 key-value
+> 上游依赖：`archive/.superpowers/sdd/gap-task-1-inventory.md` §2 key-value
 > 对照 wiki：
 > - `docs/db-wiki/key-value/rocksdb.md`（RocksDB 8.x 系列）
 > - `docs/db-wiki/key-value/leveldb.md`（LevelDB 1.23）
@@ -21,7 +21,7 @@
 
 ## 1. 自研现状
 
-> 引用 `.superpowers/sdd/gap-task-1-inventory.md` §2 key-value，并补充定位说明。
+> 引用 `archive/.superpowers/sdd/gap-task-1-inventory.md` §2 key-value，并补充定位说明。
 
 1. **KV 内核完整（覆盖度 A）**：`engineering/src/db/storage/kv/` 已有 11 个 C 源文件 + `engineering/src/db/storage/kv/lsm/` 2 个 C 源文件，加上 `engineering/src/db/cf/cf_engine.c`（1028 行）+ `engineering/src/db/core/hash_index.c` + `engineering/src/db/index/skip_list/` 6 个 C 源文件，构成「KV 引擎 + 列族 + 哈希索引 + 跳表」完整闭环。
 2. **KV 引擎主体**：`engineering/src/db/storage/kv/kv_engine.c`（369 行）+ `engineering/src/db/storage/kv/kv.c`（1358 行）+ `engineering/include/db/kv_engine.h`（107 行）+ `engineering/include/db/kv.h`（430 行）实现 `kv_engine_init/shutdown`、`kv_engine_create/open/close/drop`、`kv_engine_insert/update/delete/get/exists`、`kv_engine_stats` 一整套 API；并通过 `storage_ops_t` 注册到 `storage_engine.h` 抽象层。
@@ -338,7 +338,7 @@
 
 - 报告作者：subagent-driven-development（gap-analysis Task 4 implementer）
 - 关联文档：
-  - `.superpowers/sdd/gap-task-1-inventory.md` §2 key-value
+  - `archive/.superpowers/sdd/gap-task-1-inventory.md` §2 key-value
   - `docs/superpowers/plans/2026-10-16-gap-analysis-implementation.md` Task 4
   - `docs/gap-analysis/2026-08-29-multimodal-db-gap-analysis.md`（旧版顶层分析，本篇不替代，仅纵向对照）
   - `docs/gap-analysis/relational.md`（姊妹篇，relational 子报告）
