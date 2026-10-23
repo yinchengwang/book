@@ -66,7 +66,6 @@ engineering/         # 工程轨道（默认构建）
 ├── src/             # 库代码（db/algo/cpp/redis）
 ├── include/         # 公共头文件
 ├── test/            # gtest 测试
-├── apps/            # 独立应用（db_driver/games/tools/web）
 ├── rag/             # RAG 系统
 ├── sdk/             # 多语言 SDK
 ├── tools/           # 工程专用工具
