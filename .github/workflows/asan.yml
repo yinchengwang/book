@@ -2,8 +2,9 @@
 # 注：Windows MSVC runner 无 ASAN 支持（依赖 MinGW 工具链差异），单独保留。
 #
 # Checkout 策略（2026-10-22 修复）：与 ci.yml 一致，只拉构建真正需要的
-# third_part/googletest，不使用 submodules: recursive（99 个子模块里 95 个是
-# reference/ 下的第三方源码参考仓，对构建无用且导致 Checkout 超时失败）。
+# third_part/googletest 与 engineering/third_part/uthash，不使用
+# submodules: recursive（99 个子模块里 95 个是 reference/ 下的第三方源码参考仓，
+# 对构建无用且导致 Checkout 超时失败）。
 # 本 workflow 在仓库根执行 cmake ..（根 CMakeLists.txt → ENGINEERING_BUILD=ON
 # → add_subdirectory(engineering)），因此 googletest 必须存在，否则
 # engineering/CMakeLists.txt 会回退到 find_package(GTest REQUIRED) 而失败。
@@ -36,9 +37,14 @@ jobs:
             -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
             -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" \
             ..
+      # 注意：Configure 步骤里的 `cd build-asan` 只在该步骤的 shell 内生效，
+      # 后续步骤必须显式声明 working-directory，否则会在仓库根执行
+      # `cmake --build .`（根目录无 CMakeCache.txt）而报 "could not load cache"。
       - name: Build
+        working-directory: build-asan
         run: cmake --build . --target all
       - name: Run unit tests
+        working-directory: build-asan
         run: |
           ctest --output-on-failure -E "(integration|long|heavy)" --timeout 60
         continue-on-error: true   # 允许单测存在历史失败，先把 CI 通路跑通
