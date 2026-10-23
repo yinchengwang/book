@@ -128,6 +128,15 @@ sift.tar.gz
 .pytest_cache/
 .remember/
 
+# ---- 已切出独立仓的目录（工作树可能残留大体积克隆） ----
+# learning/  -> yinchengwang/learning
+# reference/ -> yinchengwang/reference
+/reference/
+/learning/
+docs/db-wiki/
+docs/rag-wiki/
+docs/agent-wiki/
+
 # ---- WorkBuddy 自动生成的会话工作区（时间戳命名，如 2026-10-21-23-48-17） ----
 # 目录名为 YYYY-MM-DD-HH-MM-SS 共 6 段，规则必须写满 6 段才匹配（历史版本写成
 # 5 段，从未生效过）；两条都要保留：一条匹配目录本身，一条匹配目录内全部内容。
