@@ -278,8 +278,6 @@ int64_t vector_index_file_size(const char *path) {
     return (int64_t)st.st_size;
 }
 
-/* vector_index_is_valid() 定义在 vector_engine.c 中 */
-
 int vector_index_get_summary(const char *path, char *summary) {
     if (!path || !summary) return -1;
 
