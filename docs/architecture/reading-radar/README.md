@@ -299,4 +299,4 @@ stateDiagram-v2
 
 ---
 
-> **项目位置**：`engineering/apps/web/reading-radar/`
+> **项目位置**：已删除（2026-10-23）；现实现见 `wechat-miniprogram/knowledge-hub/`
