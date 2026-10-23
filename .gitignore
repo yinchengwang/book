@@ -101,8 +101,6 @@ test_dir/
 data/
 test_data/
 test_db_init_*/
-# 例外：reading-radar 的单元测试目录（tests/unit/data 是测试代码，非运行时数据）
-!engineering/apps/web/reading-radar/tests/unit/data/
 # vitest 覆盖率报告产物
 coverage/
 
@@ -167,10 +165,6 @@ sift.tar.gz
 # 运行时数据目录
 rag_data/
 
-# 模型权重（大文件不入库，走外部存储）
-engineering/apps/multimodal_rag/models/
-engineering/apps/multimodal_rag/reference/
-
 # 构建/缓存/运行时残留（避免拖慢 git status）
 emsdk/
 engineering/build-linux/
@@ -187,3 +181,10 @@ third_part/cmocka_install/
 engineering/third_part/cpp-httplib/
 engineering/third_part/nlohmann/
 engineering/third_part/openssl-stubs/
+
+# WorkBuddy 自动生成的会话工作区（时间戳命名，如 2026-10-21-23-48-17）
+/20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/
+/20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/**
+
+# WorkBuddy 工作区记忆目录
+.workbuddy-ai/

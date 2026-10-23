@@ -1,6 +1,6 @@
 # Engineering Track
 
-工程轨道 —— α 工程作品集。PG 风格存储引擎、MiniVecDB、apps、RAG、SDK、CI/CD、Docker。
+工程轨道 —— α 工程作品集。PG 风格存储引擎、MiniVecDB、RAG、SDK、CI/CD、Docker。
 
 ## 构建与测试
 
@@ -26,7 +26,6 @@ cmake -B ../build/engineering -S . -DENABLE_COVERAGE=ON
 | `src/` | 库代码（db/, algo/, cpp/, redis/） |
 | `include/` | 公共头文件 |
 | `test/` | gtest 测试 |
-| `apps/` | 独立应用（db_driver, games, tools, vdb_cli, todo-app, multimodal_rag, web） |
 | `rag/` | RAG 系统 |
 | `sdk/` | 多语言 SDK |
 | `tools/` | 工程专用工具 |
@@ -36,7 +35,7 @@ cmake -B ../build/engineering -S . -DENABLE_COVERAGE=ON
 ## 资产归属
 
 `engineering/` 是以下所有内容的唯一 canonical 位置：
-- 顶层 `apps/`、`rag/`、`sdk/`、Docker 文件——已迁入
+- 顶层 `rag/`、`sdk/`、Docker 文件——已迁入
 - 根目录 `include/` 中工程头文件——已审计归入 `engineering/include/`
 - 根目录 `test_data/` 中复用测试夹具——已迁入
 - 工程专用工具——从根 `tools/` 拆分迁入 `engineering/tools/`

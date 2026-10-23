@@ -242,3 +242,15 @@ git rm -r engineering/apps/web/{games-mini-program,knowledge_hub,reading-radar}
 - 不做跨应用代码共享机制（npm 包 / submodule）——微信小程序无法引用项目根外文件，复制是唯一务实解
 - 不做自定义 tabBar（两应用首版都用原生纯文字 tabBar，列为可选升级）
 - 不引入 UI 组件库、图表库、markdown 库——全部自绘，延续零依赖原则
+
+## 第二轮执行结果回填（2026-10-23）
+
+`engineering/apps/` 已**整目录删除**。与首轮回填（只删 3 个 Web 源）的差异及原因：
+
+- 首轮保留 apps 的理由是「含活跃 C++ 构建，整删破坏 CMake」
+- 复核后确认：`vector_engine.c` 对 `hnsw_persist_*` 的 5 处引用中，
+  通用 `vector_index_save/load/is_valid/get_meta` 的**唯一生产消费者就是 apps/multimodal_rag 自身**；
+  引擎真正的持久化路径 `vector_engine_save_index/load_index` 自包含、不依赖 apps
+- 因此按方案 C 删除：下线 4 个通用持久化接口 + 删 apps 测试 + 删目录
+- 设计文档：`docs/superpowers/specs/2026-10-23-remove-engineering-apps-design.md`
+- 实施计划：`docs/superpowers/plans/2026-10-23-remove-engineering-apps.md`

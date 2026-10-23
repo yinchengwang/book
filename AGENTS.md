@@ -74,41 +74,7 @@ clang-format -i $(git ls-files '*.c' '*.cpp' '*.h' '*.hpp')
 - GCC/Clang：`-Wall -Wextra -Wpedantic -Werror -Wno-sign-compare`
 - Debug：`-O0 -g3`；Release：`-O2 -DNDEBUG`
 
-## Knowledge Hub API Server
-
-统一 C 后端，位于 `engineering/apps/api-server/`，链接 todo-app 静态库 + SQLite + cJSON，单数据库 `book.db`（WAL 模式）。
-
-### 构建
-
-```bash
-cmake --build build/engineering --parallel 4 --target api-server
-```
-
-### 运行
-
-```bash
-# 在仓库根目录运行（默认端口 8080，db book.db）
-# 注：默认静态目录 frontend/apps/knowledge_hub/web/dist 已随前端迁移移除，
-# 需通过 -s <static_dir> 显式指定；纯 API 模式下可忽略。
-build/engineering/apps/api-server/api-server.exe
-```
-
-参数：`-p <port>` 端口，`-d <db_path>` 数据库路径，`-s <static_dir>` 静态目录。
-
-### API 模块
-
-| 模块 | 路由 |
-|------|------|
-| health | GET /api/health |
-| todo_api | /api/todos CRUD + /api/groups |
-| quiz_api | GET /api/quiz/questions, POST /api/quiz/answers, GET /api/quiz/stats |
-| interview_api | /api/interview/questions + tracker CRUD + rounds |
-| review_api | GET /api/review/due, POST /api/review/rate, GET /api/review/stats |
-| notes_api_mod | /api/notes CRUD + tree + search + dir |
-| digest_api | /api/digest/today, items, collections, action |
-| static_files | 非 /api/ 请求 -> `-s` 指定的静态目录 |
-
-### 前端说明（已迁移）
+## 前端说明（已迁移）
 
 knowledge_hub 原为 Taro 3.6 + React 18 + TS 工程，**已于 2026-10-22 完成原生化重写**：
 Taro 源码（原 `engineering/apps/web/{knowledge_hub,games-mini-program,reading-radar}`）已删除，

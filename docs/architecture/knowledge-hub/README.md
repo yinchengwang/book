@@ -8,6 +8,7 @@
 > 原型的 19 页 / 12 个 Zustand store 已重写为 17 页 / 14 个数据域（`core/stores.js`），原 SVG 图表改为 Canvas 2d。
 > 本文档保留作为原型设计的**历史参考**，其中的架构决策（数据域划分、SM-2 间隔重复、雷达/图谱布局）已迁移至新实现。
 > 详见 [`wechat-miniprogram/knowledge-hub/README.md`](../../../wechat-miniprogram/knowledge-hub/README.md)。
+> 其所在目录 `engineering/apps/` 已于 2026-10-23 整目录删除。
 
 > 知识中心 — 基于 Taro 3.6 + React 18 的 H5 + 微信小程序双端学习追踪平台（原型）
 

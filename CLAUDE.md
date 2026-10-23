@@ -377,7 +377,7 @@ log_level = 'info'
 
 - **新数据结构/算法** → 在 `engineering/src/<库>/` 下添加 `.c`/`.h`，在 `engineering/include/<库>/` 下添加公共头文件
 - **新测试** → 在 `engineering/test/<库>/` 或 `learning/code-solutions/c/test/` 下添加 `.cpp`
-- **新独立项目** → 在 `engineering/apps/` 下创建文件夹及自带 `CMakeLists.txt`
+- **新独立项目** → 在 `engineering/` 下创建直属目录及自带 `CMakeLists.txt`
 - **新库** → 创建 `engineering/src/<库名>/CMakeLists.txt`（推荐用 `add_project_library()`），在 `engineering/include/<库名>/` 放头文件
 
 ## 测试约定
