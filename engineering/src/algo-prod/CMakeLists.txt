@@ -13,7 +13,9 @@ add_library(algo-prod STATIC ${ALGO_PROD_SOURCE_FILE})
 target_include_directories(algo-prod PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${ENGINEERING_SOURCE_DIR}/include
-    ${ENGINEERING_SOURCE_DIR}/../learning/include
+    # 原先跨轨引用 learning 轨的头文件目录；learning 切出独立仓后改用工程内
+    # third_part/uthash/src（该目录直接存放 uthash.h）。
+    ${ENGINEERING_SOURCE_DIR}/third_part/uthash/src
 )
 
 target_link_libraries(algo-prod

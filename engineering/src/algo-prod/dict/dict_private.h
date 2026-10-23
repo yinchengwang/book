@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <uthash/uthash.h>
+#include <uthash.h>
 
 typedef struct dict_node dict_node_t;
 

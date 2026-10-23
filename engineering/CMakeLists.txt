@@ -1,7 +1,7 @@
 # engineering/CMakeLists.txt
 # 工程轨道 CMake 入口（PG 风格存储、MiniVecDB、rag/、sdk/）
 # 由根 CMakeLists.txt 在 ENGINEERING_BUILD=ON 时 add_subdirectory 引入
-# 严禁引用 learning/ 任何路径（详见 cmake/dual-track-guard.cmake）
+# learning/ 已切出为独立仓，本轨道不再引用其任何路径。
 
 cmake_minimum_required(VERSION 3.20)
 
@@ -13,13 +13,6 @@ project(AlgorithmPractice
     DESCRIPTION "Algorithm and Data Structure Practice Project (Engineering Track)"
     LANGUAGES C CXX
 )
-
-# 包含根目录的双轨守卫
-set(_dual_track_guard "${CMAKE_CURRENT_LIST_DIR}/../cmake/dual-track-guard.cmake")
-if(EXISTS "${_dual_track_guard}")
-    include("${_dual_track_guard}")
-    guard_no_cross_track_reference("learning/")
-endif()
 
 # 设置 C 和 C++ 标准
 set(CMAKE_C_STANDARD 11)

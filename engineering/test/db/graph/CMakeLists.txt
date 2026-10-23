@@ -22,7 +22,10 @@ target_link_libraries(test_graph_basic_test PRIVATE
 target_include_directories(test_graph_basic_test PRIVATE
     ${CMAKE_SOURCE_DIR}/third_part/googletest/googletest/include
     ${CMAKE_SOURCE_DIR}/third_part/googletest/googlemock/include
-    ${CMAKE_SOURCE_DIR}/third_part/uthash/src
+    # 原为 ${CMAKE_SOURCE_DIR}/third_part/uthash/src —— 该路径不存在
+    # （CMAKE_SOURCE_DIR 是仓库根，根下 third_part/uthash 是空 submodule），
+    # 一直是空挂。改用工程内实体路径。
+    ${ENGINEERING_SOURCE_DIR}/third_part/uthash/src
     ${ENGINEERING_SOURCE_DIR}/include
     ${ENGINEERING_SOURCE_DIR}/include/db
     ${ENGINEERING_SOURCE_DIR}/include/db/graph

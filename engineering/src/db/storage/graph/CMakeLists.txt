@@ -16,7 +16,10 @@ if(GRAPH_SOURCE_FILES OR TRAVERSE_SOURCE_FILES OR GRAPH_ALGO_SOURCE_FILES)
     add_library(storage_graph OBJECT ${GRAPH_SOURCE_FILES} ${TRAVERSE_SOURCE_FILES} ${GRAPH_ALGO_SOURCE_FILES})
     target_include_directories(storage_graph PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/third_part/uthash/src
+        # 原为 ${CMAKE_SOURCE_DIR}/third_part/uthash/src —— 该路径不存在
+        # （CMAKE_SOURCE_DIR 是仓库根，根下 third_part/uthash 是空 submodule），
+        # 一直是空挂。改用工程内实体路径。
+        ${ENGINEERING_SOURCE_DIR}/third_part/uthash/src
         ${ENGINEERING_SOURCE_DIR}/include
         ${ENGINEERING_SOURCE_DIR}/include/db
         ${ENGINEERING_SOURCE_DIR}/include/db/storage
