@@ -358,3 +358,33 @@ libvector_index.a:     0000000000000da8 T pq_code_size     ← 地址不同 = �
 | `guc` | multiple definition of `main` | ✅ 链接成功 |
 | `integration_test` | undefined reference（`set_heap_store`） | ✅ 链接成功（排除依赖未实现 API 的用例） |
 | `raft_test` | 构建期 Access violation | ✅ 构建成功，崩溃如实暴露为测试失败 |
+
+### 9.6 构建修好后的测试基线变化（重要）
+
+构建零失败后，**大量此前根本没被构建出来的测试二进制终于能跑了**，ctest 规模从
+101 个执行用例涨到 **800** 个：
+
+| | 基线（`pre-cleanup-baseline`） | 构建债修复后 |
+|---|---|---|
+| 声明用例总数 | 793 | 818 |
+| 实际执行 | 101 | **800** |
+| 通过 | 65 | **692** |
+| 失败 | 36 | **108** |
+| 通过率 | 64.4% | **87%** |
+
+**失败数从 36 涨到 108 不是回归**，而是「此前被构建失败掩盖的测试开始真正执行」。
+失败项全部落在既有的产品缺陷类别里，与基线同名（只是暴露得更完整）：
+
+- `memory_leak_detection_test` / `sdk_core_memctx_test` / `sdk_vectors_memctx_test`
+  / `Mmdb*` 系列 —— memctx 内存泄漏检测（占失败数一半以上）
+- `SQLIntegrationTest.*` ×4、`DriverSmoke.*` ×5、`E2ECapability.*` ×5 —— SQL 层
+- `BenchmarkVectorTest.*`、`test_vector_index`（`vector_index_test.cpp:209` 等断言失败）
+- `test_spatial_engine`（SEGFAULT）、`cross_lang_consistency_test` / `selector_integration_test`
+  / `staircase_benchmark`（Timeout）、`backup_test`
+
+抽查确认均为**运行时断言失败/崩溃**，非构建配置问题（例：
+`vector_index_test.cpp:209: Failure`）。
+
+> 复现命令：`ctest --test-dir <build> -j8 --timeout 30`
+> 注意串行跑 818 个用例会因超时用例累积而耗时极长（实测 >30 分钟未完成），
+> 并行 `-j8` 约 2.5 分钟。
