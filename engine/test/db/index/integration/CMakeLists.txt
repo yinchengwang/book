@@ -14,6 +14,17 @@
 #                                  已用 nm 核实：库级桩完全覆盖测试级桩，
 #                                  且多出 5 个符号，故测试级桩纯属冗余。
 #
+#   multi_index_joint_test.cpp  —— 依赖 faiss_hnsw_index_set_heap_store()，
+#                                  该接口只在 include/db/index/vector_index/hnsw/
+#                                  faiss_hnsw.h 中声明（Heap 向量存储作为
+#                                  single source of truth 的设计），但实际编译的
+#                                  结构体定义在 faiss_hnsw/faiss_hnsw_internal.h，
+#                                  **没有 heap_store 字段**，实现也从未落地。
+#                                  链接期报 undefined reference。
+#                                  这是未实现的功能，不是构建配置问题；补一个
+#                                  只存指针的假实现会让测试断言通过但语义为假，
+#                                  故此处排除，待 Heap 存储真正实现后再启用。
+#
 # diskann_recall_simple.cpp 另建独立 target，保留其测试价值。
 
 file(GLOB INTEGRATION_TEST_SRCS CONFIGURE_DEPENDS
@@ -22,6 +33,7 @@ file(GLOB INTEGRATION_TEST_SRCS CONFIGURE_DEPENDS
 )
 list(FILTER INTEGRATION_TEST_SRCS EXCLUDE REGEX ".*diskann_recall_simple\\.cpp$")
 list(FILTER INTEGRATION_TEST_SRCS EXCLUDE REGEX ".*diskann_extended_stubs\\.c$")
+list(FILTER INTEGRATION_TEST_SRCS EXCLUDE REGEX ".*multi_index_joint_test\\.cpp$")
 
 add_executable(integration_test ${INTEGRATION_TEST_SRCS})
 

@@ -5,7 +5,10 @@ file(GLOB_RECURSE VECTOR_INDEX_SOURCES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURREN
 
 # 排除有头文件依赖问题的目录
 list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX ".*streaming/.*")
-list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX ".*hybrid_search\\.c$")
+# hybrid_search.c 此前因枚举/结构体改名与 query_filter.h 不同步而被排除，
+# 导致 filter_expr_* / hybrid_index_* / hybrid_search_config_* 共 27 个符号
+# 无任何库提供，链接方（test_vector_index）报 undefined reference。
+# 已将源码对齐 VDB_FILTER_OP_* / VDBFilterValue 布局，此处解除排除。
 list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX ".*tiered_index\\.c$")
 # DiskANN 通过独立子目录构建（diskann/CMakeLists.txt），避免被主 glob 重复收集
 list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX ".*diskann/.*")
@@ -15,6 +18,13 @@ list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX ".*faiss_hnsw/.*")
 # GPU 加速为 CUDA/OpenCL 存根，私有头（include/db/index/vector_index/gpu/）
 # 不在本目标包含路径上，且无外部符号引用；待其独立成库后再接入
 list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX ".*gpu/.*")
+# HNSW-PQ 同理：独立静态库 hnsw_pq 由 hnsw_pq/CMakeLists.txt 构建。
+# 主 glob 若再收集其源码，同一份 hnsw_pq.c 会进两个库，符号重复导出。
+# 更严重的是 hnsw_pq.c 调用 pq_train/pq_encode/pq_code_size 等量化器接口，
+# 其签名是 pq_quantizer_t*（db 侧量化器）；若本库内解析到 algo-prod 的
+# 同名符号（quantizer_t*），C 不做重载检查 → 链接通过但运行期类型错配。
+# 故此处排除，由独立库 hnsw_pq 独家提供（它 PUBLIC 链接 db 侧 pq 库）。
+list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX "^hnsw_pq/.*")
 # 量化器子目录（pq/sq/rq/lvq）各自已建独立静态库（见各自的 CMakeLists.txt），
 # 主 glob 若再收集其源码，会与 algo-prod 中的同名实现产生重复符号：
 # pq_code_size / pq_encode / pq_train / pq_create / pq_destroy /

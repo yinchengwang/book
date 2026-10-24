@@ -52,6 +52,14 @@ endif()
 # ========================================================================
 add_subdirectory(index)
 
+# db_storage 收集了 spatial 引擎的 obj（storage_spatial），而 spatial 依赖
+# index_hilbert 库的 hilbert_index_* 符号。
+# 需在 add_subdirectory(index) 之后声明：storage 目录先于 index 被处理，
+# 那时 index_hilbert 目标尚不存在，if(TARGET index_hilbert) 判定为假。
+if(TARGET index_hilbert)
+    target_link_libraries(db_storage PUBLIC index_hilbert)
+endif()
+
 # ========================================================================
 # 解析层（SQL, GQL 语法解析）
 # ========================================================================

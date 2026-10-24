@@ -1,5 +1,15 @@
 # core 模块测试（guc, initdb, pg_ctl, db_server, vector_query）
-add_project_test(guc test.cpp)
+# 注意：不能写成 add_project_test(guc test.cpp) —— 该函数的第二个参数是**变量名**，
+# 内部会对本目录做 file(GLOB "*.cpp" "*.c")，把同目录下 engine_registry_test.cpp /
+# multimodal_test.cpp / vector_query_test.cpp 一并收进来（三者各自定义了 main），
+# 导致 guc 链接期报 multiple definition of `main'。此处显式指定源文件。
+add_executable(guc test.cpp)
+target_link_libraries(guc PRIVATE project_includes GTest::gtest_main db_core)
+include(GoogleTest)
+gtest_discover_tests(guc
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    PROPERTIES LABELS "guc"
+)
 
 # 引擎注册表测试
 add_executable(engine_registry_test engine_registry_test.cpp)
