@@ -22,6 +22,14 @@
 **额外发现（简报未提，但影响阶段一）**：
 
 - **F6｜`dataset/` 是 692 MB，不是 40 个小文件。** `dataset/sift/` 单独 645 MB。且 `.gitattributes` 为 `dataset/**/*.bin|fvecs|ivecs` 配了 LFS 规则，但**实测文件头是真实二进制而非 LFS pointer**（`dataset/sift/base.bin` 首字节非 `version https://git-lfs`）→ **LFS 规则形同虚设，692 MB 明文二进制直接进了 git 历史**。这与 F4 的 `.git/lfs` 673 MB 相互印证。
+
+  > ⚠️ **2026-10-25 事后更正：本条结论错误。** LFS **一直正常工作**。实测
+  > `git cat-file -p HEAD:dataset/sift/base.bin` 返回的是 134 字节的 LFS 指针
+  > （`version https://git-lfs.github.com/spec/v1` + `oid sha256:158e7033...` +
+  > `size 327271936`）。`git ls-tree -r -l HEAD -- dataset` 求和仅 **13.6 MB**，
+  > 不是 692 MB。当时的判断错在拿**磁盘工作副本**（LFS 已 smudge 出的实体）当成了
+  > git 中的内容。详见 §附录 C。
+
 - **F7｜双轨守卫有覆盖盲区。** `cmake/dual-track-guard.cmake:12` 硬编码 `_current_dir STREQUAL "learning" OR "engineering"`，且 `file(READ)` 只读**当前这一个文件**。所以它只检查 `learning/CMakeLists.txt` 和 `engine/CMakeLists.txt` 两个文件。子目录里的跨轨 include（`engine/src/algo-prod/CMakeLists.txt:16`、`engine/src/db/api/CMakeLists.txt:7` 都写了 `${ENGINEERING_SOURCE_DIR}/../learning/include`）**从未被守卫覆盖**。→ 简报"只有两处双轨耦合"的结论不准确，实际有 **4 处**。
 - **F8｜`uthash` 有三份拷贝，且只有一份是活的。** `learning/include/uthash/`（git 跟踪的 6 个头文件，**唯一有效来源**）、`engine/third_part/uthash/`（submodule，`src/` 存在）、`vendor/third_part/uthash/`（submodule，**空目录**）。而 `engine/src/db/storage/graph/CMakeLists.txt:19` 引用了**不存在的** `${CMAKE_SOURCE_DIR}/third_part/uthash/src` —— 这条 include 一直是空挂的，编译能过是因为 `db/api` 的 `find_path(... HINTS ../learning/include PATH_SUFFIXES uthash)` 恰好命中了 `learning/include/uthash/`。
 
@@ -825,7 +833,7 @@ git status --porcelain                  # 应为空
 | #       | 问题                                      | 推荐选项                                                                                                      | 理由                                                                                                                                                                                                                                                                                                       | 影响面             |
 | ------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
 | **D1**  | 是否确认撤销"清理 121 个幽灵路径"？                   | ✅ **撤销**，改为 `git config core.quotepath false`                                                             | 已实测 121 个文件全部存在于磁盘（F1）                                                                                                                                                                                                                                                                                   | 阶段一 A1          |
-| **D2**  | `dataset/` 692 MB 二进制怎么处理？              | **整体移出 git**：`git rm -r --cached dataset` + `.gitignore` 加 `dataset/**` +保留 6 个下载/预处理 `.py` 脚本受跟踪         | ① 692 MB 明文二进制（且 LFS 规则因文件在规则前提交而**未生效**）拖慢每次 clone；② `dataset/sift/` 645 MB 是 SIFT1M 公开数据集，可用现成的 `dataset/download_sift1m.py` 重新获取；③ `.gitattributes` 的 LFS 规则形同虚设                                                                                                                                      | 阶段一 A7/ B4a     |
+| **D2**  | `dataset/` 692 MB 二进制怎么处理？              | ⚠️ **未执行**（前提已失效，见附录 C.2/C.3）<br>原建议：**整体移出 git**：`git rm -r --cached dataset` + `.gitignore` 加 `dataset/**` +保留 6 个下载/预处理 `.py` 脚本受跟踪         | ① 692 MB 明文二进制（且 LFS 规则因文件在规则前提交而**未生效**）拖慢每次 clone；② `dataset/sift/` 645 MB 是 SIFT1M 公开数据集，可用现成的 `dataset/download_sift1m.py` 重新获取；③ `.gitattributes` 的 LFS 规则形同虚设                                                                                                                                      | 阶段一 A7/ B4a     |
 | **D3**  | `web/`（35 文件，Vite+React+Tailwind）生死？    | **删除**（`git rm -r web`）                                                                                   | ① `AGENTS.md:77-90` 明确声明前端已迁移到 `apps/`，`engine/apps/web/` 已删；② 实测**无任何 CMakeLists/.cmake 引用它**；③ `.archive/engineering-apps-web-migrated-srcs-20261022.tar.gz`（4.1 MB）已归档旧 Taro 源码；④ 与 `apps/`（小程序）功能定位重复                                                                             | 阶段一 A5          |
 | **D3'** | **归档 tar.gz 是否也删？**（§0.5.3 新增）          | ✅ **删，不迁移到 `archive/`**                                                                                   | ① 内容是**已被删除的** `engine/apps/web/` 旧 Taro 源，git 历史里每个 commit 都能取回，tar.gz 只是把历史又抄一遍；② 二进制入库无法 diff/review，且不匹配 `.gitattributes` 的 LFS 规则；③ 与 `dataset/` 692 MB 明文二进制（F6）是同一个"用二进制做归档"的既有习惯问题，重构不应复制                                                                                                   | 阶段一 A5          |
 | **D4**  | `vendor/third_part/`+ `cmake/` 是否合成 `vendor/`？ | ✅ 合成                                                                                                      | 二者都是"构建期第三方"，与源码/笔记/数据集性质不同；合成后根目录从 21 项降到 12 项                                                                                                                                                                                                                                                          | 阶段二 B4          |
@@ -937,3 +945,83 @@ grep -c 'name: ' .github/workflows/ci.yml
 
 
 **文档结束。** 全部结论基于对 `C:\code\book` 的只读探查，未执行任何写操作。
+
+---
+
+## 附录 C：事后更正（2026-10-25 实测）
+
+重构完成后复核，发现本文档有两处结论与实测不符，特此更正。**结论本身错了，但推导过程值得保留**——两处都是同一类错误：**把磁盘工作副本当成了 git 里的内容**。
+
+### C.1 F6「LFS 规则形同虚设」是错的 —— LFS 一直正常工作
+
+**原文断言**：`dataset/**` 的 LFS 规则未生效，692 MB 明文二进制进了 git 历史。
+
+**实测反驳**：
+
+```console
+$ git cat-file -s $(git rev-parse HEAD:dataset/sift/base.bin)
+134
+$ git cat-file -p HEAD:dataset/sift/base.bin | head -3
+version https://git-lfs.github.com/spec/v1
+oid sha256:158e703367356eb9fa812475fd99c278479ab35b83a2ef5b372fe6ff7bd1e763
+size 327271936
+
+$ git ls-tree -r -l HEAD -- dataset | awk '{s+=$4} END {print s/1048576" MB"}'
+13.6 MB
+```
+
+`base.bin` 在 git 里是 **134 字节的 LFS 指针**，整个 `dataset/` 在 HEAD 中只有 **13.6 MB**。
+
+**错在哪**：当时用 `head -c 100 dataset/sift/base.bin` 检查文件头，看到的是真实二进制——但那是 **LFS smudge 之后的工作副本**，不是 git 里存的 blob。正确做法是查 `git cat-file`，或看 `git ls-tree -l` 的大小列。
+
+**`.git` 1.7 GB 的真实构成**（供参考）：
+
+| 部分 | 体积 | 说明 |
+|---|---|---|
+| `.git/objects` | 1.1 GB | 860 commit 的正常累积，最大单 blob 仅 8.8 MB（`sqlite3.c`） |
+| `.git/lfs` | 673 MB | 19 个 LFS 对象 = dataset 二进制 |
+| `.git/modules` | 16 MB | 剩余两个 submodule |
+
+历史里**没有**可清理的 692 MB 垃圾（>1 MB 的 blob 只有 3 个、合计 13.6 MB），所以**历史重写没有收益**，未执行。
+
+### C.2 D2 的前提「可用 `download_sift1m.py` 重新获取」不成立 —— 下载源已失效
+
+**原文断言**：D2 建议 `git rm -r --cached dataset`，理由是数据可用现成脚本重取。
+
+**实测**：
+
+| 源 | 结果 |
+|---|---|
+| `ftp://ftp.irisa.fr/pub/texmex/corpus/`（脚本现用） | ❌ `curl: (9) Server denied you to change to the given directory` |
+| `http://corpus-texmex.irisa.fr/` | ❌ 403 / `Empty reply from server` |
+| `https://corpus-texmex.irisa.fr/` | ❌ SSL/TLS handshake failed |
+| `http://ann-benchmarks.com/sift-128-euclidean.hdf5` | ✅ HTTP 200，525 MB，HDF5 魔数 `89 48 44 46` 校验通过 |
+
+`dataset/download_sift1m.py` **已彻底失效**，且脚本没有内容校验——下载失败会把 HTML 错误页直接存成目标文件。仓库里那 4 个 196 字节的「404 页面伪装成二进制」就是这么产生的（已于 commit `f4d8e9ac6` 删除）：
+
+```
+cmocka.tar.xz
+dataset/sift/sift_groundtruth.ivecs
+dataset/sift/sift_query.fvecs
+dataset/sift/sift_query.fvecs.gz
+```
+
+**结论**：dataset **可以**重新获取，但必须走 HDF5 路线（ann-benchmarks 下载 + h5py 转换），现有脚本一行都用不上。本地有 `h5py 3.12.1`。
+
+### C.3 因此 D2 未执行（2026-10-25 决定）
+
+用户决定**暂不移出 dataset**。理由：恢复路径需要先写一个新的 HDF5 转换脚本并验证能还原出相同数据，否则「可恢复」只是理论上的。
+
+若将来要移出，正确顺序是：
+
+1. 写 `dataset/download_sift1m_hdf5.py`（下载 HDF5 → 转 fvecs/ivecs）
+2. 转换后与现有 `dataset/sift/fvecs/` 逐字节比对，证明可还原
+3. 再 `git rm -r --cached dataset` + `.gitignore`（保留 9 个 `.py`/`.c` 脚本）
+
+### C.4 顺带提醒：下载脚本应加内容校验
+
+本次 4 个 404 文件的根因是「下载失败但文件照写」。任何数据下载脚本都应校验内容，例如：
+
+- fvecs/ivecs：首 4 字节是维度值（SIFT 为 128），且文件大小应为 `4 + 4*dim` 的整数倍
+- gzip：前 2 字节应为 `1f 8b`
+- 通用兜底：文件大小 < 1 KB 的「二进制」文件一律可疑（404 页面固定 196 字节）
