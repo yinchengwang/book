@@ -1,0 +1,243 @@
+classDiagram
+direction LR
+
+class Repo {
+  +str branch = "main"
+  +int commits = 836
+  +str remote = "github.com/yinchengwang/book"
+  +int tracked_files = 5730
+  +float git_dir_size = "26 GB"
+  +float objects_size = "1013 MB"
+  +bool core_quotepath = false
+  +configure_quotepath()
+  +submodule_count() int
+  +tracked_files() int
+}
+
+class ActivityProfile {
+  <<model>>
+  +int engineering_commits = 480
+  +int docs_commits = 282
+  +int openspec_commits = 88
+  +int reference_commits = 13
+  +int learning_commits = 5
+  +int wechat_commits = 1
+  +float ratio_learning = "432:1"
+  +float ratio_docs = "1.5:1"
+  +str window = "2026-07-25 ~ 2026-10-23"
+  +classify() str
+}
+
+class CleanupPhase {
+  <<phase>>
+  +list~Task~ tasks_A1_to_A8
+  +bool A1_quotepath_fixed
+  +bool A2_empty_dirs_removed
+  +bool A3_build_dir_removed
+  +bool A5_web_and_archive_removed
+  +bool A6_tests_merged
+  +bool A7_gitignore_rewritten
+  +bool A8_ai_dirs_collapsed
+  +verify() ExitStatus
+  +rollback() void
+}
+
+class ReorderPhase {
+  <<phase>>
+  +list~Task~ tasks_B1_to_B10
+  +bool B1_engineering_to_engine
+  +bool B4_vendor_merged
+  +bool B5_wechat_to_apps
+  +bool B6_archive_merged
+  +bool B7_docs_reorganized
+  +bool B8_ai_to_dotai
+  +bool B9_paths_fixed
+  +bool B10_readme_rewritten
+  +verify() ExitStatus
+  +rollback() void
+}
+
+class DecouplePhase {
+  <<phase>>
+  +bool step1_find_path_hints_retargeted
+  +bool step2_dead_include_removed
+  +bool step3_nonexistent_uthash_paths_fixed
+  +bool guard_cmake_deleted
+  +is_prerequisite_for() str
+  +verify() ExitStatus
+}
+
+class ReferenceSplitPhase {
+  <<phase>>
+  +bool C0_wiki_included_in_scope
+  +bool C1_tag_pushed
+  +bool C2_ref_repo_init
+  +bool C3_metadata_added
+  +bool C4_gitlinks_stripped
+  +bool C5_gitignore_added
+  +bool C6_clone_verified
+  +bool C7_ci_verified
+  +bool C8_wiki_links_migrated
+  +verify() ExitStatus
+  +rollback() void
+}
+
+class LearningSplitPhase {
+  <<phase>>
+  +bool D1_tag_pushed
+  +bool D2_repo_init
+  +bool D3_files_committed
+  +bool D4_gitlink_removed
+  +bool D5_clone_verified
+  +bool D6_ci_jobs_removed
+  +bool D7_root_cmake_simplified
+  +bool D8_guard_deleted
+  +verify() ExitStatus
+  +rollback() void
+}
+
+class PathFixer {
+  <<service>>
+  +int total_refs = 3950
+  +int affected_files = 741
+  +fix_cmake() int
+  +fix_scripts() int
+  +fix_ci() int
+  +fix_docs() int
+  +fix_gitignore() int
+  +fix_gitmodules() int
+  +fix_python_sdk() int
+  +dry_run() list~str~
+}
+
+class WikiGate {
+  <<service>>
+  +str script = "scripts/check-wiki-refs.py"
+  +int line_refs = 3437
+  +int mode_b_files = 10
+  +int total_wiki_files = 69
+  +list~str~ MODE_B_WIKIS
+  +check_mode_a() ExitStatus
+  +check_mode_b() ExitStatus
+}
+
+class DualTrackRoot {
+  <<orchestrator>>
+  +bool ENGINEERING_BUILD = true
+  +bool LEARNING_BUILD = false
+  +configure() void
+  +simplify_to_single_track() void
+}
+
+class DecisionPoint {
+  <<model>>
+  +string id
+  +string question
+  +string recommended
+  +string rationale
+  +string impact
+  +bool answered = false
+}
+
+class Evidence {
+  <<model>>
+  +string claim
+  +string brief_says
+  +string actual
+  +string severity
+  +string verified_by
+  +bool confirmed = true
+}
+
+Repo "1" o-- "1" ActivityProfile
+ActivityProfile ..> ReorderPhase : drives_decisions
+ActivityProfile ..> LearningSplitPhase : "5 commits -> split out"
+ActivityProfile ..> ReferenceSplitPhase : "13 commits -> split out"
+
+Repo "1" o-- "1" CleanupPhase : stage1
+Repo "1" o-- "1" ReorderPhase : stage2
+DecouplePhase "1" *-- "1" CleanupPhase : must_precede
+DecouplePhase "1" *-- "1" ReorderPhase : T04_contains
+DecouplePhase ..> LearningSplitPhase : hard_prerequisite
+Repo "1" o-- "1" ReferenceSplitPhase : stage3
+Repo "1" o-- "1" LearningSplitPhase : stage4
+
+CleanupPhase ..> PathFixer
+ReorderPhase ..> PathFixer
+ReferenceSplitPhase ..> PathFixer
+LearningSplitPhase ..> PathFixer
+
+WikiGate ..> ReferenceSplitPhase : wiki_must_follow_reference
+WikiGate ..> ActivityProfile : "161 commits, all in 2026-10"
+
+DualTrackRoot ..> ReorderPhase : drives
+DualTrackRoot ..> LearningSplitPhase : simplified_by
+Repo ..> Evidence : 8_items
+Repo ..> DecisionPoint : 10_items_D1_D2_D3_D3prime_D4_D5_D6_D7_D8_D9
+
+class Engineering {
+  +int files = 1860
+  +int commits_90d = 480
+  +src754()
+  +include497()
+  +test429()
+  +tools53()
+  +docs43()
+  +sdk23()
+  +tests18()
+}
+
+class Learning {
+  +int files = 2158
+  +int commits_90d = 5
+  +scaffold1554()
+  +notes230()
+  +code_solutions85()
+  +ds_c78()
+  +arkts77()
+  +include44()
+}
+
+class Docs {
+  +int files = 414
+  +int commits_90d = 282
+  +apply_R1_wiki_to_docs() int
+  +apply_R2_process_to_docs() int
+  +apply_R3_diagrams_stay() int
+  +apply_R4_arch_to_docs() int
+  +apply_R5_analysis() int
+  +apply_R6_scattered_to_docs_storage() int
+}
+
+class DbWiki {
+  +int files = 75
+  +int commits_90d = 161
+  +int line_refs = 3437
+  +string activity_window = "全部在 2026-10"
+}
+
+class Vendor {
+  +int files = 124
+}
+
+class Reference {
+  +int submodules = 98
+  +int files = 536317
+  +float size = "10.4 GB"
+  +float git_modules_size = "25 GB"
+  +int commits_90d = 13
+}
+
+class WebArchived {
+  +int files = 35
+  +int commits_90d = 10
+  +float archive_size = "4.1 MB"
+  +bool is_deprecated = true
+}
+
+Engineering ..> Docs : "R4 撤销：docs 保持独立（D7）"
+DbWiki ..> Docs : "R1 修正：留在 docs 体系内"
+DbWiki ..> Reference : "3437 条行号引用 → 必须同仓迁出"
+Learning ..> Engineering : "解耦 3 步后依赖归零"
+Reference ..> Repo : 98_gitlinks_stripped
+WebArchived ..> Repo : "D3' 删除（含 tar.gz）"

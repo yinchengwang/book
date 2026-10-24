@@ -1,0 +1,152 @@
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant TL as team-lead
+    participant BA as 高见远(架构师)
+    participant FS as 文件系统
+    participant GIT as Git 索引
+    participant CM as CMake
+    participant CT as CTest
+
+    Note over BA,FTS: —— 阶段一A1：事实校正（替代简报的"清理幽灵路径"）——
+    U->>TL: 简报称121 个 "learning/ 幽灵路径 需 git rm --cached
+    TL->>BA: 产出重构设计
+    BA->>GIT: git ls-files | grep '^"' | wc -l
+    GIT-->>BA: 121
+    BA->>GIT: git config --get core.quotepath
+    GIT-->>BA: (空 → 默认 true)
+    BA->>GIT: git ls-files -z | python 解析
+    GIT-->>BA: 以字面引号开头条目 = 0<br/>非 ASCII 条目 = 121<br/>learning/ 真实条目 = 2158
+    BA->>FS: os.path.exists(每个非 ASCII 条目)
+    FS-->>BA: 缺失 = 0（全部存在）
+    BA-->>TL: 🔴 纠正：121 个是中文文件名，非幽灵<br/>若 git rm --cached 会丢失 121 篇笔记
+
+    Note over BA,CT: —— 阶段一 A2-A8：清创 ——
+    BA->>U: 请求拍板 D1-D7（9 个决策点）
+    U-->>BA: 确认 D1=撤销幽灵清理 / D3=删 web / D2=dataset 出 git
+    BA->>GIT: git config core.quotepath false
+    BA->>FS: rmdir and cd Claw 2026-10-21-23-48-17
+    BA->>FS: rm -rf engine/build
+    BA->>GIT: git rm -r web
+    BA->>FS: mkdir -p engine/test/db/storage/legacy
+    BA->>GIT: git mv engine/tests/*.c engine/test/db/storage/legacy/
+    BA->>GIT: git mv .claude .agents .opencode .superpowers .vscode → .ai/
+    BA->>GIT: git rm .playwright-mcp/* (仅留 .gitkeep)
+    BA->>Write: 重写 .gitignore（3.7KB → 1.6KB，去6 处重复）
+    BA->>CM: cmake -B build/engineering -S engineering -DBUILD_TESTING=ON
+    CM-->>BA: 配置成功
+    BA->>CM: cmake --build build/engineering --parallel 4
+    BA->>CT: ctest --test-dir build/engineering
+    CT-->>BA: 全部通过（含新增 18 个 legacy 测试）
+    BA->>GIT: git tag stage1-cleanup && git push
+    Note over BA: 失败兜底：git reset --hard HEAD~1
+
+    Note over BA,CT: —— 阶段二 A：git mv 重排（commit 1/3）——
+    BA->>GIT: git mv engineering engine
+    Note over BA: ★ §0.5 修正：learning/ 不再搬（改走阶段四 T07 切独立仓）
+    BA->>GIT: git mv docs/{db,agent,rag}-wiki docs/wiki/  （R1 修正：仍在 docs 体系内）
+    BA->>GIT: git mv docs/superpowers docs/process/（R2 修正：50 commit，仍活跃）
+    BA->>GIT: git mv docs/{architecture,index} docs/arch/（R4 修正）
+    BA->>GIT: docs/diagrams 不动（R3 修正）+ 19 个散 md → docs/storage/（R6 修正）
+    BA->>FS: mkdir -p vendor && git mv third_part vendor/third_part && git mv cmake vendor/cmake
+    BA->>GIT: git mv wechat-miniprogram apps
+    BA->>GIT: git mv .archive/* archive/ && git mv openspec/changes/archive/* archive/
+    BA->>GIT: git mv docs/diagrams engine/docs/diagrams        (R3, 89)
+    BA->>GIT: git mv docs/{architecture,index,db,sql-executor,...} engine/docs/  (R4, 68)
+    BA->>GIT: git mv docs/{db,agent,rag}-wiki notes/wiki/        (R1, 103)
+    BA->>GIT: git mv docs/superpowers archive/superpowers        (R2, 104)
+    BA->>GIT: git mv docs/{gap-analysis,multimodal-gap-analysis-2026} docs/analysis/  (R5, 26)
+    BA->>GIT: git commit -m "refactor: 顶层目录重排"
+    Note over BA: 失败兜底：git reset --hard HEAD~1 && git clean -fd
+
+    Note over BA,CT: —— 阶段二 B：构建路径修正（commit 2/3）——
+    BA->>Write: sed 根 CMakeLists.txt  engine/ → engine/
+    BA->>Write: sed engine/CMakeLists.txt  ../third_part → ../vendor/third_part
+    BA->>Write: sed practice/CMakeLists.txt  守卫路径 + googletest 路径
+    BA->>Write: sed engine/src/algo-prod/CMakeLists.txt:16  ../learning/include → ../practice/include
+    BA->>Write: sed engine/src/db/api/CMakeLists.txt:7  同上（跨轨耦合 #2）
+    BA->>Write: 删engine/src/db/storage/graph/CMakeLists.txt:19（uthash/src 路径不存在）
+    BA->>Write: 修 vendor/cmake/dual-track-guard.cmake:12去掉硬编码目录名
+    Note over BA,CM: —— 阶段二B：解耦 3 步（T07 的硬前置，§0.5.1）——
+    BA->>Bash: 实测 engineering 对 learning/include 的真实依赖
+    BA-->>BA: ds/trie.h 两边都有✅ / distributed_index.h+persistent_ds.h 已被 CMake 排除✅
+    BA-->>BA: 唯一真实依赖 = uthash（engine/third_part/uthash/src 已存在，diff 仅版本号）
+    BA->>Write: ① db/api/CMakeLists.txt:7 find_path HINTS → vendor/third_part/uthash/src
+    BA->>Write: ② algo-prod/CMakeLists.txt:16 删 ../learning/include（死 include）
+    BA->>Write: ③ storage/graph/:19 + test/db/graph/:25 修不存在的 uthash 路径
+    BA->>CM: cmake -B build/engineering -S engine && cmake --build
+    BA->>Bash: grep -rn 'learning/include' engine/ --include=CMakeLists.txt → 0 命中 ✅
+    BA->>Bash: grep UTHASH_INCLUDE_DIR build/engineering/CMakeCache.txt → vendor/third_part/uthash/src ✅
+    Note over BA: ★ 此后 engine/ 对 learning/ 依赖归零，T07 才被解锁
+    BA->>Write: 删 cmake/dual-track-guard.cmake（解耦后守卫无意义）
+    BA->>CM: cmake -B build/engineering -S engine -DBUILD_TESTING=ON
+    alt find_path 找不到 uthash
+        CM-->>BA: FATAL_ERROR → 说明跨轨 include 未修全
+    else 正常
+        CM-->>BA: 配置成功
+    end
+    BA->>CT: ctest --test-dir build/engineering
+    CT-->>BA: 通过
+    BA->>Write: sed .github/workflows/ci.yml（25 处）
+    BA->>Write: sed .github/workflows/asan.yml（1 处）
+    BA->>Write: sed 7 个脚本（verify_migration / coverage / sdk e2e / linkify.sh）
+    BA->>Bash: git config -f .gitmodules submodule.*.path（4 条非 reference）
+    BA->>Bash: git submodule sync --recursive && git submodule status
+    BA->>CM: cmake -B build/root -S . -DENGINEERING_BUILD=ON -DLEARNING_BUILD=ON
+    CM-->>BA: 双轨调度器正常（守卫仍生效、不误报）
+    BA->>GIT: git commit -m "fix(build): 路径引用随目录重排修正"
+    Note over BA: 兜底：CMake configure 失败 → 逐条补；或临时 ln -s engine engineering
+
+    Note over BA,CT: —— 阶段二 C：文档修正（commit 3/3）——
+    BA->>Write: 手改 README.md 项目结构树（148 行）
+    BA->>Write: 手改 AGENTS.md 构建命令 + vendor/third_part/googletest 路径
+    BA->>Write: 逐段核对 CLAUDE.md（391 行）
+    BA->>Bash: sed docs/{architecture,index,analysis}/** + engine/docs/**（约 60 文件）
+    Note over BA: 跳过 565 个历史快照文件（archive/ openspec/ *-plan.md *-report.md）
+    BA->>Write: 修 .ai/.vscode/{tasks,launch}.json 中的绝对路径 D:/code/book
+    BA->>Bash: git grep -nE '(engineering|learning)/' -- ':!archive' | grep -v 历史 | wc -l
+    BA-->>BA: 0 ✅
+    BA->>GIT: git commit -m "docs: 路径引用同步"
+    BA->>GIT: git tag stage2-complete && git push origin stage2-complete
+    BA-->>TL: 阶段二完成，请求进入阶段三（建议延后 ≥1 周）
+
+    Note over BA,U: —— 阶段三 C1-C8：切出 reference/ 独立资料仓（可延后）——
+    BA->>GIT: git tag stage2-complete（已存在）+ git submodule status > /tmp/sub-before.txt
+    BA->>U: 请求拍板 D8（是否立即执行）+ D9（新仓归属）
+    U-->>BA: 确认延后 1 周 / 新仓 = yinchengwang/book-reference
+    BA->>FS: cd reference && git init -b main && git remote add origin <new-repo>
+    BA->>GIT: git add catalog.yml README.md AUDIT.md fetch-manifest.txt（4 个元数据文件）
+    BA->>GIT: git rm --cached reference/{ai,benchmark,...}（95 条 gitlink）
+    BA->>GIT: git config -f .gitmodules 删除 95 个 stanza（path 从 reference/x/y → x/y）
+    BA->>Write: .gitignore 加 /reference/* + !/reference/{4 个元数据文件}
+    BA->>Bash: git submodule status | wc -l
+    BA-->>BA: 4 ✅（third_part×2 + engine/third_part×2）
+    BA->>Bash: diff <(git submodule status) /tmp/sub-before.txt
+    BA->>Bash: git clone book-reference && cd book-reference && git submodule update --init --recursive --depth 1
+    BA-->>BA: 95 个 submodule 全部拉取成功 ✅
+    BA->>Bash: du -sh .git
+    BA-->>BA: 26 GB → ~1.1 GB（回收 25 GB）✅
+    BA->>Bash: sed docs/wiki/** 3437 条行号引用 → 随 submodule 一起迁走
+    BA->>Bash: sed 主仓残留 69 行 reference/ 引用 → book-reference 远端 URL
+    BA->>Bash: scripts/check-wiki-refs.py 改 --repo-root 与 --submodules 映射
+    BA->>CT: ctest --test-dir build/engineering（确认主仓仍绿）
+    BA->>TL: 阶段三完成，报告 + 待明确事项 Q1-Q7
+
+    Note over BA,U: —— 阶段四 T07：切出 learning/（前置=T04 解耦已完成）——
+    BA->>BA: ⚠️ 硬前置检查：grep -rn 'learning/include' engine/ --include=CMakeLists.txt
+    BA-->>BA: 0 命中 ✅（否则不可开始）
+    BA->>GIT: git tag stage3-complete && git push origin stage3-complete
+    BA->>FS: cd learning && git init -b main && git remote add origin book-learning
+    BA->>GIT: git add -A && git commit（2158 文件，27 MB）
+    BA-->>BA: git -C learning ls-files | wc -l → 2158 ✅
+    BA->>GIT: git rm -r --cached learning + .gitignore 加 /learning/*
+    BA->>Bash: git clone book-learning && cd book-learning
+    BA->>CM: cmake -B build -S . -DBUILD_TESTING=ON && cmake --build build --parallel 4
+    CM-->>BA: 独立仓自构建成功 ✅（learning/ 自带完整 CMakeLists）
+    BA->>Write: 根 CMakeLists.txt 删 LEARNING_BUILD option 与 add_subdirectory(learning)
+    BA->>Write: 删 cmake/dual-track-guard.cmake（3 文件）—— 依赖归零后守卫无存在意义
+    BA->>Write: .github/workflows/ci.yml 删 build-learning-ubuntu + test-learning-ubuntu
+    BA->>Bash: git submodule status | wc -l → 4
+    BA->>Bash: git ls-files | wc -l → ~3572（原 5730，-38%）
+    BA-->>TL: 阶段四完成：主仓剩 engine/ + docs/ 双主干，
+    BA-->>TL: 顶层 21 项 → 11 项，CI 6 job → 4 job
