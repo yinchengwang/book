@@ -13,6 +13,7 @@
 *.dylib
 *.dll
 *.mod
+!go.mod
 *.smod
 *.lai
 *.la
@@ -29,9 +30,9 @@ build-engineering/
 build-learning/
 build2/
 cmake-build-*/
-engineering/build-cov/
-engineering/build-linux/
-engineering/coverage-gcov/
+engine/build-cov/
+engine/build-linux/
+engine/coverage-gcov/
 
 # ---- CMake / Ninja 输出 ----
 CMakeFiles/
@@ -58,7 +59,13 @@ data/
 test_data/
 test_db_init_*/
 rag_data/
-coverage/
+# 覆盖率构建产物（不匹配 engine/scripts/coverage/ 源码目录）
+/coverage/
+**/coverage-html/
+**/coverage-gcov/
+**/coverage.raw.info
+**/coverage.info
+**/coverage.info.filtered
 
 # ---- 测试数据库 ----
 *.db
@@ -76,12 +83,13 @@ test_*.bin
 test_*.wal
 
 # ---- 第三方依赖（本地构建 / FetchContent 拉取） ----
-third_part/libmicrohttpd/
-third_part/cjson/
-third_part/cmocka_install/
-engineering/third_part/cpp-httplib/
-engineering/third_part/nlohmann/
-engineering/third_part/openssl-stubs/
+vendor/third_part/libmicrohttpd/
+vendor/third_part/cjson/
+vendor/third_part/cmocka_install/*
+!vendor/third_part/cmocka_install/include/
+engine/third_part/cpp-httplib/
+engine/third_part/nlohmann/
+engine/third_part/openssl-stubs/
 
 # ---- Python 缓存 ----
 __pycache__/

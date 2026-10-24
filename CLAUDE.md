@@ -59,10 +59,10 @@ C/C++ 算法与数据结构练习项目。CMake 3.20+、C11、C++17。无运行�
 
 ## 项目布局
 
-仓库采用双轨收敛架构，`engineering/` 为工程轨、`learning/` 为学习轨。根目录仅保留共享基础设施与必要配置文件。
+仓库采用单工程轨架构：`engine/` 为唯一的工程轨道。学习轨（`learning/`）与参考轨（`reference/`）已切出为独立仓，根目录仅保留共享基础设施与必要配置文件。
 
 ```
-engineering/         # 工程轨道（默认构建）
+engine/         # 工程轨道（默认构建）
 ├── src/             # 库代码（db/algo/cpp/redis）
 ├── include/         # 公共头文件
 ├── test/            # gtest 测试
@@ -74,29 +74,13 @@ engineering/         # 工程轨道（默认构建）
 ├── Dockerfile / docker-compose.yml
 └── CMakeLists.txt
 
-learning/            # 学习轨道（按需构建）
-├── notes/           # 学习笔记
-├── code-solutions/  # LeetCode/面试题解
-├── ds-c/orig/       # 教学数据结构（C）
-├── algo-c/          # 教学算法
-├── interview/       # 面试资料
-├── exam/            # 考试认证
-├── blog/            # 博客草稿
-├── arkts/           # 鸿蒙 ArkTS
-├── articles/        # CSDN 长文
-├── playground/      # 演示代码
-├── tools/           # 学习专用工具
-├── misc/            # 杂项学习文件
-└── CMakeLists.txt
-
-docs/                # 双轨共享文档
-scripts/             # 双轨共享脚本
-cmake/               # 双轨守卫（dual-track-guard.cmake）
+docs/                # 架构文档（arch/ storage/ analysis/ process/ diagrams/）
+scripts/             # 共享脚本
 openspec/            # OpenSpec 变更管理
 archive/             # 归档
-third_part/          # 第三方依赖（cjson/googletest/libmicrohttpd）
-reference/           # 参考资料（12 个 git submodule，不构建）
-build/               # 编译产物（build/engineering、build/learning、build/root）
+vendor/third_part/  # 第三方依赖（googletest/uthash/sqlite3/cmocka）
+vendor/cmake/        # 共享 CMake 工具（ProjectUtils.cmake）
+build/               # 编译产物（build/engine）
 test-results/        # 测试/运行产物（logs/coverage/test dbs）
 ```
 
@@ -130,11 +114,11 @@ test-results/        # 测试/运行产物（logs/coverage/test dbs）
 
 | 你想放的文件类型 | 应该放哪里 |
 |-----------------|-----------|
-| 源码 `.c` `.h` | `engineering/src/<库>/` 或 `learning/code-solutions/` |
-| 测试代码 `.cpp` | `engineering/test/<库>/` |
-| 编译产物 `.o` | 已在 `build/engineering/` 或 `build/learning/` |
+| 源码 `.c` `.h` | `engine/src/<库>/` |
+| 测试代码 `.cpp` | `engine/test/<库>/` |
+| 编译产物 `.o` | 已在 `build/engine/` |
 | 报告/文档 `.md` | `docs/` 或 `archive/` |
-| 测试数据 | `engineering/test_data/` 或 `test-results/<项目>/` |
+| 测试数据 | `engine/test_data/` 或 `test-results/<项目>/` |
 | 临时调试文件 | 用完即删，或 `archive/` |
 
 **测试产物清理规则：**
@@ -146,7 +130,7 @@ test-results/        # 测试/运行产物（logs/coverage/test dbs）
 
 ## 根目录瘦身纪律
 
-1. **新业务内容**必须放在 `engineering/` 或 `learning/` 对应目录，不得创建新顶层业务目录
+1. **新业务内容**必须放在 `engine/` 对应目录，不得创建新顶层业务目录
 2. **编译产物**统一进入 `build/<项目或轨道>/`，测试产物统一进入 `test-results/<项目或轨道>/`，禁止产物污染源码目录
 3. **旧顶层兼容入口已在 Phase 2 中删除**，所有内容均通过 canonical 路径访问
 4. **旧顶层真实代码**在迁移到对应轨道后不再保留双副本
@@ -154,31 +138,24 @@ test-results/        # 测试/运行产物（logs/coverage/test dbs）
 ## 外部源码（Git 子模块）
 
 ```
-reference/open-source/  # 知名开源项目的源码镜像（托管在 gitee），用于学习参考
-├── faiss/          # Facebook 向量检索库
-├── redis/          # Redis
-├── postgres/       # PostgreSQL
-├── pgvector/       # PG 向量扩展
-├── sqlite3/        # SQLite
-├── elasticsearch/  # Elasticsearch
-├── chroma/         # Chroma 向量数据库
-├── milvus/         # Milvus 向量数据库
-├── mysql/          # MySQL
-├── neo4j/          # Neo4j 图数据库
-├── openGauss/      # openGauss 数据库
-└── ann-benchmarks/ # 近似最近邻搜索基准测试
-
-third_part/googletest/  # GoogleTest（vendored，CMake 自动包含，无需系统安装）
+vendor/third_part/googletest/  # GoogleTest（vendored，CMake 自动包含，无需系统安装）
+vendor/third_part/uthash/      # uthash 哈希表头文件（engine/third_part/uthash 为子模块）
+vendor/third_part/sqlite3/     # SQLite amalgamation
+vendor/third_part/cmocka-1.1.7/# cmocka（仅测试用）
 ```
+
+> 原 `reference/open-source/` 下的开源源码镜像（faiss/redis/postgres/pgvector/
+> sqlite3/elasticsearch/chroma/milvus/mysql/neo4j/openGauss/ann-benchmarks）
+> 已随参考轨整体迁出至独立仓 `yinchengwang/reference`。
 
 ## CMake 构建架构
 
-根 `CMakeLists.txt` 是双轨调度器，按 `ENGINEERING_BUILD` / `LEARNING_BUILD` 开关调度。
+根 `CMakeLists.txt` 是工程调度器，按 `ENGINEERING_BUILD` 开关调度；学习轨已切出独立仓，不再有 `LEARNING_BUILD`。
 
-- **`cmake/ProjectUtils.cmake`**（位于 `engineering/cmake/`）提供两个辅助函数：
+- **`cmake/ProjectUtils.cmake`**（位于 `engine/cmake/`）提供两个辅助函数：
   - `add_project_test(name VAR)` — 通配 `CMAKE_CURRENT_SOURCE_DIR` 下的 `*.c`/`*.cpp`，创建 gtest 可执行文件，自动发现测试用例
   - `add_project_library(name VAR)` — 同上通配模式，创建静态库
-- `project_includes` 是 INTERFACE 库，携带 `engineering/include/` 目录作为头文件搜索路径
+- `project_includes` 是 INTERFACE 库，携带 `engine/include/` 目录作为头文件搜索路径
 - **CMake 输出目录铁律**：
   - `RUNTIME_OUTPUT_DIRECTORY` 必须使用 `${CMAKE_BINARY_DIR}`，**禁止使用** `${CMAKE_CURRENT_SOURCE_DIR}`（后者会把二进制输出到源码目录）
   - `add_project_test()` 已内置此约束，新增测试应优先使用此函数
@@ -298,7 +275,7 @@ kv_close(db);
 | Graph | graph_engine | 图存储，顶点/边操作 |
 | Yang | yang_engine | 层次数据，树遍历 |
 
-详见 `engineering/include/db/mm_storage.h` 和 `engineering/include/db/storage_engine.h`。
+详见 `engine/include/db/mm_storage.h` 和 `engine/include/db/storage_engine.h`。
 
 ### GUC 配置系统
 
@@ -307,7 +284,7 @@ kv_close(db);
 - **核心参数**：`shared_buffers`, `work_mem`, `max_connections`, `wal_level` 等
 - **配置文件**：`postgresql.conf` 格式支持
 - **单位转换**：支持 `kB`, `MB`, `GB`, `s`, `min`, `ms` 等单位后缀
-- **来源**：`engineering/include/db/guc.h`, `engineering/src/db/core/guc.c`
+- **来源**：`engine/include/db/guc.h`, `engine/src/db/core/guc.c`
 
 ### initdb 工具
 
@@ -322,7 +299,7 @@ kv_close(db);
 - 初始化系统表（`pg_database`, `pg_class` 等）
 - 生成 `postgresql.conf` 和 `pg_hba.conf`
 - 初始化 WAL 日志
-- 来源：`engineering/include/db/initdb.h`, `engineering/src/db/core/initdb.c`
+- 来源：`engine/include/db/initdb.h`, `engine/src/db/core/initdb.c`
 
 ### pg_ctl 工具
 
@@ -335,7 +312,7 @@ kv_close(db);
 ./pg_ctl restart -D /path/to/data_dir # 重启
 ```
 
-- 来源：`engineering/include/db/pg_ctl.h`, `engineering/src/db/core/pg_ctl.c`
+- 来源：`engine/include/db/pg_ctl.h`, `engine/src/db/core/pg_ctl.c`
 
 ### 数据库服务器
 
@@ -343,7 +320,7 @@ kv_close(db);
 
 - **端口**：默认 5432
 - **协议**：支持 StartupMessage、Simple Query 协议
-- **来源**：`engineering/include/db/db_server.h`, `engineering/src/db/core/db_server.c`
+- **来源**：`engine/include/db/db_server.h`, `engine/src/db/core/db_server.c`
 
 ### postgresql.conf 示例
 
@@ -371,14 +348,14 @@ log_level = 'info'
 
 ## 添加代码的约定
 
-- **新数据结构/算法** → 在 `engineering/src/<库>/` 下添加 `.c`/`.h`，在 `engineering/include/<库>/` 下添加公共头文件
-- **新测试** → 在 `engineering/test/<库>/` 或 `learning/code-solutions/c/test/` 下添加 `.cpp`
-- **新独立项目** → 在 `engineering/` 下创建直属目录及自带 `CMakeLists.txt`
-- **新库** → 创建 `engineering/src/<库名>/CMakeLists.txt`（推荐用 `add_project_library()`），在 `engineering/include/<库名>/` 放头文件
+- **新数据结构/算法** → 在 `engine/src/<库>/` 下添加 `.c`/`.h`，在 `engine/include/<库>/` 下添加公共头文件
+- **新测试** → 在 `engine/test/<库>/` 下添加 `.cpp`（学习轨题解测试已随独立仓迁出）
+- **新独立项目** → 在 `engine/` 下创建直属目录及自带 `CMakeLists.txt`
+- **新库** → 创建 `engine/src/<库名>/CMakeLists.txt`（推荐用 `add_project_library()`），在 `engine/include/<库名>/` 放头文件
 
 ## 测试约定
 
-- 测试框架为 GoogleTest（vendored 在 `third_part/googletest/`）
+- 测试框架为 GoogleTest（vendored 在 `vendor/third_part/googletest/`）
 - 测试文件统一用 C++（`.cpp`），即使测试的是 C 代码 —— 通过 `extern "C"` 引入 C 头文件
 - 单独运行某个测试：`ctest --test-dir build/engineering -R <名称> --output-on-failure`
 - 测试二进制和产物统一输出到 `build/<项目或轨道>/` 和 `test-results/<项目或轨道>/`，**不再输出到源码目录**

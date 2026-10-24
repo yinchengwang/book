@@ -34,19 +34,19 @@
 ## 3. 允许保留直接分配的位置
 
 ### 3.1 核心分配器（memctx.c）
-- **位置**：`engineering/src/db/sql/memctx.c`
+- **位置**：`engine/src/db/sql/memctx.c`
 - **数量**：~50 处
 - **原因**：AllocSet 底层实现，负责所有上下文内存分配
 - **保留方式**：直接使用 malloc/free，不经过上下文
 
 ### 3.2 第三方库适配（sqlite3_*）
-- **位置**：`engineering/src/db/storage/sqlite3/`、`engineering/src/db/index/vector_index/faiss_hnsw/`
+- **位置**：`engine/src/db/storage/sqlite3/`、`engine/src/db/index/vector_index/faiss_hnsw/`
 - **数量**：~812 处
 - **原因**：sqlite3 和 faiss 库要求调用方管理内存
 - **保留方式**：在适配层封装，不暴露给业务代码
 
 ### 3.3 业务模块基础设施
-- **位置**：`engineering/src/db/core/`（配置解析、日志）、`engineering/src/db/sql/nodes/`（节点工厂）
+- **位置**：`engine/src/db/core/`（配置解析、日志）、`engine/src/db/sql/nodes/`（节点工厂）
 - **数量**：~4185 处
 - **原因**：这些模块属于基础设施层，在上下文系统建立之前实现
 - **后续计划**：可逐步迁移到 DatabaseContext 或 ConnectionContext
@@ -55,7 +55,7 @@
 
 ### 4.1 全量扫描命令
 ```bash
-rg "\b(malloc|calloc|realloc|free|strdup)\s*\(" engineering/src/ \
+rg "\b(malloc|calloc|realloc|free|strdup)\s*\(" engine/src/ \
   --glob '!memctx.c' --glob '!*test*' --glob '!*mock*' \
   --type c --type cpp | wc -l
 ```
@@ -63,13 +63,13 @@ rg "\b(malloc|calloc|realloc|free|strdup)\s*\(" engineering/src/ \
 ### 4.2 分类统计
 ```bash
 # memctx.c 底层实现
-rg -c "\b(malloc|calloc|realloc|free|strdup)\s*\(" engineering/src/db/sql/memctx.c
+rg -c "\b(malloc|calloc|realloc|free|strdup)\s*\(" engine/src/db/sql/memctx.c
 
 # sqlite3 适配
-rg -c "\b(malloc|calloc|realloc|free|strdup)\s*\(" engineering/src/db/storage/sqlite3/
+rg -c "\b(malloc|calloc|realloc|free|strdup)\s*\(" engine/src/db/storage/sqlite3/
 
 # faiss 适配
-rg -c "\b(malloc|calloc|realloc|free|strdup)\s*\(" engineering/src/db/index/vector_index/faiss_hnsw/
+rg -c "\b(malloc|calloc|realloc|free|strdup)\s*\(" engine/src/db/index/vector_index/faiss_hnsw/
 ```
 
 ### 4.3 回归测试

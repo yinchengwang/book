@@ -200,9 +200,9 @@
 ## 7. 附录
 
 ### 7.1 测试文件位置
-- 阶梯基准测试：`engineering/test/sdk/integration/staircase_benchmark.cpp`
-- 压力测试：`engineering/test/db/integration/vdb_stress_test.cpp`
-- Recall 辅助：`engineering/test/sdk/integration/recall_helper.h`
+- 阶梯基准测试：`engine/test/sdk/integration/staircase_benchmark.cpp`
+- 压力测试：`engine/test/db/integration/vdb_stress_test.cpp`
+- Recall 辅助：`engine/test/sdk/integration/recall_helper.h`
 
 ### 7.2 构建命令
 ```bash

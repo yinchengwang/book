@@ -287,7 +287,7 @@ MMDB_ENABLE_DISTRIBUTED_QUERY
 ### 8.3 代码组织建议
 
 ```text
-engineering/
+engine/
   src/
     core/
     model/

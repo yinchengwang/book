@@ -71,10 +71,10 @@
 **新增文件**：
 | 文件 | 说明 |
 |------|------|
-| `engineering/include/db/txn.h` | 事务管理器接口 |
-| `engineering/src/db/core/txn.c` | MVCC 实现（SSI） |
-| `engineering/src/db/core/mvcc.c` | 版本链管理 |
-| `engineering/src/db/core/undo.c` | Undo Log 管理 |
+| `engine/include/db/txn.h` | 事务管理器接口 |
+| `engine/src/db/core/txn.c` | MVCC 实现（SSI） |
+| `engine/src/db/core/mvcc.c` | 版本链管理 |
+| `engine/src/db/core/undo.c` | Undo Log 管理 |
 
 **验收标准**：
 - [ ] 100 个并发事务无数据丢失
@@ -119,11 +119,11 @@
 **新增文件**：
 | 文件 | 说明 |
 |------|------|
-| `engineering/include/db/raft.h` | Raft 接口 |
-| `engineering/src/db/core/raft/raft.c` | Raft 核心算法 |
-| `engineering/src/db/core/raft/rpc.c` | Raft RPC |
-| `engineering/src/db/core/raft/snapshot.c` | 快照管理 |
-| `engineering/src/db/core/raft/membership.c` | 成员变更 |
+| `engine/include/db/raft.h` | Raft 接口 |
+| `engine/src/db/core/raft/raft.c` | Raft 核心算法 |
+| `engine/src/db/core/raft/rpc.c` | Raft RPC |
+| `engine/src/db/core/raft/snapshot.c` | 快照管理 |
+| `engine/src/db/core/raft/membership.c` | 成员变更 |
 
 **验收标准**：
 - [ ] 3 节点集群，1 节点故障后自动恢复
@@ -164,9 +164,9 @@
 **新增文件**：
 | 文件 | 说明 |
 |------|------|
-| `engineering/include/db/vector/bq.h` | BQ 接口 |
-| `engineering/src/db/vector/bq.c` | 二值化量化实现 |
-| `engineering/test/db/vector/bq_test.cpp` | BQ 测试 |
+| `engine/include/db/vector/bq.h` | BQ 接口 |
+| `engine/src/db/vector/bq.c` | 二值化量化实现 |
+| `engine/test/db/vector/bq_test.cpp` | BQ 测试 |
 
 **验收标准**：
 - [ ] 内存压缩率：~32x（float32 → bit）
@@ -207,10 +207,10 @@
 **新增文件**：
 | 文件 | 说明 |
 |------|------|
-| `engineering/include/db/shard.h` | 分片接口 |
-| `engineering/src/db/core/shard/router.c` | 路由层 |
-| `engineering/src/db/core/shard/placement.c` | 分片调度 |
-| `engineering/src/db/core/shard/migration.c` | 迁移协议 |
+| `engine/include/db/shard.h` | 分片接口 |
+| `engine/src/db/core/shard/router.c` | 路由层 |
+| `engine/src/db/core/shard/placement.c` | 分片调度 |
+| `engine/src/db/core/shard/migration.c` | 迁移协议 |
 
 **验收标准**：
 - [ ] 3 分片集群，均匀分布
@@ -257,12 +257,12 @@
 **新增文件**：
 | 文件 | 说明 |
 |------|------|
-| `engineering/include/db/parser/cypher.h` | Cypher 语法接口 |
-| `engineering/src/db/parser/cypher.l` | Flex 词法 |
-| `engineering/src/db/parser/cypher.y` | Bison 语法 |
-| `engineering/src/db/parser/cypher_semantic.c` | 语义分析 |
-| `engineering/src/db/executor/cypher_exec.c` | Cypher 执行器 |
-| `engineering/test/db/graph/cypher_test.cpp` | Cypher 测试 |
+| `engine/include/db/parser/cypher.h` | Cypher 语法接口 |
+| `engine/src/db/parser/cypher.l` | Flex 词法 |
+| `engine/src/db/parser/cypher.y` | Bison 语法 |
+| `engine/src/db/parser/cypher_semantic.c` | 语义分析 |
+| `engine/src/db/executor/cypher_exec.c` | Cypher 执行器 |
+| `engine/test/db/graph/cypher_test.cpp` | Cypher 测试 |
 
 **验收标准**：
 - [ ] 支持 MATCH/WHERE/RETURN/WITH/OPTIONAL MATCH/UNION
@@ -298,10 +298,10 @@ CTE 支持：
 **新增文件**：
 | 文件 | 说明 |
 |------|------|
-| `engineering/include/db/sql/window.h` | 窗口函数接口 |
-| `engineering/src/db/sql/nodeWindow.c` | 窗口算子 |
-| `engineering/src/db/sql/cte.c` | CTE 处理 |
-| `engineering/test/db/sql/window_test.cpp` | 窗口函数测试 |
+| `engine/include/db/sql/window.h` | 窗口函数接口 |
+| `engine/src/db/sql/nodeWindow.c` | 窗口算子 |
+| `engine/src/db/sql/cte.c` | CTE 处理 |
+| `engine/test/db/sql/window_test.cpp` | 窗口函数测试 |
 
 **验收标准**：
 - [ ] 支持 OVER (PARTITION BY / ORDER BY)
@@ -351,11 +351,11 @@ CTE 支持：
 **新增文件**：
 | 文件 | 说明 |
 |------|------|
-| `engineering/include/db/graph/algo.h` | 算法接口 |
-| `engineering/src/db/graph/algo/traversal.c` | 最短路径 |
-| `engineering/src/db/graph/algo/centrality.c` | 中心性算法 |
-| `engineering/src/db/graph/algo/community.c` | 社区发现 |
-| `engineering/test/db/graph/algo_test.cpp` | 算法测试 |
+| `engine/include/db/graph/algo.h` | 算法接口 |
+| `engine/src/db/graph/algo/traversal.c` | 最短路径 |
+| `engine/src/db/graph/algo/centrality.c` | 中心性算法 |
+| `engine/src/db/graph/algo/community.c` | 社区发现 |
+| `engine/test/db/graph/algo_test.cpp` | 算法测试 |
 
 **验收标准**：
 - [ ] Dijkstra 最短路径正确

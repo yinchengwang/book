@@ -745,7 +745,7 @@ int32_t fusion_weighted_sum(FusionContext *ctx,
 
 ### 5.1 C SDK 头文件
 
-`engineering/include/db/vdb_query.h`
+`engine/include/db/vdb_query.h`
 
 ```c
 /**

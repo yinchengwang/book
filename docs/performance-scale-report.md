@@ -37,7 +37,7 @@
 
 ## 3. 阶梯结果
 
-> 全部数据点由 `engineering/test/sdk/integration/staircase_benchmark.cpp` 的 5 个 `TEST(Staircase, ...)` 用例产出。
+> 全部数据点由 `engine/test/sdk/integration/staircase_benchmark.cpp` 的 5 个 `TEST(Staircase, ...)` 用例产出。
 >
 > **10M 测试因 ~5GB 内存 + ~10min 时间，CI 环境默认通过 `GTEST_SKIP()` 跳过；本地有充足资源时取消 skip 即可跑出真实数据。**
 
@@ -161,10 +161,10 @@ _待填入实际日志_
 
 | 文件 | 用途 |
 |------|------|
-| `engineering/test/sdk/integration/staircase_benchmark.cpp` | 阶梯基准测试源码 |
-| `engineering/test/sdk/integration/recall_helper.h` | `brute_force_top10` 辅助函数 |
-| `engineering/test/sdk/integration/CMakeLists.txt` | 测试构建配置 |
-| `engineering/test/sdk/integration/cross_lang_consistency_test.cpp` | 1K/10K/100K/1M 原始基准测试（被 staircase_benchmark 替代场景） |
+| `engine/test/sdk/integration/staircase_benchmark.cpp` | 阶梯基准测试源码 |
+| `engine/test/sdk/integration/recall_helper.h` | `brute_force_top10` 辅助函数 |
+| `engine/test/sdk/integration/CMakeLists.txt` | 测试构建配置 |
+| `engine/test/sdk/integration/cross_lang_consistency_test.cpp` | 1K/10K/100K/1M 原始基准测试（被 staircase_benchmark 替代场景） |
 | `docs/performance-scale-report.md` | 本报告 |
 
 ---

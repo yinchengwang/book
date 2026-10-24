@@ -11,7 +11,7 @@ book 项目从 2026-07-08 起正式采用双轨架构：
 
 **双轨结构**：
 - `learning/` —— 学习轨道（ds/、leetcode/、interview/、algo-c/ 等教学代码）。独立可构建：`cmake -B build-learning -S learning`。
-- `engineering/` —— 工程轨道（PG 风格存储、MiniVecDB、apps、cpp/trie 等生产代码）。默认构建。
+- `engine/` —— 工程轨道（PG 风格存储、MiniVecDB、apps、cpp/trie 等生产代码）。默认构建。
 - `reference/` —— 第三方参考源码（open-source/ 子模块）。
 
 **双轨铁律（CLAUDE.md 强制）**：
@@ -28,8 +28,8 @@ book 项目从 2026-07-08 起正式采用双轨架构：
 **Git 验证命令**（最后一道防线）：
 ```
 git grep -E "algo-prod/|db/|rag/|vector_index/|faiss" learning/  # 学习层无工程层路径
-git grep -l '"ds/\|"leetcode/' engineering/test/  # 工程层无学习层头引用
+git grep -l '"ds/\|"leetcode/' engine/test/  # 工程层无学习层头引用
 ```
 
 **Why**: S1 设计目标就是"learning/engineering 双轨独立可编译"，但实施阶段留有 TODO（S5 续做 + S6 修复链接）。这是双轨纪律的可量化指标，违反者编译失败。
-**How to apply**: 任何双轨修改都需跑 `cmake --build engineering/build` 与 `cmake --build build-learning` 双验证；任何 cmake 链接错位先查 dual-track-guard.cmake。
+**How to apply**: 任何双轨修改都需跑 `cmake --build engine/build` 与 `cmake --build build-learning` 双验证；任何 cmake 链接错位先查 dual-track-guard.cmake。

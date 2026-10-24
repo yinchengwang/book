@@ -33,8 +33,8 @@ typedef struct index_config {
 - 查询时：图搜索 → 获取 id → 从 Heap 查向量 → 重排序
 
 ### 4. 文档体系
-- `docs/index/theory/`：索引原理（理论为主）
-- `docs/index/implementation/`：索引实现（代码为主）
+- `docs/arch/theory/`：索引原理（理论为主）
+- `docs/arch/implementation/`：索引实现（代码为主）
 
 ## 研究计划
 
@@ -46,4 +46,4 @@ typedef struct index_config {
 | D | 倒排/全文索引 | 4种 | 待研究 |
 | E | 特殊索引 | BRIN/Hilbert/MVCC | 待研究 |
 
-设计文档：`docs/openspec/specs/2026-07-14-multimodal-index-redesign.md`
+设计文档：`openspec/specs/2026-07-14-multimodal-index-redesign.md`

@@ -1,6 +1,6 @@
 # D-code-book — C/C++ 算法工程实践
 
-> 一个双轨制项目：**工程轨**产出生产级作品，**学习轨**记录成长轨迹。
+> 一个 C/C++ 工程实践项目：**`engine/`** 产出生产级作品。学习轨与参考轨已切出为独立仓。
 
 [![CI](https://img.shields.io/badge/CI-passing-brightgreen)](.github/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -63,7 +63,7 @@
 
 ```
 D-code-book/
-├── engineering/              # 🎯 工程轨（生产级代码）
+├── engine/              # 🎯 工程轨（生产级代码）
 │   ├── src/
 │   │   ├── db/             # 数据库存储引擎
 │   │   ├── index/         # 20+ ANN 向量索引
@@ -74,15 +74,14 @@ D-code-book/
 │   ├── rag/               # RAG 系统（含 Python SDK + Web UI）
 │   └── apps/              # 独立应用
 │
-├── learning/                # 📚 学习轨（成长日志）
-│   ├── notes/             # Obsidian 笔记
-│   ├── code-solutions/    # LeetCode 题解
-│   ├── interview/        # 面试八股文
-│   └── playground/       # 演示代码
+├── vendor/                # 📦 第三方依赖与共享 CMake 工具
+│   ├── third_part/        # googletest / uthash / sqlite3 / cmocka
+│   └── cmake/             # 共享 CMake 工具
 │
-├── reference/              # 📖 参考轨（源码镜像）
-├── docs/                  # 架构文档
-└── openspec/              # 变更管理
+├── docs/                  # 架构文档（arch/ storage/ analysis/ process/ diagrams/）
+├── openspec/              # 变更管理
+├── archive/               # 归档
+└── scripts/               # 共享脚本
 ```
 
 ---
@@ -92,16 +91,16 @@ D-code-book/
 ### 构建工程轨
 
 ```bash
-cmake -B build -S engineering -DBUILD_TESTING=ON
-cmake --build build --parallel 4
-ctest --test-dir build --output-on-failure
+cmake -B build/engine -S engine -DBUILD_TESTING=ON
+cmake --build build/engine --parallel 4
+ctest --test-dir build/engine --output-on-failure
 ```
 
 ### 启动 RAG 服务
 
 ```bash
 # 终端 1: 启动后端（端口 8080）
-cd engineering/rag
+cd engine/rag
 ./build/rag_server
 
 # 终端 2: 启动前端（端口 5173）
@@ -135,11 +134,11 @@ npm install && npm run dev
 
 | 文档 | 内容 |
 |------|------|
-| [engineering/rag/README.md](engineering/rag/README.md) | RAG 系统架构与实现 |
-| [engineering/rag/docs/](engineering/rag/docs/) | RAG 详细设计文档（10 篇） |
+| [engine/rag/README.md](engine/rag/README.md) | RAG 系统架构与实现 |
+| [engine/rag/docs/](engine/rag/docs/) | RAG 详细设计文档（10 篇） |
 | [web/README.md](web/README.md) | Web 界面技术栈与组件 |
 | [docs/](docs/) | 存储引擎、SQL 执行器架构文档 |
-| [docs/index/](docs/index/) | 向量索引理论实现 |
+| [docs/arch/](docs/arch/) | 向量索引理论实现 |
 
 ---
 

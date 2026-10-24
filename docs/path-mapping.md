@@ -1,0 +1,203 @@
+# 阶段二重排 —— 路径引用核对表
+
+> 本表记录阶段二（顶层重排 + 路径修正）中**所有被修改的路径引用**，供复核与后续迁移参考。
+>
+> - 重排范围：`engineering/` → `engine/`、`third_part/` → `vendor/third_part/`、`cmake/` → `vendor/cmake/`、
+>   `docs/` 分区归并、`learning/` 与 `reference/` 移出为独立仓。
+> - 判定原则：**只改「生效技术文档」与构建脚本**；历史快照（`openspec/`、`*-plan.md`、`*-spec.md`、
+>   `task-N-report.md`）保持原样，其中的旧路径是当时的事实记录，不是失效引用。
+> - 未列入本表的路径引用均已核验为正确（改名不改变层级深度，或指向仍然存在的位置）。
+>
+> **回归验证结论**（基线 = `pre-cleanup-baseline` 的独立 worktree，同机、同 submodules）：
+>
+> | 项 | 基线 | 重排后 |
+> |---|---|---|
+> | configure（`-S engine` / `-S .`） | exit 0 | exit 0 |
+> | build exit | 1 | 1 |
+> | build 失败目标数 | 10 | 10（逐条 diff 完全一致） |
+> | ctest 发现 / 执行 | 793 / 775 | 793 / 775 |
+> | ctest 失败（单线程确定性复跑） | 36 | **36（失败项逐条相同）** |
+>
+> 即：重排**未引入任何功能回归**，全部失败均为既有产品缺陷或既有构建债。
+
+---
+
+## 一、目录级映射总表
+
+| 旧路径 | 新路径 | 说明 |
+|--------|--------|------|
+| `engineering/` | `engine/` | 工程轨顶层目录改名 |
+| `engineering/third_part/` | `engine/third_part/` | **工程内部**第三方依赖（cjson / croaring / sqlite3 / googletest / uthash） |
+| `third_part/` | `vendor/third_part/` | **仓库根级**第三方依赖（googletest / cmocka / sqlite3 / croaring） |
+| `cmake/` | `vendor/cmake/` | 仓库根级共享 CMake 工具（`ProjectUtils.cmake`） |
+| `engineering/cmake/` | `engine/cmake/` | 工程轨道 CMake 工具（`MultimodalConfig.cmake` / `ProjectUtils.cmake` / `*.cmake.in`） |
+| `wechat-miniprogram/` | `apps/` | 独立应用归集 |
+| `archive/` + `openspec/changes/archive/` | `archive/` | 归档归并 |
+| `docs/superpowers/` | `docs/process/` | 流程记录 |
+| `docs/architecture/` + `docs/index/` | `docs/arch/` | 架构总览与组件设计 |
+| `docs/gap-analysis/` + `docs/multimodal-gap-analysis-2026/` | `docs/analysis/` | 差距分析 |
+| 顶层散落 `docs/*.md` | `docs/storage/`（存储类）/ `docs/`（跨轨报告） | 按归属分区 |
+| `docs/openspec/specs/` | `openspec/specs/` | OpenSpec 规格回迁 |
+| `docs/{api,db,deployment,learning,modular-rag,rag,sql-executor,usage}/` | `docs/arch/<子目录>/`（+ `docs/analysis/obsidian-setup.md`） | 小目录归并 |
+| `learning/` | 独立仓 `yinchengwang/learning` | 已移出本仓 |
+| `reference/` + `docs/{db,rag,agent}-wiki/` | 独立仓 `yinchengwang/reference` | 已移出本仓 |
+
+---
+
+## 二、构建文件（CMake）路径引用修正
+
+### 2.1 重排引入的真实 bug —— 上溯级数错误
+
+| 文件:行 | 原值 | 新值 | 改动理由 |
+|---------|------|------|----------|
+| `engine/src/sdk/CMakeLists.txt:11` | `${CMAKE_CURRENT_LIST_DIR}/../../../third_part/sqlite3` | `${CMAKE_CURRENT_LIST_DIR}/../../third_part/sqlite3` | **上溯三级**从 `engine/src/sdk` 到达**仓库根**，但重排后根下已无 `third_part/`（已迁至 `vendor/third_part/`），sqlite3 实际位于 `engine/third_part/sqlite3/`（上溯**两级**）。原值导致 configure 直接 `FATAL_ERROR`，CI Configure 步骤失败 |
+| `engine/src/sdk/CMakeLists.txt:10,23` | `vendor/third_part/sqlite3/` | `engine/third_part/sqlite3/` | 注释与 `FATAL_ERROR` 消息中的目录名同步修正 |
+| `engine/src/sdk/CMakeLists.txt:107` | `${CMAKE_CURRENT_SOURCE_DIR}/../../..` | `${ENGINEERING_SOURCE_DIR}/third_part/croaring` | 原为「上溯三级到仓库根 + 拼 `third_part/croaring`」，重排后根下已无 `third_part/`；改为指向工程内部副本，内容与 `vendor/third_part/croaring/roaring_bitmap.h` 逐字节相同 |
+| `engine/src/sdk/vectors/vectors.c:20` | `#include "vendor/third_part/croaring/roaring_bitmap.h"` | `#include "roaring_bitmap.h"` | 配合上一条改用工程内部副本的头文件搜索路径，去掉对仓库根目录布局的依赖 |
+
+### 2.2 相对路径上溯级数的实测核对
+
+> **核对方法**：在 `pre-cleanup-baseline` 的独立 worktree（`C:/code/book-baseline`）中，
+> 用 `cmake --build` 生成的 `build.ninja` 提取真实的 `-I` 参数，与重排后的实际路径逐条比对。
+> 这一步纠正了「三级上溯 = `engine/test/`」这一**误判**（见下）。
+
+`engine/test/sdk/integration` 的上溯级数实测：
+
+| 上溯级数 | 解析结果 |
+|---------|---------|
+| up-1 | `engine/test/sdk` |
+| up-2 | `engine/test` |
+| up-3 | `engine` ←（**不是** `engine/test`） |
+| up-4 | `<仓库根>` |
+
+因此基线（`engineering/test/sdk/integration`）中：
+
+- `../../../include` → `engineering/include` —— **存在**，原本正确；
+- `../../../../third_part/croaring` → `<根>/third_part/croaring` —— **存在**，原本正确，
+  但重排后根级 `third_part/` 已迁至 `vendor/third_part/`，故失效；
+- `../../../../third_part/sqlite3` → `<根>/third_part/sqlite3` —— 同上。
+
+| 文件:行 | 原值 | 新值 | 改动理由 |
+|---------|------|------|----------|
+| `engine/test/sdk/integration/CMakeLists.txt:8,19,30,52,63,80,91,103,114,125` | `${CMAKE_CURRENT_SOURCE_DIR}/../../../include` | `${ENGINEERING_SOURCE_DIR}/include` | 上溯三级实际到达 `engine/`（**不是** `engine/test/`），原值即正确；重命名为 `ENGINEERING_SOURCE_DIR` 形式是为了与本仓其它 CMakeLists 统一，并让 `-S engine` / `-S .` 两种入口解析一致（`ENGINEERING_SOURCE_DIR` 恒为 `engine/`） |
+| `engine/test/sdk/integration/CMakeLists.txt:41` | `${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_part/croaring` | `${ENGINEERING_SOURCE_DIR}/third_part/croaring` | 上溯四级到达**仓库根**，根级 `third_part/croaring` 已迁至 `vendor/third_part/croaring`。改用 `engine/third_part/croaring`（内容与 `vendor/third_part/croaring/roaring_bitmap.h` 逐字节相同），使 `engine/` 自洽 |
+| `engine/test/sdk/integration/CMakeLists.txt:92` | `${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_part/sqlite3` | `${ENGINEERING_SOURCE_DIR}/third_part/sqlite3` | 同上。`backup_test.cpp` 需要 `sqlite3.h`，`engine/third_part/sqlite3/sqlite3.h` 存在 |
+
+### 2.3 `CMAKE_SOURCE_DIR` 语义漂移
+
+`CMAKE_SOURCE_DIR` 指向 **CMake 配置的最顶层**，随配置入口而变（`-S engine` 时是 `engine/`，`-S .` 时是仓库根）。
+重排后根级 `third_part/`、`cmake/` 均已迁走，基于 `CMAKE_SOURCE_DIR` 的引用全部失效或不可靠。
+
+| 文件 | 原值 | 新值 | 改动理由 |
+|------|------|------|----------|
+| `engine/src/db/api/CMakeLists.txt:18` | `${ENGINEERING_SOURCE_DIR}/../third_part` | `${ENGINEERING_SOURCE_DIR}/../vendor/third_part` | 原指仓库根的 `third_part/`（含 croaring / sqlite3），重排后该目录已迁至 `vendor/third_part/` |
+| `engine/src/db/api/CMakeLists.txt:6-8` | 注释提及 `vendor/third_part/uthash/src` | 注释改为 `third_part/uthash/src` | 注释与实际 `HINTS` 值不一致（实际是 `${ENGINEERING_SOURCE_DIR}/third_part/uthash/src`），仅修正注释 |
+| `engine/test/db/{cf,graph,index,index/vector_index/*,storage,storage/doc,yang}/CMakeLists.txt`（17 处） | `${CMAKE_SOURCE_DIR}/third_part/googletest/...` | `${ENGINEERING_SOURCE_DIR}/../vendor/third_part/googletest/...` | 根级 googletest 已迁至 `vendor/third_part/googletest/`；改用 `ENGINEERING_SOURCE_DIR` 保证 `-S engine` 与 `-S .` 两种入口都指向同一份 googletest |
+| `engine/test/db/yang/CMakeLists.txt`（12 处） | `${CMAKE_SOURCE_DIR}/third_part/cmocka-1.1.7/...` | `${ENGINEERING_SOURCE_DIR}/../vendor/third_part/cmocka-1.1.7/...` | 同上；cmocka 已迁至 `vendor/third_part/cmocka-1.1.7/` |
+| `engine/test/db/executor/CMakeLists.txt`（7 个 target） | `${CMAKE_SOURCE_DIR}/include` + `${CMAKE_SOURCE_DIR}/engineering/include` | `${ENGINEERING_SOURCE_DIR}/include` | 两个旧路径互斥：`CMAKE_SOURCE_DIR` 在 `-S engine` 下是 `engine/`，在 `-S .` 下是仓库根，两者都不同时成立；`ENGINEERING_SOURCE_DIR` 恒等于 `engine/`。测试源码用 `#include "db/executor/..."`，正需要 `engine/include` |
+| `engine/src/{db/index/heap,db/index/storage_backend,db/tools/*,ds}/CMakeLists.txt`（9 处）<br>`engine/test/{algo/*,db/index/heap,db/index/storage_backend,db/parser,db/sql,db/trigger,db/view,index/block/brin,index/inverted/*}/CMakeLists.txt`（19 处） | `include(${CMAKE_SOURCE_DIR}/cmake/ProjectUtils.cmake)` | `include(${ENGINEERING_SOURCE_DIR}/cmake/ProjectUtils.cmake)` | 根级 `cmake/` 已迁至 `vendor/cmake/`；`CMAKE_SOURCE_DIR` 在两种配置入口下指向不同位置。改为与 `engine/CMakeLists.txt` 自身 include 的同一份 `engine/cmake/ProjectUtils.cmake` |
+| `engine/CMakeLists.txt:108-109` | `${CMAKE_CURRENT_LIST_DIR}/third_part/cjson` | *保持不变* | cjson 属工程内部，路径正确 |
+| `engine/CMakeLists.txt:113-114` | `${CMAKE_CURRENT_LIST_DIR}/../third_part/libmicrohttpd` | `${CMAKE_CURRENT_LIST_DIR}/../vendor/third_part/libmicrohttpd` | 根级第三方目录已迁至 `vendor/third_part/` |
+| `engine/CMakeLists.txt:118-119` | `${CMAKE_CURRENT_LIST_DIR}/../third_part/googletest` | `${CMAKE_CURRENT_LIST_DIR}/../vendor/third_part/googletest` | 同上 |
+
+### 2.4 已核实**无需修改**的路径
+
+| 文件:行 | 值 | 结论 |
+|---------|----|------|
+| `engine/test/db/index/vector_index/ivf_flat/CMakeLists.txt:8`<br>`engine/test/db/index/vector_index/ivf_pq/CMakeLists.txt:8` | `${CMAKE_CURRENT_SOURCE_DIR}/../../../..` | 上溯四级 → `engine/test/`（重排前为 `engineering/test/`）。**改名不改变层级深度，行为完全不变**；该 include 目录用于兜底包含测试树，保留原样。测试源码 `#include <db/index/vector_index/ivf_flat/ivf_flat.h>` 由 `${ENGINEERING_SOURCE_DIR}/include` 与 `${ENGINEERING_SOURCE_DIR}/src/db/index/vector_index` 覆盖 |
+| `engine/src/db/storage/graph/CMakeLists.txt:19-22`<br>`engine/test/db/graph/CMakeLists.txt:25-28` | `${ENGINEERING_SOURCE_DIR}/third_part/uthash/src` | 阶段二解耦时已修正（原为 `${CMAKE_SOURCE_DIR}/third_part/uthash/src`，指向不存在的路径），本次复核确认正确 |
+| `engine/test/db/yang/CMakeLists.txt:47-51` 的 cmocka 启用条件 | `${ENGINEERING_SOURCE_DIR}/../vendor/third_part/cmocka-1.1.7/...` | 路径已修正，但**启用条件本身不满足**（`src/test.c`、`src/assert.c`、`src/exception.c` 三个文件在仓库中并不存在 —— 基线亦然）。故该 CMocka 测试块在基线与重排后**同样不启用**，行为一致，无需额外处理 |
+
+---
+
+## 三、脚本（Shell / Python）路径引用修正
+
+| 文件 | 原值 | 新值 | 改动理由 |
+|------|------|------|----------|
+| `engine/scripts/coverage/aggregate.py`、`aggregate-gcov.py`、`badge.py`、`check-threshold.py`、`compare.py` | `engineering/scripts/coverage/...`、`engineering/src/<lib>/` | `engine/scripts/coverage/...`、`engine/src/<lib>/` | 覆盖率脚本随工程轨目录改名 |
+| `engine/scripts/coverage/run.sh` | `engineering/src/` | `engine/src/` | 过滤覆盖率数据的源码根路径 |
+| `engine/scripts/coverage/lcov-aggregate.sh` | `SRC_DIR="engineering/src"`、`--src-dir <engineering/src>` | `SRC_DIR="engine/src"`、`--src-dir <engine/src>` | 同上 |
+| `engine/scripts/check_wsl_build.sh` | `/mnt/d/code/book/engineering/scripts/check_wsl_build.sh` | `/mnt/d/code/book/engine/scripts/check_wsl_build.sh` | WSL 下的调用路径 |
+| `engine/sdk/tests/cross_lang_e2e.sh` | `$ROOT/engineering/include`、`$ROOT/engineering/sdk/python`、`$ROOT/engineering/sdk/go/multimodal` | `$ROOT/engine/include`、`$ROOT/engine/sdk/python`、`$ROOT/engine/sdk/go/multimodal` | 跨语言 E2E 脚本的源码路径 |
+
+---
+
+## 四、活跃技术文档路径引用修正
+
+> 历史快照（`openspec/`、`*-plan.md`、`*-spec.md`、`task-N-report.md`）**未改动**。
+
+| 文件 | 修正内容 |
+|------|----------|
+| `README.md` | 项目结构树移除 `learning/` 与 `reference/`，新增 `vendor/`、`archive/`、`scripts/`；构建命令改为 `cmake -B build/engine -S engine`；顶部定位改为单工程轨表述 |
+| `CLAUDE.md` | 项目布局树移除 `learning/` 段，新增 `vendor/cmake/`；文件归宿速查表、根目录瘦身纪律、外部源码段、CMake 构建架构段同步更新 |
+| `AGENTS.md` | GoogleTest 位置说明补充「由 `engine/CMakeLists.txt` 自动包含」 |
+| `engine/README.md` | 产物目录 `build/engineering/` → `build/engine/`、`test-results/engineering/` → `test-results/engine/`；跨轨禁令补充独立仓说明 |
+| `engine/docs/coverage-policy.md` | 适用范围补充「学习轨已切出为独立仓」；脚本调用路径 `./engineering/scripts/...` → `./engine/scripts/...` |
+| `docs/README.md`（新建） | 文档分区导航（`arch/` / `storage/` / `analysis/` / `process/` / `diagrams/`）+ 已切出独立仓的说明 |
+| `docs/analysis/obsidian-setup.md` | `learning/notes/...` → 学习轨独立仓路径 |
+| `docs/arch/dual-track.md` | 双轨入口表、工程→学习轨引用表、canonical 位置表述同步 |
+| `docs/arch/kbase/README.md` | `learning/notes`、`reference/models` → 独立仓路径 |
+| `docs/memory-context-migration-report.md` | `engineering/src/...` → `engine/src/...`（7 处，含 `rg` 命令行） |
+| `docs/p6-production-ready-report.md` | `engineering/test/sdk/integration/...` → `engine/test/sdk/integration/...` |
+| `docs/multimodal-expand-full-plan.md` | 目录树中的 `engineering/` → `engine/` |
+
+---
+
+## 五、CI 工作流修正
+
+| 文件 | 修正内容 |
+|------|----------|
+| `.github/workflows/ci.yml` | 注释中的子模块说明更新为 `vendor/third_part/googletest` 与 `engine/third_part/uthash`；删除已失效的 `learning/CMakeLists.txt` 引用；构建目录统一为 `build/engine`（此前 configure 用 `-B build/engineering` 而 build 用 `--build engine/build`，两者不一致，CI 会构建失败） |
+| `.github/workflows/asan.yml` | 注释中的 `add_subdirectory(engineering)` → `add_subdirectory(engine)` |
+
+---
+
+## 六、`.gitignore` 过宽规则修正（重排引入的隐性数据丢失）
+
+重排后 `git add -A` 出现 **11 个「已跟踪文件被静默丢弃」**。根因是 `.gitignore` 中三条规则
+过于宽泛，恰好命中了重排后的新路径：
+
+| `.gitignore` 规则 | 命中对象 | 后果 |
+|------------------|---------|------|
+| `*.mod` | `engine/drivers/go/go.mod`、`engine/sdk/go/multimodal/go.mod` | Go 模块清单被当作 Fortran 模块文件丢弃（该规则本意是忽略 Fortran 的 `.mod`） |
+| `coverage/` | `engine/scripts/coverage/` 下 8 个覆盖率脚本 | 源码目录被当作覆盖率构建产物目录丢弃 |
+| `vendor/third_part/cmocka_install/` | `vendor/third_part/cmocka_install/include/cmocka.h` | 被跟踪的头文件被丢弃 |
+
+> **为什么重排会触发**：`.gitignore` 只对**未被跟踪**的路径生效。旧路径下这些文件已被跟踪，
+> 规则不生效；`git mv` 之后它们变成「新路径上的未跟踪文件」，规则立刻生效并把它们挡在索引之外。
+
+修正方式（收窄规则 + 显式反忽略）：
+
+| 原规则 | 新规则 |
+|--------|--------|
+| `*.mod` | `*.mod` + `!go.mod` |
+| `coverage/` | `/coverage/`、`**/coverage-html/`、`**/coverage-gcov/`、`**/coverage.raw.info`、`**/coverage.info`、`**/coverage.info.filtered` |
+| `vendor/third_part/cmocka_install/` | `vendor/third_part/cmocka_install/*` + `!vendor/third_part/cmocka_install/include/` |
+
+验证：修正后 `git diff --cached --name-status -M` 的 `D` 条目归零，11 个文件全部以 rename 形式保留。
+
+---
+
+## 七、换行符（CRLF/LF）修复
+
+重排过程中，**1950 个文件**的工作区内容被写成 CRLF，而 HEAD 中为 LF（`core.autocrlf=false`，
+故这不是 Git 的自动转换，而是脚本写入时未使用二进制模式所致）。后果是这些文件在 diff 中
+表现为「整文件重写」，掩盖了真实改动。
+
+修复方式：对每个文件比较 HEAD blob 与当前 blob，**仅当两者归一化后完全相同**（即只差换行符）
+才还原为 HEAD 的原始字节，不丢失任何内容字节。共还原 **1950 个纯换行差异文件** +
+**161 个「换行差异 + 真实内容改动」文件**（后者只做 CRLF→LF 归一化，保留真实改动）。
+
+修复后 `git diff --cached --stat -M` 从「83 万行变更」降为 **7363 insertions / 7293 deletions**，
+全部为真实内容改动。
+
+---
+
+## 八、遗留说明
+
+| 项 | 说明 |
+|----|------|
+| `engine/third_part/googletest` 与 `vendor/third_part/googletest` 并存 | 两者指向同一 SHA（`f8d7d77c`）。前者是工程内部副本（阶段一之前已存在），后者是根级副本迁入 `vendor/` 的结果。CMake 只引用 `vendor/third_part/googletest`（由 `engine/CMakeLists.txt` 的 `add_subdirectory` 引入），测试 CMakeLists 的 include 路径也统一指向它，避免头文件来自两份副本 |
+| `engine/third_part/croaring` 与 `vendor/third_part/croaring` 并存 | 两者内容逐字节相同（`roaring_bitmap.h`）。SDK 与集成测试统一使用工程内部副本 |
+| `engine/third_part/sqlite3` 与 `vendor/third_part/sqlite3` 并存 | 两者内容逐字节相同（`sqlite3.c` / `sqlite3.h`）。SDK 与集成测试统一使用工程内部副本 |
+| `vendor/third_part/cjson/` 的 `.gitignore` 规则 | cjson 实际位于 `engine/third_part/cjson/`（工程内部，已跟踪）；`vendor/third_part/cjson/` 的忽略规则保留（本地 FetchContent 拉取场景） |

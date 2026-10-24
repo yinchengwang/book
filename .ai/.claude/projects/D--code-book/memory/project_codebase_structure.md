@@ -37,7 +37,7 @@ test/                # 测试代码（GoogleTest + C++）
 project/             # 独立玩具程序（贪吃蛇、2048、计算器、数独）
 notes/               # 学习笔记（C、LLM、Redis、硬件、Linux、数据库）
 open_source/         # Git 子模块——知名开源项目源码（faiss、redis、postgres、milvus 等）
-third_part/googletest/ # vendored GoogleTest
+vendor/third_part/googletest/ # vendored GoogleTest
 ```
 
 ## 库间依赖
@@ -58,7 +58,7 @@ interview ──→ project_includes
 - `cmake/ProjectUtils.cmake` 提供 `add_project_test()` 和 `add_project_library()` 辅助函数
 - `project_includes` 是 INTERFACE 库，携带 `include/` 目录
 - 测试二进制输出到源码目录
-- GoogleTest vendored 在 `third_part/googletest/`
+- GoogleTest vendored 在 `vendor/third_part/googletest/`
 
 ## 代码风格
 

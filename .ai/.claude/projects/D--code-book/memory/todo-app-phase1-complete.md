@@ -8,7 +8,7 @@ metadata:
 todo-app Phase 1 SQLite 迁移 + 字段系统完成。
 
 **已完成任务 (1.1-1.6)：**
-- Task 1.1: SQLite amalgamation 引入 (`third_part/sqlite3/`)
+- Task 1.1: SQLite amalgamation 引入 (`vendor/third_part/sqlite3/`)
 - Task 1.2: `todo_db` 持久化层 (建表、WAL 模式、内置字段预置)
 - Task 1.3: `todo_model` CRUD 全部改造为 SQLite 操作
 - Task 1.4: `todo_field` 字段系统 (field_def CRUD + field_value EAV)

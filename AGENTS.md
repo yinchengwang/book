@@ -7,47 +7,41 @@ C/C++ 算法与数据结构练习项目。CMake 3.20+、C11、C++17，无运行�
 ### 工程轨道（默认）
 
 ```bash
-cmake -B build/engineering -S engineering -DBUILD_TESTING=ON
-cmake --build build/engineering --parallel 4
-ctest --test-dir build/engineering --output-on-failure
-ctest --test-dir build/engineering -R <name> --output-on-failure  # 单个测试
+cmake -B build/engine -S engine -DBUILD_TESTING=ON
+cmake --build build/engine --parallel 4
+ctest --test-dir build/engine --output-on-failure
+ctest --test-dir build/engine -R <name> --output-on-failure  # 单个测试
 ```
 
-### 学习轨道
+### 根入口
 
 ```bash
-cmake -B build/learning -S learning -DBUILD_TESTING=ON
-cmake --build build/learning --parallel 4
-ctest --test-dir build/learning --output-on-failure
-```
-
-### 根入口（双轨同时）
-
-```bash
-cmake -B build/root -S . -DENGINEERING_BUILD=ON -DLEARNING_BUILD=ON
+cmake -B build/root -S . -DENGINEERING_BUILD=ON
 cmake --build build/root --parallel 4
 ```
+
+> 学习轨（`learning/`）已切出为独立仓 `yinchengwang/learning`，其构建命令请在该仓内查阅。
 
 `all_tests` 是 `add_custom_target` 包了一层 `ctest`，不是 CTest 原生概念。
 
 ## 编译与测试产物规范
 
-- 编译产物统一进入 `build/<项目或轨道>/`（如 `build/engineering`、`build/learning`、`build/root`）
+- 编译产物统一进入 `build/<项目>/`（如 `build/engine`、`build/root`）
 - 测试日志、覆盖率、临时数据库、运行日志等进入 `test-results/<项目或轨道>/`
 - **测试二进制不再输出到源码目录**
 
 ## 测试结构
 
-GoogleTest vendored 在 `third_part/googletest/`，根 CMakeLists 自动包含，无需系统安装。
+GoogleTest vendored 在 `vendor/third_part/googletest/`，由 `engine/CMakeLists.txt` 自动包含，无需系统安装。
 
 测试可执行文件命名（不规则）：
 - `self_made_test`、`self_made_cpp_test`、`leet_code_test`、`interview_test`
-- `kmeans_gtest` 等位于 `engineering/test/algo/`、`engineering/test/vector_index/` 下
+- `kmeans_gtest` 等位于 `engine/test/algo/`、`engine/test/vector_index/` 下
 - `all_in_one_test` —— 合并 self_made + self_made_cpp + leetcode + interview 的单一二进制
 
 ## 新增模块
 
-- 新模块用 `engineering/cmake/ProjectUtils.cmake`：`add_project_test()`、`add_project_library()`
+- 新模块用 `engine/cmake/ProjectUtils.cmake`：`add_project_test()`、`add_project_library()`
 - 老模块手写 CMakeLists，两种都接受
 
 ## 库
@@ -77,14 +71,14 @@ clang-format -i $(git ls-files '*.c' '*.cpp' '*.h' '*.hpp')
 ## 前端说明（已迁移）
 
 knowledge_hub 原为 Taro 3.6 + React 18 + TS 工程，**已于 2026-10-22 完成原生化重写**：
-Taro 源码（原 `engineering/apps/web/{knowledge_hub,games-mini-program,reading-radar}`）已删除，
-对应的原生微信小程序现位于 `wechat-miniprogram/`：
+Taro 源码（原 `engine/apps/web/{knowledge_hub,games-mini-program,reading-radar}`）已删除，
+对应的原生微信小程序现位于 `apps/`：
 
 | 应用 | 位置 |
 |---|---|
-| knowledge-hub（Reading Radar） | `wechat-miniprogram/knowledge-hub/` |
-| games（游戏中心） | `wechat-miniprogram/games/` |
-| programmer-workbench（DevBench） | `wechat-miniprogram/programmer-workbench/` |
+| knowledge-hub（Reading Radar） | `apps/knowledge-hub/` |
+| games（游戏中心） | `apps/games/` |
+| programmer-workbench（DevBench） | `apps/programmer-workbench/` |
 
 三者均为零依赖、零构建的原生小程序（纯 JS + WXML + WXSS），无 pnpm / Taro / Vite 构建步骤。
 下文关于 `frontend/` monorepo 的结构与命令描述对应的是更早的一版前端布局，现已不适用。

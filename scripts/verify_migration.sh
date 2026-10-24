@@ -34,19 +34,19 @@ count_in() {
 }
 
 echo "--- 已清零模块（无需迁移） ---"
-echo "  0   engineering/src/sdk/timeseries/ts.c"
-echo "  0   engineering/src/sdk/aggregation/agg.c"
-echo "  0   engineering/src/db/api/db_api.c"
-echo "  0   engineering/src/db/concurrency/concurrency.c"
-echo "  0   engineering/src/kbase/kbase.c"
-echo "  0   engineering/src/db/sql/executor.c  (Task 10 已完成)"
+echo "  0   engine/src/sdk/timeseries/ts.c"
+echo "  0   engine/src/sdk/aggregation/agg.c"
+echo "  0   engine/src/db/api/db_api.c"
+echo "  0   engine/src/db/concurrency/concurrency.c"
+echo "  0   engine/src/kbase/kbase.c"
+echo "  0   engine/src/db/sql/executor.c  (Task 10 已完成)"
 echo ""
 
 echo "--- 示范迁移模块（Task 12 范围） ---"
-count_in engineering/src/sdk/graph/graph.c
-count_in engineering/src/sdk/extra/xquery.c
-count_in engineering/src/db/replication/replication.c
-count_in engineering/src/sdk/text/text.c
+count_in engine/src/sdk/graph/graph.c
+count_in engine/src/sdk/extra/xquery.c
+count_in engine/src/db/replication/replication.c
+count_in engine/src/sdk/text/text.c
 echo ""
 
 echo "--- 迁移摘要 ---"

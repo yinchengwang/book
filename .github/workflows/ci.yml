@@ -5,23 +5,18 @@
 #   仓库共 99 个子模块，其中 95 个是 reference/ 下的第三方源码参考仓（faiss/redis/
 #   postgres/clickhouse/...），对构建毫无用处；submodules: recursive 会把它们全部
 #   拉下来，导致 Checkout 步骤超时/失败，后续构建测试全被跳过。
-#   真正被 CMake 引入的只有根目录 third_part/googletest 一个：
-#     - engineering/CMakeLists.txt:124  add_subdirectory(../third_part/googletest)
+#   真正被 CMake 引入的只有 vendor/third_part/googletest 一个：
+#     - engine/CMakeLists.txt  add_subdirectory(../vendor/third_part/googletest)
 #       （缺失时回退 find_package(GTest REQUIRED)，CI 环境无系统 GTest 会直接失败）
-#     - learning/CMakeLists.txt:48      add_subdirectory(../third_part/googletest)
-#       （缺失时 leetcode_tests 链接 GTest::gtest_main 失败）
 #   因此改为 submodules: false（默认值，此处显式声明以表意）+ 显式单模块浅拉取。
 #
 #   ⚠️ 构建实际依赖的子模块清单（2026-10-22 QA 验收后补全，缺一个就编译失败）：
-#     - third_part/googletest          —— engineering/CMakeLists.txt:124 与
-#                                       learning/CMakeLists.txt:48 的 add_subdirectory
-#     - engineering/third_part/uthash  —— 5 处 CMakeLists 把头文件路径写死指向该子模块：
-#                                       src/db/storage/graph:19、sparse:16、ts:12、
-#                                       test/db/graph:25、src/db/api:6。
-#                                       注意 learning/include/uthash/ 虽有 git 追踪副本，
-#                                       但 CMake 指向 third_part/uthash/src，**不是同一路径**，
-#                                       tracked 副本救不了，必须拉子模块。
-#     两个 gitlink 指向同一 SHA a49bed0b，故只列 engineering/third_part/uthash。
+#     - vendor/third_part/googletest —— engine/CMakeLists.txt 的 add_subdirectory
+#     - engine/third_part/uthash     —— 5 处 CMakeLists 把头文件路径写死指向该子模块：
+#                                       src/db/storage/graph、sparse、ts、
+#                                       test/db/graph、src/db/api。
+#                                       该路径下是 uthash 源码头文件的唯一实体位置，
+#                                       必须拉子模块。
 #
 #   LFS 关闭：.gitattributes 追踪的 *.pdf / dataset/** / *.chm 全部不被任何构建或
 #   测试步骤读取（sift_recall.c 等硬编码 Windows 路径且未注册进 ctest），约 692MB
@@ -55,7 +50,7 @@ jobs:
         persist-credentials: false
 
     - name: Fetch googletest submodule
-      run: git submodule update --init --depth 1 third_part/googletest engineering/third_part/uthash
+      run: git submodule update --init --depth 1 vendor/third_part/googletest engine/third_part/uthash
 
     - name: Install dependencies (Ubuntu)
       run: |
@@ -64,13 +59,13 @@ jobs:
 
     - name: Configure CMake (Engineering)
       run: |
-        cmake -B engineering/build -S engineering \
+        cmake -B build/engine -S engine \
           -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
           -DBUILD_TESTING=ON
 
     - name: Build (Engineering)
       run: |
-        cmake --build engineering/build --parallel 4
+        cmake --build build/engine --parallel 4
 
   test-engineering-ubuntu:
     name: Test Engineering (Ubuntu/GCC)
@@ -85,7 +80,7 @@ jobs:
         persist-credentials: false
 
     - name: Fetch googletest submodule
-      run: git submodule update --init --depth 1 third_part/googletest engineering/third_part/uthash
+      run: git submodule update --init --depth 1 vendor/third_part/googletest engine/third_part/uthash
 
     - name: Install dependencies (Ubuntu)
       run: |
@@ -94,13 +89,13 @@ jobs:
 
     - name: Configure & Build (Engineering)
       run: |
-        cmake -B engineering/build -S engineering \
+        cmake -B build/engine -S engine \
           -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
           -DBUILD_TESTING=ON
-        cmake --build engineering/build --parallel 4
+        cmake --build build/engine --parallel 4
 
     - name: Run ctest (Engineering)
-      working-directory: ./engineering/build
+      working-directory: ./build/engine
       run: |
         ctest --output-on-failure -j4
 
@@ -116,7 +111,7 @@ jobs:
         persist-credentials: false
 
     - name: Fetch googletest submodule
-      run: git submodule update --init --depth 1 third_part/googletest engineering/third_part/uthash
+      run: git submodule update --init --depth 1 vendor/third_part/googletest engine/third_part/uthash
 
     - name: Set up MinGW
       uses: msys2/setup-msys2@v2
@@ -131,7 +126,7 @@ jobs:
     - name: Configure CMake (Engineering/Windows)
       shell: msys2 {0}
       run: |
-        cmake -B engineering/build -S engineering \
+        cmake -B build/engine -S engine \
           -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
           -DBUILD_TESTING=ON \
           -G "MinGW Makefiles"
@@ -139,74 +134,9 @@ jobs:
     - name: Build (Engineering/Windows)
       shell: msys2 {0}
       run: |
-        cmake --build engineering/build --parallel 4
+        cmake --build build/engine --parallel 4
 
   # ============ 学习层（ds/algo/quiz）============
-
-  build-learning-ubuntu:
-    name: Build Learning (Ubuntu/GCC)
-    runs-on: ubuntu-22.04
-
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        submodules: false
-        persist-credentials: false
-
-    - name: Fetch googletest submodule
-      run: git submodule update --init --depth 1 third_part/googletest engineering/third_part/uthash
-
-    - name: Install dependencies (Ubuntu)
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake build-essential
-
-    - name: Configure CMake (Learning)
-      run: |
-        cmake -B build-learning -S learning \
-          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-          -DBUILD_TESTING=ON \
-          -DENGINEERING_BUILD=OFF
-
-    - name: Build (Learning)
-      run: |
-        cmake --build build-learning --parallel 4
-
-  test-learning-ubuntu:
-    name: Test Learning (Ubuntu/GCC)
-    runs-on: ubuntu-22.04
-    needs: build-learning-ubuntu
-
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        submodules: false
-        persist-credentials: false
-
-    - name: Fetch googletest submodule
-      run: git submodule update --init --depth 1 third_part/googletest engineering/third_part/uthash
-
-    - name: Install dependencies (Ubuntu)
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake build-essential
-
-    - name: Configure & Build (Learning)
-      run: |
-        cmake -B build-learning -S learning \
-          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-          -DBUILD_TESTING=ON \
-          -DENGINEERING_BUILD=OFF
-        cmake --build build-learning --parallel 4
-
-    - name: Run ctest (Learning)
-      working-directory: ./build-learning
-      run: |
-        ctest --output-on-failure
-
-  # ============ Coverage（工程层）============
 
   coverage-ubuntu:
     name: Coverage (Ubuntu/GCC+lcov)
@@ -221,7 +151,7 @@ jobs:
         persist-credentials: false
 
     - name: Fetch googletest submodule
-      run: git submodule update --init --depth 1 third_part/googletest engineering/third_part/uthash
+      run: git submodule update --init --depth 1 vendor/third_part/googletest engine/third_part/uthash
 
     - name: Install lcov + PyYAML
       run: |
@@ -230,7 +160,7 @@ jobs:
         python3 -m pip install --break-system-packages pyyaml || pip install pyyaml
 
     - name: Configure Engineering with Coverage
-      working-directory: ./engineering
+      working-directory: ./engine
       run: |
         rm -rf build-cov
         cmake -B build-cov -S . \
@@ -239,15 +169,15 @@ jobs:
           -DBUILD_TESTING=ON
 
     - name: Build (coverage flags)
-      working-directory: ./engineering
+      working-directory: ./engine
       run: cmake --build build-cov --parallel 4
 
     - name: Run ctest (收集 .gcda)
-      working-directory: ./engineering/build-cov
+      working-directory: ./engine/build-cov
       run: ctest --output-on-failure -j4 || true
 
     - name: Run coverage scripts
-      working-directory: ./engineering
+      working-directory: ./engine
       run: |
         bash scripts/coverage/run.sh || true
         if [ -f coverage.info.filtered ]; then
@@ -257,7 +187,7 @@ jobs:
         fi
 
     - name: Show coverage diff
-      working-directory: ./engineering
+      working-directory: ./engine
       run: |
         if [ -f coverage-diff.md ]; then
           cat coverage-diff.md
@@ -269,9 +199,9 @@ jobs:
       with:
         name: coverage-report
         path: |
-          engineering/coverage-html/
-          engineering/coverage.info
-          engineering/coverage.info.filtered
-          engineering/coverage-current.json
-          engineering/coverage-diff.md
-          engineering/coverage-badge.svg
+          engine/coverage-html/
+          engine/coverage.info
+          engine/coverage.info.filtered
+          engine/coverage-current.json
+          engine/coverage-diff.md
+          engine/coverage-badge.svg

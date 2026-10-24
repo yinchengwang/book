@@ -34,5 +34,5 @@
     "taro_template": true,
     "dual_track_guards": true
   },
-  "_how_to_refresh": "python3 engineering/scripts/metrics/collect-metrics.py > docs/project-metrics.json"
+  "_how_to_refresh": "python3 engine/scripts/metrics/collect-metrics.py > docs/project-metrics.json"
 }

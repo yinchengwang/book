@@ -15,9 +15,9 @@
 
 ## 核心文件
 
-- `engineering/include/db/storage/doc/doc_pipeline.h` - 头文件
-- `engineering/src/db/storage/doc/doc_pipeline.c` - 实现
-- `engineering/test/db/storage/doc/doc_pipeline_test.cpp` - 测试
+- `engine/include/db/storage/doc/doc_pipeline.h` - 头文件
+- `engine/src/db/storage/doc/doc_pipeline.c` - 实现
+- `engine/test/db/storage/doc/doc_pipeline_test.cpp` - 测试
 
 ## API 设计
 
