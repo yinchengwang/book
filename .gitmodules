@@ -1,9 +1,6 @@
 [submodule "vendor/third_part/googletest"]
 	path = vendor/third_part/googletest
 	url = https://github.com/google/googletest.git
-[submodule "engine/third_part/googletest"]
-	path = engine/third_part/googletest
-	url = https://gitee.com/mirrors/googletest.git
 [submodule "engine/third_part/uthash"]
 	path = engine/third_part/uthash
 	url = https://gitee.com/mirrors/uthash.git
