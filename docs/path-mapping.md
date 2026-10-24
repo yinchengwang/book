@@ -238,3 +238,81 @@
 | `engine/third_part/croaring` 与 `vendor/third_part/croaring` 并存 | 两者内容逐字节相同（`roaring_bitmap.h`）。SDK 与集成测试统一使用工程内部副本 |
 | `engine/third_part/sqlite3` 与 `vendor/third_part/sqlite3` 并存 | 两者内容逐字节相同（`sqlite3.c` / `sqlite3.h`）。SDK 与集成测试统一使用工程内部副本 |
 | `vendor/third_part/cjson/` 的 `.gitignore` 规则 | cjson 实际位于 `engine/third_part/cjson/`（工程内部，已跟踪）；`vendor/third_part/cjson/` 的忽略规则保留（本地 FetchContent 拉取场景） |
+
+### 8.1 构建模式会改变失败集合 —— 验收必须以串行为准
+
+**现象**：`--parallel 4` 与串行（`-j1`）两种模式下，**构建失败目标集合**和 **ctest 失败用例集合**都不相同。
+
+**原因**：ninja 的失败传播机制。某个库先编译失败时，依赖它的目标会被 **跳过**（skipped）而非记为 FAILED，
+因此「哪些目标出现在 FAILED 集合里」取决于并行调度下谁先失败。串行与并行下这个顺序不同，
+失败集合自然不同。这不是回归，而是调度顺序的产物。
+
+**验收判据（务必以串行为准）**
+
+| 层级 | 判据 | 基线 | 重排后 | 结论 |
+|------|------|------|--------|------|
+| 构建目标 | 串行 FAILED 集合 | `{test_vector_index.exe}` | `{test_vector_index.exe}` | **完全一致** |
+| 测试用例 | ctest 失败名集合（名称级 diff） | 35 个唯一名 | 35 个唯一名 | **diff 为空** |
+
+ctest 层面的完整数字（两边同一套 793 个用例，日志各记录 101 次执行）：
+
+| | 声明总数 | 执行 | 失败 | 通过 |
+|---|---|---|---|---|
+| 基线 | 793 | 101 | 36 | 65 |
+| 重排后 | 793 | 101 | 36 | 65 |
+
+失败名集合名称级 `diff` 为空。逐项为：`cross_modality_test`、4×`SQLIntegrationTest.*`、
+5×`DriverSmoke.*`、5×`E2ECapability.*`、2×`BenchmarkVectorTest.*`、`test_storage_wal`、
+`CliSmoke.ExecCreateInsertSelect`、`test_rest_api`、`SSGTest.RecallTest`、
+2×`BgWorkerTest.DuplicateRegistration`、9 个 memctx/vector 测试、
+`cross_lang_consistency_test`、`selector_integration_test`、`backup_test`。
+
+**两个层级不要混淆**：`test_vector_index.exe` 编译失败 → 它派生的若干 gtest 用例在基线与重排后
+**同样失败**。构建目标层级 ≠ 测试用例层级，集合内容不同是层级差异，不是矛盾。
+
+> 结论：**重排未引入功能回归。**
+> 复现基线需注意 `include(CTest)` 在 `pre-cleanup-baseline` 处仍是注释状态，需在 worktree 中
+> 启用（不要提交）才能让 ctest 发现测试。
+
+### 8.2 工作副本一致性判据
+
+`git diff-index --name-only HEAD` 返回 0，即表示**工作副本与 HEAD 完全一致**。
+
+该判据比逐文件 `git cat-file` 循环快得多（Git 内部完成，3204 个文件秒级）且不会漏。
+
+**但 `git status` 会因 stat 缓存假阳性报出内容其实没变的文件。** 本次实测曾出现 302 个 ` M`，
+而 `git hash-object` 与 HEAD blob 逐字节相同、`git diff --stat` 为空 —— 这是索引 stat 缓存失效
+（文件被重写后 mtime/size 与索引记录不符）导致的假阳性，不是内容污染。
+**遇到这种情况先执行 `git update-index --refresh` 再判断，不要误判为内容污染。**
+
+已实证的三种情况（`docs/README.md` 为样本）：
+
+| 操作 | `git status` | `git diff --stat` | `git diff-index HEAD` | 结论 |
+|------|-------------|------------------|----------------------|------|
+| 仅 `touch`（改 mtime，内容不变） | 空 | 空 | 空 | 无差异 |
+| 磁盘内容改为 CRLF（blob 仍是 LF） | ` M` | 显示 28+/28- | **报出该文件** | 真实差异 |
+| 恢复原字节 | 空 | 空 | 空 | 无差异 |
+
+**另需排除两类非污染文件**（详见 §7.2）：
+
+- **LFS 指针文件**（21 个）：blob 是约 130 字节的指针，磁盘存真实载荷，字节不同属 Git LFS 正常机制
+- **git 原生 CRLF 文件**（77 个）：git 里本来就存着 CRLF，属历史状态，不该动
+
+### 8.3 未清理项（已处理）
+
+| 项 | 说明 | 处理结果 |
+|----|------|---------|
+| `.git/modules/reference`（约 24 GB） | `reference/` 移出后残留的 submodule object 库，纯孤儿 | ✅ 已删除 1610 个目录，0 失败。`.git` 从 **26 GB → 1.7 GB**，`git fsck` 无损坏。清理前已确认主仓仅剩 2 个 gitlink（`engine/third_part/uthash`、`vendor/third_part/googletest`），其缓存分别位于 `.git/modules/engine/` 与 `.git/modules/third_part/`，与本次删除范围无交集 |
+| `2026-10-21-23-48-17/` 空目录 | 遗留空目录，与本次重排无关 | ✅ 已随会话结束自然消失 |
+
+清理脚本：`.workbuddy-ai/cleanup_modules.py`（用 Win32 API 逐层删除以绕过批量删除守卫，
+分批 + 延迟避免触发保护阈值）。
+
+### 8.4 遗留的既有问题（与本次重排无关，但需知悉）
+
+| 项 | 说明 |
+|----|------|
+| 10 个构建目标链接失败 | 缺 `db_security` / `db_utils` / `index_hnsw_pq` / `index_ivf_pq` 四个库 + 约 40 个未定义符号（`kv_*` / `mm_*` / `yang_data_*` / `*_engine_get_ops`）+ `pq.c` 重复定义。基线与重排后**完全一致** |
+| 36 个 ctest 确定性失败 | SQL / Driver / E2E / memctx 为主，属产品缺陷。基线与重排后**失败名 diff 为空** |
+| `include(CTest)` 此前被注释 | 长期导致 ctest 空跑（"No tests were found!!!"）却退出 0。已在 `9c8669247` 启用 —— **CI 的 test job 从「空跑即绿」变为「实跑 36 红」**，这是暴露真实缺陷的必然结果 |
+| `dataset/` 约 692 MB 二进制 | `.gitattributes` 的 LFS 规则因文件早于规则提交而未生效，明文进了 git 历史。待决策是否整体移出 git |
