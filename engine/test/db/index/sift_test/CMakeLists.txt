@@ -10,8 +10,13 @@ target_link_libraries(sift_recall_test
         heap_vector_store
         storage_backend_common
         algo-prod
-        db_utils
 )
+
+# db_utils 的源文件可能为空（utils/ 目前只有 CMakeLists.txt），
+# 此时 add_library 不会执行、目标不存在，直接链接会导致配置期报错。
+if(TARGET db_utils)
+    target_link_libraries(sift_recall_test PRIVATE db_utils)
+endif()
 
 set_target_properties(sift_recall_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}

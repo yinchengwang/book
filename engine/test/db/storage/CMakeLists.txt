@@ -219,8 +219,7 @@ add_executable(test_vector_index
 
 target_link_libraries(test_vector_index
     PRIVATE
-    index_hnsw_pq
-    index_ivf_pq
+    hnsw_pq
     storage_sparse
     db_core
     db_storage
