@@ -4,8 +4,9 @@
  *
  * 实现向量搜索与结构化过滤条件的混合检索。
  */
-#include "hybrid_search.h"
-#include "hnsw/faiss_hnsw.h"
+#include <db/index/vector_index/hybrid_search.h>
+#include <db/index/vector_index/faiss_hnsw/faiss_hnsw.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <float.h>
@@ -47,7 +48,7 @@ FilterExpr *filter_expr_create_leaf(const char *field, FilterOperator op,
 FilterExpr *filter_expr_create_compound(FilterExpr *left, FilterExpr *right,
                                         FilterOperator op) {
     if (!left && !right) return NULL;
-    if (op != FILTER_OP_AND && op != FILTER_OP_OR && op != FILTER_OP_NOT) {
+    if (op != VDB_FILTER_OP_AND && op != VDB_FILTER_OP_OR && op != VDB_FILTER_OP_NOT) {
         return NULL;
     }
 
@@ -183,7 +184,7 @@ FilterExpr *filter_expr_from_json(const char *json) {
                     }
                 }
 
-                result = filter_expr_create_compound(left, right, FILTER_OP_AND);
+                result = filter_expr_create_compound(left, right, VDB_FILTER_OP_AND);
             }
         } else if (strstr(json, "\"OR\"") || strstr(json, "\"or\"")) {
             /* OR 复合条件，类似处理 */
@@ -195,9 +196,9 @@ FilterExpr *filter_expr_from_json(const char *json) {
     } else if (field_pos) {
         /* 简单条件 */
         char field[64] = {0};
-        FilterOperator op = FILTER_OP_EQ;
+        FilterOperator op = VDB_FILTER_OP_EQ;
         FilterValue value = {0};
-        FilterValueType value_type = FILTER_VALUE_STRING;
+        FilterValueType value_type = VDB_FILTER_VALUE_STRING;
 
         /* 解析 field */
         const char *field_start = strchr(field_pos, ':');
@@ -216,12 +217,12 @@ FilterExpr *filter_expr_from_json(const char *json) {
             if (op_start) {
                 op_start++;
                 while (*op_start == ' ' || *op_start == '\"') op_start++;
-                if (strncmp(op_start, "=", 1) == 0) op = FILTER_OP_EQ;
-                else if (strncmp(op_start, "!=", 2) == 0) op = FILTER_OP_NE;
-                else if (strncmp(op_start, ">", 1) == 0) op = FILTER_OP_GT;
-                else if (strncmp(op_start, ">=", 2) == 0) op = FILTER_OP_GE;
-                else if (strncmp(op_start, "<", 1) == 0) op = FILTER_OP_LT;
-                else if (strncmp(op_start, "<=", 2) == 0) op = FILTER_OP_LE;
+                if (strncmp(op_start, "=", 1) == 0) op = VDB_FILTER_OP_EQ;
+                else if (strncmp(op_start, "!=", 2) == 0) op = VDB_FILTER_OP_NE;
+                else if (strncmp(op_start, ">", 1) == 0) op = VDB_FILTER_OP_GT;
+                else if (strncmp(op_start, ">=", 2) == 0) op = VDB_FILTER_OP_GE;
+                else if (strncmp(op_start, "<", 1) == 0) op = VDB_FILTER_OP_LT;
+                else if (strncmp(op_start, "<=", 2) == 0) op = VDB_FILTER_OP_LE;
             }
         }
 
@@ -238,26 +239,25 @@ FilterExpr *filter_expr_from_json(const char *json) {
                     value_start++;
                     const char *value_end = strchr(value_start, '"');
                     if (!value_end) value_end = value_start + strlen(value_start);
-                    value.string_val.str = (char *)malloc(value_end - value_start + 1);
-                    if (value.string_val.str) {
-                        memcpy(value.string_val.str, value_start, value_end - value_start);
-                        value.string_val.str[value_end - value_start] = '\0';
-                        value.string_val.len = value_end - value_start;
-                        value_type = FILTER_VALUE_STRING;
+                    value.data.str_val = (char *)malloc(value_end - value_start + 1);
+                    if (value.data.str_val) {
+                        memcpy(value.data.str_val, value_start, value_end - value_start);
+                        value.data.str_val[value_end - value_start] = '\0';
+                        value_type = VDB_FILTER_VALUE_STRING;
                     }
                 } else if (*value_start == '-' || (*value_start >= '0' && *value_start <= '9')) {
                     /* 数值 */
                     if (strchr(value_start, '.')) {
-                        value.double_val = atof(value_start);
-                        value_type = FILTER_VALUE_DOUBLE;
+                        value.data.float_val = atof(value_start);
+                        value_type = VDB_FILTER_VALUE_FLOAT;
                     } else {
-                        value.bigint_val = atoll(value_start);
-                        value_type = FILTER_VALUE_BIGINT;
+                        value.data.int_val = atoll(value_start);
+                        value_type = VDB_FILTER_VALUE_INT;
                     }
                 } else if (strncmp(value_start, "true", 4) == 0 ||
                            strncmp(value_start, "false", 5) == 0) {
-                    value.bool_val = (strncmp(value_start, "true", 4) == 0);
-                    value_type = FILTER_VALUE_BOOL;
+                    value.data.bool_val = (strncmp(value_start, "true", 4) == 0);
+                    value_type = VDB_FILTER_VALUE_BOOL;
                 }
             }
         }
@@ -288,23 +288,18 @@ char *filter_expr_to_json(const FilterExpr *expr) {
 
         /* 格式化值 */
         switch (expr->cond.value_type) {
-            case FILTER_VALUE_STRING:
-                snprintf(value_buf, sizeof(value_buf), "\"%s\"", expr->cond.value.string_val.str);
+            case VDB_FILTER_VALUE_STRING:
+                snprintf(value_buf, sizeof(value_buf), "\"%s\"", expr->cond.value.data.str_val);
                 break;
-            case FILTER_VALUE_INT:
-                snprintf(value_buf, sizeof(value_buf), "%d", expr->cond.value.int_val);
+            case VDB_FILTER_VALUE_INT:
+                /* data.int_val 为 int64_t，统一用 %lld 输出 */
+                snprintf(value_buf, sizeof(value_buf), "%lld", (long long)expr->cond.value.data.int_val);
                 break;
-            case FILTER_VALUE_BIGINT:
-                snprintf(value_buf, sizeof(value_buf), "%lld", (long long)expr->cond.value.bigint_val);
+            case VDB_FILTER_VALUE_FLOAT:
+                snprintf(value_buf, sizeof(value_buf), "%f", expr->cond.value.data.float_val);
                 break;
-            case FILTER_VALUE_FLOAT:
-                snprintf(value_buf, sizeof(value_buf), "%f", expr->cond.value.float_val);
-                break;
-            case FILTER_VALUE_DOUBLE:
-                snprintf(value_buf, sizeof(value_buf), "%f", expr->cond.value.double_val);
-                break;
-            case FILTER_VALUE_BOOL:
-                strcpy(value_buf, expr->cond.value.bool_val ? "true" : "false");
+            case VDB_FILTER_VALUE_BOOL:
+                strcpy(value_buf, expr->cond.value.data.bool_val ? "true" : "false");
                 break;
             default:
                 strcpy(value_buf, "null");
@@ -313,12 +308,12 @@ char *filter_expr_to_json(const FilterExpr *expr) {
         /* 操作符映射 */
         const char *op_str = "=";
         switch (expr->cond.op) {
-            case FILTER_OP_EQ: op_str = "="; break;
-            case FILTER_OP_NE: op_str = "!="; break;
-            case FILTER_OP_LT: op_str = "<"; break;
-            case FILTER_OP_LE: op_str = "<="; break;
-            case FILTER_OP_GT: op_str = ">"; break;
-            case FILTER_OP_GE: op_str = ">="; break;
+            case VDB_FILTER_OP_EQ: op_str = "="; break;
+            case VDB_FILTER_OP_NE: op_str = "!="; break;
+            case VDB_FILTER_OP_LT: op_str = "<"; break;
+            case VDB_FILTER_OP_LE: op_str = "<="; break;
+            case VDB_FILTER_OP_GT: op_str = ">"; break;
+            case VDB_FILTER_OP_GE: op_str = ">="; break;
             default: op_str = "=";
         }
 
@@ -330,15 +325,15 @@ char *filter_expr_to_json(const FilterExpr *expr) {
         return result;
     } else {
         /* 复合条件 */
-        const char *op_str = expr->op == FILTER_OP_AND ? "AND" :
-                             expr->op == FILTER_OP_OR ? "OR" : "NOT";
+        const char *op_str = expr->op == VDB_FILTER_OP_AND ? "AND" :
+                             expr->op == VDB_FILTER_OP_OR ? "OR" : "NOT";
 
         char *left_json = filter_expr_to_json(expr->left);
         char *right_json = filter_expr_to_json(expr->right);
 
         char *result = (char *)malloc(512);
         if (result) {
-            if (expr->op == FILTER_OP_NOT) {
+            if (expr->op == VDB_FILTER_OP_NOT) {
                 snprintf(result, 512, "{\"op\":\"NOT\",\"condition\":%s}", left_json);
             } else {
                 snprintf(result, 512, "{\"op\":\"%s\",\"left\":%s,\"right\":%s}",
@@ -605,37 +600,36 @@ static bool evaluate_filter(const FilterExpr *filter, const void *metadata, int3
         size_t value_len = value_end - value_start;
 
         switch (filter->cond.op) {
-            case FILTER_OP_EQ: {
-                if (filter->cond.value_type == FILTER_VALUE_STRING) {
-                    return strncmp(value_start, filter->cond.value.string_val.str,
-                                   HYBRID_MIN(value_len, filter->cond.value.string_val.len)) == 0;
-                } else if (filter->cond.value_type == FILTER_VALUE_BIGINT) {
+            case VDB_FILTER_OP_EQ: {
+                if (filter->cond.value_type == VDB_FILTER_VALUE_STRING) {
+                    return strncmp(value_start, filter->cond.value.data.str_val,
+                                   HYBRID_MIN(value_len, strlen(filter->cond.value.data.str_val))) == 0;
+                } else if (filter->cond.value_type == VDB_FILTER_VALUE_INT) {
                     char num_buf[32] = {0};
                     strncpy(num_buf, value_start, HYBRID_MIN(value_len, sizeof(num_buf) - 1));
-                    return atoll(num_buf) == filter->cond.value.bigint_val;
+                    return atoll(num_buf) == filter->cond.value.data.int_val;
                 }
                 break;
             }
-            case FILTER_OP_NE: {
+            case VDB_FILTER_OP_NE: {
                 /* 类似 EQ 但取反 */
                 break;
             }
-            case FILTER_OP_GT:
-            case FILTER_OP_GE:
-            case FILTER_OP_LT:
-            case FILTER_OP_LE: {
-                if (filter->cond.value_type == FILTER_VALUE_BIGINT ||
-                    filter->cond.value_type == FILTER_VALUE_INT) {
+            case VDB_FILTER_OP_GT:
+            case VDB_FILTER_OP_GE:
+            case VDB_FILTER_OP_LT:
+            case VDB_FILTER_OP_LE: {
+                if (filter->cond.value_type == VDB_FILTER_VALUE_INT) {
                     char num_buf[32] = {0};
                     strncpy(num_buf, value_start, HYBRID_MIN(value_len, sizeof(num_buf) - 1));
                     int64_t val = atoll(num_buf);
-                    int64_t cond_val = filter->cond.value.bigint_val;
+                    int64_t cond_val = filter->cond.value.data.int_val;
 
                     switch (filter->cond.op) {
-                        case FILTER_OP_GT: return val > cond_val;
-                        case FILTER_OP_GE: return val >= cond_val;
-                        case FILTER_OP_LT: return val < cond_val;
-                        case FILTER_OP_LE: return val <= cond_val;
+                        case VDB_FILTER_OP_GT: return val > cond_val;
+                        case VDB_FILTER_OP_GE: return val >= cond_val;
+                        case VDB_FILTER_OP_LT: return val < cond_val;
+                        case VDB_FILTER_OP_LE: return val <= cond_val;
                         default: break;
                     }
                 }
@@ -651,9 +645,9 @@ static bool evaluate_filter(const FilterExpr *filter, const void *metadata, int3
         bool right_result = evaluate_filter(filter->right, metadata, metadata_size);
 
         switch (filter->op) {
-            case FILTER_OP_AND: return left_result && right_result;
-            case FILTER_OP_OR: return left_result || right_result;
-            case FILTER_OP_NOT: return !left_result;
+            case VDB_FILTER_OP_AND: return left_result && right_result;
+            case VDB_FILTER_OP_OR: return left_result || right_result;
+            case VDB_FILTER_OP_NOT: return !left_result;
             default: return false;
         }
     }
@@ -1104,14 +1098,14 @@ float hybrid_index_estimate_filter_rate(const HybridIndex *index,
     if (filter->is_leaf) {
         /* 基于操作符估算 */
         switch (filter->cond.op) {
-            case FILTER_OP_EQ:
+            case VDB_FILTER_OP_EQ:
                 return 0.1f; /* 等值查询通常过滤掉大部分 */
-            case FILTER_OP_NE:
+            case VDB_FILTER_OP_NE:
                 return 0.9f;
-            case FILTER_OP_GT:
-            case FILTER_OP_GE:
-            case FILTER_OP_LT:
-            case FILTER_OP_LE:
+            case VDB_FILTER_OP_GT:
+            case VDB_FILTER_OP_GE:
+            case VDB_FILTER_OP_LT:
+            case VDB_FILTER_OP_LE:
                 return 0.5f; /* 范围查询 */
             default:
                 return 0.5f;
@@ -1121,9 +1115,9 @@ float hybrid_index_estimate_filter_rate(const HybridIndex *index,
         float left_rate = hybrid_index_estimate_filter_rate(index, filter->left);
         float right_rate = hybrid_index_estimate_filter_rate(index, filter->right);
 
-        if (filter->op == FILTER_OP_AND) {
+        if (filter->op == VDB_FILTER_OP_AND) {
             return left_rate * right_rate;
-        } else if (filter->op == FILTER_OP_OR) {
+        } else if (filter->op == VDB_FILTER_OP_OR) {
             return 1.0f - (1.0f - left_rate) * (1.0f - right_rate);
         } else {
             return 1.0f - left_rate;

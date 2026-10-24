@@ -33,7 +33,8 @@ typedef enum {
     PLAN_HASH,            /* Hash 表构建 */
     PLAN_VALUES,          /* VALUES 子句 */
     PLAN_RESULT,          /* 结果 */
-    PLAN_EXCHANGE         /* 并行交换（Gap#4） */
+    PLAN_EXCHANGE,        /* 并行交换（Gap#4） */
+    PLAN_SECURITY_CHECK   /* 安全检查（src/db/security/security_executor.c 的执行节点类型） */
 } plan_node_type_t;
 
 /* ─────────────────────────────────────────────────────────────────
