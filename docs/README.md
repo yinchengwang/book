@@ -14,6 +14,8 @@
 
 - `ARCHITECTURE.md` —— 仓库总体架构
 - `system_design.md` —— 系统设计（分区方案的来源）
+- `path-mapping.md` —— 阶段二重排的路径引用核对表（迁移档案）
+- `build-debt-fixes.md` —— 构建债修复记录（根因、判据、验证方法）
 - `multimodal-*.md` —— 多模态数据库 / RAG 设计
 - `memory-context-*.md` —— memctx 迁移记录
 - `p6-production-ready-report.md`、`performance-scale-report.md` —— 上线与性能报告

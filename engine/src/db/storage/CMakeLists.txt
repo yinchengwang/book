@@ -169,6 +169,9 @@ endif()
 if(MMDB_ENABLE_GRAPH AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/graph")
     list(APPEND DB_STORAGE_SUBMODULES graph)
 endif()
+if(MMDB_ENABLE_SPATIAL AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/spatial")
+    list(APPEND DB_STORAGE_SUBMODULES spatial)
+endif()
 if(MMDB_ENABLE_STREAM AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/stream")
     list(APPEND DB_STORAGE_SUBMODULES stream)
 endif()
@@ -190,6 +193,16 @@ foreach(subdir ${DB_STORAGE_SUBMODULES})
         list(APPEND DB_STORAGE_OBJECTS $<TARGET_OBJECTS:storage_${subdir}>)
     endif()
 endforeach()
+
+# yang_parser（src/db/yang/，YANG 数据模型层）也是 OBJECT 库，其 obj 原本无人收集，
+# 导致 yang_datastore_create / yang_model_create / yang_schema_find /
+# yang_data_create_node 等 18 个符号在链接期缺失。
+# src/db/CMakeLists.txt 已把 add_subdirectory(yang) 提前到 storage 之前，
+# 故此处 yang_parser 目标已存在。
+#
+# 注意：不能用 list(APPEND DB_STORAGE_OBJECTS $<TARGET_OBJECTS:yang_parser>) ——
+# add_library 的源文件位置不展开 $<TARGET_OBJECTS:...> 表达式（该表达式仅在
+# target_sources 中有效），故这里改为在库定义完成后用 target_sources 追加。
 
 # vector_persist 是静态库（包含向量引擎），单独处理
 if(TARGET vector_persist)
@@ -225,6 +238,12 @@ if(DB_STORAGE_OBJECTS)
     # 链接 Hilbert 索引库（被 spatial 模块使用）
     if(TARGET index_hilbert)
         target_link_libraries(db_storage PUBLIC index_hilbert)
+    endif()
+    # yang_parser（src/db/yang/）的 obj 用 target_sources 追加：
+    # $<TARGET_OBJECTS:...> 表达式只在 target_sources 中有效，
+    # 在 add_library 的源文件位置不会被展开。
+    if(TARGET yang_parser)
+        target_sources(db_storage PRIVATE $<TARGET_OBJECTS:yang_parser>)
     endif()
 else()
     # 如果没有 OBJECT 库，创建空库作为占位

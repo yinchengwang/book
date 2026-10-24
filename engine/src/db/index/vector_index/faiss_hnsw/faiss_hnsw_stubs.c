@@ -462,6 +462,16 @@ int32_t faiss_hnsw_index_max_level(const faiss_hnsw_t *index) {
 }
 
 // =============================================================================
+// faiss_hnsw_index_entry_point
+// 返回索引当前的入口节点 ID（空索引或尚未插入向量时为 -1）
+// 与 max_level 同构：entry_point 初始为 -1，首个向量插入后被设为 0。
+// =============================================================================
+int32_t faiss_hnsw_index_entry_point(const faiss_hnsw_t *index) {
+    if (!index) return -1;
+    return index->entry_point;
+}
+
+// =============================================================================
 // C1-2 T3：COW 批量段接口骨架（最小实现）
 //
 // 当前实现：seal_segment 返回 index 引用，segment_release 空操作。

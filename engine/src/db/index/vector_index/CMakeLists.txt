@@ -15,6 +15,16 @@ list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX ".*faiss_hnsw/.*")
 # GPU 加速为 CUDA/OpenCL 存根，私有头（include/db/index/vector_index/gpu/）
 # 不在本目标包含路径上，且无外部符号引用；待其独立成库后再接入
 list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX ".*gpu/.*")
+# 量化器子目录（pq/sq/rq/lvq）各自已建独立静态库（见各自的 CMakeLists.txt），
+# 主 glob 若再收集其源码，会与 algo-prod 中的同名实现产生重复符号：
+# pq_code_size / pq_encode / pq_train / pq_create / pq_destroy /
+# sq_encode / sq_train / rq_encode / rq_train / lvq_encode 等 17 个符号
+# 在链接期报 multiple definition。此处排除，与 diskann/faiss_hnsw 的处理一致。
+# 注意：正则需锚定目录名，否则 ".*pq/.*" 会误伤 hnsw_pq/、ivf_pq/、opq/ 等。
+list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX "^pq/.*")
+list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX "^sq/.*")
+list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX "^rq/.*")
+list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX "^lvq/.*")
 
 add_library(vector_index STATIC ${VECTOR_INDEX_SOURCES})
 
