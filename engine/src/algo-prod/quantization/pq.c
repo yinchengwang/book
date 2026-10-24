@@ -47,7 +47,7 @@ void pq_reset(quantizer_t *q)
  * 训练：对每个子向量空间运�?K-Means，码心即码本
  * ────────────────────────────────────────────────────────────────────────── */
 
-int32_t pq_train(quantizer_t *q, int32_t n, const float *vectors)
+int32_t algo_pq_train(quantizer_t *q, int32_t n, const float *vectors)
 {
     int32_t sub;
 
@@ -119,7 +119,7 @@ int32_t pq_train(quantizer_t *q, int32_t n, const float *vectors)
  * 编码：每个子向量找最近码�?
  * ────────────────────────────────────────────────────────────────────────── */
 
-int32_t pq_encode(const quantizer_t *q, const float *vector, uint8_t *code)
+int32_t algo_pq_encode(const quantizer_t *q, const float *vector, uint8_t *code)
 {
     int32_t sub;
 
@@ -144,16 +144,16 @@ int32_t pq_encode(const quantizer_t *q, const float *vector, uint8_t *code)
     return 0;
 }
 
-int32_t pq_encode_batch(const quantizer_t *q,
+int32_t algo_pq_encode_batch(const quantizer_t *q,
                               int32_t n,
                               const float *vectors,
                               uint8_t *codes)
 {
     int32_t i;
-    int32_t cs = pq_code_size(q);
+    int32_t cs = algo_pq_code_size(q);
 
     for (i = 0; i < n; ++i) {
-        if (pq_encode(q, &vectors[i * q->config.dims], &codes[i * cs]) != 0) {
+        if (algo_pq_encode(q, &vectors[i * q->config.dims], &codes[i * cs]) != 0) {
             return -1;
         }
     }
@@ -164,7 +164,7 @@ int32_t pq_encode_batch(const quantizer_t *q,
  * ADC 距离：预计算每个子空间的距离表后查表累加
  * ────────────────────────────────────────────────────────────────────────── */
 
-int32_t pq_compute_distance_table(const quantizer_t *q,
+int32_t algo_pq_compute_distance_table(const quantizer_t *q,
                                         distance_metric_t metric,
                                         const float *query,
                                         float *table)
@@ -185,7 +185,7 @@ int32_t pq_compute_distance_table(const quantizer_t *q,
     return 0;
 }
 
-float pq_adc_distance(const quantizer_t *q,
+float algo_pq_adc_distance(const quantizer_t *q,
                             const uint8_t *code,
                             const float *table)
 {
@@ -203,12 +203,12 @@ float pq_adc_distance(const quantizer_t *q,
  * 尺寸查询
  * ────────────────────────────────────────────────────────────────────────── */
 
-int32_t pq_code_size(const quantizer_t *q)
+int32_t algo_pq_code_size(const quantizer_t *q)
 {
     return q->config.pq_subquantizers;
 }
 
-int32_t pq_distance_table_size(const quantizer_t *q)
+int32_t algo_pq_distance_table_size(const quantizer_t *q)
 {
     return q->config.pq_subquantizers * q->codebook_size;
 }

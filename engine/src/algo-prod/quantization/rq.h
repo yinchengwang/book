@@ -27,7 +27,7 @@ void rq_reset(quantizer_t *q);
 
 /**
  * RabitQ 两级训练
- * 1. PQ 码本训练 (调用 pq_train)
+ * 1. PQ 码本训练 (调用 algo_pq_train)
  * 2. 残差统计计算
  * @param q 量化器
  * @param n 向量数量

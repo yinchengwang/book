@@ -424,7 +424,7 @@ int32_t quantizer_train(quantizer_t *quantizer, int32_t n, const float *vectors)
         return -1;
     }
     if (quantizer->config.type == QUANTIZATION_TYPE_PQ) {
-        return pq_train(quantizer, n, vectors);
+        return algo_pq_train(quantizer, n, vectors);
     }
     if (quantizer->config.type == QUANTIZATION_TYPE_LVQ) {
         /* LVQ 无需训练，直接标记为已训练 */
@@ -450,7 +450,7 @@ int32_t quantizer_encode(const quantizer_t *quantizer, const float *vector, uint
         return -1;
     }
     if (quantizer->config.type == QUANTIZATION_TYPE_PQ) {
-        return pq_encode(quantizer, vector, code);
+        return algo_pq_encode(quantizer, vector, code);
     }
     if (quantizer->config.type == QUANTIZATION_TYPE_LVQ) {
         return lvq_encode(quantizer, vector, code);
@@ -473,7 +473,7 @@ int32_t quantizer_encode_batch(const quantizer_t *quantizer,
         return -1;
     }
     if (quantizer->config.type == QUANTIZATION_TYPE_PQ) {
-        return pq_encode_batch(quantizer, n, vectors, codes);
+        return algo_pq_encode_batch(quantizer, n, vectors, codes);
     }
     if (quantizer->config.type == QUANTIZATION_TYPE_LVQ) {
         return lvq_encode_batch(quantizer, n, vectors, codes);
@@ -501,7 +501,7 @@ int32_t quantizer_compute_distance_table(const quantizer_t *quantizer,
         return -1;
     }
     if (quantizer->config.type == QUANTIZATION_TYPE_PQ) {
-        return pq_compute_distance_table(quantizer, metric, query, distance_table);
+        return algo_pq_compute_distance_table(quantizer, metric, query, distance_table);
     }
     if (quantizer->config.type == QUANTIZATION_TYPE_LVQ) {
         return lvq_compute_distance_table(quantizer, metric, query, distance_table);
@@ -523,7 +523,7 @@ float quantizer_adc_distance(const quantizer_t *quantizer,
         return FLT_MAX;
     }
     if (quantizer->config.type == QUANTIZATION_TYPE_PQ) {
-        return pq_adc_distance(quantizer, code, distance_table);
+        return algo_pq_adc_distance(quantizer, code, distance_table);
     }
     if (quantizer->config.type == QUANTIZATION_TYPE_LVQ) {
         return lvq_adc_distance(quantizer, code, distance_table);
@@ -547,7 +547,7 @@ int32_t quantizer_code_size(const quantizer_t *quantizer)
         return -1;
     }
     if (quantizer->config.type == QUANTIZATION_TYPE_PQ) {
-        return pq_code_size(quantizer);
+        return algo_pq_code_size(quantizer);
     }
     if (quantizer->config.type == QUANTIZATION_TYPE_LVQ) {
         return lvq_code_size(quantizer);
@@ -567,7 +567,7 @@ int32_t quantizer_distance_table_size(const quantizer_t *quantizer)
         return -1;
     }
     if (quantizer->config.type == QUANTIZATION_TYPE_PQ) {
-        return pq_distance_table_size(quantizer);
+        return algo_pq_distance_table_size(quantizer);
     }
     if (quantizer->config.type == QUANTIZATION_TYPE_LVQ) {
         return lvq_distance_table_size(quantizer);
