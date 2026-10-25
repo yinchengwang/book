@@ -142,7 +142,7 @@ npm install && npm run dev
 
 ---
 
-## 📦 什么该放这个仓
+## 什么该放这个仓
 
 本仓是四个仓中的**工程仓**（projects）。判断一份东西该放这里、还是放 `learning` / `ai-docs` / `reference`：
 
