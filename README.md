@@ -142,6 +142,29 @@ npm install && npm run dev
 
 ---
 
+## 📦 什么该放这个仓
+
+本仓是四个仓中的**工程仓**（projects）。判断一份东西该放这里、还是放 `learning` / `ai-docs` / `reference`：
+
+| 内容 | 归属 |
+|---|---|
+| 可运行的工程代码、测试、构建脚本 | projects |
+| 项目级架构文档、流程文档 | projects |
+| **项目级** agent 规约（`.ai/`、`CLAUDE.md`、`AGENTS.md`、`openspec/`、`skills-lock.json`） | projects |
+| 项目专属数据（`dataset/`） | projects |
+| 第三方源码镜像 | reference |
+| **跨项目**通用笔记、模板、方法论文档 | ai-docs |
+| 学习笔记、课程进度、算法题解 | learning |
+| 学习轨的 spec（`openspec/specs/learning/`） | learning（待迁） |
+
+**判定口诀**：换个项目还用得上 → ai-docs；只对这个项目有意义 → 留在本仓。
+
+> ⚠️ `.ai/`、`CLAUDE.md`、`AGENTS.md` 是项目级 agent 规约，**禁止搬走** —— 搬走会导致 agent 读不到规约。
+>
+> 完整目录规范见父仓 `StillEvolving/docs/architecture.md`；机器可读版见父仓 `repos.yaml` 的 `must_contain` 字段。
+
+---
+
 ## 📄 许可
 
 MIT License - 详见 [LICENSE](LICENSE)
