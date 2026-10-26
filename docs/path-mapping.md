@@ -42,6 +42,34 @@
 | `learning/` | 独立仓 `yinchengwang/learning` | 已移出本仓 |
 | `reference/` + `docs/{db,rag,agent}-wiki/` | 独立仓 `yinchengwang/reference` | 已移出本仓 |
 
+### 1.1 仓库级映射（2026-10-25 聚合仓重组）
+
+> 阶段二（本文档主体）处理的是**仓内目录**的重排。2026-10-25 的四仓重组处理的是
+> **仓本身的位置** —— 本表与之配套，缺一不可。
+
+| 旧位置 | 新位置 | 说明 |
+|--------|--------|------|
+| `C:/code/book/` | `C:/code/StillEvolving/projects/` | 工程仓整体迁入 StillEvolving 聚合仓，作为 submodule 挂载；仓内目录结构不变（仍是 `engine/` `apps/` `docs/` `openspec/` …） |
+| `C:/code/learning/` | `C:/code/StillEvolving/learning/` | 学习仓挂为 submodule；旧副本已归档至 `C:/code/_archive/learning-legacy-2026-10-25/` |
+| `C:/code/AI-DOCS/`（新建） | `C:/code/StillEvolving/ai-docs/` | AI 文档仓挂为 submodule |
+| `C:/code/reference/` | `C:/code/reference/`（**位置不变**） | 第三方源码镜像仓**不进** submodule 树，与 StillEvolving 平级；其 95 个上游由 `catalog.yml` 声明 commit，按需拉取 |
+| `C:/code/StillEvolving/` | `C:/code/StillEvolving/`（新增） | 顶层聚合仓：只放四个仓的关系（`repos.yaml`）、目录规范（`docs/architecture.md`）与引导脚本（`scripts/`） |
+
+**由此产生的路径改写规则**（本仓内引用旧仓位置的地方一律按此改）：
+
+| 旧写法 | 新写法 |
+|--------|--------|
+| `C:/code/book/` | `C:/code/StillEvolving/projects/` |
+| `c:/code/book/` | `c:/code/StillEvolving/projects/` |
+| `/c/code/book/` | `/c/code/StillEvolving/projects/` |
+| `//c/code/book/` | `//c/code/StillEvolving/projects/` |
+| `C:\code\book\` | `C:\code\StillEvolving\projects\` |
+| `C:/code/book/engineering/` | `C:/code/StillEvolving/projects/engine/`（阶段二已把 `engineering/` 改名 `engine/`，两处改写叠加） |
+
+**⚠️ 不要盲目全局替换 `C:/code`**：三个目标仓的新位置不同 ——
+工程仓在 `C:/code/StillEvolving/projects/`、学习仓在 `C:/code/StillEvolving/learning/`、
+第三方镜像仓仍在 `C:/code/reference/`。逐条判断目标仓再改。
+
 ---
 
 ## 二、构建文件（CMake）路径引用修正
@@ -57,7 +85,8 @@
 
 ### 2.2 相对路径上溯级数的实测核对
 
-> **核对方法**：在 `pre-cleanup-baseline` 的独立 worktree（`C:/code/book-baseline`）中，
+> **核对方法**：在 `pre-cleanup-baseline` 的独立 worktree（`C:/code/book-baseline`，
+> 该目录在 2026-10-25 的工作区盘点时已不存在，故基线复现需另行重建）中，
 > 用 `cmake --build` 生成的 `build.ninja` 提取真实的 `-I` 参数，与重排后的实际路径逐条比对。
 > 这一步纠正了「三级上溯 = `engine/test/`」这一**误判**（见下）。
 
@@ -117,7 +146,7 @@
 | `engine/scripts/coverage/aggregate.py`、`aggregate-gcov.py`、`badge.py`、`check-threshold.py`、`compare.py` | `engineering/scripts/coverage/...`、`engineering/src/<lib>/` | `engine/scripts/coverage/...`、`engine/src/<lib>/` | 覆盖率脚本随工程轨目录改名 |
 | `engine/scripts/coverage/run.sh` | `engineering/src/` | `engine/src/` | 过滤覆盖率数据的源码根路径 |
 | `engine/scripts/coverage/lcov-aggregate.sh` | `SRC_DIR="engineering/src"`、`--src-dir <engineering/src>` | `SRC_DIR="engine/src"`、`--src-dir <engine/src>` | 同上 |
-| `engine/scripts/check_wsl_build.sh` | `/mnt/d/code/book/engineering/scripts/check_wsl_build.sh` | `/mnt/d/code/book/engine/scripts/check_wsl_build.sh` | WSL 下的调用路径 |
+| `engine/scripts/check_wsl_build.sh` | `/mnt/d/code/book/engineering/scripts/check_wsl_build.sh` | `/mnt/d/code/StillEvolving/projects/engine/scripts/check_wsl_build.sh` | WSL 下的调用路径。仓位置已于 2026-10-25 迁至 `C:/code/StillEvolving/projects/`（WSL 视图为 `/mnt/d/code/StillEvolving/projects/`），与阶段二的 `engineering/`→`engine/` 改名叠加 |
 | `engine/sdk/tests/cross_lang_e2e.sh` | `$ROOT/engineering/include`、`$ROOT/engineering/sdk/python`、`$ROOT/engineering/sdk/go/multimodal` | `$ROOT/engine/include`、`$ROOT/engine/sdk/python`、`$ROOT/engine/sdk/go/multimodal` | 跨语言 E2E 脚本的源码路径 |
 
 ---
