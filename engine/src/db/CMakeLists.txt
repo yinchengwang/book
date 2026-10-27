@@ -17,6 +17,15 @@
 # ========================================================================
 add_subdirectory(core)
 
+# ========================================================================
+# 注册表反转：按 profile 生成 mm_builtin_engines.c（内置引擎注册收集器）
+# 必须无条件调用 —— 空 profile 也产出空函数体，否则 engine_registry_init
+# 链接失败。过渡期 mm_<modality>_register 仍在 db_core 中，Task 6 抽出
+# mm_storage_api 后改为模态库提供。
+# ========================================================================
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/gen_builtin_engines.cmake)
+mmdb_generate_builtin_engines()
+
 # 共识模块（Raft 共识算法，Phase11 引入）
 add_subdirectory(consensus)
 
@@ -45,6 +54,13 @@ add_subdirectory(storage)
 # 这种情况，会在最终链接行中重复列出相关库。
 if(TARGET db_storage)
     target_link_libraries(db_core PUBLIC db_storage)
+endif()
+
+# db_core 的 engine_registry_init 调用生成的 mm_register_builtin_engines；
+# mm_builtin_engines 反过来调用 db_core 内的 mm_<modality>_register（过渡期），
+# 形成静态库循环依赖 —— 与上方 db_core<->db_storage 同理，CMake 支持。
+if(TARGET mm_builtin_engines)
+    target_link_libraries(db_core PUBLIC mm_builtin_engines)
 endif()
 
 # ========================================================================

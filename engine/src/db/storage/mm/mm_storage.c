@@ -6,6 +6,7 @@
  */
 #include "mm_storage.h"
 #include "db/engine_registry.h"
+#include "db/mm_engine_register.h"  /* 注册表反转：engine_registry_init 经此调用生成的注册入口 */
 #include "log.h"
 #include <stdlib.h>
 #include <string.h>

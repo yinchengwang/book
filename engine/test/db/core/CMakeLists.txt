@@ -23,6 +23,29 @@ gtest_discover_tests(engine_registry_test
     PROPERTIES LABELS "engine_registry"
 )
 
+# 引擎注册隔离测试（Task 2 注册表反转的行为钉子）：
+# 单模态构建只注册一个引擎；期望值就地按 MMDB_ENABLE_* 计算 ——
+# 不能依赖 Task 5 的 MMDB_ENABLED_MODALITY_COUNT（此处尚未定义）。
+# 只有实现 storage_ops_t 的模态才计入注册数：
+# RELATIONAL 不走 storage_ops_t；SPARSE 明确不实现（见 engine_registry.c 注释）。
+set(MMDB_REGISTERING_MODALITIES KV VECTOR GRAPH DOCUMENT TIMESERIES
+                                SPATIAL TREE STREAM COLUMNAR ST RDF)
+set(_expected 0)
+foreach(_m ${MMDB_REGISTERING_MODALITIES})
+    if(MMDB_ENABLE_${_m})
+        math(EXPR _expected "${_expected}+1")
+    endif()
+endforeach()
+add_executable(engine_register_isolation_test engine_register_isolation_test.cpp)
+target_compile_definitions(engine_register_isolation_test
+    PRIVATE MMDB_EXPECTED_ENGINE_COUNT=${_expected})
+target_link_libraries(engine_register_isolation_test
+    PRIVATE db_core db_storage project_includes gtest gtest_main)
+gtest_discover_tests(engine_register_isolation_test
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    PROPERTIES LABELS "engine_registry"
+)
+
 # 向量查询执行器测试
 add_executable(test_vector_query vector_query_test.cpp)
 target_link_libraries(test_vector_query
