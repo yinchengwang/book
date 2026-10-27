@@ -45,13 +45,16 @@ add_subdirectory(yang)
 # ========================================================================
 add_subdirectory(storage)
 
-# db_core 内含 engine_registry.c，引用各存储引擎的 *_engine_get_ops 符号
-# （kv_/vector_/graph_/spatial_/yang_）与 mm_storage_init / storage_register_engine
-# 等，这些符号由 db_storage 收集的引擎 OBJECT 库提供。
-# 需在 add_subdirectory(storage) 之后声明：core 目录先于 storage 被处理，
-# 那时 db_storage 目标尚未存在，if(TARGET db_storage) 判定为假。
-# db_storage 本身也链接 db_core（PUBLIC），形成静态库循环依赖 —— CMake 支持
-# 这种情况，会在最终链接行中重复列出相关库。
+# db_core 内含 engine_registry.c 与生成的注册收集器，引用各引擎的
+# *_engine_get_ops / mm_*_register_sql_functions 与 storage_register_engine 等
+# db_storage 符号。Task 4 曾尝试删除本链接，实测 5 个测试目标因
+# 「单遍 archive 扫描无法满足 db_core -> db_storage 反向引用」而链接失败
+# （nm -u 确认：kv_engine_get_ops、storage_register_engine 等只能由
+# db_storage 提供）。断环的正确定义点是 Task 6：mm_storage_api 抽出到
+# 公共层、mm_<modality>_register 随 profile 模态库提供之后，db_core
+# 才可能不依赖 db_storage。届时删除本块。
+# db_storage 也链接 db_core（PUBLIC），形成静态库循环依赖 —— CMake 支持，
+# 会在最终链接行中重复列出相关库。
 if(TARGET db_storage)
     target_link_libraries(db_core PUBLIC db_storage)
 endif()

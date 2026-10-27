@@ -27,6 +27,9 @@ target_include_directories(db_core PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include
     ${ENGINEERING_SOURCE_DIR}/include/db
     ${ENGINEERING_SOURCE_DIR}/include/db/core
+    # func_registry.c 直接使用 uthash；此前经 db_storage->algo-prod 传递，
+    # Task 4 断环后需显式声明（uthash 是头文件库，无链接需求）
+    ${ENGINEERING_SOURCE_DIR}/third_part/uthash/src
 )
 # engine_registry.h 公开包含 db/multimodal_config.h，生成头必须随 db_core 传递
 target_link_libraries(db_core PUBLIC multimodal_config_gen)

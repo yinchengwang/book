@@ -32,5 +32,6 @@ target_link_libraries(vector_persist PUBLIC
     storage_mm
     storage_lock
     storage_wal  # P1-B Task 4：vector_wal 依赖 wal_flush_get_policy / db_fsync
+    storage_page  # Task 4: vector_engine 依赖 disk_*；断 db_core->db_storage 环后不能再靠 aggregate 兜底
     db_vectorized  # Task 1: vector_query.c 依赖 vector_block_*/vector_batch_*（原在 db_core）
 )
