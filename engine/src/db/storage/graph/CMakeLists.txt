@@ -10,6 +10,7 @@ set(TRAVERSE_SOURCE_FILES
 set(GRAPH_ALGO_SOURCE_FILES
     ${ENGINEERING_SOURCE_DIR}/src/db/graph/graph_algorithms.c
     ${ENGINEERING_SOURCE_DIR}/src/db/graph/graph_cypher.c
+    ${ENGINEERING_SOURCE_DIR}/src/db/graph/graph_sql_functions_register.c  # Task 3: 图模态 SQL 函数表
 )
 
 if(GRAPH_SOURCE_FILES OR TRAVERSE_SOURCE_FILES OR GRAPH_ALGO_SOURCE_FILES)

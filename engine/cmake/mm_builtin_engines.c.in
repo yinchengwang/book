@@ -12,5 +12,7 @@
 void mm_register_builtin_engines(void) {
 @MMDB_ENGINE_REGISTER_CALLS@}
 
-void mm_register_builtin_sql_functions(void) {
-@MMDB_SQL_FUNCTION_REGISTER_CALLS@}
+int mm_register_builtin_sql_functions(void) {
+    int ret = 0;
+@MMDB_SQL_FUNCTION_REGISTER_CALLS@    return ret;
+}

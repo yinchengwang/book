@@ -8,6 +8,7 @@ add_library(db_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/pg_ctl.c
     ${CMAKE_CURRENT_SOURCE_DIR}/db_server.c
     ${CMAKE_CURRENT_SOURCE_DIR}/structured_log.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/func_registry.c   # Task 3: 首次入库（此前从未被任何目标编译）
     ${CMAKE_CURRENT_SOURCE_DIR}/metrics.c
     ${CMAKE_CURRENT_SOURCE_DIR}/query_filter.c
     ${CMAKE_CURRENT_SOURCE_DIR}/query_fusion.c

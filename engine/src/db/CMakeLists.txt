@@ -56,11 +56,10 @@ if(TARGET db_storage)
     target_link_libraries(db_core PUBLIC db_storage)
 endif()
 
-# db_core 的 engine_registry_init 调用生成的 mm_register_builtin_engines；
-# mm_builtin_engines 反过来调用 db_core 内的 mm_<modality>_register（过渡期），
-# 形成静态库循环依赖 —— 与上方 db_core<->db_storage 同理，CMake 支持。
-if(TARGET mm_builtin_engines)
-    target_link_libraries(db_core PUBLIC mm_builtin_engines)
+# 生成的注册收集器直接编入 db_core（过渡期 mm_<modality>_register 也在
+# db_core 内）：做成独立库与 db_core 互链会打穿循环档案重复深度。
+if(EXISTS "${CMAKE_BINARY_DIR}/generated/src/mm_builtin_engines.c")
+    target_sources(db_core PRIVATE "${CMAKE_BINARY_DIR}/generated/src/mm_builtin_engines.c")
 endif()
 
 # ========================================================================

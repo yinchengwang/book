@@ -29,9 +29,9 @@ void mm_register_builtin_engines(void);
  *
  * 由生成的 mm_builtin_engines.c 提供；模态通过
  * mm_<modality>_register_sql_functions()（func_registry 拆分后）
- * 向 SQL 函数注册表登记自己的函数。
+ * 向 SQL 函数注册表登记自己的函数。任一模态注册失败返回 -1。
  */
-void mm_register_builtin_sql_functions(void);
+int mm_register_builtin_sql_functions(void);
 
 /* ========================================================================
  * 各模态注册函数
@@ -51,6 +51,15 @@ int mm_stream_register(void);
 int mm_columnar_register(void);
 int mm_st_register(void);
 int mm_rdf_register(void);
+
+/* 各模态内置 SQL 函数注册（定义随模态编译，Task 3 起） */
+int mm_vector_register_sql_functions(void);
+int mm_ts_register_sql_functions(void);
+int mm_graph_register_sql_functions(void);
+int mm_doc_register_sql_functions(void);
+int mm_spatial_register_sql_functions(void);
+int mm_kv_register_sql_functions(void);
+int mm_tree_register_sql_functions(void);
 
 #ifdef __cplusplus
 }

@@ -25,8 +25,18 @@ function(mmdb_generate_builtin_engines)
             string(TOLOWER "${_m}" _low)
             string(APPEND MMDB_ENGINE_REGISTER_CALLS
                 "    (void)mm_${_low}_register();\n")
-            # Task 3 拆分 func_registry 后，这里同步追加
-            # (void)mm_${_low}_register_sql_functions();
+        endif()
+    endforeach()
+
+    # SQL 函数注册：顺序必须与改造前 func_registry_register_builtins 一致
+    # （vector -> timeseries -> graph -> document -> spatial -> kv -> tree），
+    # 某些函数可能依赖先注册的辅助函数。
+    set(_sql_order VECTOR TIMESERIES GRAPH DOCUMENT SPATIAL KV TREE)
+    foreach(_m IN LISTS _sql_order)
+        if(MMDB_ENABLE_${_m})
+            string(TOLOWER "${_m}" _low)
+            string(APPEND MMDB_SQL_FUNCTION_REGISTER_CALLS
+                "    ret |= mm_${_low}_register_sql_functions();\n")
         endif()
     endforeach()
 
@@ -37,14 +47,12 @@ function(mmdb_generate_builtin_engines)
         @ONLY
     )
 
-    add_library(mm_builtin_engines STATIC "${_generated}")
-    target_include_directories(mm_builtin_engines PUBLIC
-        "${ENGINEERING_SOURCE_DIR}/include"
-    )
+    # 生成文件必须每次构建都产出（空 profile 产出空函数体）。
     # 当前过渡态：mm_<modality>_register 仍定义在 db_core/engine_registry.c，
-    # register_storage_engine 由 db_storage 提供，故先链 db_core。
-    # Task 6 抽出 mm_storage_api 后，本库改链 mm_storage_api，
-    # mm_*_register 随各模态库由 profile 链接闭包提供。
-    target_link_libraries(mm_builtin_engines PUBLIC db_core)
-    set_target_properties(mm_builtin_engines PROPERTIES FOLDER "Generated")
+    # 由调用方把本文件编入 db_core（见 src/db/CMakeLists.txt 的 target_sources）。
+    # 若做成独立静态库与 db_core 互链，engine_registry.o 与生成文件的相互引用
+    # 会把 CMake 的循环档案重复深度打穿（实测 sql_function_registry_test 链接
+    # 因 archive 扫描轮次不足而 undefined）。
+    # Task 6 抽出 mm_storage_api 后，mm_*_register 随各模态库提供，
+    # 届时再恢复独立的 mm_builtin_engines 静态库（只链 mm_storage_api）。
 endfunction()

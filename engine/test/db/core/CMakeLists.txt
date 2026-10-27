@@ -46,6 +46,16 @@ gtest_discover_tests(engine_register_isolation_test
     PROPERTIES LABELS "engine_registry"
 )
 
+# SQL 函数注册表测试（Task 3）：各模态函数表迁至模态目录后，
+# 启用模态的函数可查到、未启用模态的不注册（期望用编译期开关守卫）。
+add_executable(sql_function_registry_test sql_function_registry_test.cpp)
+target_link_libraries(sql_function_registry_test
+    PRIVATE db_core db_storage project_includes gtest gtest_main)
+gtest_discover_tests(sql_function_registry_test
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    PROPERTIES LABELS "func_registry"
+)
+
 # 向量查询执行器测试
 add_executable(test_vector_query vector_query_test.cpp)
 target_link_libraries(test_vector_query

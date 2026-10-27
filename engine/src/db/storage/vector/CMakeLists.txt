@@ -14,6 +14,7 @@ set(VECTOR_PERSIST_SOURCES
     vector_engine.c
     vec_page.c
     vector_query.c  # Task 1: 从 core 迁入，消除 core 对 index/vector_index 的越界依赖
+    vector_sql_functions_register.c  # Task 3: 向量模态 SQL 函数表
 )
 
 add_library(vector_persist STATIC ${VECTOR_PERSIST_SOURCES})

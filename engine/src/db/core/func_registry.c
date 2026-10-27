@@ -4,13 +4,10 @@
  */
 
 #include "db/core/func_registry.h"
-#include "db/storage/doc/doc_vector.h"
-#include "db/storage/ts/ts_sql_functions.h"
-#include "db/graph/graph_sql_functions.h"
-#include "db/storage/spatial/spatial_geo.h"
-#include "db/storage/yang/yang_tree.h"
+#include "db/mm_engine_register.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include <uthash.h>
 
 /* ========================================================================
@@ -123,7 +120,8 @@ const FunctionInfo *func_registry_lookup(const char *name, const char *schema, i
     HASH_ITER(hh, g_functions, f, tmp) {
         if (strcmp(f->info.name, name) == 0 &&
             (f->info.schema == schema ||
-             (f->info.schema && schema && strcmp(f->info.schema, schema) == 0)) {
+             (f->info.schema && schema &&
+              strcmp(f->info.schema, schema) == 0))) {
             return &f->info;
         }
     }
@@ -135,7 +133,7 @@ const FunctionInfo **func_registry_list_by_model(DataModel model, size_t *out_co
     if (!out_count) return NULL;
 
     size_t count = 0;
-    FunctionInfo **results = (FunctionInfo **)calloc(64, sizeof(FunctionInfo *));
+    const FunctionInfo **results = (const FunctionInfo **)calloc(64, sizeof(FunctionInfo *));
 
     FuncHashEntry *f, *tmp;
     HASH_ITER(hh, g_functions, f, tmp) {
@@ -152,7 +150,7 @@ const FunctionInfo **func_registry_list_by_class(FunctionClass func_class, size_
     if (!out_count) return NULL;
 
     size_t count = 0;
-    FunctionInfo **results = (FunctionInfo **)calloc(64, sizeof(FunctionInfo *));
+    const FunctionInfo **results = (const FunctionInfo **)calloc(64, sizeof(FunctionInfo *));
 
     FuncHashEntry *f, *tmp;
     HASH_ITER(hh, g_functions, f, tmp) {
@@ -186,126 +184,14 @@ bool func_registry_validate_args(const FunctionInfo *func, const int *arg_types,
 }
 
 /* ========================================================================
- * 简化注册宏
- * ======================================================================== */
-
-#define REGISTER_SCALAR_FUNC(name, schema, model, ret_oid, min_args, max_args) \
-    do { \
-        static FunctionInfo info = { \
-            #name, schema, FUNC_CLASS_NORMAL, FUNC_RESULT_SCALAR, \
-            min_args, NULL, -1, ret_oid, NULL, NULL, #name, model, false \
-        }; \
-        info.num_args = max_args; \
-        func_registry_register(&info); \
-    } while(0)
-
-/* ========================================================================
  * 内置函数注册
  * ======================================================================== */
 
 int func_registry_register_builtins(void) {
-    int ret = 0;
-    ret |= func_registry_register_vector();
-    ret |= func_registry_register_timeseries();
-    ret |= func_registry_register_graph();
-    ret |= func_registry_register_document();
-    ret |= func_registry_register_spatial();
-    ret |= func_registry_register_kv();
-    ret |= func_registry_register_tree();
-    return ret;
-}
-
-int func_registry_register_vector(void) {
-    static FunctionInfo funcs[] = {
-        {"VECTOR_SEARCH", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_TABLE, 3, NULL, -1, 0, NULL, NULL, "向量搜索", MODEL_VECTOR, false},
-        {"VECTOR_DISTANCE", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_SCALAR, 3, NULL, -1, 0, NULL, NULL, "向量距离", MODEL_VECTOR, false},
-        {"EMBED_TEXT", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_SCALAR, 1, NULL, -1, 0, NULL, NULL, "文本嵌入", MODEL_VECTOR, false},
-    };
-
-    for (size_t i = 0; i < sizeof(funcs) / sizeof(funcs[0]); i++) {
-        func_registry_register(&funcs[i]);
-    }
-    return 0;
-}
-
-int func_registry_register_timeseries(void) {
-    static FunctionInfo funcs[] = {
-        {"TIME_SERIES_AGG", "public", FUNC_CLASS_AGGREGATE, FUNC_RESULT_SCALAR, 2, NULL, -1, 0, NULL, NULL, "时序聚合", MODEL_TIMESERIES, false},
-        {"FIRST", "public", FUNC_CLASS_AGGREGATE, FUNC_RESULT_SCALAR, 2, NULL, -1, 0, NULL, NULL, "首值", MODEL_TIMESERIES, false},
-        {"LAST", "public", FUNC_CLASS_AGGREGATE, FUNC_RESULT_SCALAR, 2, NULL, -1, 0, NULL, NULL, "末值", MODEL_TIMESERIES, false},
-        {"RATE", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_SCALAR, 2, NULL, -1, 0, NULL, NULL, "变化率", MODEL_TIMESERIES, false},
-    };
-
-    for (size_t i = 0; i < sizeof(funcs) / sizeof(funcs[0]); i++) {
-        func_registry_register(&funcs[i]);
-    }
-    return 0;
-}
-
-int func_registry_register_graph(void) {
-    static FunctionInfo funcs[] = {
-        {"GRAPH_TRAVERSE", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_TABLE, 2, NULL, -1, 0, NULL, NULL, "图遍历", MODEL_GRAPH, false},
-        {"GRAPH_SHORTEST_PATH", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_TABLE, 3, NULL, -1, 0, NULL, NULL, "最短路径", MODEL_GRAPH, false},
-        {"GRAPH_PAGERANK", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_TABLE, 1, NULL, -1, 0, NULL, NULL, "PageRank", MODEL_GRAPH, false},
-        {"GRAPH_NEIGHBORS", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_TABLE, 2, NULL, -1, 0, NULL, NULL, "邻居查询", MODEL_GRAPH, false},
-    };
-
-    for (size_t i = 0; i < sizeof(funcs) / sizeof(funcs[0]); i++) {
-        func_registry_register(&funcs[i]);
-    }
-    return 0;
-}
-
-int func_registry_register_document(void) {
-    static FunctionInfo funcs[] = {
-        {"MATCH", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_SCALAR, 2, NULL, -1, 0, NULL, NULL, "全文匹配", MODEL_DOCUMENT, false},
-        {"HIGHLIGHT", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_SCALAR, 2, NULL, -1, 0, NULL, NULL, "高亮", MODEL_DOCUMENT, false},
-        {"JSON_EXTRACT", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_SCALAR, 2, NULL, -1, 0, NULL, NULL, "JSON 提取", MODEL_DOCUMENT, false},
-    };
-
-    for (size_t i = 0; i < sizeof(funcs) / sizeof(funcs[0]); i++) {
-        func_registry_register(&funcs[i]);
-    }
-    return 0;
-}
-
-int func_registry_register_spatial(void) {
-    static FunctionInfo funcs[] = {
-        {"ST_Distance", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_SCALAR, 2, NULL, -1, 0, NULL, NULL, "空间距离", MODEL_SPATIAL, false},
-        {"ST_Contains", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_SCALAR, 2, NULL, -1, 0, NULL, NULL, "空间包含", MODEL_SPATIAL, false},
-        {"ST_Within", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_SCALAR, 2, NULL, -1, 0, NULL, NULL, "空间被包含", MODEL_SPATIAL, false},
-        {"ST_Intersects", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_SCALAR, 2, NULL, -1, 0, NULL, NULL, "空间相交", MODEL_SPATIAL, false},
-    };
-
-    for (size_t i = 0; i < sizeof(funcs) / sizeof(funcs[0]); i++) {
-        func_registry_register(&funcs[i]);
-    }
-    return 0;
-}
-
-int func_registry_register_kv(void) {
-    static FunctionInfo funcs[] = {
-        {"ZADD", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_SCALAR, 3, NULL, -1, 0, NULL, NULL, "有序集合添加", MODEL_KV, false},
-        {"ZSCORE", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_SCALAR, 2, NULL, -1, 0, NULL, NULL, "获取分数", MODEL_KV, false},
-    };
-
-    for (size_t i = 0; i < sizeof(funcs) / sizeof(funcs[0]); i++) {
-        func_registry_register(&funcs[i]);
-    }
-    return 0;
-}
-
-int func_registry_register_tree(void) {
-    static FunctionInfo funcs[] = {
-        {"TREE_ANCESTORS", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_TABLE, 1, NULL, -1, 0, NULL, NULL, "祖先节点", MODEL_TREE, false},
-        {"TREE_DESCENDANTS", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_TABLE, 2, NULL, -1, 0, NULL, NULL, "后代节点", MODEL_TREE, false},
-        {"TREE_DEPTH", "public", FUNC_CLASS_NORMAL, FUNC_RESULT_SCALAR, 1, NULL, -1, 0, NULL, NULL, "节点深度", MODEL_TREE, false},
-    };
-
-    for (size_t i = 0; i < sizeof(funcs) / sizeof(funcs[0]); i++) {
-        func_registry_register(&funcs[i]);
-    }
-    return 0;
+    /* 注册表反转：各模态的 SQL 函数表已迁至各模态目录
+     * （mm_<modality>_register_sql_functions），由构建期生成的
+     * mm_builtin_engines.c 按 profile 集中调用。 */
+    return mm_register_builtin_sql_functions();
 }
 
 /* ========================================================================

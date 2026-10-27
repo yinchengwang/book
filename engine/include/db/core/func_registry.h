@@ -148,41 +148,6 @@ bool func_registry_validate_args(const FunctionInfo *func, const int *arg_types,
  */
 int func_registry_register_builtins(void);
 
-/**
- * @brief 注册向量函数
- */
-int func_registry_register_vector(void);
-
-/**
- * @brief 注册时序函数
- */
-int func_registry_register_timeseries(void);
-
-/**
- * @brief 注册图函数
- */
-int func_registry_register_graph(void);
-
-/**
- * @brief 注册文档函数
- */
-int func_registry_register_document(void);
-
-/**
- * @brief 注册空间函数
- */
-int func_registry_register_spatial(void);
-
-/**
- * @brief 注册 KV 函数
- */
-int func_registry_register_kv(void);
-
-/**
- * @brief 注册树函数
- */
-int func_registry_register_tree(void);
-
 /* ========================================================================
  * 函数执行器
  * ======================================================================== */
