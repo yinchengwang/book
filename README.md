@@ -155,7 +155,7 @@ npm install && npm run dev
 | 第三方源码镜像 | reference |
 | **跨项目**通用笔记、模板、方法论文档 | ai-docs |
 | 学习笔记、课程进度、算法题解 | learning |
-| 学习轨的 spec（`openspec/specs/learning/`） | learning（待迁） |
+| 学习轨的 spec（原 `openspec/specs/learning/`） | learning（**已迁出** 2026-10-25） |
 
 **判定口诀**：换个项目还用得上 → ai-docs；只对这个项目有意义 → 留在本仓。
 

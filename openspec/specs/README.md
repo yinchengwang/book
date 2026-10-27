@@ -14,12 +14,12 @@
   - 独立应用：`apps-games-2048/`, `apps-common-menu/` 等
   - CLI/API：`rest-api/`, `python-sdk/`, `jdbc-driver/`
 
-- **`learning/`**（35 个）：学习层规格——描述 `learning/notes/<主题>/`、`learning/code-solutions/<模块>/`、`apps/web/knowledge_hub/<功能>/`
-  - 学习路线图：`adaptive-learning-roadmap/`, `five-year-plan-integration/`
-  - Linux 知识栈：`linux-kernel-subsystems/`, `linux-networking/`, `linux-observability/` 等
-  - Quiz 测验系统：`quiz-system-navigation/`, `quiz-bank-expansion/` 等
-  - Mermaid2Excalidraw：`mermaid2excalidraw-cli/`、`generator/`、`layout/`、`parser/`
-  - 笔记渲染与展示：`markdown-content-rendering/`, `drawio-diagrams/`
+- **学习层规格已迁出本仓**（2026-10-25）：原 35 个学习层规格现由**学习仓**
+  `yinchengwang/learning` 持有 —— `learning/openspec/specs/learning/`（35 个，
+  含学习路线图 `adaptive-learning-roadmap/`、Linux 知识栈 `linux-kernel-subsystems/`、
+  Quiz 测验系统 `quiz-system-navigation/`、Mermaid2Excalidraw 与笔记渲染等）
+  另有 12 个纯学习向轮次规格 `r{12b,19,23,24,26,29,30,31,32,33,37,38}-*/` 一并迁入。
+  本仓只保留**工程层**规格与 20 个 `r*` 轮次规格。
 
 ## 命名约定
 
@@ -30,7 +30,7 @@
 ## 添加新规格流程
 
 1. 在 `openspec/changes/<change-name>/specs/<capability>/spec.md` 起草新规格
-2. 归档时（`openspec/changes/archive/<date>-<change>/`）由 Claude 自动移到 `openspec/specs/{engineering,learning}/<capability>/spec.md`
+2. 归档时（`openspec/changes/archive/<date>-<change>/`）由 Claude 自动移到 `openspec/specs/engineering/<capability>/spec.md`（学习层规格归学习仓，本仓不再产出）
 3. 使用 OpenSpec 模板：Purpose / Requirements / Scenario 三段式
 
 ## 删除规格流程
@@ -54,7 +54,9 @@
 
 ## 统计
 
-- 工程层规格：59 个
-- 学习层规格：35 个
+- 工程层规格（`engineering/`）：59 个
+- 轮次规格（顶层 `r*` 目录）：20 个
+- 单文件规格（`learning-card-rigor/`、`kanban-statuses-json/`）：2 个
+- 学习层规格：**已迁出本仓** → 见 learning 仓 `openspec/specs/`（47 个 = 35 个 `learning/` + 12 个 `r*`）
 - 已归档：8 个
-- 当前总共可见：**94 个**
+- 当前本仓总共可见：**81 个**
