@@ -52,7 +52,11 @@ set(CMAKE_BUILD_PARALLEL_LEVEL ${N_CORES})
 
 # ========================================================================
 # 多模态编译配置（模态开关、分布式开关）
+# ModalityProfiles 必须先于 MultimodalConfig：前者按 MMDB_MODALITY 推导
+# 全部 MMDB_ENABLE_* 缓存变量并做闭包校验，后者据此生成 multimodal_config.h。
+# （实施计划原文写"之后引入"，实测会导致生成头看不到推导值，故调整顺序。）
 # ========================================================================
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/ModalityProfiles.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/MultimodalConfig.cmake")
 
 include(CTest)
