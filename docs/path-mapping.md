@@ -85,9 +85,16 @@
 
 ### 2.2 相对路径上溯级数的实测核对
 
-> **核对方法**：在 `pre-cleanup-baseline` 的独立 worktree（`C:/code/book-baseline`，
-> 该目录在 2026-10-25 的工作区盘点时已不存在，故基线复现需另行重建）中，
-> 用 `cmake --build` 生成的 `build.ninja` 提取真实的 `-I` 参数，与重排后的实际路径逐条比对。
+> **核对方法**：原基线是 `pre-cleanup-baseline` 的独立 worktree（`C:/code/book-baseline`），
+> 该目录在 2026-10-25 的工作区盘点时已不存在，也不在 `_archive/` 的归档里。
+> 但基线**仍可从 git 历史重建** —— 重排提交 `2973758fa` 的父提交正是重排前的基线：
+>
+> ```bash
+> git worktree add ../book-baseline 9c8669247     # 重建重排前的基线工作树
+> cd ../book-baseline && cmake --build build      # 生成 build.ninja
+> ```
+>
+> 然后用 `build.ninja` 提取真实的 `-I` 参数，与重排后的实际路径逐条比对。
 > 这一步纠正了「三级上溯 = `engine/test/`」这一**误判**（见下）。
 
 `engine/test/sdk/integration` 的上溯级数实测：
