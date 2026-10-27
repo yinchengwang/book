@@ -73,16 +73,19 @@ static void *checkpoint_thread_main(void *arg) {
             break;
         }
 
-        /* flush + checkpoint + truncate（三步合一） */
+        /* 只做 flush + 记录 checkpoint LSN，**不 truncate**。
+         *
+         * 原因：WAL 是向量数据的唯一真相，而本线程只持有 wal 句柄、看不到集合数据，
+         * 无法在截断前把数据落成快照。历史实现此处无条件 truncate，
+         * 等于周期性丢弃尚未落盘的已确认写入（崩溃后不可恢复）。
+         * 截断统一由 vector_api_save 在快照写入成功之后执行。
+         */
         if (mgr->wal) {
             if (vector_wal_flush(mgr->wal) != 0) {
                 LOG_WARN("CheckpointManager: flush 失败");
             }
             if (vector_wal_checkpoint(mgr->wal, VECTOR_CHECKPOINT_TIMED) != 0) {
                 LOG_WARN("CheckpointManager: checkpoint 失败");
-            }
-            if (vector_wal_truncate(mgr->wal) != 0) {
-                LOG_WARN("CheckpointManager: truncate 失败");
             }
         }
         pthread_mutex_unlock(&mgr->mutex);

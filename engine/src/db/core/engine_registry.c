@@ -169,7 +169,9 @@ int engine_registry_init(void) {
 #ifdef MMDB_ENABLE_ST
     if (st_engine_get_ops) {
         const storage_ops_t *ops = st_engine_get_ops();
-        if (ops && register_storage_engine(MODEL_SPATIAL, ops) == 0) {
+        /* 必须用独立的 MODEL_SPATIOTEMPORAL 槽位：复用 MODEL_SPATIAL 会在
+         * 同时开启 SPATIAL 与 ST 时静默顶掉空间引擎。 */
+        if (ops && register_storage_engine(MODEL_SPATIOTEMPORAL, ops) == 0) {
             LOG_INFO("Registered ST engine: %s", ops->name);
             count++;
         }
@@ -180,7 +182,8 @@ int engine_registry_init(void) {
 #ifdef MMDB_ENABLE_RDF
     if (rdf_engine_get_ops) {
         const storage_ops_t *ops = rdf_engine_get_ops();
-        if (ops && register_storage_engine(MODEL_GRAPH, ops) == 0) {
+        /* 同上：复用 MODEL_GRAPH 会顶掉图引擎。 */
+        if (ops && register_storage_engine(MODEL_RDF, ops) == 0) {
             LOG_INFO("Registered RDF engine: %s", ops->name);
             count++;
         }

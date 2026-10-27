@@ -412,7 +412,9 @@ vdb_results_t *vdb_search(vdb_collection_t *coll, const float *query, int32_t di
         results->items[i].id = r->id;
         results->items[i].distance = r->distance;
         results->items[i].score = 1.0f / (1.0f + r->distance); /* 距离转分数 */
-        if (r->metadata && r->metadata_size > 0) {
+        /* 只在请求了元数据时才读 metadata 字段：底层结果数组在未请求元数据时
+         * 该字段不保证被填充，无条件读取会 memcpy 野指针。 */
+        if (sp.with_metadata && r->metadata && r->metadata_size > 0) {
             results->items[i].metadata = malloc(r->metadata_size);
             memcpy(results->items[i].metadata, r->metadata, r->metadata_size);
             results->items[i].metadata_size = r->metadata_size;

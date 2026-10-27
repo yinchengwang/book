@@ -2,7 +2,11 @@
  * common_rwlock.h - 公共读写锁封装
  *
  * 提供跨模态复用的并发控制原语，封装 pthread_rwlock，
- * 支持读锁（可重入）和写锁（独占），写者优先避免写者饥饿。
+ * 支持读锁（共享，**不可重入**）和写锁（独占），写者优先避免写者饥饿。
+ *
+ * ⚠️ 不可重入：Linux 上使用 PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP
+ * （见 common_rwlock.c），同一线程对同一把锁重复 rdlock 会死锁。
+ * 需要嵌套加锁的场景请改用普通 mutex 或显式传递"已持锁"标志。
  */
 
 #ifndef COMMON_RWLOCK_H

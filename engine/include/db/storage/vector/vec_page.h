@@ -217,6 +217,21 @@ int vector_page_get_vector(const vector_page_pool_t *pool,
                            float *out_vector);
 
 /**
+ * @brief 读取向量在写入时携带的 ID
+ *
+ * 页内 vector_ids 槽位保存的是 vector_page_append 的第三个参数：
+ * 传入 >= 0 时为调用方给的 ID，传入 -1 时为自动生成的页内序号。
+ *
+ * @param pool 页池
+ * @param vector_id 页内索引（与 vector_page_get_vector 的第一个参数同义）
+ * @param out_id 输出 ID
+ * @return 0 成功，-1 失败（页未驻留 / 索引越界）
+ */
+int vector_page_get_id(const vector_page_pool_t *pool,
+                       int32_t vector_id,
+                       int64_t *out_id);
+
+/**
  * @brief 驱逐最少使用页（Clock-Sweep）
  *
  * @param pool 页池

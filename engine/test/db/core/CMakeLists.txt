@@ -15,6 +15,14 @@ gtest_discover_tests(guc
 add_executable(engine_registry_test engine_registry_test.cpp)
 target_link_libraries(engine_registry_test PRIVATE db_core db_storage project_includes gtest gtest_main)
 
+# 此前该目标只构建、从未注册进 ctest，导致其中的断言长期不生效
+# （storage_model_name 的枚举错位 bug 就是这样被漏掉的）。
+# 用 gtest_discover_tests 按用例展开，失败时能直接定位到具体用例。
+gtest_discover_tests(engine_registry_test
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    PROPERTIES LABELS "engine_registry"
+)
+
 # 向量查询执行器测试
 add_executable(test_vector_query vector_query_test.cpp)
 target_link_libraries(test_vector_query

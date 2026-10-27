@@ -26,20 +26,24 @@
  * 内部数据结构
  * ======================================================================== */
 
-/** 数据模型目录名 */
+/** 数据模型目录名
+ *
+ * 使用指定初始化器：MODEL_COLUMNAR(9) 与 MODEL_RDF(11) 之间有一个空槽位（10），
+ * 位置式初始化会整体错位，导致 RDF 落到 spatiotemporal 目录、SPATIOTEMPORAL 取到 NULL。
+ */
 static const char *g_model_dir_names[MODEL_COUNT] = {
-    "base",        /* MODEL_RELATIONAL */
-    "kv",          /* MODEL_KV */
-    "graph",       /* MODEL_GRAPH */
-    "vector",      /* MODEL_VECTOR */
-    "timeseries",  /* MODEL_TIMESERIES */
-    "document",    /* MODEL_DOCUMENT */
-    "spatial",     /* MODEL_SPATIAL */
-    "yang",        /* MODEL_TREE */
-    "stream",      /* MODEL_STREAM */
-    "columnar",    /* MODEL_COLUMNAR */
-    "rdf",         /* MODEL_RDF */
-    "spatiotemporal", /* MODEL_SPATIOTEMPORAL */
+    [MODEL_RELATIONAL]     = "base",
+    [MODEL_KV]             = "kv",
+    [MODEL_GRAPH]          = "graph",
+    [MODEL_VECTOR]         = "vector",
+    [MODEL_TIMESERIES]     = "timeseries",
+    [MODEL_DOCUMENT]       = "document",
+    [MODEL_SPATIAL]        = "spatial",
+    [MODEL_TREE]           = "yang",
+    [MODEL_STREAM]         = "stream",
+    [MODEL_COLUMNAR]       = "columnar",
+    [MODEL_RDF]            = "rdf",
+    [MODEL_SPATIOTEMPORAL] = "spatiotemporal",
 };
 
 /** 全局上下文 */
@@ -184,6 +188,19 @@ int storage_register_engine(DataModel model, const storage_ops_t *ops) {
     if (model < 0 || model >= MODEL_COUNT || ops == NULL) {
         return -1;
     }
+    /* 同一 model 重复注册同一个引擎视为幂等（engine_registry_init 可能被多次调用）；
+     * 注册另一个引擎则拒绝，避免后注册者静默覆盖先注册者（历史上时空引擎曾顶掉空间引擎）。 */
+    if (g_engines[model] != NULL) {
+        if (g_engines[model] == ops) {
+            return 0;
+        }
+        LOG_WARN("模型 %d(%s) 已注册引擎 '%s'，拒绝被 '%s' 覆盖",
+                 (int)model,
+                 storage_model_name(model),
+                 g_engines[model]->name ? g_engines[model]->name : "?",
+                 ops->name ? ops->name : "?");
+        return -1;
+    }
     g_engines[model] = ops;
     return 0;
 }
@@ -221,14 +238,23 @@ void storage_shutdown_all(void) {
 
 const char *storage_model_name(DataModel model) {
     static const char *names[MODEL_COUNT] = {
-        "relational", "kv", "graph", "vector",
-        "timeseries", "document", "spatial", "tree",
-        "stream", "columnar", "rdf", "spatiotemporal"
+        [MODEL_RELATIONAL]     = "relational",
+        [MODEL_KV]             = "kv",
+        [MODEL_GRAPH]          = "graph",
+        [MODEL_VECTOR]         = "vector",
+        [MODEL_TIMESERIES]     = "timeseries",
+        [MODEL_DOCUMENT]       = "document",
+        [MODEL_SPATIAL]        = "spatial",
+        [MODEL_TREE]           = "tree",
+        [MODEL_STREAM]         = "stream",
+        [MODEL_COLUMNAR]       = "columnar",
+        [MODEL_RDF]            = "rdf",
+        [MODEL_SPATIOTEMPORAL] = "spatiotemporal",
     };
     if (model < 0 || model >= MODEL_COUNT) {
         return "unknown";
     }
-    return names[model];
+    return names[model] ? names[model] : "unknown";
 }
 
 /* ========================================================================

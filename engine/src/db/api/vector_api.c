@@ -66,6 +66,7 @@ struct VectorAPI_s {
     /* P1-C Task 4：checkpoint 周期可调（setter / 构造函数参数化） */
     uint32_t checkpoint_interval_ms;   /**< 当前 checkpoint 周期；0 表示禁用 mgr */
     pthread_mutex_t mgr_lock;          /**< 保护 checkpoint_mgr / interval_ms 热切换 */
+    pthread_mutex_t snapshot_lock;     /**< 串行化 collections.meta 快照写入（后台线程 vs 用户 save） */
 };
 
 /** 搜索结果内部结构 */
@@ -287,6 +288,15 @@ static VectorAPI *vector_api_create_internal(const char *data_dir,
         return NULL;
     }
 
+    /* 初始化快照互斥锁（后台 checkpoint 线程与用户 save 共用） */
+    if (pthread_mutex_init(&api->snapshot_lock, NULL) != 0) {
+        LOG_ERROR("VectorAPI: snapshot_lock 初始化失败");
+        pthread_mutex_destroy(&api->mgr_lock);
+        free(api->collections);
+        free(api);
+        return NULL;
+    }
+
     /* P1-B Task 4：打开/创建 WAL（wal_make_path 会拼出 {data_dir}/vector_wal_0.log）。
      * vector_wal_open 内部失败时会自动 fallthrough 到 vector_wal_create，所以
      * 无需显式 try-create。失败不致命，仅记 WARN —— API 仍可运行。 */
@@ -390,6 +400,7 @@ void vector_api_destroy(VectorAPI *api) {
 
     pthread_mutex_unlock(&api->mgr_lock);
     pthread_mutex_destroy(&api->mgr_lock);
+    pthread_mutex_destroy(&api->snapshot_lock);
 
     /* P1-B Task 4：关闭 WAL（必须在 collection 销毁前，避免引用悬空） */
     if (api->wal) {
@@ -457,7 +468,11 @@ int vector_api_create_collection(VectorAPI *api, const VectorCreateParams *param
      * 此处只需把元数据持久化，注册即落盘，后续 insert 走 WAL 恢复。
      * 仅在 WAL 已启用时调用，否则相当于在纯内存 create 时强制磁盘写。 */
     if (api->wal) {
-        if (save_collections_meta(api) != 0) {
+        pthread_mutex_lock(&api->snapshot_lock);
+        int meta_rc = save_collections_meta(api);
+        pthread_mutex_unlock(&api->snapshot_lock);
+
+        if (meta_rc != 0) {
             LOG_WARN("auto-save collections.meta 失败: collection=%s", params->name);
             /* 不阻断 create 流程 —— chaos 测试不依赖 snapshot，WAL replay 仍是 source of truth */
         }
@@ -631,7 +646,17 @@ VectorSearchResults *vector_api_search(VectorAPI *api, const VectorSearchParams 
 
     /* 暴力搜索（简化实现） */
     VectorSearchResults *results = (VectorSearchResults *)calloc(1, sizeof(*results));
-    results->results = (VectorSearchResult *)malloc(params->top_k * sizeof(VectorSearchResult));
+    if (!results) return NULL;
+    /* 必须用 calloc：VectorSearchResult 含 metadata / metadata_size 字段，
+     * 而下面的填充逻辑只在 with_metadata 为真时赋值。用 malloc 会让这两个字段
+     * 保留堆上的残留值，调用方一旦读取（vdb_search 就会读）即 memcpy 野指针，
+     * 表现为"偶发段错误"，且分配器状态不同时复现率不同。 */
+    results->results = (VectorSearchResult *)calloc((size_t)params->top_k,
+                                                    sizeof(VectorSearchResult));
+    if (!results->results) {
+        free(results);
+        return NULL;
+    }
     results->capacity = params->top_k;
 
     /* 简单暴力搜索 + 排序 */
@@ -1003,9 +1028,12 @@ static int save_collections_meta(VectorAPI *api) {
 int vector_api_save(VectorAPI *api) {
     if (!api) return VECTOR_API_ERR_INVALID_PARAM;
 
-    /* P1-B Task 5：先 flush WAL，再 checkpoint 记录 LSN 起点，最后 truncate
-     * 截断 checkpoint 之前的旧数据，避免 WAL 无限增长。
-     * 三个调用失败仅 WARN，不阻断 snapshot 写入，保证 save 主路径可用。 */
+    /* 落盘顺序（安全不变式）：flush → 写快照 → 记录 LSN → 截断。
+     *
+     * 旧实现是 flush → checkpoint → truncate → 写快照：先丢弃 WAL 再写快照，
+     * 一旦写快照失败（磁盘满 / 进程被杀），已确认的写入永久丢失。
+     * 现在只有快照写成功才允许截断，失败时保留 WAL 供下次重放。
+     */
 
     /* 1. flush WAL（确保所有脏数据落盘） */
     if (api->wal) {
@@ -1014,22 +1042,32 @@ int vector_api_save(VectorAPI *api) {
         }
     }
 
-    /* 2. checkpoint 记录 LSN 起点（truncate 之前的最后位置） */
+    /* 2. 写 collections.meta 快照（必须早于 truncate） */
+    pthread_mutex_lock(&api->snapshot_lock);
+    int snapshot_rc = save_collections_meta(api);
+    pthread_mutex_unlock(&api->snapshot_lock);
+
+    if (snapshot_rc != VECTOR_API_OK) {
+        LOG_WARN("快照写入失败，保留 WAL 不截断: data_dir=%s", api->data_dir);
+        return snapshot_rc;
+    }
+
+    /* 3. checkpoint 记录 LSN 起点（truncate 之前的最后位置） */
     if (api->wal) {
         if (vector_wal_checkpoint(api->wal, VECTOR_CHECKPOINT_MANUAL) != 0) {
             LOG_WARN("WAL checkpoint 失败: data_dir=%s", api->data_dir);
+            return VECTOR_API_OK;  /* 快照已安全，跳过截断即可 */
         }
     }
 
-    /* 3. truncate 删除 checkpoint 之前的旧数据（避免 WAL 无限增长） */
+    /* 4. 快照已落盘，才允许截断 checkpoint 之前的旧数据 */
     if (api->wal) {
         if (vector_wal_truncate(api->wal) != 0) {
             LOG_WARN("WAL truncate 失败: data_dir=%s", api->data_dir);
         }
     }
 
-    /* 4. 写 collections.meta snapshot（P1-B Task 8 抽出为 save_collections_meta） */
-    return save_collections_meta(api);
+    return VECTOR_API_OK;
 }
 
 int vector_api_load(VectorAPI *api) {

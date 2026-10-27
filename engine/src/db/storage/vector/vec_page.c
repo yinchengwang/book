@@ -394,6 +394,23 @@ int vector_page_get_vector(const vector_page_pool_t *pool,
     return 0;
 }
 
+int vector_page_get_id(const vector_page_pool_t *pool,
+                       int32_t vector_id,
+                       int64_t *out_id) {
+    if (pool == NULL || out_id == NULL || vector_id < 0) return -1;
+
+    vector_page_t *page = vector_page_get((vector_page_pool_t *)pool, vector_id);
+    if (page == NULL) return -1;
+
+    int32_t offset = vector_page_offset(vector_id, pool->vectors_per_page);
+    if (offset < 0 || offset >= page->header.vector_count) {
+        return -1;
+    }
+
+    *out_id = (int64_t)page->vector_ids[offset];
+    return 0;
+}
+
 int32_t vector_page_evict(vector_page_pool_t *pool) {
     if (pool == NULL || pool->page_count == 0) return -1;
 

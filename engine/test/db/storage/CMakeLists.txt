@@ -251,3 +251,74 @@ set_target_properties(test_vector_index PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 add_test(NAME test_vector_index COMMAND test_vector_index)
+
+# ========================================================================
+# Vector Engine Search 行为测试
+# ========================================================================
+# vector_engine_search 曾长期是「逐向量 malloc + 选择排序 + top-k 泄漏」的实现，
+# 且不判断 index_built，绕过全部索引。重构后必须有用例锁定行为，
+# 否则任何改动都无法验证。此文件为重构时新增。
+add_executable(vector_engine_search_test
+    vector_engine_search_test.cpp
+)
+
+target_link_libraries(vector_engine_search_test
+    PRIVATE
+    db_storage
+    db_core
+    project_includes
+    gtest
+    gtest_main
+)
+
+target_include_directories(vector_engine_search_test PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+    ${ENGINEERING_SOURCE_DIR}/include/db/storage
+    ${ENGINEERING_SOURCE_DIR}/../vendor/third_part/googletest/googletest/include
+    ${ENGINEERING_SOURCE_DIR}/../vendor/third_part/googletest/googlemock/include
+)
+
+if(NOT MSVC)
+    target_compile_options(vector_engine_search_test PRIVATE -Wall -Wextra)
+endif()
+
+set_target_properties(vector_engine_search_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+add_test(NAME vector_engine_search_test COMMAND vector_engine_search_test)
+
+# ========================================================================
+# vector_query_hybrid 内存安全测试
+# ========================================================================
+# 该文件此前存在于 test/db/storage/ 但从未被任何 CMakeLists 引用，
+# 等于从未编译、从未执行。这里接入，使其中的 free(NULL)/泄漏断言真正生效。
+add_executable(vector_query_hybrid_memory_test
+    vector_query_hybrid_memory_test.cpp
+)
+
+target_link_libraries(vector_query_hybrid_memory_test
+    PRIVATE
+    db_storage
+    db_core
+    project_includes
+    gtest
+    gtest_main
+)
+
+target_include_directories(vector_query_hybrid_memory_test PRIVATE
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+    ${ENGINEERING_SOURCE_DIR}/include/db/storage
+    ${ENGINEERING_SOURCE_DIR}/../vendor/third_part/googletest/googletest/include
+    ${ENGINEERING_SOURCE_DIR}/../vendor/third_part/googletest/googlemock/include
+)
+
+if(NOT MSVC)
+    target_compile_options(vector_query_hybrid_memory_test PRIVATE -Wall -Wextra)
+endif()
+
+set_target_properties(vector_query_hybrid_memory_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+add_test(NAME vector_query_hybrid_memory_test COMMAND vector_query_hybrid_memory_test)

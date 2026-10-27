@@ -13,27 +13,49 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <string>
+
+#ifdef _WIN32
+#include <process.h>
+#define GETPID _getpid
+#else
+#include <unistd.h>
+#define GETPID getpid
+#endif
 
 namespace {
 
-const char* TEST_DIR = "test-results/engineering/vdb_api";
+/* 数据目录按进程隔离，且放在构建树（ctest 的 WORKING_DIRECTORY 决定相对路径根）。
+ *
+ * 旧实现固定用 "test-results/engineering/vdb_api"：ctest 以源码树为工作目录时，
+ * 数据会写进源码树；多个进程/多轮重复执行共享同一目录，上一轮残留的集合
+ * 会被下一轮 vdb_open 加载（表现为 next_id 从 22 开始、最近邻 id 对不上），
+ * 甚至导致进程崩溃。按 pid 隔离后每轮都是干净状态。 */
+const std::string TEST_DIR =
+    std::string("test_data/vdb_api_") + std::to_string(GETPID());
 const char* TEST_COLLECTION = "test_collection";
 
 class VdbApiTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        std::filesystem::create_directories(TEST_DIR);
+        std::error_code ec;
+        std::filesystem::remove_all(TEST_DIR, ec);
+        std::filesystem::create_directories(TEST_DIR, ec);
+        ASSERT_FALSE(ec) << "无法准备测试目录 " << TEST_DIR << ": " << ec.message();
     }
 
     void TearDown() override {
-        std::filesystem::remove_all(TEST_DIR);
+        std::error_code ec;
+        std::filesystem::remove_all(TEST_DIR, ec);
+        /* 清理失败不应静默 —— 残留目录会污染下一轮 */
+        EXPECT_FALSE(ec) << "无法清理测试目录 " << TEST_DIR << ": " << ec.message();
     }
 };
 
 /* ========== vdb_open/vdb_close 往返测试 ========== */
 
 TEST_F(VdbApiTest, OpenClose) {
-    vdb_handle_t *db = vdb_open(TEST_DIR, NULL);
+    vdb_handle_t *db = vdb_open(TEST_DIR.c_str(), NULL);
     ASSERT_NE(nullptr, db);
 
     int rc = vdb_close(db);
@@ -43,11 +65,11 @@ TEST_F(VdbApiTest, OpenClose) {
 TEST_F(VdbApiTest, OpenCloseWithConfig) {
     vdb_config_t config;
     memset(&config, 0, sizeof(config));
-    strcpy(config.data_dir, TEST_DIR);
+    strcpy(config.data_dir, TEST_DIR.c_str());
     config.enable_wal = true;
     config.max_collections = 10;
 
-    vdb_handle_t *db = vdb_open(TEST_DIR, &config);
+    vdb_handle_t *db = vdb_open(TEST_DIR.c_str(), &config);
     ASSERT_NE(nullptr, db);
 
     int rc = vdb_close(db);
@@ -62,7 +84,7 @@ TEST_F(VdbApiTest, OpenNullPath) {
 /* ========== collection CRUD 测试 ========== */
 
 TEST_F(VdbApiTest, CreateCollection) {
-    vdb_handle_t *db = vdb_open(TEST_DIR, NULL);
+    vdb_handle_t *db = vdb_open(TEST_DIR.c_str(), NULL);
     ASSERT_NE(nullptr, db);
 
     vdb_collection_config_t config;
@@ -79,7 +101,7 @@ TEST_F(VdbApiTest, CreateCollection) {
 }
 
 TEST_F(VdbApiTest, CreateDuplicateCollection) {
-    vdb_handle_t *db = vdb_open(TEST_DIR, NULL);
+    vdb_handle_t *db = vdb_open(TEST_DIR.c_str(), NULL);
     ASSERT_NE(nullptr, db);
 
     vdb_collection_config_t config;
@@ -95,7 +117,7 @@ TEST_F(VdbApiTest, CreateDuplicateCollection) {
 }
 
 TEST_F(VdbApiTest, GetCollection) {
-    vdb_handle_t *db = vdb_open(TEST_DIR, NULL);
+    vdb_handle_t *db = vdb_open(TEST_DIR.c_str(), NULL);
     ASSERT_NE(nullptr, db);
 
     vdb_collection_config_t config;
@@ -118,7 +140,7 @@ TEST_F(VdbApiTest, GetCollection) {
 }
 
 TEST_F(VdbApiTest, GetNonExistentCollection) {
-    vdb_handle_t *db = vdb_open(TEST_DIR, NULL);
+    vdb_handle_t *db = vdb_open(TEST_DIR.c_str(), NULL);
     ASSERT_NE(nullptr, db);
 
     vdb_collection_t *coll = vdb_get_collection(db, "nonexistent");
@@ -128,7 +150,7 @@ TEST_F(VdbApiTest, GetNonExistentCollection) {
 }
 
 TEST_F(VdbApiTest, DropCollection) {
-    vdb_handle_t *db = vdb_open(TEST_DIR, NULL);
+    vdb_handle_t *db = vdb_open(TEST_DIR.c_str(), NULL);
     ASSERT_NE(nullptr, db);
 
     vdb_collection_config_t config;
@@ -144,7 +166,7 @@ TEST_F(VdbApiTest, DropCollection) {
 }
 
 TEST_F(VdbApiTest, ListCollections) {
-    vdb_handle_t *db = vdb_open(TEST_DIR, NULL);
+    vdb_handle_t *db = vdb_open(TEST_DIR.c_str(), NULL);
     ASSERT_NE(nullptr, db);
 
     vdb_collection_config_t config;
@@ -169,7 +191,7 @@ TEST_F(VdbApiTest, ListCollections) {
 /* ========== 向量插入/查询/删除往返测试 ========== */
 
 TEST_F(VdbApiTest, InsertAndSearch) {
-    vdb_handle_t *db = vdb_open(TEST_DIR, NULL);
+    vdb_handle_t *db = vdb_open(TEST_DIR.c_str(), NULL);
     ASSERT_NE(nullptr, db);
 
     vdb_collection_config_t config;
@@ -214,7 +236,7 @@ TEST_F(VdbApiTest, InsertAndSearch) {
 }
 
 TEST_F(VdbApiTest, InsertBatch) {
-    vdb_handle_t *db = vdb_open(TEST_DIR, NULL);
+    vdb_handle_t *db = vdb_open(TEST_DIR.c_str(), NULL);
     ASSERT_NE(nullptr, db);
 
     vdb_collection_config_t config;
@@ -242,7 +264,7 @@ TEST_F(VdbApiTest, InsertBatch) {
 }
 
 TEST_F(VdbApiTest, DeleteVector) {
-    vdb_handle_t *db = vdb_open(TEST_DIR, NULL);
+    vdb_handle_t *db = vdb_open(TEST_DIR.c_str(), NULL);
     ASSERT_NE(nullptr, db);
 
     vdb_collection_config_t config;
@@ -268,7 +290,7 @@ TEST_F(VdbApiTest, DeleteVector) {
 /* ========== 错误处理测试 ========== */
 
 TEST_F(VdbApiTest, InvalidParams) {
-    vdb_handle_t *db = vdb_open(TEST_DIR, NULL);
+    vdb_handle_t *db = vdb_open(TEST_DIR.c_str(), NULL);
     ASSERT_NE(nullptr, db);
 
     // NULL 参数
@@ -285,7 +307,7 @@ TEST_F(VdbApiTest, InvalidParams) {
 }
 
 TEST_F(VdbApiTest, SearchEmptyCollection) {
-    vdb_handle_t *db = vdb_open(TEST_DIR, NULL);
+    vdb_handle_t *db = vdb_open(TEST_DIR.c_str(), NULL);
     ASSERT_NE(nullptr, db);
 
     vdb_collection_config_t config;
@@ -311,7 +333,7 @@ TEST_F(VdbApiTest, SearchEmptyCollection) {
 }
 
 TEST_F(VdbApiTest, SaveAndLoad) {
-    vdb_handle_t *db = vdb_open(TEST_DIR, NULL);
+    vdb_handle_t *db = vdb_open(TEST_DIR.c_str(), NULL);
     ASSERT_NE(nullptr, db);
 
     // 创建集合
@@ -332,7 +354,7 @@ TEST_F(VdbApiTest, SaveAndLoad) {
     vdb_close(db);
 
     // 重新打开并加载
-    db = vdb_open(TEST_DIR, NULL);
+    db = vdb_open(TEST_DIR.c_str(), NULL);
     ASSERT_NE(nullptr, db);
 
     // 应自动加载已有集合

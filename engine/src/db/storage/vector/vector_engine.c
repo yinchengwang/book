@@ -128,61 +128,6 @@ static void vector_heap_free(vector_min_heap_t *heap) {
     }
 }
 
-/**
- * @brief Top-K search using min-heap (O(n log k))
- *
- * @param engine 向量引擎
- * @param query 查询向量
- * @param k 返回结果数量
- * @return vector_search_result_t* 结果数组（需调用方释放）
- */
-static vector_search_result_t *vector_search(vector_engine_db_t *engine, const float *query, int k) {
-    vector_min_heap_t heap;
-    if (vector_heap_init(&heap, k) != 0) return NULL;
-
-    for (uint64_t i = 0; i < engine->num_vectors; i++) {
-        float *vec = NULL;
-        float vec_buf[256];  /* 临时缓冲区 */
-
-        /* 获取向量数据 */
-        if (engine->use_page_pool && engine->page_pool != NULL) {
-            if (vector_page_get_vector(engine->page_pool, (int32_t)i, vec_buf) != 0) continue;
-            vec = vec_buf;
-        } else {
-            continue;  /* 文件存储暂不支持 */
-        }
-
-        /* 计算距离 */
-        float dist;
-        if (engine->metric == METRIC_L2) {
-            dist = vector_l2_distance(query, vec, engine->dimension);
-        } else if (engine->metric == METRIC_COSINE) {
-            dist = 1.0f - vector_cosine_similarity(query, vec, engine->dimension);
-        } else {
-            dist = vector_l2_distance(query, vec, engine->dimension);
-        }
-
-        if (heap.size < (size_t)k) {
-            vector_heap_push(&heap, dist, i);
-        } else if (dist < vector_heap_peek(&heap).distance) {
-            vector_heap_pop(&heap);
-            vector_heap_push(&heap, dist, i);
-        }
-    }
-
-    vector_search_result_t *results = (vector_search_result_t *)malloc(k * sizeof(vector_search_result_t));
-    if (results) {
-        for (int i = (int)heap.size - 1; i >= 0; i--) {
-            vector_heap_node_t node = vector_heap_pop(&heap);
-            results[i].id = node.id;
-            results[i].distance = node.distance;
-        }
-    }
-
-    vector_heap_free(&heap);
-    return results;
-}
-
 #define VECTOR_ENGINE_NAME "vector_engine"
 #define VECTOR_DATA_PREFIX "vec_"
 #define HNSW_DEFAULT_M 16
@@ -517,7 +462,11 @@ static int vector_engine_tuple_insert(void *rel, const void *data, size_t len) {
 
     if (remaining < sizeof(uint64_t) + sizeof(int32_t)) return -1;
 
-    ptr += sizeof(uint64_t);  /* skip id */
+    /* 记录写入时携带的 ID：旧实现直接跳过，导致页池路径下用户给的 ID 被丢弃，
+     * 检索时只能返回页内序号（与文件存储路径语义不一致）。 */
+    uint64_t rec_id = 0;
+    memcpy(&rec_id, ptr, sizeof(uint64_t));
+    ptr += sizeof(uint64_t);
 
     int32_t dim;
     memcpy(&dim, ptr, sizeof(int32_t));
@@ -537,7 +486,14 @@ static int vector_engine_tuple_insert(void *rel, const void *data, size_t len) {
 
     /* 优先使用 VecPage 页池存储 */
     if (db->use_page_pool && db->page_pool != NULL) {
-        actual_vec_id = vector_page_append(db->page_pool, vector, -1);
+        /* 页内 vector_ids 槽位是 int32：超出范围时明确报错，
+         * 而不是静默替换成页内序号（那会让检索返回错误的 ID）。 */
+        if (rec_id > (uint64_t)INT32_MAX) {
+            LOG_ERROR("向量 ID %llu 超出页池 int32 表示范围，拒绝写入",
+                      (unsigned long long)rec_id);
+            return -1;
+        }
+        actual_vec_id = vector_page_append(db->page_pool, vector, (int32_t)rec_id);
         if (actual_vec_id >= 0) {
             /* C1-2 T5：使用统一 WAL 写真实 vec_id */
             wal_t *cur_wal = wal_get_current();
@@ -747,181 +703,127 @@ int vector_engine_search(void *rel,
     }
 
     int32_t dim = (query_dim > 0) ? query_dim : db->dimension;
+    if (dim <= 0) {
+        LOG_ERROR("向量维度非法: %d", dim);
+        return -1;
+    }
 
-    /* 初始化结果结构 */
-    results->results = calloc(top_k, sizeof(vector_search_result_t));
+    /* 索引分派：索引已构建时优先走 ANN。
+     * 旧实现无条件做全量暴力扫描，40+ 个索引实现形同虚设。 */
+    if (db->index_built && db->hnsw_index != NULL) {
+        if (vector_engine_search_hnsw(rel, query, top_k, results) == 0) {
+            return 0;
+        }
+        LOG_WARN("HNSW 检索失败，回退到暴力扫描");
+    }
+
+    results->results = (vector_search_result_t *)calloc((size_t)top_k,
+                                                        sizeof(vector_search_result_t));
     if (results->results == NULL) {
         return -1;
     }
     results->count = 0;
     results->capacity = top_k;
 
-    /* 如果启用了 VecPage 页池，从页池获取向量 */
-    if (db->use_page_pool && db->page_pool != NULL && db->num_vectors > 0) {
-        /* 从页池获取所有向量进行搜索 */
-        typedef struct {
-            uint64_t id;
-            float *vector;
-            float distance;
-        } temp_vec_t;
-
-        temp_vec_t *temp_vectors = calloc(db->num_vectors, sizeof(temp_vec_t));
-        if (temp_vectors == NULL) {
-            return -1;
-        }
-
-        uint64_t count = 0;
-        float *vec_buf = (float *)malloc(dim * sizeof(float));
-
-        for (uint64_t i = 0; i < db->num_vectors && count < db->num_vectors; i++) {
-            if (vector_page_get_vector(db->page_pool, (int32_t)i, vec_buf) == 0) {
-                temp_vectors[count].id = i;
-                temp_vectors[count].vector = (float *)malloc(dim * sizeof(float));
-                if (temp_vectors[count].vector) {
-                    memcpy(temp_vectors[count].vector, vec_buf, dim * sizeof(float));
-
-                    /* 计算距离 */
-                    if (db->metric == METRIC_L2) {
-                        temp_vectors[count].distance = vector_l2_distance(
-                            query, temp_vectors[count].vector, dim);
-                    } else if (db->metric == METRIC_COSINE) {
-                        temp_vectors[count].distance = 1.0f - vector_cosine_similarity(
-                            query, temp_vectors[count].vector, dim);
-                    } else {
-                        temp_vectors[count].distance = vector_l2_distance(
-                            query, temp_vectors[count].vector, dim);
-                    }
-                    count++;
-                }
-            }
-        }
-
-        free(vec_buf);
-
-        /* 简单选择排序找出 top-k */
-        for (uint64_t i = 0; i < count - 1 && i < (uint64_t)top_k; i++) {
-            uint64_t min_idx = i;
-            for (uint64_t j = i + 1; j < count; j++) {
-                if (temp_vectors[j].distance < temp_vectors[min_idx].distance) {
-                    min_idx = j;
-                }
-            }
-            if (min_idx != i) {
-                temp_vec_t tmp = temp_vectors[i];
-                temp_vectors[i] = temp_vectors[min_idx];
-                temp_vectors[min_idx] = tmp;
-            }
-        }
-
-        /* 复制 top-k 结果 */
-        uint32_t result_count = (count < (uint64_t)top_k) ? (uint32_t)count : (uint32_t)top_k;
-        for (uint32_t i = 0; i < result_count; i++) {
-            results->results[i].id = temp_vectors[i].id;
-            results->results[i].distance = temp_vectors[i].distance;
-            /* dimension 和 vector 字段在公共 API 中不存在，已移除 */
-        }
-        results->count = result_count;
-
-        /* 释放未使用的向量内存 */
-        for (uint64_t i = result_count; i < count; i++) {
-            free(temp_vectors[i].vector);
-        }
-
-        free(temp_vectors);
-        return 0;
+    if (db->num_vectors == 0) {
+        return 0;  /* 空集合：返回空结果 */
     }
 
-    /* 原始文件存储搜索 */
-    char data_path[512];
-    get_data_path(db->name, data_path, sizeof(data_path));
-
-    FILE *fp = fopen(data_path, "rb");
-    if (fp == NULL) {
-        return 0;  /* 文件不存在时返回空结果 */
-    }
-
-    /* 读取所有向量并计算距离 */
-    typedef struct {
-        uint64_t id;
-        float *vector;
-        float distance;
-    } temp_vec_t;
-
-    temp_vec_t *temp_vectors = calloc(db->num_vectors, sizeof(temp_vec_t));
-    if (temp_vectors == NULL) {
-        fclose(fp);
+    /* 堆式 top-k：O(n log k)。整个查询只分配一次缓冲区，
+     * 不再对每个向量 malloc 一份拷贝（1M x 768 维时旧实现约 3 GB 临时分配）。 */
+    vector_min_heap_t heap;
+    if (vector_heap_init(&heap, (size_t)top_k) != 0) {
+        free(results->results);
+        results->results = NULL;
+        results->capacity = 0;
         return -1;
     }
 
-    uint64_t count = 0;
-    size_t record_size = sizeof(uint64_t) + sizeof(int32_t) + dim * sizeof(float);
+    float *vec_buf = (float *)malloc((size_t)dim * sizeof(float));
+    if (vec_buf == NULL) {
+        vector_heap_free(&heap);
+        free(results->results);
+        results->results = NULL;
+        results->capacity = 0;
+        return -1;
+    }
 
-    while (count < db->num_vectors) {
-        uint64_t id;
-        int32_t vec_dim;
+    if (db->use_page_pool && db->page_pool != NULL) {
+        for (uint64_t i = 0; i < db->num_vectors; i++) {
+            if (vector_page_get_vector(db->page_pool, (int32_t)i, vec_buf) != 0) {
+                continue;
+            }
+            /* 返回写入时携带的真实 ID；读不到才退回页内序号 */
+            int64_t vid = (int64_t)i;
+            if (vector_page_get_id(db->page_pool, (int32_t)i, &vid) != 0) {
+                vid = (int64_t)i;
+            }
+            float dist = (db->metric == METRIC_COSINE)
+                             ? (1.0f - vector_cosine_similarity(query, vec_buf, dim))
+                             : vector_l2_distance(query, vec_buf, dim);
+            if (heap.size < (size_t)top_k) {
+                vector_heap_push(&heap, dist, (uint64_t)vid);
+            } else if (dist < vector_heap_peek(&heap).distance) {
+                vector_heap_pop(&heap);
+                vector_heap_push(&heap, dist, (uint64_t)vid);
+            }
+        }
+    } else {
+        /* 文件存储：逐条流式读取，复用同一缓冲区 */
+        char data_path[512];
+        get_data_path(db->name, data_path, sizeof(data_path));
 
-        if (fread(&id, sizeof(id), 1, fp) != 1) break;
-        if (fread(&vec_dim, sizeof(vec_dim), 1, fp) != 1) break;
+        FILE *fp = fopen(data_path, "rb");
+        if (fp == NULL) {
+            /* 文件不存在视为空集合，不是错误 */
+            free(vec_buf);
+            vector_heap_free(&heap);
+            return 0;
+        }
 
-        temp_vectors[count].id = id;
-        temp_vectors[count].vector = calloc(dim, sizeof(float));
+        for (uint64_t i = 0; i < db->num_vectors; i++) {
+            uint64_t id;
+            int32_t vec_dim;
 
-        if (temp_vectors[count].vector) {
-            size_t vec_size = vec_dim * sizeof(float);
-            if (fread(temp_vectors[count].vector, vec_size, 1, fp) == 1) {
-                /* 计算距离 */
-                if (db->metric == METRIC_L2) {
-                    temp_vectors[count].distance = vector_l2_distance(
-                        query, temp_vectors[count].vector, dim);
-                } else if (db->metric == METRIC_COSINE) {
-                    temp_vectors[count].distance = 1.0f - vector_cosine_similarity(
-                        query, temp_vectors[count].vector, dim);
-                } else {
-                    temp_vectors[count].distance = vector_l2_distance(
-                        query, temp_vectors[count].vector, dim);
-                }
-                count++;
-            } else {
-                free(temp_vectors[count].vector);
+            if (fread(&id, sizeof(id), 1, fp) != 1) break;
+            if (fread(&vec_dim, sizeof(vec_dim), 1, fp) != 1) break;
+
+            /* 防御：旧实现按 dim 分配却按 vec_dim 读入，vec_dim > dim 会堆溢出。
+             * 这里直接拒绝不一致的记录，避免越界。 */
+            if (vec_dim != dim) {
+                LOG_WARN("向量记录维度 %d 与集合维度 %d 不一致，停止扫描", vec_dim, dim);
                 break;
             }
-        } else {
-            break;
-        }
-    }
 
-    fclose(fp);
+            size_t vec_bytes = (size_t)vec_dim * sizeof(float);
+            if (fread(vec_buf, 1, vec_bytes, fp) != vec_bytes) break;
 
-    /* 简单选择排序找出 top-k */
-    for (uint64_t i = 0; i < count - 1 && i < (uint64_t)top_k; i++) {
-        uint64_t min_idx = i;
-        for (uint64_t j = i + 1; j < count; j++) {
-            if (temp_vectors[j].distance < temp_vectors[min_idx].distance) {
-                min_idx = j;
+            float dist = (db->metric == METRIC_COSINE)
+                             ? (1.0f - vector_cosine_similarity(query, vec_buf, dim))
+                             : vector_l2_distance(query, vec_buf, dim);
+            if (heap.size < (size_t)top_k) {
+                vector_heap_push(&heap, dist, id);
+            } else if (dist < vector_heap_peek(&heap).distance) {
+                vector_heap_pop(&heap);
+                vector_heap_push(&heap, dist, id);
             }
         }
-        if (min_idx != i) {
-            temp_vec_t tmp = temp_vectors[i];
-            temp_vectors[i] = temp_vectors[min_idx];
-            temp_vectors[min_idx] = tmp;
-        }
+        fclose(fp);
     }
 
-    /* 复制 top-k 结果 */
-    uint32_t result_count = (count < (uint64_t)top_k) ? (uint32_t)count : (uint32_t)top_k;
-    for (uint32_t i = 0; i < result_count; i++) {
-        results->results[i].id = temp_vectors[i].id;
-        results->results[i].distance = temp_vectors[i].distance;
-        /* dimension 和 vector 字段在公共 API 中不存在，已移除 */
-    }
-    results->count = result_count;
+    free(vec_buf);
 
-    /* 释放未使用的向量内存 */
-    for (uint64_t i = result_count; i < count; i++) {
-        free(temp_vectors[i].vector);
+    /* 最小堆按距离升序弹出：第 i 次 pop 即第 i 近的结果，直接顺序写回。
+     * 注意不要倒序写回 —— 那样会得到"最远优先"，与原选择排序实现的语义相反。 */
+    int32_t n = (int32_t)heap.size;
+    for (int32_t i = 0; i < n; i++) {
+        vector_heap_node_t node = vector_heap_pop(&heap);
+        results->results[i].id = node.id;
+        results->results[i].distance = node.distance;
     }
+    results->count = n;
 
-    free(temp_vectors);
+    vector_heap_free(&heap);
     return 0;
 }
 

@@ -245,12 +245,24 @@ TEST_F(EngineRegistryTest, ContextBeforeInit) {
 TEST_F(EngineRegistryTest, ModelCount) {
     EXPECT_EQ(MODEL_COUNT, 13);
 
-    /* 确保所有模型索引在有效范围内 */
-    for (int i = 0; i < MODEL_COUNT; i++) {
-        DataModel model = (DataModel)i;
-        EXPECT_NE(nullptr, storage_model_name(model));
-        EXPECT_STRNE("unknown", storage_model_name(model));
+    /* 注意：枚举在 MODEL_COLUMNAR(9) 与 MODEL_RDF(11) 之间有一个保留空槽（10），
+     * 因此不能假定 0..MODEL_COUNT-1 的每个整数都是有效模型 ——
+     * 原用例遍历全部整数并断言"都有名字"，实际上是被位置式初始化的错位 bug 掩盖了。 */
+    const DataModel defined_models[] = {
+        MODEL_RELATIONAL, MODEL_KV, MODEL_GRAPH, MODEL_VECTOR,
+        MODEL_TIMESERIES, MODEL_DOCUMENT, MODEL_SPATIAL, MODEL_TREE,
+        MODEL_STREAM, MODEL_COLUMNAR, MODEL_RDF, MODEL_SPATIOTEMPORAL,
+    };
+    const size_t n_defined = sizeof(defined_models) / sizeof(defined_models[0]);
+    for (size_t i = 0; i < n_defined; i++) {
+        const char *name = storage_model_name(defined_models[i]);
+        EXPECT_NE(nullptr, name);
+        EXPECT_STRNE("unknown", name);
     }
+
+    /* 保留空槽与越界值必须安全返回 "unknown"（不能返回 NULL） */
+    EXPECT_STREQ("unknown", storage_model_name((DataModel)10));
+    EXPECT_STREQ("unknown", storage_model_name((DataModel)999));
 }
 
 /**

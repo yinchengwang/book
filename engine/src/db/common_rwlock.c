@@ -10,7 +10,8 @@ common_rwlock_t* common_rwlock_create(const char* name) {
     pthread_rwlockattr_t attr;
     pthread_rwlockattr_init(&attr);
 #ifdef __linux__
-    // 写者优先，避免写者饥饿（仅 Linux 支持）
+    // 写者优先，避免写者饥饿（仅 Linux 支持）。
+    // NONRECURSIVE 是刻意的：契约见 common_rwlock.h —— 本锁不可重入。
     pthread_rwlockattr_setkind_np(&attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP);
 #endif
 

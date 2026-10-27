@@ -4,7 +4,11 @@
  *
  * 设计要点：
  *  - pthread + mutex + cond_timedwait 实现周期唤醒
- *  - 每次唤醒执行 flush + checkpoint + truncate 三步
+ *  - 每次唤醒执行 flush + checkpoint 记录 LSN
+ *  - **不做 truncate**：WAL 是向量数据的唯一真相，而后台线程只持有 wal 句柄、
+ *    看不到集合数据，无法在截断前把数据落成快照。历史实现在此处无条件 truncate，
+ *    等于周期性丢弃尚未落盘的已确认写入。
+ *    截断统一由 vector_api_save 在"快照写入成功"之后执行。
  *  - 提供 LSN 暴露接口（checkpoint_manager_get_lsn）供测试验证
  *  - destroy 时先 stop 再 free，避免线程与释放竞争
  */
