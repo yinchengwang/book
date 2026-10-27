@@ -30,7 +30,8 @@ if(EXECUTOR_SOURCE_FILES)
     if(TARGET db_parser_sql)
         target_link_libraries(db_executor PRIVATE db_parser_sql)
     endif()
-    target_link_libraries(db_executor PRIVATE db_optimizer db_storage db_validator)
+    # Task 1: vector_block_*/vector_batch_* 已从 db_core 迁入 db_vectorized
+    target_link_libraries(db_executor PRIVATE db_optimizer db_storage db_validator db_vectorized)
     target_compile_options(db_executor PRIVATE -Wno-unused-parameter)
 endif()
 

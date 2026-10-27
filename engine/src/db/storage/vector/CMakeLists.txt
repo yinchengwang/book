@@ -13,6 +13,7 @@ set(VECTOR_PERSIST_SOURCES
     vector_buf.c
     vector_engine.c
     vec_page.c
+    vector_query.c  # Task 1: 从 core 迁入，消除 core 对 index/vector_index 的越界依赖
 )
 
 add_library(vector_persist STATIC ${VECTOR_PERSIST_SOURCES})
@@ -30,4 +31,5 @@ target_link_libraries(vector_persist PUBLIC
     storage_mm
     storage_lock
     storage_wal  # P1-B Task 4：vector_wal 依赖 wal_flush_get_policy / db_fsync
+    db_vectorized  # Task 1: vector_query.c 依赖 vector_block_*/vector_batch_*（原在 db_core）
 )

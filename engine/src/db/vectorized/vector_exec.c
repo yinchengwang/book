@@ -5,7 +5,7 @@
 
 #include "db/core/vector_exec.h"
 #include <db/sql/sql_executor.h>  /* 需要完整类型定义 */
-#include "log.h"
+#include <db/log.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>

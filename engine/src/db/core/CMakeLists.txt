@@ -7,8 +7,6 @@ add_library(db_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/initdb.c
     ${CMAKE_CURRENT_SOURCE_DIR}/pg_ctl.c
     ${CMAKE_CURRENT_SOURCE_DIR}/db_server.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/vector_query.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/vector_exec.c
     ${CMAKE_CURRENT_SOURCE_DIR}/structured_log.c
     ${CMAKE_CURRENT_SOURCE_DIR}/metrics.c
     ${CMAKE_CURRENT_SOURCE_DIR}/query_filter.c

@@ -8,6 +8,7 @@ add_library(db_vectorized STATIC
     vecx_project.c
     vecx_pipeline.c
     vecx_prune.c
+    vector_exec.c  # Task 1: 从 core 迁入；导出 vector_block_*/vector_batch_* 给 executor 调用
 )
 target_include_directories(db_vectorized PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include
