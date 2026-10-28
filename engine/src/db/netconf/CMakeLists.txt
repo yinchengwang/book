@@ -8,5 +8,5 @@ if(NETCONF_SOURCE_FILES)
         ${ENGINEERING_SOURCE_DIR}/include
         ${ENGINEERING_SOURCE_DIR}/include/db
     )
-    target_link_libraries(netconf_server PRIVATE storage_yang)
+    target_link_libraries(netconf_server PRIVATE mm_yang)
 endif()

@@ -10,9 +10,18 @@
 # 注意：relational 模态不实现 storage_ops_t，其冒烟在 Task 15 单独处理。
 # ========================================================================
 
+# mm_smoke(<modality> [LIB <target>])
+#   <modality> 对应 profile 模态名；LIB 缺省为 mm_<modality>，
+#   但库名与模态名不一一对应时（tree -> mm_yang）需显式指定。
 function(mm_smoke modality)
+    cmake_parse_arguments(MMS "" "LIB" "" ${ARGN})
+    set(_lib "${MMS_LIB}")
+    if(NOT _lib)
+        set(_lib "mm_${modality}")
+    endif()
     set(_exe mm_${modality}_smoke)
-    set(_src "${ENGINEERING_SOURCE_DIR}/test/smoke/${_exe}.c")
+    # 源文件跟随库名（tree -> mm_yang_smoke.c），exe 名跟随 profile 模态名
+    set(_src "${ENGINEERING_SOURCE_DIR}/test/smoke/${_lib}_smoke.c")
     if(NOT EXISTS "${_src}")
         message(FATAL_ERROR "mm_smoke(${modality}) 缺少源文件: ${_src}")
     endif()
@@ -26,7 +35,7 @@ function(mm_smoke modality)
     target_link_libraries(${_exe} PRIVATE
         mm_base
         mm_storage_api
-        mm_${modality}
+        ${_lib}
     )
     set_target_properties(${_exe} PROPERTIES FOLDER "Smoke")
     add_test(NAME ${_exe} COMMAND ${_exe} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

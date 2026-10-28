@@ -6,7 +6,7 @@ file(GLOB_RECURSE YANG_TEST_SOURCES "*.cpp")
 add_executable(test_yang ${YANG_TEST_SOURCES})
 
 target_link_libraries(test_yang PRIVATE
-    storage_yang
+    mm_yang
     netconf_server
     db_storage
     db_core
@@ -62,7 +62,7 @@ if(EXISTS "${ENGINEERING_SOURCE_DIR}/../vendor/third_part/cmocka-1.1.7/CMakeList
         ${ENGINEERING_SOURCE_DIR}/include
     )
     target_link_libraries(test_yang_cmocka PRIVATE
-        storage_yang
+        mm_yang
         netconf_server
         db_core
         Threads::Threads
