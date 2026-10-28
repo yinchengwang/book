@@ -173,6 +173,25 @@ endif()
 add_subdirectory(executor)
 
 # ========================================================================
+# Task 15：relational 聚合库（sql/parser/optimizer/validator/executor）
+# 供 relational profile 的冒烟等外部入口一次链接。RELATIONAL 不通过
+# storage_ops_t 注册引擎，MODEL_RELATIONAL 槽位恒空。
+# ========================================================================
+if(MMDB_ENABLE_RELATIONAL AND TARGET sql_engine AND TARGET db_executor)
+    add_library(mm_relational INTERFACE)
+    target_link_libraries(mm_relational INTERFACE
+        sql_engine
+        db_executor
+        db_optimizer
+        db_validator
+        db_parser_sql
+        db_storage
+        db_core
+    )
+    set_target_properties(mm_relational PROPERTIES FOLDER "ModalityEngines")
+endif()
+
+# ========================================================================
 # 工具库（向量索引依赖的数据结构）
 # ========================================================================
 add_subdirectory(utils)

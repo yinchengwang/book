@@ -41,3 +41,14 @@ endif()
 if(TARGET mm_rdf)
     mm_smoke(rdf)
 endif()
+# relational 特例：不通过 storage_ops_t 注册，不走 mm_smoke()
+if(TARGET mm_relational)
+    add_executable(mm_relational_smoke mm_relational_smoke.c)
+    target_include_directories(mm_relational_smoke PRIVATE
+        ${ENGINEERING_SOURCE_DIR}/include)
+    target_link_libraries(mm_relational_smoke PRIVATE
+        mm_base mm_storage_api mm_relational)
+    set_target_properties(mm_relational_smoke PROPERTIES FOLDER "Smoke")
+    add_test(NAME mm_relational_smoke COMMAND mm_relational_smoke
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+endif()

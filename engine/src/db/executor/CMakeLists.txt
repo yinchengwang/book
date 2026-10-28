@@ -35,13 +35,11 @@ if(EXECUTOR_SOURCE_FILES)
     target_compile_options(db_executor PRIVATE -Wno-unused-parameter)
 endif()
 
-# RAG 执行器测试（Wave 3-⑧ 和 Wave 3-⑨）
-# C9-3：rag/*.c 自包含（仅依赖 rag_executor.h / graphrag.h / vector_engine.h 与
-# 标准库），直接编入测试二进制，绕开当前 bit-rot 的 db_executor 整库
-# （header 冲突 + sqlExecutor API 漂移，归 Gap03 统一执行器变更处理）。
-if(BUILD_TESTING)
-    add_executable(test_rag_executor
-        ${ENGINEERING_SOURCE_DIR}/test/db/executor/rag_executor_test.cpp
+# Task 15：RAG 执行器拆为独立库并挂 VECTOR 守卫
+# C9-3：rag/*.c 自包含（仅依赖 rag_executor.h / graphrag.h / vector_engine.h）；
+# db_executor 本体不含 rag/、不引用 vector_engine.h（grep 可证）。
+if(MMDB_ENABLE_VECTOR)
+    add_library(mm_executor_rag STATIC
         ${CMAKE_CURRENT_SOURCE_DIR}/rag/rag_executor.c
         ${CMAKE_CURRENT_SOURCE_DIR}/rag/rag_pipeline.c
         ${CMAKE_CURRENT_SOURCE_DIR}/rag/chunk_op.c
@@ -53,6 +51,19 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/rag/graphrag_hybrid_search.c
         ${CMAKE_CURRENT_SOURCE_DIR}/rag/graphrag_relation.c
     )
+    target_include_directories(mm_executor_rag PUBLIC
+        ${ENGINEERING_SOURCE_DIR}/include
+        ${ENGINEERING_SOURCE_DIR}/include/db
+        ${ENGINEERING_SOURCE_DIR}/include/db/executor
+    )
+    target_link_libraries(mm_executor_rag PUBLIC mm_vector)
+    set_target_properties(mm_executor_rag PROPERTIES FOLDER "ModalityEngines")
+endif()
+
+if(BUILD_TESTING)
+    add_executable(test_rag_executor
+        ${ENGINEERING_SOURCE_DIR}/test/db/executor/rag_executor_test.cpp
+    )
     target_include_directories(test_rag_executor PRIVATE
         ${ENGINEERING_SOURCE_DIR}/include
         ${ENGINEERING_SOURCE_DIR}/include/db
@@ -60,6 +71,9 @@ if(BUILD_TESTING)
         ${THIRD_PART_DIR}/googletest/googletest/include
         ${THIRD_PART_DIR}/googletest/googlemock/include
     )
+    if(TARGET mm_executor_rag)
+        target_link_libraries(test_rag_executor PRIVATE mm_executor_rag)
+    endif()
     target_link_libraries(test_rag_executor PRIVATE
         db_core
         project_includes
