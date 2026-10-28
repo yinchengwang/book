@@ -166,6 +166,28 @@ relational 不通过 storage_ops_t 注册（冒烟钉住解析层，见 mm_relat
 
 修复后 `test_spatial_engine` 连续 40 轮全量运行 0 失败。
 
+### 5.2 最终回归结论（Task 17/20 收口）
+
+以 legacy profile（`build/t7`）跑全量 ctest，与基线（`build/base` 两次运行的
+失败集并集）做**失败用例名集合**比对：
+
+| 项 | 数量 |
+|---|---|
+| 最终回归用例总数 | 618 |
+| 最终回归失败用例数 | 46 |
+| 基线失败用例数（两次并集） | 58 |
+| **新增失败（回归中多出来的）** | **0** |
+| 修复（基线失败、现在通过） | 12 |
+
+46 个失败全部是基线中已存在的既有失败（benchmark 召回率、raft、rag、xquery、
+sql 集成、doc pipeline 等），与按模态构建隔离改造无因果关系；`test_spatial_engine`
+已从失败列表中消失。
+
+12 个「修复」项全部来自 §4.1 的用例去重：去重前同一用例在 ctest 中有 6 份
+副本并行抢同一数据文件，偶发失败；去重后每例只跑一次，踩踏消失。典型如
+`MemoryLeakDetectionTest.RepeatedOpenCloseNoLeak`、
+`SdkVectorsMemctxTest.*`（5 项）、`MmdbRootContextTest.ErrorMessagesAreTracked`。
+
 ## 6. 如何新增一个模态
 
 1. `src/db/storage/<mod>/` 建独立 STATIC 库 `mm_<mod>`（模板：storage/kv），
