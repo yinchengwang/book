@@ -24,7 +24,7 @@ target_link_libraries(sql_benchmark
     PRIVATE
         sql_engine
         db_storage
-        vector_index
+        mm_vector_index
         faiss_hnsw
         algo-prod
         project_includes

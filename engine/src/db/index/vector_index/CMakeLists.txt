@@ -36,21 +36,21 @@ list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX "^sq/.*")
 list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX "^rq/.*")
 list(FILTER VECTOR_INDEX_SOURCES EXCLUDE REGEX "^lvq/.*")
 
-add_library(vector_index STATIC ${VECTOR_INDEX_SOURCES})
+add_library(mm_vector_index STATIC ${VECTOR_INDEX_SOURCES})
 
-target_include_directories(vector_index PUBLIC
+target_include_directories(mm_vector_index PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${ENGINEERING_SOURCE_DIR}/include
 )
 
-target_link_libraries(vector_index PRIVATE project_includes algo-prod Threads::Threads)
-target_link_libraries(vector_index PUBLIC faiss_hnsw)
+target_link_libraries(mm_vector_index PRIVATE project_includes algo-prod Threads::Threads)
+target_link_libraries(mm_vector_index PUBLIC faiss_hnsw)
 
 # 持久化控制模块（被向量索引使用以管理 persist_enabled 开关）
-target_sources(vector_index PRIVATE
+target_sources(mm_vector_index PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../index_persist_control.c
 )
-target_include_directories(vector_index PRIVATE
+target_include_directories(mm_vector_index PRIVATE
     ${ENGINEERING_SOURCE_DIR}/include/db/index
 )
 

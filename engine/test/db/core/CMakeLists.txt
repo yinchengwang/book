@@ -61,7 +61,7 @@ add_executable(test_vector_query vector_query_test.cpp)
 target_link_libraries(test_vector_query
     PRIVATE
     db_core
-    vector_index
+    mm_vector_index
     ivf
     algo-prod
     project_includes

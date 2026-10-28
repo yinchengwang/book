@@ -14,6 +14,6 @@ target_include_directories(db_vectorized PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include
     ${ENGINEERING_SOURCE_DIR}/include/db/vectorized
 )
-target_link_libraries(db_vectorized PUBLIC db_core)
+target_link_libraries(db_vectorized PUBLIC mm_base)  # Task 8: nm 证实仅依赖自身符号与 libc，降为 L0
 target_compile_options(db_vectorized PRIVATE -Wno-unused-parameter)
 set_target_properties(db_vectorized PROPERTIES FOLDER "Libraries")

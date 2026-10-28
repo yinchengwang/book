@@ -202,9 +202,9 @@ endforeach()
 # add_library 的源文件位置不展开 $<TARGET_OBJECTS:...> 表达式（该表达式仅在
 # target_sources 中有效），故这里改为在库定义完成后用 target_sources 追加。
 
-# vector_persist 是静态库（包含向量引擎），单独处理
-if(TARGET vector_persist)
-    target_link_libraries(vector_persist PUBLIC algo-prod)
+# mm_vector 是静态库（包含向量引擎），单独处理
+if(TARGET mm_vector)
+    target_link_libraries(mm_vector PUBLIC algo-prod)
 endif()
 
 # Hilbert 索引库是静态库，需要链接
@@ -229,9 +229,9 @@ if(DB_STORAGE_OBJECTS)
         ${ENGINEERING_SOURCE_DIR}/include/db/storage
     )
     target_link_libraries(db_storage PUBLIC db_core)
-    # 链接 vector_persist（包含向量引擎 + HNSW 索引）
-    if(TARGET vector_persist)
-        target_link_libraries(db_storage PUBLIC vector_persist)
+    # 链接 mm_vector（包含向量引擎 + HNSW 索引）
+    if(TARGET mm_vector)
+        target_link_libraries(db_storage PUBLIC mm_vector)
     endif()
     # 链接 Hilbert 索引库（被 spatial 模块使用）
     if(TARGET index_hilbert)

@@ -109,7 +109,7 @@ target_include_directories(mmsdk PRIVATE
     ${ENGINEERING_SOURCE_DIR}/third_part/croaring
 )
 
-target_link_libraries(mmsdk PUBLIC sqlite3 faiss_hnsw vector_index sql_engine)
+target_link_libraries(mmsdk PUBLIC sqlite3 faiss_hnsw mm_vector_index sql_engine)
 
 # 编译选项
 if(MSVC)

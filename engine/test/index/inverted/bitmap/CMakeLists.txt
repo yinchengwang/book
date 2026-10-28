@@ -9,7 +9,7 @@ add_executable(bitmap_test
 target_link_libraries(bitmap_test
     PRIVATE
         project_includes
-        vector_index
+        mm_vector_index
         GTest::gtest_main
 )
 

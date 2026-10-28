@@ -14,7 +14,7 @@ target_link_libraries(ssg_vector_test PRIVATE
     ssg
     algo-prod
     heap_vector_store
-    vector_index
+    mm_vector_index
     storage_backend_memory
     db_storage
     gtest
@@ -24,5 +24,5 @@ target_link_libraries(ssg_vector_test PRIVATE
 
 include(GoogleTest)
 gtest_discover_tests(ssg_vector_test
-    PROPERTIES LABELS "ssg;vector_index"
+    PROPERTIES LABELS "ssg;mm_vector_index"
 )

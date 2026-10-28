@@ -29,7 +29,7 @@ target_link_libraries(vector_reranker_test PRIVATE
 include(GoogleTest)
 gtest_discover_tests(vector_reranker_test
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "vector_index"
+    PROPERTIES LABELS "mm_vector_index"
 )
 
 # 向量删除模块测试

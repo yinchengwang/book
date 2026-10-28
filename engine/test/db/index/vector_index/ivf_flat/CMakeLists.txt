@@ -10,7 +10,7 @@ target_include_directories(ivf_flat_test PRIVATE
 )
 
 target_link_libraries(ivf_flat_test PRIVATE
-    vector_index
+    mm_vector_index
     algo-prod
     gtest
     gtest_main
@@ -20,5 +20,5 @@ target_link_libraries(ivf_flat_test PRIVATE
 include(GoogleTest)
 gtest_discover_tests(ivf_flat_test
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "vector_index;ivf_flat"
+    PROPERTIES LABELS "mm_vector_index;ivf_flat"
 )

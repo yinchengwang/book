@@ -17,18 +17,18 @@ set(VECTOR_PERSIST_SOURCES
     vector_sql_functions_register.c  # Task 3: 向量模态 SQL 函数表
 )
 
-add_library(vector_persist STATIC ${VECTOR_PERSIST_SOURCES})
+add_library(mm_vector STATIC ${VECTOR_PERSIST_SOURCES})
 
-target_include_directories(vector_persist PUBLIC
+target_include_directories(mm_vector PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include
     ${ENGINEERING_SOURCE_DIR}/src
 )
 
 # 链接必要的基础库
-target_link_libraries(vector_persist PUBLIC
-    db_core
+target_link_libraries(mm_vector PUBLIC
+    mm_base  # Task 8: 独立化，db_core 依赖降为 mm_base（log/errors/rwlock）
     algo-prod
-    vector_index
+    mm_vector_index
     storage_mm
     storage_lock
     storage_wal  # P1-B Task 4：vector_wal 依赖 wal_flush_get_policy / db_fsync

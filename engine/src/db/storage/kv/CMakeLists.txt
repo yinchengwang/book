@@ -15,7 +15,7 @@ if(KV_SOURCE_FILES)
         ${ENGINEERING_SOURCE_DIR}/include/db/core
     )
     # L1 存储设施：kv 引擎依赖 buffer/disk/wal（对象库嵌入本 archive，
-    # 与 vector_persist->storage_page 同模式；db_storage 聚合内的同名副本
+    # 与 mm_vector->storage_page 同模式；db_storage 聚合内的同名副本
     # 由链接器 pull-once 规则去重）
     target_link_libraries(mm_kv PUBLIC mm_base storage_buffer storage_page storage_wal)
     set_target_properties(mm_kv PROPERTIES FOLDER "ModalityEngines")

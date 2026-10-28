@@ -4,3 +4,4 @@
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/mm_smoke.cmake)
 
 mm_smoke(kv)
+mm_smoke(vector)

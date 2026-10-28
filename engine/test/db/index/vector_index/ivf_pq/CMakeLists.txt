@@ -10,7 +10,7 @@ target_include_directories(ivf_pq_test PRIVATE
 )
 
 target_link_libraries(ivf_pq_test PRIVATE
-    vector_index
+    mm_vector_index
     algo-prod
     gtest
     gtest_main
@@ -20,5 +20,5 @@ target_link_libraries(ivf_pq_test PRIVATE
 include(GoogleTest)
 gtest_discover_tests(ivf_pq_test
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "vector_index;ivf_pq"
+    PROPERTIES LABELS "mm_vector_index;ivf_pq"
 )

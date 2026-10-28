@@ -61,4 +61,8 @@ add_subdirectory(storage_backend)
 add_subdirectory(heap)
 
 # 向量索引
-add_subdirectory(vector_index)
+# Task 8：向量索引整体挂到 VECTOR 开关下（含 diskann/ivf/faiss_hnsw/
+# 量化器等全部子库——它们都在本目录内 add_subdirectory）
+if(MMDB_ENABLE_VECTOR)
+    add_subdirectory(vector_index)
+endif()

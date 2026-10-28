@@ -41,7 +41,7 @@ target_link_libraries(integration_test
     PRIVATE
         project_includes
         GTest::gtest_main
-        vector_index
+        mm_vector_index
         diskann
         ivf
         heap_vector_store

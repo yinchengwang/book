@@ -11,7 +11,7 @@ target_include_directories(test_faiss_hnsw_quantize PRIVATE
 
 target_link_libraries(test_faiss_hnsw_quantize PRIVATE
     faiss_hnsw
-    vector_index
+    mm_vector_index
     algo-prod
     project_includes
 )

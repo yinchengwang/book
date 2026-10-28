@@ -31,17 +31,17 @@
 # kbase 索引测试
 # add_project_test(test_kbase_index KBASE_INDEX_TESTS
 #     kbase
-#     vector_index
+#     mm_vector_index
 # )
 
 # kbase 搜索测试
 # add_project_test(test_kbase_search KBASE_SEARCH_TESTS
 #     kbase
-#     vector_index
+#     mm_vector_index
 # )
 
 # kbase 端到端测试
 # add_project_test(test_kbase_e2e KBASE_E2E_TESTS
 #     kbase
-#     vector_index
+#     mm_vector_index
 # )

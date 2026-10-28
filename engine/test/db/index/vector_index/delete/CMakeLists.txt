@@ -19,7 +19,7 @@ target_include_directories(vector_delete_test PRIVATE
 )
 
 target_link_libraries(vector_delete_test PRIVATE
-    vector_index
+    mm_vector_index
     algo-prod
     gtest
     gtest_main
@@ -28,5 +28,5 @@ target_link_libraries(vector_delete_test PRIVATE
 
 include(GoogleTest)
 gtest_discover_tests(vector_delete_test
-    PROPERTIES LABELS "vector_index"
+    PROPERTIES LABELS "mm_vector_index"
 )

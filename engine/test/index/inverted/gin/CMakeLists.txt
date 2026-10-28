@@ -9,7 +9,7 @@ add_executable(gin_test
 target_link_libraries(gin_test
     PRIVATE
         project_includes
-        vector_index
+        mm_vector_index
         GTest::gtest_main
 )
 

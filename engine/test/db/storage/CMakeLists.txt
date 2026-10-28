@@ -7,6 +7,7 @@ add_executable(test_sparse test_sparse.c)
 target_link_libraries(test_sparse
     PRIVATE
     storage_sparse
+    storage_sparse_bm25  # Task 8: bm25_index.c 已从 db_storage 聚合分离
     db_storage
     db_core
 )
@@ -221,6 +222,7 @@ target_link_libraries(test_vector_index
     PRIVATE
     hnsw_pq
     storage_sparse
+    storage_sparse_bm25  # Task 8: bm25_index.c 已从 db_storage 聚合分离
     db_core
     db_storage
     project_includes

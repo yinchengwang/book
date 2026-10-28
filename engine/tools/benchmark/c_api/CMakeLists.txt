@@ -29,13 +29,13 @@ set(LIB_SEARCH_PATHS
     ${BUILD_DIR}
 )
 
-find_library(VECTOR_INDEX_LIB NAMES vector_index PATHS ${LIB_SEARCH_PATHS} NO_DEFAULT_PATH)
+find_library(VECTOR_INDEX_LIB NAMES mm_vector_index PATHS ${LIB_SEARCH_PATHS} NO_DEFAULT_PATH)
 # faiss_hnsw 目标在 Gap02 后独立成库（不再并入 libvector_index.a），需单独链接
 find_library(FAISS_HNSW_LIB NAMES faiss_hnsw PATHS ${LIB_SEARCH_PATHS} NO_DEFAULT_PATH)
 find_library(ALGO_PROD_LIB NAMES algo-prod PATHS ${LIB_SEARCH_PATHS} NO_DEFAULT_PATH)
 
 if(NOT VECTOR_INDEX_LIB)
-    message(WARNING "vector_index 静态库未找到，HNSW API 将不可用")
+    message(WARNING "mm_vector_index 静态库未找到，HNSW API 将不可用")
 endif()
 
 # ========== 构建 DLL ==========
