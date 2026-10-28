@@ -90,9 +90,12 @@ if(MMDB_ENABLE_DOCUMENT)
     endif()
 endif()
 
-# 时序引擎（代码存在但有编译问题，暂不启用）
+# 时序引擎（Task 13 修复头文件字段缺失后接入）
 if(MMDB_ENABLE_TIMESERIES)
-    message(STATUS "Timeseries engine: code exists but has build issues, not enabling")
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ts")
+        add_subdirectory(ts)
+        message(STATUS "Timeseries engine: enabled")
+    endif()
 endif()
 
 # 空间引擎（代码存在但有编译问题，暂不启用）

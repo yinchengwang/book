@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <float.h>
+#include <stdio.h>  /* snprintf（Task 13 前向修复） */
 #include <time.h>
 
 /* ========================================================================
@@ -96,12 +97,6 @@ void cagg_state_free(ContinuousAggState *state) {
 /* ========================================================================
  * CDC 消费者
  * ======================================================================== */
-
-struct CdcConsumer_s {
-    const char *name;
-    CdcCallback callback;
-    void *user_data;
-};
 
 CdcConsumer *cdc_consumer_create(const char *name) {
     CdcConsumer *consumer = (CdcConsumer *)calloc(1, sizeof(CdcConsumer));

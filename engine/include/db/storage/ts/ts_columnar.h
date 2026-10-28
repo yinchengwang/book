@@ -77,6 +77,7 @@ typedef struct DeltaEncoder_s {
     int64_t first_value;         /**< 第一个值 */
     uint8_t *deltas;             /**< 增量数组 */
     uint32_t count;              /**< 增量数量 */
+    uint32_t capacity;           /**< 缓冲区容量（Task 13：实现使用，原头文件缺失） */
     uint32_t max_bits;           /**< 最大位宽 */
     size_t compressed_size;      /**< 压缩后大小 */
 } DeltaEncoder;
@@ -184,6 +185,7 @@ typedef struct BitPackingEncoder_s {
     uint8_t *packed_data;     /**< 打包后的数据 */
     uint32_t bit_width;       /**< 位宽 */
     uint32_t count;           /**< 数据点数 */
+    uint32_t capacity;        /**< 容量（数据点数，Task 13：实现使用，原头文件缺失） */
     size_t packed_size;       /**< 打包后大小 */
 } BitPackingEncoder;
 
@@ -254,6 +256,7 @@ typedef struct TsColumnarCompressor_s {
     /* 原始数据（用于比较） */
     int64_t *raw_values;
     uint32_t raw_count;
+    uint32_t raw_capacity;    /**< 原始缓冲区容量（Task 13：实现使用，原头文件缺失） */
 
     /* 最佳压缩结果 */
     uint8_t *best_compressed;

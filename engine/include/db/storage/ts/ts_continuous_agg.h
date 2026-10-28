@@ -128,10 +128,14 @@ typedef struct CdcEvent_s {
     void *new_value;           /**< 新值（UPDATE/INSERT） */
 } CdcEvent;
 
-/** CDC 消费者 */
+/** CDC 事件回调类型（须先于 CdcConsumer 声明） */
+typedef void (*CdcCallback)(const CdcEvent *event, void *user_data);
+
+/** CDC 消费者（Task 13：字段以实现文件用法为准合并，消除两处定义） */
 typedef struct CdcConsumer_s {
     const char *name;          /**< 消费者名称 */
-    void *internal;            /**< 内部状态 */
+    CdcCallback callback;      /**< 事件回调 */
+    void *user_data;           /**< 回调上下文 */
 } CdcConsumer;
 
 /**
@@ -163,8 +167,6 @@ int cdc_send_events_batch(CdcConsumer *consumer,
 /**
  * @brief 注册 CDC 回调
  */
-typedef void (*CdcCallback)(const CdcEvent *event, void *user_data);
-
 int cdc_register_callback(CdcConsumer *consumer,
                           CdcCallback callback,
                           void *user_data);
