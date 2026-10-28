@@ -11,10 +11,7 @@ set_target_properties(test_copy PROPERTIES
     FOLDER "Tests"
 )
 include(GoogleTest)
-gtest_discover_tests(test_copy
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "test_copy"
-)
+gtest_discover_tests(test_copy WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "test_copy" DISCOVERY_TIMEOUT 60)
 
 # CSV 格式 COPY 测试
 add_executable(test_copy_csv test_copy_csv.cpp)
@@ -28,10 +25,7 @@ set_target_properties(test_copy_csv PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
     FOLDER "Tests"
 )
-gtest_discover_tests(test_copy_csv
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "test_copy_csv"
-)
+gtest_discover_tests(test_copy_csv WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "test_copy_csv" DISCOVERY_TIMEOUT 60)
 
 # TEXT 格式 COPY 测试
 add_executable(test_copy_text test_copy_text.cpp)
@@ -45,10 +39,7 @@ set_target_properties(test_copy_text PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
     FOLDER "Tests"
 )
-gtest_discover_tests(test_copy_text
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "test_copy_text"
-)
+gtest_discover_tests(test_copy_text WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "test_copy_text" DISCOVERY_TIMEOUT 60)
 
 # JSON 格式 COPY 测试
 add_executable(test_copy_json test_copy_json.cpp)
@@ -62,10 +53,7 @@ set_target_properties(test_copy_json PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
     FOLDER "Tests"
 )
-gtest_discover_tests(test_copy_json
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "test_copy_json"
-)
+gtest_discover_tests(test_copy_json WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "test_copy_json" DISCOVERY_TIMEOUT 60)
 
 # SQL 格式 COPY 测试
 add_executable(test_copy_sql test_copy_sql.cpp)
@@ -79,10 +67,7 @@ set_target_properties(test_copy_sql PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
     FOLDER "Tests"
 )
-gtest_discover_tests(test_copy_sql
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "test_copy_sql"
-)
+gtest_discover_tests(test_copy_sql WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "test_copy_sql" DISCOVERY_TIMEOUT 60)
 
 # 二进制格式 COPY 测试
 add_executable(test_copy_binary test_copy_binary.cpp)
@@ -96,10 +81,7 @@ set_target_properties(test_copy_binary PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
     FOLDER "Tests"
 )
-gtest_discover_tests(test_copy_binary
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "test_copy_binary"
-)
+gtest_discover_tests(test_copy_binary WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "test_copy_binary" DISCOVERY_TIMEOUT 60)
 
 # 系统表管理工具测试
 add_executable(test_sys_catalog test_sys_catalog.cpp)
@@ -113,10 +95,7 @@ set_target_properties(test_sys_catalog PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
     FOLDER "Tests"
 )
-gtest_discover_tests(test_sys_catalog
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "test_sys_catalog"
-)
+gtest_discover_tests(test_sys_catalog WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "test_sys_catalog" DISCOVERY_TIMEOUT 60)
 
 # 统计收集器测试
 add_executable(test_stats test_stats.cpp)
@@ -130,10 +109,7 @@ set_target_properties(test_stats PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
     FOLDER "Tests"
 )
-gtest_discover_tests(test_stats
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "test_stats"
-)
+gtest_discover_tests(test_stats WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "test_stats" DISCOVERY_TIMEOUT 60)
 
 # 统计视图测试
 add_executable(test_stat_views test_stat_views.cpp)
@@ -147,10 +123,7 @@ set_target_properties(test_stat_views PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
     FOLDER "Tests"
 )
-gtest_discover_tests(test_stat_views
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "test_stat_views"
-)
+gtest_discover_tests(test_stat_views WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "test_stat_views" DISCOVERY_TIMEOUT 60)
 
 # EXPLAIN 执行计划分析测试
 add_executable(test_explain test_explain.cpp)
@@ -164,10 +137,7 @@ set_target_properties(test_explain PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
     FOLDER "Tests"
 )
-gtest_discover_tests(test_explain
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "test_explain"
-)
+gtest_discover_tests(test_explain WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "test_explain" DISCOVERY_TIMEOUT 60)
 
 # EXPLAIN YAML 格式测试
 add_executable(test_explain_yaml test_explain_yaml.cpp)
@@ -181,10 +151,7 @@ set_target_properties(test_explain_yaml PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
     FOLDER "Tests"
 )
-gtest_discover_tests(test_explain_yaml
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "test_explain_yaml"
-)
+gtest_discover_tests(test_explain_yaml WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "test_explain_yaml" DISCOVERY_TIMEOUT 60)
 
 # VACUUM 空间回收测试
 add_executable(test_vacuum test_vacuum.cpp)
@@ -198,10 +165,7 @@ set_target_properties(test_vacuum PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
     FOLDER "Tests"
 )
-gtest_discover_tests(test_vacuum
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "test_vacuum"
-)
+gtest_discover_tests(test_vacuum WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "test_vacuum" DISCOVERY_TIMEOUT 60)
 
 # REINDEX 索引重建测试
 add_executable(test_reindex test_reindex.cpp)
@@ -215,7 +179,4 @@ set_target_properties(test_reindex PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
     FOLDER "Tests"
 )
-gtest_discover_tests(test_reindex
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "test_reindex"
-)
+gtest_discover_tests(test_reindex WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "test_reindex" DISCOVERY_TIMEOUT 60)

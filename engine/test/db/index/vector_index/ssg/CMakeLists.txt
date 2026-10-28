@@ -23,6 +23,4 @@ target_link_libraries(ssg_vector_test PRIVATE
 )
 
 include(GoogleTest)
-gtest_discover_tests(ssg_vector_test
-    PROPERTIES LABELS "ssg;mm_vector_index"
-)
+gtest_discover_tests(ssg_vector_test PROPERTIES LABELS "ssg;mm_vector_index" DISCOVERY_TIMEOUT 60)

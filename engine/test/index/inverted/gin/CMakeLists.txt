@@ -19,7 +19,4 @@ set_target_properties(gin_test PROPERTIES
 )
 
 include(GoogleTest)
-gtest_discover_tests(gin_test
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "gin_test"
-)
+gtest_discover_tests(gin_test WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "gin_test" DISCOVERY_TIMEOUT 60)

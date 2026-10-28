@@ -20,7 +20,4 @@ set_target_properties(heap_vector_store_test PROPERTIES
 )
 
 include(GoogleTest)
-gtest_discover_tests(heap_vector_store_test
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "heap_vector_store_test"
-)
+gtest_discover_tests(heap_vector_store_test WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "heap_vector_store_test" DISCOVERY_TIMEOUT 60)

@@ -14,8 +14,9 @@ set(GRAPH_ALGO_SOURCE_FILES
 )
 
 if(GRAPH_SOURCE_FILES OR TRAVERSE_SOURCE_FILES OR GRAPH_ALGO_SOURCE_FILES)
-    add_library(storage_graph OBJECT ${GRAPH_SOURCE_FILES} ${TRAVERSE_SOURCE_FILES} ${GRAPH_ALGO_SOURCE_FILES})
-    target_include_directories(storage_graph PRIVATE
+    # Task 9：独立静态库（模板见 storage/kv）。graph 白名单依赖 kv。
+    add_library(mm_graph STATIC ${GRAPH_SOURCE_FILES} ${TRAVERSE_SOURCE_FILES} ${GRAPH_ALGO_SOURCE_FILES})
+    target_include_directories(mm_graph PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
         # 原为 ${CMAKE_SOURCE_DIR}/third_part/uthash/src —— 该路径不存在
         # （CMAKE_SOURCE_DIR 是仓库根，根下 vendor/third_part/uthash 是空 submodule），
@@ -29,6 +30,9 @@ if(GRAPH_SOURCE_FILES OR TRAVERSE_SOURCE_FILES OR GRAPH_ALGO_SOURCE_FILES)
         ${ENGINEERING_SOURCE_DIR}/src/db/executor/graph
         ${ENGINEERING_SOURCE_DIR}/src/db/graph
     )
+    # L1 设施（nm 实测：wal/lock/mm_pool）+ 依赖闭包 kv + L0
+    target_link_libraries(mm_graph PUBLIC mm_base mm_kv storage_wal storage_lock storage_mm)
+    set_target_properties(mm_graph PROPERTIES FOLDER "ModalityEngines")
 endif()
 
 # 单独编译的模块（使用 GLOB_RECURSE 会自动包含）

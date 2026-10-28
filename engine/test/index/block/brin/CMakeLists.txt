@@ -19,7 +19,4 @@ set_target_properties(brin_test PROPERTIES
 )
 
 include(GoogleTest)
-gtest_discover_tests(brin_test
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "brin_test"
-)
+gtest_discover_tests(brin_test WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "brin_test" DISCOVERY_TIMEOUT 60)

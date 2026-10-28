@@ -23,6 +23,4 @@ target_link_libraries(index_framework_test PRIVATE
 )
 
 include(GoogleTest)
-gtest_discover_tests(index_framework_test
-    PROPERTIES LABELS "index;framework"
-)
+gtest_discover_tests(index_framework_test PROPERTIES LABELS "index;framework" DISCOVERY_TIMEOUT 60)

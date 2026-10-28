@@ -61,10 +61,7 @@ set_target_properties(integration_test PROPERTIES
 )
 
 include(GoogleTest)
-gtest_discover_tests(integration_test
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "integration_test"
-)
+gtest_discover_tests(integration_test WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "integration_test" DISCOVERY_TIMEOUT 60)
 
 # DiskANN 召回率独立程序（自带 main，不属于 gtest 测试）
 add_executable(diskann_recall_simple diskann_recall_simple.cpp)

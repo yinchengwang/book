@@ -22,6 +22,4 @@ target_link_libraries(hnsw_pq_test PRIVATE
 )
 
 include(GoogleTest)
-gtest_discover_tests(hnsw_pq_test
-    PROPERTIES LABELS "hnsw_pq;mm_vector_index"
-)
+gtest_discover_tests(hnsw_pq_test PROPERTIES LABELS "hnsw_pq;mm_vector_index" DISCOVERY_TIMEOUT 60)

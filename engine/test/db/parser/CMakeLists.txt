@@ -24,7 +24,4 @@ set_target_properties(test_sql_parse_canonical PROPERTIES
     FOLDER "Tests"
 )
 include(GoogleTest)
-gtest_discover_tests(test_sql_parse_canonical
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "test_sql_parse_canonical"
-)
+gtest_discover_tests(test_sql_parse_canonical WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "test_sql_parse_canonical" DISCOVERY_TIMEOUT 60)

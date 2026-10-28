@@ -13,7 +13,7 @@ target_link_libraries(self_made_cpp_test gtest gtest_main self_made_cpp)
 # 添加测试
 enable_testing()
 include(GoogleTest)
-gtest_discover_tests(self_made_cpp_test)
+gtest_discover_tests(self_made_cpp_test DISCOVERY_TIMEOUT 60)
 
 # 设置测试输出目录
 set(CTEST_BINARY_DIRECTORY ${CMAKE_BINARY_DIR}/custom_testing_dir)

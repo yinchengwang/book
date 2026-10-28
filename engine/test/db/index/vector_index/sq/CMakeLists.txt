@@ -18,6 +18,4 @@ target_link_libraries(sq_test PRIVATE
 )
 
 include(GoogleTest)
-gtest_discover_tests(sq_test
-    PROPERTIES LABELS "sq;quantization"
-)
+gtest_discover_tests(sq_test PROPERTIES LABELS "sq;quantization" DISCOVERY_TIMEOUT 60)

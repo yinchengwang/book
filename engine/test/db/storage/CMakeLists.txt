@@ -27,7 +27,7 @@ add_executable(test_spatial_engine
 target_link_libraries(test_spatial_engine
     PRIVATE
     storage_spatial    # 空间存储模块
-    storage_graph      # 图存储模块（Hilbert 索引依赖）
+    mm_graph      # 图存储模块（Hilbert 索引依赖）
     db_storage
     db_core
     index_hilbert      # Hilbert 索引

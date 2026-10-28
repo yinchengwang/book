@@ -27,10 +27,7 @@ target_link_libraries(vector_reranker_test PRIVATE
 
 # gtest_discover_tests 让 ctest 能发现 reranker 测试
 include(GoogleTest)
-gtest_discover_tests(vector_reranker_test
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "mm_vector_index"
-)
+gtest_discover_tests(vector_reranker_test WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "mm_vector_index" DISCOVERY_TIMEOUT 60)
 
 # 向量删除模块测试
 add_subdirectory(delete)

@@ -74,7 +74,7 @@ target_link_libraries(cross_modality_test
         db_storage
         db_core
         vector_api
-        storage_graph
+        mm_graph
         project_includes
 )
 target_include_directories(cross_modality_test PRIVATE

@@ -18,6 +18,4 @@ target_link_libraries(pq_test PRIVATE
 )
 
 include(GoogleTest)
-gtest_discover_tests(pq_test
-    PROPERTIES LABELS "pq;quantization"
-)
+gtest_discover_tests(pq_test PROPERTIES LABELS "pq;quantization" DISCOVERY_TIMEOUT 60)

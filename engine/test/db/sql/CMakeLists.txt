@@ -13,10 +13,7 @@ if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/test_canonical_parser.cpp")
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
         FOLDER "Tests"
     )
-    gtest_discover_tests(test_canonical_parser
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        PROPERTIES LABELS "CanonicalParser"
-    )
+    gtest_discover_tests(test_canonical_parser WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "CanonicalParser" DISCOVERY_TIMEOUT 60)
 endif()
 
 # SQL 执行器测试
@@ -92,10 +89,7 @@ set_target_properties(test_sql_integration PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
     FOLDER "Tests"
 )
-gtest_discover_tests(test_sql_integration
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "SqlIntegration"
-)
+gtest_discover_tests(test_sql_integration WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "SqlIntegration" DISCOVERY_TIMEOUT 60)
 
 # HashAgg 执行器节点测试
 add_executable(test_hashagg test_hashagg.cpp)
@@ -134,10 +128,7 @@ set_target_properties(test_driver_smoke PROPERTIES
     FOLDER "Tests"
 )
 include(GoogleTest)
-gtest_discover_tests(test_driver_smoke
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "test_driver_smoke"
-)
+gtest_discover_tests(test_driver_smoke WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "test_driver_smoke" DISCOVERY_TIMEOUT 60)
 
 # SQL 主路径算子 e2e 能力测试（T9：ORDER BY/LIMIT/GROUP BY/JOIN/FROM 子查询）
 add_executable(test_e2e_capability test_e2e_capability.cpp)
@@ -147,10 +138,7 @@ set_target_properties(test_e2e_capability PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
     FOLDER "Tests"
 )
-gtest_discover_tests(test_e2e_capability
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "test_e2e_capability"
-)
+gtest_discover_tests(test_e2e_capability WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "test_e2e_capability" DISCOVERY_TIMEOUT 60)
 
 # 存储引擎集成测试（Task 5.1）— T12 已归档，见 test_storage_integration.cpp 注释
 # add_executable(test_storage_integration test_storage_integration.cpp)

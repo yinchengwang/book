@@ -6,10 +6,7 @@
 add_executable(guc test.cpp)
 target_link_libraries(guc PRIVATE project_includes GTest::gtest_main db_core)
 include(GoogleTest)
-gtest_discover_tests(guc
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "guc"
-)
+gtest_discover_tests(guc WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "guc" DISCOVERY_TIMEOUT 60)
 
 # 引擎注册表测试
 add_executable(engine_registry_test engine_registry_test.cpp)
@@ -18,10 +15,7 @@ target_link_libraries(engine_registry_test PRIVATE db_core db_storage project_in
 # 此前该目标只构建、从未注册进 ctest，导致其中的断言长期不生效
 # （storage_model_name 的枚举错位 bug 就是这样被漏掉的）。
 # 用 gtest_discover_tests 按用例展开，失败时能直接定位到具体用例。
-gtest_discover_tests(engine_registry_test
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "engine_registry"
-)
+gtest_discover_tests(engine_registry_test WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "engine_registry" DISCOVERY_TIMEOUT 60)
 
 # 引擎注册隔离测试（Task 2 注册表反转的行为钉子）：
 # 单模态构建只注册一个引擎；期望值就地按 MMDB_ENABLE_* 计算 ——
@@ -41,20 +35,14 @@ target_compile_definitions(engine_register_isolation_test
     PRIVATE MMDB_EXPECTED_ENGINE_COUNT=${_expected})
 target_link_libraries(engine_register_isolation_test
     PRIVATE db_core db_storage project_includes gtest gtest_main)
-gtest_discover_tests(engine_register_isolation_test
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "engine_registry"
-)
+gtest_discover_tests(engine_register_isolation_test WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "engine_registry" DISCOVERY_TIMEOUT 60)
 
 # SQL 函数注册表测试（Task 3）：各模态函数表迁至模态目录后，
 # 启用模态的函数可查到、未启用模态的不注册（期望用编译期开关守卫）。
 add_executable(sql_function_registry_test sql_function_registry_test.cpp)
 target_link_libraries(sql_function_registry_test
     PRIVATE db_core db_storage project_includes gtest gtest_main)
-gtest_discover_tests(sql_function_registry_test
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "func_registry"
-)
+gtest_discover_tests(sql_function_registry_test WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "func_registry" DISCOVERY_TIMEOUT 60)
 
 # 向量查询执行器测试
 add_executable(test_vector_query vector_query_test.cpp)

@@ -27,6 +27,4 @@ target_link_libraries(vector_delete_test PRIVATE
 )
 
 include(GoogleTest)
-gtest_discover_tests(vector_delete_test
-    PROPERTIES LABELS "mm_vector_index"
-)
+gtest_discover_tests(vector_delete_test PROPERTIES LABELS "mm_vector_index" DISCOVERY_TIMEOUT 60)

@@ -164,9 +164,7 @@ endif()
 if(MMDB_ENABLE_VECTOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vector")
     list(APPEND DB_STORAGE_SUBMODULES vector)
 endif()
-if(MMDB_ENABLE_GRAPH AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/graph")
-    list(APPEND DB_STORAGE_SUBMODULES graph)
-endif()
+# graph（Task 9 起为独立静态库 mm_graph，不再编入聚合）
 if(MMDB_ENABLE_SPATIAL AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/spatial")
     list(APPEND DB_STORAGE_SUBMODULES spatial)
 endif()
@@ -247,7 +245,10 @@ else()
     message(FATAL_ERROR "db_storage 没有任何源文件：检查 MMDB_MODALITY profile 与 storage 子目录")
 endif()
 
-# Task 7：kv 引擎为独立静态库，聚合库以链接方式引入（不再收对象）
+# Task 7/9：独立模态静态库，聚合库以链接方式引入（不再收对象）
 if(TARGET mm_kv)
     target_link_libraries(db_storage PUBLIC mm_kv)
+endif()
+if(TARGET mm_graph)
+    target_link_libraries(db_storage PUBLIC mm_graph)
 endif()

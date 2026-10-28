@@ -18,7 +18,4 @@ target_link_libraries(ivf_pq_test PRIVATE
 )
 
 include(GoogleTest)
-gtest_discover_tests(ivf_pq_test
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "mm_vector_index;ivf_pq"
-)
+gtest_discover_tests(ivf_pq_test WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "mm_vector_index;ivf_pq" DISCOVERY_TIMEOUT 60)

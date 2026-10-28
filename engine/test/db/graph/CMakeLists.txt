@@ -10,7 +10,7 @@ list(REMOVE_ITEM GRAPH_TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/c2_3_pagerank_t
 add_executable(test_graph_basic_test ${GRAPH_TEST_SOURCES})
 
 target_link_libraries(test_graph_basic_test PRIVATE
-    storage_graph
+    mm_graph
     db_storage
     db_core
     project_includes

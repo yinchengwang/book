@@ -20,6 +20,4 @@ target_link_libraries(nsw_vector_test PRIVATE
 )
 
 include(GoogleTest)
-gtest_discover_tests(nsw_vector_test
-    PROPERTIES LABELS "nsw;mm_vector_index"
-)
+gtest_discover_tests(nsw_vector_test PROPERTIES LABELS "nsw;mm_vector_index" DISCOVERY_TIMEOUT 60)

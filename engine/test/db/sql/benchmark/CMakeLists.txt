@@ -40,9 +40,6 @@ set_target_properties(sql_benchmark PROPERTIES
 
 # 添加到 CTest
 include(GoogleTest)
-gtest_discover_tests(sql_benchmark
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "benchmark"
-)
+gtest_discover_tests(sql_benchmark WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "benchmark" DISCOVERY_TIMEOUT 60)
 
 message(STATUS "Added sql_benchmark tests")

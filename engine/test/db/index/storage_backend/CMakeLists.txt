@@ -22,7 +22,4 @@ set_target_properties(storage_backend_test PROPERTIES
 )
 
 include(GoogleTest)
-gtest_discover_tests(storage_backend_test
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "storage_backend_test"
-)
+gtest_discover_tests(storage_backend_test WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "storage_backend_test" DISCOVERY_TIMEOUT 60)

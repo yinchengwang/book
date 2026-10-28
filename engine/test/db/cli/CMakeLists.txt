@@ -17,7 +17,4 @@ set_target_properties(test_cli_smoke PROPERTIES
     FOLDER "Tests"
 )
 include(GoogleTest)
-gtest_discover_tests(test_cli_smoke
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    PROPERTIES LABELS "CliSmoke"
-)
+gtest_discover_tests(test_cli_smoke WORKING_DIRECTORY ${CMAKE_BINARY_DIR} PROPERTIES LABELS "CliSmoke" DISCOVERY_TIMEOUT 60)
