@@ -2,6 +2,7 @@
 # engine/test/db/storage/CMakeLists.txt
 
 # 编译 test_sparse.c 为可执行文件
+if(TARGET mm_sparse)
 add_executable(test_sparse test_sparse.c)
 
 target_link_libraries(test_sparse
@@ -14,12 +15,14 @@ target_link_libraries(test_sparse
 
 # 自动发现 test_sparse 中的 main 用例
 add_test(NAME test_sparse COMMAND test_sparse)
+endif()
 
 # ========================================================================
 # 空间引擎测试
 # ========================================================================
 
 # 空间测试可执行文件
+if(TARGET mm_spatial)
 add_executable(test_spatial_engine
     spatial_engine_test.cpp
 )
@@ -65,6 +68,7 @@ set_target_properties(test_spatial_engine PROPERTIES
 
 # 注册测试
 add_test(NAME test_spatial_engine COMMAND test_spatial_engine)
+endif()
 
 # ========================================================================
 # 文档聚合管道测试
@@ -142,6 +146,7 @@ add_test(NAME test_storage_wal COMMAND test_storage_wal)
 # ========================================================================
 # KV 测试（C3-5 T22）
 # ========================================================================
+if(TARGET mm_kv)
 add_executable(test_storage_kv kv.cpp)
 target_link_libraries(test_storage_kv
     PRIVATE
@@ -156,6 +161,7 @@ target_include_directories(test_storage_kv PRIVATE
     ${ENGINEERING_SOURCE_DIR}/include/db
 )
 add_test(NAME test_storage_kv COMMAND test_storage_kv)
+endif()
 
 # ========================================================================
 # KV 并发和高级功能测试（C3-5 T22）

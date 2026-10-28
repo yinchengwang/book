@@ -2,9 +2,12 @@
 
 add_subdirectory(heap)
 add_subdirectory(storage_backend)
-add_subdirectory(integration)
-add_subdirectory(sift_test)
-add_subdirectory(vector_index)  # 向量索引测试（包含 GPU 索引）
+# Task 16：向量系测试挂 VECTOR 开关（单模态构建不定义外来测试）
+if(MMDB_ENABLE_VECTOR)
+    add_subdirectory(integration)
+    add_subdirectory(sift_test)
+    add_subdirectory(vector_index)  # 向量索引测试（包含 GPU 索引）
+endif()
 
 # 索引框架单元测试 (IndexCatalog, IndexManager, IndexCost, IndexSelector)
 add_executable(index_framework_test index_manager_test.cpp)
