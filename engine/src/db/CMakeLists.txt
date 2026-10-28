@@ -45,7 +45,8 @@ add_subdirectory(yang)
 # ========================================================================
 add_subdirectory(storage)
 
-# db_core 内含 engine_registry.c 与生成的注册收集器，引用各引擎的
+# mm_storage_api（经 db_core 传递）内含 engine_registry.c 与生成的注册收集器，
+# 引用各引擎的
 # *_engine_get_ops / mm_*_register_sql_functions 与 storage_register_engine 等
 # db_storage 符号。Task 4 曾尝试删除本链接，实测 5 个测试目标因
 # 「单遍 archive 扫描无法满足 db_core -> db_storage 反向引用」而链接失败
@@ -55,14 +56,29 @@ add_subdirectory(storage)
 # 才可能不依赖 db_storage。届时删除本块。
 # db_storage 也链接 db_core（PUBLIC），形成静态库循环依赖 —— CMake 支持，
 # 会在最终链接行中重复列出相关库。
+# Task 6：db_core -> L1 公共层（engine_registry + mm_storage + 注册收集器）
+if(TARGET mm_storage_api)
+    target_link_libraries(db_core PUBLIC mm_storage_api)
+endif()
+
 if(TARGET db_storage)
     target_link_libraries(db_core PUBLIC db_storage)
 endif()
 
-# 生成的注册收集器直接编入 db_core（过渡期 mm_<modality>_register 也在
-# db_core 内）：做成独立库与 db_core 互链会打穿循环档案重复深度。
+# 过渡期：mm_storage_api 的收集器/注册函数引用 *_engine_get_ops（db_storage
+# 提供）。若不在循环 SCC 内，它只在链接行出现一次且位于末尾，引擎符号
+# 引用无法回查 db_storage（实测 7 个测试 undefined）。并入循环组获得档案
+# 重复扫描。Task 7+ 把 mm_<modality>_register 移入模态库后，本链接与
+# db_core->db_storage 一起删除。
+if(TARGET db_storage)
+    target_link_libraries(mm_storage_api PRIVATE db_storage)
+endif()
+
+# 生成的注册收集器直接编入 mm_storage_api（mm_<modality>_register 定义于
+# engine_registry.c，同库内解析；做成独立库会打穿循环档案重复深度，
+# 见 cmake/gen_builtin_engines.cmake 注释）。
 if(EXISTS "${CMAKE_BINARY_DIR}/generated/src/mm_builtin_engines.c")
-    target_sources(db_core PRIVATE "${CMAKE_BINARY_DIR}/generated/src/mm_builtin_engines.c")
+    target_sources(mm_storage_api PRIVATE "${CMAKE_BINARY_DIR}/generated/src/mm_builtin_engines.c")
 endif()
 
 # ========================================================================

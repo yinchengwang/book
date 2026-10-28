@@ -1,41 +1,63 @@
-# core 模块：核心基础设施（errors, log, guc, initdb, pg_ctl, db_server, structured_log）
-add_library(db_core STATIC
+# ========================================================================
+# mm_base（L0 基础设施）+ db_core（查询/服务侧核心）
+#
+# Task 6 分层拆分：
+#   mm_base  —— errors/log/guc/metrics/structured_log/读写锁/序列化契约/
+#              sha256。只依赖 multimodal_config_gen + Threads，
+#              不依赖 db_storage / db_core / 任何模态。
+#   db_core  —— initdb/pg_ctl/db_server/func_registry/查询服务等，
+#              PUBLIC 链接 mm_storage_api（含 mm_base，依赖只向下）。
+#   engine_registry.c 已迁至 mm_storage_api（见 storage/mm/CMakeLists.txt）。
+# ========================================================================
+
+add_library(mm_base STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/errors.c
     ${CMAKE_CURRENT_SOURCE_DIR}/error_codes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/log.c
     ${CMAKE_CURRENT_SOURCE_DIR}/guc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/structured_log.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/metrics.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/mm_record.c         # C0-3 序列化契约
+    ${CMAKE_CURRENT_SOURCE_DIR}/sha256.c            # Blob SHA-256 / Manifest 校验
+    ${ENGINEERING_SOURCE_DIR}/src/db/common_rwlock.c         # 读写锁：kv/vector/graph 引擎使用
+    ${ENGINEERING_SOURCE_DIR}/src/db/concurrency/mmdb_lock.c # canonical 读写锁（C9-2）
+)
+target_include_directories(mm_base PUBLIC
+    ${ENGINEERING_SOURCE_DIR}/include
+    ${ENGINEERING_SOURCE_DIR}/include/db
+    ${ENGINEERING_SOURCE_DIR}/include/db/core
+)
+target_link_libraries(mm_base PUBLIC multimodal_config_gen Threads::Threads)
+target_compile_options(mm_base PRIVATE -Wno-unused-parameter)
+set_target_properties(mm_base PROPERTIES FOLDER "Libraries")
+
+add_library(db_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/initdb.c
     ${CMAKE_CURRENT_SOURCE_DIR}/pg_ctl.c
     ${CMAKE_CURRENT_SOURCE_DIR}/db_server.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/structured_log.c
     ${CMAKE_CURRENT_SOURCE_DIR}/func_registry.c   # Task 3: 首次入库（此前从未被任何目标编译）
-    ${CMAKE_CURRENT_SOURCE_DIR}/metrics.c
     ${CMAKE_CURRENT_SOURCE_DIR}/query_filter.c
     ${CMAKE_CURRENT_SOURCE_DIR}/query_fusion.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/engine_registry.c  # 引擎注册
-    ${CMAKE_CURRENT_SOURCE_DIR}/mm_record.c         # C0-3 序列化契约
     ${CMAKE_CURRENT_SOURCE_DIR}/mvcc_session.c      # C2-1 MVCC 线程局部
     ${CMAKE_CURRENT_SOURCE_DIR}/xml_parser.c        # C2-5 自研 XML 解析器
     ${CMAKE_CURRENT_SOURCE_DIR}/cjk_tokenizer.c     # C2-6 中文分词 + 词干化
     ${CMAKE_CURRENT_SOURCE_DIR}/explain_analyze.c   # C2-2 EXPLAIN/ANALYZE
-    ${CMAKE_CURRENT_SOURCE_DIR}/sha256.c            # Blob SHA-256: 实现 Manifest 编解码与完整性校验（Task 3）)
-    ${CMAKE_CURRENT_SOURCE_DIR}/mm_storage_blob.c   # C3-1 T10: mm_storage 接入 Blob 类型（Task 8）
-    ${ENGINEERING_SOURCE_DIR}/src/db/common_rwlock.c # 读写锁：被 kv/vector/graph 引擎使用
-    ${ENGINEERING_SOURCE_DIR}/src/db/concurrency/mmdb_lock.c # canonical 读写锁（mmdb_rwlock_*）：graph/spatial/blob 引擎使用（C9-2）
+    ${CMAKE_CURRENT_SOURCE_DIR}/mm_storage_blob.c   # C3-1 T10: mm_storage 接入 Blob 类型
 )
 target_include_directories(db_core PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include
     ${ENGINEERING_SOURCE_DIR}/include/db
     ${ENGINEERING_SOURCE_DIR}/include/db/core
-    # func_registry.c 直接使用 uthash；此前经 db_storage->algo-prod 传递，
-    # Task 4 断环后需显式声明（uthash 是头文件库，无链接需求）
+    # func_registry.c 直接使用 uthash（头文件库，无链接需求）
     ${ENGINEERING_SOURCE_DIR}/third_part/uthash/src
 )
+# L1 公共层链接在 src/db/CMakeLists.txt 中 add_subdirectory(storage) 之后声明
+# （mm_storage_api 目标彼时才存在，link 名在生成期才解析，此处提前写会退化为 -l 名）。
 # engine_registry.h 公开包含 db/multimodal_config.h，生成头必须随 db_core 传递
 target_link_libraries(db_core PUBLIC multimodal_config_gen)
 target_compile_options(db_core PRIVATE -Wno-unused-parameter)
 
-# Windows 需要链接 ws2_32
+# Windows 需要链接 ws2_32（db_server）
 if(WIN32)
     target_link_libraries(db_core PRIVATE ws2_32)
 endif()
