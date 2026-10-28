@@ -19,10 +19,17 @@ function(mmdb_generate_builtin_engines)
     set(MMDB_ENGINE_REGISTER_CALLS "")
     set(MMDB_SQL_FUNCTION_REGISTER_CALLS "")
 
+    # 模态开关名 -> 注册函数短名（engine_registry.c 的历史命名：doc/ts 非全称）
+    set(_short_DOCUMENT doc)
+    set(_short_TIMESERIES ts)
     set(_modality_list KV VECTOR GRAPH DOCUMENT TIMESERIES SPATIAL TREE STREAM COLUMNAR ST RDF)
     foreach(_m IN LISTS _modality_list)
         if(MMDB_ENABLE_${_m})
-            string(TOLOWER "${_m}" _low)
+            if(DEFINED _short_${_m})
+                set(_low ${_short_${_m}})
+            else()
+                string(TOLOWER "${_m}" _low)
+            endif()
             string(APPEND MMDB_ENGINE_REGISTER_CALLS
                 "    (void)mm_${_low}_register();\n")
         endif()
@@ -34,7 +41,11 @@ function(mmdb_generate_builtin_engines)
     set(_sql_order VECTOR TIMESERIES GRAPH DOCUMENT SPATIAL KV TREE)
     foreach(_m IN LISTS _sql_order)
         if(MMDB_ENABLE_${_m})
-            string(TOLOWER "${_m}" _low)
+            if(DEFINED _short_${_m})
+                set(_low ${_short_${_m}})
+            else()
+                string(TOLOWER "${_m}" _low)
+            endif()
             string(APPEND MMDB_SQL_FUNCTION_REGISTER_CALLS
                 "    { size_t _n = 0;\n"
                 "      const FunctionInfo *_t = mm_${_low}_sql_function_table(&_n);\n"

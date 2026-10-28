@@ -186,7 +186,7 @@ static DocNestedNode *parse_value(DocNestedParser *parser, const char **p,
         const char *val_start = extract_value_range(*p, remaining, &val_len);
         node = create_node(parser, DOC_NESTED_STRING, key, index);
         if (node) {
-            node->value.str_val = copy_unescaped(val_start, val_start + val_len, &node->value.num_children);
+            node->value.str_val = copy_unescaped(val_start, val_start + val_len, &node->num_children);
             node->parent = parent;
         }
     } else if (isdigit(**p) || **p == '-' || **p == '+') {
@@ -426,7 +426,7 @@ const char *doc_nested_get_string(DocNestedNode *node, size_t *out_len) {
 
     switch (node->type) {
         case DOC_NESTED_STRING:
-            if (out_len) *out_len = node->value.num_children;
+            if (out_len) *out_len = node->num_children;
             return node->value.str_val;
         case DOC_NESTED_INT: {
             static char buf[32];

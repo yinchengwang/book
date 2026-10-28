@@ -82,9 +82,12 @@ if(MMDB_ENABLE_GRAPH)
     endif()
 endif()
 
-# 文档引擎（代码存在但有编译问题，暂不启用）
+# 文档引擎（Task 12 修复 union 成员错误后接入）
 if(MMDB_ENABLE_DOCUMENT)
-    message(STATUS "Document engine: code exists but has build issues, not enabling")
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/doc")
+        add_subdirectory(doc)
+        message(STATUS "Document engine: enabled")
+    endif()
 endif()
 
 # 时序引擎（代码存在但有编译问题，暂不启用）
