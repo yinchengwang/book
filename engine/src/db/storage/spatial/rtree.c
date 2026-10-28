@@ -404,7 +404,15 @@ int rtree_insert(rtree_t *tree, uint64_t id, const bbox_t *bbox) {
     tree->root = new_root;
     tree->height++;
 
-    /* 释放旧根节点（其内容已分裂到 child_a 和 child_b） */
+    /* 释放旧根节点（其内容已分裂到 child_a 和 child_b）。
+     *
+     * 关键：quadratic_split 对叶子节点是「拷贝条目」、对内部节点是「移交子节点
+     * 指针所有权」。若此处直接 rtree_node_free(old_root)，其内部递归会把刚刚
+     * 移交到 child_a/child_b 的子节点一并释放，导致新根子树出现悬垂指针
+     * （use-after-free），后续插入访问该节点即崩溃。
+     * 因此先清零 num_entries，使 rtree_node_free 只回收节点自身的数组，
+     * 不再递归释放已移交的子节点。 */
+    old_root->num_entries = 0;
     rtree_node_free(old_root);
 
     /* 释放新根节点的子节点分配的额外空间（不需要，因为 split 已复制） */

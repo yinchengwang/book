@@ -404,7 +404,13 @@ uint32_t hilbert_index_knn(const hilbert_index_t *index,
 
     if (index->count == 0) return 0;
 
+    /* 结果条数不能超过索引实际记录数：items 数组按 index->count 分配，
+     * 若 n > count，则 items[i] 越界读取到垃圾 idx，
+     * 随后 index->records[垃圾 idx] 触发越界访问而崩溃。 */
     uint32_t n = (uint32_t)(k < (int)max_results ? k : (int)max_results);
+    if (n > index->count) {
+        n = index->count;
+    }
 
     typedef struct {
         uint32_t idx;
