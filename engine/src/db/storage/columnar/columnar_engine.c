@@ -13,6 +13,8 @@
 #include <time.h>
 #include <math.h>
 
+static int columnar_serialize_table(void *table, size_t *file_offset);
+
 #ifdef _WIN32
 #define snprintf _snprintf
 #endif
