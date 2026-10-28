@@ -383,3 +383,42 @@ sequenceDiagram
     Executor->>Executor: RRF 重排序
     Executor-->>Client: 最终结果
 ```
+
+## 构建体系
+
+> 详见 `projects/engine/docs/arch/db/modality-build.md`（实测报告）与
+> `projects/engine/docs/arch/db/build-baseline-2026-10-27.md`（改造前基线）。
+
+### 分层
+
+```
+L0  mm_base          errors/log/guc/metrics/structured_log/读写锁/mm_record/sha256
+L1  mm_storage_api   engine_registry.c + mm_storage.c + func_registry.c
+                     + 构建期生成的注册收集器（mm_builtin_engines.c）
+L2  mm_<modality>    每模态一个独立静态库
+L3  db_core / relational 聚合
+```
+
+- **公共层不引用模态**：引擎注册经注册表反转实现——公共层只暴露
+  `mm_register_builtin_engines()` / `mm_register_builtin_sql_functions()`，
+  由 `cmake/gen_builtin_engines.cmake` 按 profile 生成收集器集中调用各模态的
+  `mm_<modality>_register()`。空 profile 也产出空函数体，不用弱符号（兼容 MSVC）。
+- **模态不反向引用公共层**：SQL 函数以纯数据 getter
+  `mm_<modality>_sql_function_table(size_t*)` 暴露，由 L1 的
+  `func_registry_register_table()` 下行注册，L1↔L2 无双向符号引用，
+  依赖图保持 DAG，CMake 可拓扑排序。
+
+### 按模态裁剪
+
+`cmake -B build/x -S . -G Ninja -DMMDB_MODALITY=<profile>` 选择构建闭包，
+共 15 个 profile（kv/vector/graph/spatial/tree/sparse/doc/ts/stream/columnar/
+st/rdf/relational/legacy/full + 空 profile）。配置期校验依赖闭包封闭，
+不封闭直接 `FATAL_ERROR`；同一构建树切换 profile 会被 `MMDB_PROFILE_APPLIED`
+哨兵拒绝（profile 决定编译闭包，原地切换会产生陈旧产物）。
+
+### 冒烟测试
+
+每个模态一个 `mm_<modality>_smoke`，只链 `mm_base + mm_storage_api + mm_<modality>`，
+链接期机械证明模态独立可用（链不上其他模态库即隔离失败）。
+运行期断言注册表槽位集合恰等于本 profile 的期望引擎掩码
+（构建期生成 `mm_smoke_expect.h`），该掩码同时钉住「无多余引擎被注册」。
