@@ -17,6 +17,7 @@ add_subdirectory(db/consensus)   # Raft 共识模块测试（Phase11）
 # add_subdirectory(db/index/vector_index)  # 向量索引测试（暂时跳过，add_subdirectory 冲突）
 add_subdirectory(sdk)            # 多模态嵌入式 SDK测试
 add_subdirectory(sdk/integration) # 跨语言一致性 + 性能基准
+add_subdirectory(smoke)           # 模态独立冒烟（Task 7 起，每模态一个）
 
 # 创建一个聚合测试目标
 add_custom_target(all_tests

@@ -35,7 +35,8 @@ add_library(db_core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/initdb.c
     ${CMAKE_CURRENT_SOURCE_DIR}/pg_ctl.c
     ${CMAKE_CURRENT_SOURCE_DIR}/db_server.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/func_registry.c   # Task 3: 首次入库（此前从未被任何目标编译）
+    # func_registry.c 于 Task 7 迁入 mm_storage_api（SQL 函数注册表属 L1，
+    # 模态注册文件引用 func_registry_register，冒烟闭包不应含 db_core）
     ${CMAKE_CURRENT_SOURCE_DIR}/query_filter.c
     ${CMAKE_CURRENT_SOURCE_DIR}/query_fusion.c
     ${CMAKE_CURRENT_SOURCE_DIR}/mvcc_session.c      # C2-1 MVCC 线程局部
@@ -48,8 +49,6 @@ target_include_directories(db_core PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include
     ${ENGINEERING_SOURCE_DIR}/include/db
     ${ENGINEERING_SOURCE_DIR}/include/db/core
-    # func_registry.c 直接使用 uthash（头文件库，无链接需求）
-    ${ENGINEERING_SOURCE_DIR}/third_part/uthash/src
 )
 # L1 公共层链接在 src/db/CMakeLists.txt 中 add_subdirectory(storage) 之后声明
 # （mm_storage_api 目标彼时才存在，link 名在生成期才解析，此处提前写会退化为 -l 名）。

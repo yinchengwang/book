@@ -65,12 +65,21 @@ if(TARGET db_storage)
     target_link_libraries(db_core PUBLIC db_storage)
 endif()
 
-# 过渡期：mm_storage_api 的收集器/注册函数引用 *_engine_get_ops（db_storage
-# 提供）。若不在循环 SCC 内，它只在链接行出现一次且位于末尾，引擎符号
-# 引用无法回查 db_storage（实测 7 个测试 undefined）。并入循环组获得档案
-# 重复扫描。Task 7+ 把 mm_<modality>_register 移入模态库后，本链接与
-# db_core->db_storage 一起删除。
-if(TARGET db_storage)
+# 过渡期：mm_storage_api 的收集器引用启用模态的 *_engine_get_ops /
+# mm_<modality>_register_sql_functions。若提供方不在循环 SCC 内，
+# mm_storage_api 只在链接行末尾出现一次，引用无法回查（实测 undefined）。
+# 已独立的模态（mm_kv）直接链；仍编在聚合内的模态经 db_storage。
+# 全部模态独立后（Task 15），本段与 db_core->db_storage 一起删除。
+if(TARGET mm_kv)
+    target_link_libraries(mm_storage_api PRIVATE mm_kv)
+endif()
+set(_aggregated_engines_needed OFF)
+foreach(_m VECTOR GRAPH SPATIAL TREE STREAM COLUMNAR ST RDF DOCUMENT TIMESERIES)
+    if(MMDB_ENABLE_${_m})
+        set(_aggregated_engines_needed ON)
+    endif()
+endforeach()
+if(_aggregated_engines_needed AND TARGET db_storage)
     target_link_libraries(mm_storage_api PRIVATE db_storage)
 endif()
 

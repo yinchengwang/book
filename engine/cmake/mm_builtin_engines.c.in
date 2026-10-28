@@ -8,6 +8,7 @@
  * ======================================================================== */
 #include "db/mm_engine_register.h"
 #include "db/storage_engine.h"
+#include "db/core/func_registry.h"  /* func_registry_register_table */
 
 void mm_register_builtin_engines(void) {
 @MMDB_ENGINE_REGISTER_CALLS@}

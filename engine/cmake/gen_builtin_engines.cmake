@@ -36,7 +36,9 @@ function(mmdb_generate_builtin_engines)
         if(MMDB_ENABLE_${_m})
             string(TOLOWER "${_m}" _low)
             string(APPEND MMDB_SQL_FUNCTION_REGISTER_CALLS
-                "    ret |= mm_${_low}_register_sql_functions();\n")
+                "    { size_t _n = 0;\n"
+                "      const FunctionInfo *_t = mm_${_low}_sql_function_table(&_n);\n"
+                "      ret |= func_registry_register_table(_t, _n); }\n")
         endif()
     endforeach()
 

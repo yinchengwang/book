@@ -27,11 +27,14 @@ endif()
 add_library(mm_storage_api STATIC
     ${ENGINEERING_SOURCE_DIR}/src/db/core/engine_registry.c
     ${CMAKE_CURRENT_SOURCE_DIR}/mm_storage.c
+    ${ENGINEERING_SOURCE_DIR}/src/db/core/func_registry.c  # Task 7 自 db_core 迁入
 )
 target_include_directories(mm_storage_api PUBLIC
     ${ENGINEERING_SOURCE_DIR}/include
     ${ENGINEERING_SOURCE_DIR}/include/db
     ${ENGINEERING_SOURCE_DIR}/include/db/storage
+    # func_registry.c 使用 uthash（头文件库）
+    ${ENGINEERING_SOURCE_DIR}/third_part/uthash/src
 )
 target_link_libraries(mm_storage_api PUBLIC mm_base)
 set_target_properties(mm_storage_api PROPERTIES FOLDER "Libraries")

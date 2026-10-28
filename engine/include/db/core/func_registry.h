@@ -148,6 +148,14 @@ bool func_registry_validate_args(const FunctionInfo *func, const int *arg_types,
  */
 int func_registry_register_builtins(void);
 
+/**
+ * @brief 注册一张函数信息表（Task 7 起模态 SQL 函数的标准接入方式）
+ *
+ * 模态只提供纯数据表（mm_<modality>_sql_function_table），
+ * 由 L1 侧下行注册，避免 L1<->L2 双向符号引用破坏单遍 archive 扫描。
+ */
+int func_registry_register_table(const FunctionInfo *table, size_t count);
+
 /* ========================================================================
  * 函数执行器
  * ======================================================================== */

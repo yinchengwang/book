@@ -187,6 +187,14 @@ bool func_registry_validate_args(const FunctionInfo *func, const int *arg_types,
  * 内置函数注册
  * ======================================================================== */
 
+int func_registry_register_table(const FunctionInfo *table, size_t count) {
+    if (!table) return -1;
+    for (size_t i = 0; i < count; i++) {
+        func_registry_register(&table[i]);
+    }
+    return 0;
+}
+
 int func_registry_register_builtins(void) {
     /* 注册表反转：各模态的 SQL 函数表已迁至各模态目录
      * （mm_<modality>_register_sql_functions），由构建期生成的

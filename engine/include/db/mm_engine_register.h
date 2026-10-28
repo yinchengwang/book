@@ -12,6 +12,8 @@
 #ifndef DB_MM_ENGINE_REGISTER_H
 #define DB_MM_ENGINE_REGISTER_H
 
+#include <stddef.h>  /* size_t（SQL 函数表 getter 签名） */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -52,14 +54,16 @@ int mm_columnar_register(void);
 int mm_st_register(void);
 int mm_rdf_register(void);
 
-/* 各模态内置 SQL 函数注册（定义随模态编译，Task 3 起） */
-int mm_vector_register_sql_functions(void);
-int mm_ts_register_sql_functions(void);
-int mm_graph_register_sql_functions(void);
-int mm_doc_register_sql_functions(void);
-int mm_spatial_register_sql_functions(void);
-int mm_kv_register_sql_functions(void);
-int mm_tree_register_sql_functions(void);
+/* 各模态内置 SQL 函数表（Task 7 起为纯数据 getter，模态零 L1 调用；
+ * 定义随模态编译，生成文件经 func_registry_register_table 下行注册） */
+typedef struct FunctionInfo_s FunctionInfo;
+const FunctionInfo *mm_vector_sql_function_table(size_t *out_count);
+const FunctionInfo *mm_ts_sql_function_table(size_t *out_count);
+const FunctionInfo *mm_graph_sql_function_table(size_t *out_count);
+const FunctionInfo *mm_doc_sql_function_table(size_t *out_count);
+const FunctionInfo *mm_spatial_sql_function_table(size_t *out_count);
+const FunctionInfo *mm_kv_sql_function_table(size_t *out_count);
+const FunctionInfo *mm_tree_sql_function_table(size_t *out_count);
 
 #ifdef __cplusplus
 }
