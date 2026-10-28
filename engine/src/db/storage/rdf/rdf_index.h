@@ -16,4 +16,7 @@ void rdf_index_shutdown(void);
 /** 添加三元组到索引 */
 int rdf_index_add_triple(int64_t triple_id, const rdf_triple_t *triple);
 
+/* Task 14：rdf_engine.c 与 rdf_index.c 共用的词元哈希 */
+uint64_t hash_term(const rdf_term_t *term);
+
 #endif /* RDF_INDEX_H */

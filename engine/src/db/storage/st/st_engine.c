@@ -5,6 +5,7 @@
  * 组合空间和时间维度，提供时空查询分析能力。
  * 支持轨迹查询、时空范围查询、时间聚合等。
  */
+#include "db/common.h"  /* mm_mkdir 可移植目录创建 */
 #include "db/st_engine.h"
 #include "db/storage/spatial/rtree.h"
 #include "log.h"
@@ -128,9 +129,9 @@ int st_engine_init(const char *data_dir) {
 
     /* 创建数据目录 */
 #ifdef _WIN32
-    mkdir(g_st_engine.data_dir, 0755);
+    mm_mkdir(g_st_engine.data_dir);
 #else
-    mkdir(g_st_engine.data_dir, 0755);
+    mm_mkdir(g_st_engine.data_dir);
 #endif
 
     g_st_engine.initialized = true;
@@ -156,9 +157,9 @@ static int st_engine_table_create(const char *name, const storage_schema_t *sche
     get_dir_path(name, dir_path, sizeof(dir_path));
 
 #ifdef _WIN32
-    if (mkdir(dir_path, 0755) != 0 && errno != EEXIST) {
+    if (mm_mkdir(dir_path) != 0 && errno != EEXIST) {
 #else
-    if (mkdir(dir_path, 0755) != 0 && errno != EEXIST) {
+    if (mm_mkdir(dir_path) != 0 && errno != EEXIST) {
 #endif
         LOG_ERROR("创建时空数据目录失败: %s", dir_path);
         return -1;

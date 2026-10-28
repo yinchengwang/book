@@ -32,20 +32,28 @@ typedef enum {
 /**
  * @brief 二维点
  */
+/* Task 14：与 rtree.h/spatial_engine.h(storage) 共用守卫宏，避免
+ * 同名几何类型在同时包含多个头的 TU 里重复定义 */
+#ifndef POINT_T_DEFINED
+#define POINT_T_DEFINED
 typedef struct point_s {
     double x;    /**< X 坐标 */
     double y;    /**< Y 坐标 */
 } point_t;
+#endif
 
 /**
  * @brief 边界框
  */
+#ifndef BBOX_T_DEFINED
+#define BBOX_T_DEFINED
 typedef struct bbox_s {
     double min_x;   /**< 最小 X */
     double min_y;   /**< 最小 Y */
     double max_x;   /**< 最大 X */
     double max_y;   /**< 最大 Y */
 } bbox_t;
+#endif
 
 /**
  * @brief 空间引擎数据库

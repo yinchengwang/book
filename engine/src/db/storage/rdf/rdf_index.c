@@ -5,6 +5,7 @@
  * 提供主语、谓语、宾语的哈希索引，加速三元组模式匹配。
  */
 #include "rdf_engine.h"
+#include "rdf_index.h"  /* hash_term/rdf_index_* 声明 */
 #include "log.h"
 #include <stdlib.h>
 #include <string.h>
