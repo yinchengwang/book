@@ -4,11 +4,12 @@
  *
  * 链接期证明：本目标只链 mm_base + mm_storage_api + mm_vector
  * （vector_index 子库经 mm_vector PUBLIC 传递），不链 db_storage/db_core。
- * 运行期证明：只注册 VECTOR 一个引擎，且能经 storage_ops_t 完成
- * table_create -> table_open -> tuple_insert 真实写入。
+ * 运行期证明：注册表槽位集合恰等于本 profile 期望掩码，且本模态引擎
+ * 已注册（掩码由构建期按 profile 生成，见 cmake/mm_smoke_expect.h.in）。
  */
 #include "db/mm_storage.h"
 #include "db/storage_engine.h"
+#include "mm_smoke_assert.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -17,18 +18,11 @@
 int main(void) {
     assert(mm_storage_init("test_data/smoke_vector") == 0);
 
-    int n = 0;
-    for (int m = 0; m < MODEL_COUNT; ++m) {
-        if (storage_get_engine((DataModel)m) != NULL) {
-            ++n;
-        }
-    }
-    /* 独立性证明：vector profile 下只应有一个引擎 */
-    assert(n == 1);
+    /* profile 感知断言：注册槽位集合必须恰好等于本 profile 期望掩码，
+     * 且本模态引擎已注册（冒烟的核心命题）。 */
+    mm_smoke_assert_engine_set(MODEL_VECTOR, 1);
+
     const storage_ops_t *ops = storage_get_engine(MODEL_VECTOR);
-    assert(ops != NULL);
-    assert(storage_get_engine(MODEL_KV) == NULL);
-    assert(storage_get_engine(MODEL_GRAPH) == NULL);
 
     /* 真实写入：建集合 -> 打开 -> 插入一条 128 维向量记录 */
     assert(ops->table_create("smoke_v", NULL) == 0);

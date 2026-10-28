@@ -4,16 +4,17 @@
  */
 #include "db/mm_storage.h"
 #include "db/storage_engine.h"
+#include "mm_smoke_assert.h"
 #include <assert.h>
 #include <stdio.h>
 
 int main(void) {
+
     assert(mm_storage_init("test_data/smoke_columnar") == 0);
-    int n = 0;
-    for (int m = 0; m < MODEL_COUNT; ++m)
-        if (storage_get_engine((DataModel)m) != NULL) ++n;
-    assert(n == 1);
-    assert(storage_get_engine(MODEL_COLUMNAR) != NULL);
+
+    /* profile 感知断言：注册槽位集合必须恰好等于本 profile 期望掩码，
+     * 且本模态引擎已注册（冒烟的核心命题）。 */
+    mm_smoke_assert_engine_set(MODEL_COLUMNAR, 1);
     assert(mm_storage_shutdown() == 0);
     printf("mm_columnar_smoke OK\n");
     return 0;

@@ -43,6 +43,34 @@ set(MMDB_MODALITY_DEPS_st      "spatial")
 set(MMDB_MODALITY_DEPS_sparse  "vector")
 set(MMDB_MODALITY_DEPS_doc     "vector")
 
+# ------------------------------------------------------------------
+# 模态 -> 引擎注册槽位（用于冒烟断言的 profile 感知）
+#
+# 冒烟测试原先硬编码「注册表里只有 N 个引擎」，这只在单模态 profile
+# 下成立；legacy/full profile 会注册多个引擎，导致冒烟必失败。
+# 这里把每个模态是否注册 storage 引擎、注册到哪个 DataModel 槽位
+# 显式列出，构建期据此算出本 profile 的期望引擎位掩码，
+# 生成 mm_smoke_expect.h 供冒烟断言使用。
+#
+# 位序 = DataModel 枚举值（include/db/storage_engine.h）：
+#   RELATIONAL=0 KV=1 GRAPH=2 VECTOR=3 TIMESERIES=4 DOCUMENT=5
+#   SPATIAL=6 TREE=7 STREAM=8 COLUMNAR=9 RDF=11 SPATIOTEMPORAL=12
+# relational / sparse 不实现 storage_ops_t（无引擎注册），故为 0。
+# ------------------------------------------------------------------
+set(MMDB_MODALITY_ENGINE_relational   0)
+set(MMDB_MODALITY_ENGINE_kv           2)     # 1 << MODEL_KV
+set(MMDB_MODALITY_ENGINE_vector       8)     # 1 << MODEL_VECTOR
+set(MMDB_MODALITY_ENGINE_graph        4)     # 1 << MODEL_GRAPH
+set(MMDB_MODALITY_ENGINE_doc          32)    # 1 << MODEL_DOCUMENT
+set(MMDB_MODALITY_ENGINE_ts           16)    # 1 << MODEL_TIMESERIES
+set(MMDB_MODALITY_ENGINE_spatial      64)    # 1 << MODEL_SPATIAL
+set(MMDB_MODALITY_ENGINE_tree         128)   # 1 << MODEL_TREE
+set(MMDB_MODALITY_ENGINE_stream       256)   # 1 << MODEL_STREAM
+set(MMDB_MODALITY_ENGINE_columnar     512)   # 1 << MODEL_COLUMNAR
+set(MMDB_MODALITY_ENGINE_rdf          2048)  # 1 << MODEL_RDF
+set(MMDB_MODALITY_ENGINE_st           4096)  # 1 << MODEL_SPATIOTEMPORAL
+set(MMDB_MODALITY_ENGINE_sparse       0)
+
 # profile 模态名 -> MMDB_ENABLE_* 开关后缀映射（显式列出，防止改名漂移）
 set(MMDB_MODALITY_SWITCH_relational "RELATIONAL")
 set(MMDB_MODALITY_SWITCH_kv         "KV")
@@ -76,7 +104,18 @@ if(NOT DEFINED MMDB_PROFILE_${MMDB_MODALITY})
 endif()
 
 # ------------------------------------------------------------------
-# 幂等守卫 + 手动开关拦截
+# 本 profile 的期望引擎位掩码（按 profile 模态列表并集）
+#
+# 供冒烟测试断言用：注册表中的非空槽位集合必须恰好等于本掩码，
+# 多出来一个即说明有引擎在不该存在的 profile 下被注册。
+# ------------------------------------------------------------------
+set(MMDB_EXPECTED_ENGINE_MASK 0)
+foreach(_m IN LISTS MMDB_PROFILE_${MMDB_MODALITY})
+    math(EXPR MMDB_EXPECTED_ENGINE_MASK
+         "${MMDB_EXPECTED_ENGINE_MASK} | ${MMDB_MODALITY_ENGINE_${_m}}")
+endforeach()
+message(STATUS "Modality profile '${MMDB_MODALITY}': expected engine mask = ${MMDB_EXPECTED_ENGINE_MASK}")
+
 #
 # 「用户显式给了 -DMMDB_ENABLE_*」只能用 DEFINED CACHE{...} 判断
 # （if(MMDB_ENABLE_KV) 在 option() 声明后恒真）。为区分「用户 -D」与

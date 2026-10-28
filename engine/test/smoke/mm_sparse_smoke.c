@@ -4,28 +4,25 @@
  *
  * 链接期证明：只链 mm_base + mm_storage_api + mm_sparse（+ mm_vector，
  * 白名单依赖闭包 sparse -> vector）。
- * 运行期说明：SPARSE 不实现 storage_ops_t（无引擎注册，见
- * engine_registry.c），因此注册表中只有 VECTOR 一个引擎；
- * sparse 自身以 bm25/sparse_vector 检索 API 形式提供，能链接即证明其独立可用。
+ * 运行期证明：注册表槽位集合恰等于本 profile 期望掩码，且本模态引擎
+ * 已注册（掩码由构建期按 profile 生成，见 cmake/mm_smoke_expect.h.in）。
  */
 #include "db/mm_storage.h"
 #include "db/storage_engine.h"
+#include "mm_smoke_assert.h"
 #include <assert.h>
 #include <stdio.h>
 
 int main(void) {
+
     assert(mm_storage_init("test_data/smoke_sparse") == 0);
 
-    int n = 0;
-    for (int m = 0; m < MODEL_COUNT; ++m) {
-        if (storage_get_engine((DataModel)m) != NULL) {
-            ++n;
-        }
-    }
-    /* sparse profile 闭包 = vector + sparse；SPARSE 不注册 storage 引擎，
-     * 因此引擎计数为 1（VECTOR），注意不要误设为 2 */
-    assert(n == 1);
-    assert(storage_get_engine(MODEL_VECTOR) != NULL);
+    /* profile 感知断言：注册槽位集合必须恰好等于本 profile 期望掩码，
+     * 且本模态引擎已注册（冒烟的核心命题）。 */
+    mm_smoke_assert_engine_set(MODEL_VECTOR, 1);
+
+    /* sparse 不实现 storage_ops_t（无自身引擎槽位），只断言槽位集合
+     * 等于本 profile 期望掩码；vector 由 sparse profile 的依赖闭包带入。 */
 
     assert(mm_storage_shutdown() == 0);
     printf("mm_sparse_smoke OK\n");
